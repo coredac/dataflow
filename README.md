@@ -28,5 +28,9 @@ Build LLVM & Neura
 ```
  $ cd ../test
  $ ../build/tools/mlir-neura-opt/mlir-neura-opt --debug test.mlir
+
+ # Or test with lit:
+ $ ../../llvm-project/build/bin/llvm-lit test.mlir
 ```
+
 
