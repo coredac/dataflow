@@ -3,10 +3,10 @@ cmake_minimum_required(VERSION 3.13.4)
 project(NeuraMLIRProject)
 
 # Enable MLIR
-set(LLVM_DIR /WORK_REPO/llvm-project/build/lib/cmake/llvm)
-set(MLIR_DIR /WORK_REPO/llvm-project/build/lib/cmake/mlir)
-set(MLIR_SOURCE_DIR /WORK_REPO/llvm-project/mlir)
-set(MLIR_BINARY_DIR /WORK_REPO/llvm-project/build)
+set(LLVM_DIR /workspace/llvm-project/build/lib/cmake/llvm)
+set(MLIR_DIR /workspace/llvm-project/build/lib/cmake/mlir)
+set(MLIR_SOURCE_DIR /workspace/llvm-project/mlir)
+set(MLIR_BINARY_DIR /workspace/llvm-project/build)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -frtti")
 
