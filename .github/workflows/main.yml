@@ -28,6 +28,12 @@ jobs:
     - name: install ninja for LLVM build
       run: sudo apt-get install ninja-build
     
+    # install ccache
+    - name: install ccache & lld
+      run: |
+        sudo apt-get install ccache
+        sudo apt-get install lld
+ 
     # setup LLVM
     - name: install a specific version of LLVM
       working-directory: ${{github.workspace}}
