@@ -70,8 +70,8 @@ jobs:
         cmake -G Ninja .. \
           -DLLVM_DIR=${{github.workspace}}/llvm-project/build/lib/cmake/llvm \
           -DMLIR_DIR=${{github.workspace}}/llvm-project/build/lib/cmake/mlir \
-          -DMLIR_SOURCE_DIR=/workspace/llvm-project/mlir \
-          -DMLIR_BINARY_DIR=/workspace/llvm-project/build \
+          -DMLIR_SOURCE_DIR=${{github.workspace}}/llvm-project/mlir \
+          -DMLIR_BINARY_DIR=${{github.workspace}}/llvm-project/build \
           -DCMAKE_CXX_FLAGS="-std=c++17"
 
         ninja
