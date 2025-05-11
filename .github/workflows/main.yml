@@ -68,9 +68,11 @@ jobs:
         cd dataflow
         mkdir build && cd build
         cmake -G Ninja .. \
-        -DLLVM_DIR=${{github.workspace}}/llvm-project/build/lib/cmake/llvm \
-        -DMLIR_DIR=${{github.workspace}}/llvm-project/build/lib/cmake/mlir \
-        -DCMAKE_CXX_FLAGS="-std=c++17"
+          -DLLVM_DIR=${{github.workspace}}/llvm-project/build/lib/cmake/llvm \
+          -DMLIR_DIR=${{github.workspace}}/llvm-project/build/lib/cmake/mlir \
+          -DMLIR_SOURCE_DIR=/workspace/llvm-project/mlir \
+          -DMLIR_BINARY_DIR=/workspace/llvm-project/build \
+          -DCMAKE_CXX_FLAGS="-std=c++17"
 
         ninja
 
@@ -101,5 +103,5 @@ jobs:
       working-directory: ${{github.workspace}}
       run: |
         cd ${{github.workspace}}/dataflow/test
-        ${{github.workspace}}/build/bin/llvm-lit test.mlir
+        ${{github.workspace}}/build/bin/llvm-lit *
 
