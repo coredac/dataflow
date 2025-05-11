@@ -7,7 +7,7 @@ Build LLVM & Neura
  - Clone this repo.
 
  - Build LLVM:
-   - Check out to commit `cd70802`. (a stable version randomly picked, will sync to the latest version)
+   - Check out to commit `cd70802` (a stable version randomly picked, will sync to the latest version).
    - Build:
 ```sh
  $ mkdir build && cd build
@@ -35,10 +35,6 @@ Build LLVM & Neura
    - Build:
 ```sh
  $ mkdir build && cd build
- $ cmake -G Ninja .. \
-     -DLLVM_DIR=/workspace/llvm-project/build/lib/cmake/llvm \
-     -DMLIR_DIR=/workspace/llvm-project/build/lib/cmake/mlir \
-     -DCMAKE_CXX_FLAGS="-std=c++17"
  # Replace the path "/workspace" accordingly.
  $ cmake -G Ninja .. \
      -DLLVM_DIR=/workspace/llvm-project/build/lib/cmake/llvm \
@@ -55,7 +51,6 @@ Build LLVM & Neura
  $ ../build/tools/mlir-neura-opt/mlir-neura-opt --debug test.mlir
 
  # Or test with lit:
- $ /workspace/llvm-project/build/bin/llvm-lit test.mlir
+ $ /workspace/llvm-project/build/bin/llvm-lit *
 ```
-
 
