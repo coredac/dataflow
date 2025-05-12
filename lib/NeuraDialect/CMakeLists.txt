@@ -3,18 +3,27 @@ include_directories(${MLIR_INCLUDE_DIRS})
 link_directories(${MLIR_LIBRARY_DIRS})
 add_definitions(${MLIR_DEFINITIONS})
 
-# Registers the dialect.
-add_mlir_dialect(NeuraOps neura)
-add_mlir_dialect(NeuraDialect neura)
+set(LLVM_TARGET_DEFINITIONS ${CMAKE_CURRENT_SOURCE_DIR}/../../include/NeuraDialect/NeuraOps.td)
 
-# Lists all source files in this dialect.
-set(SOURCES
-  NeuraDialect.cpp
-  NeuraOps.cpp
-)
+mlir_tablegen(NeuraOps.h.inc -gen-op-decls -I${CMAKE_SOURCE_DIR}/include)
+mlir_tablegen(NeuraOps.cpp.inc -gen-op-defs -I${CMAKE_SOURCE_DIR}/include)
+add_public_tablegen_target(NeuraOpsIncGen)
+
+mlir_tablegen(NeuraDialect.h.inc -gen-dialect-decls -dialect=neura -I${CMAKE_SOURCE_DIR}/include)
+mlir_tablegen(NeuraDialect.cpp.inc -gen-dialect-defs -dialect=neura -I${CMAKE_SOURCE_DIR}/include)
+add_public_tablegen_target(NeuraDialectIncGen)
+
+add_public_tablegen_target(MLIRNeuraIncGen)
 
 # Creates a single MLIR library target for the dialect.
-add_mlir_library(NeuraDialect STATIC ${SOURCES}
+add_mlir_library(NeuraDialect STATIC # ${SOURCES}
+  NeuraDialect.cpp
+  NeuraOps.cpp
+
+  DEPENDS
+    NeuraOpsIncGen
+    NeuraDialectIncGen
+
   LINK_LIBS PUBLIC
     MLIRIR         # MLIR Core IR
     MLIRDialect    # MLIR Dialect
@@ -22,8 +31,11 @@ add_mlir_library(NeuraDialect STATIC ${SOURCES}
     MLIRTransforms # MLIR transformation passes
 )
 
+include_directories(${CMAKE_SOURCE_DIR}/include)
+
 target_include_directories(NeuraDialect PUBLIC
   ${CMAKE_BINARY_DIR}/include
+  ${CMAKE_BINARY_DIR}/lib/NeuraDialect
   ${CMAKE_SOURCE_DIR}/include
   ${MLIR_SOURCE_DIR}/include
   ${LLVM_INCLUDE_DIRS}  # Add LLVM headers

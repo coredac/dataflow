@@ -9,28 +9,12 @@
 using namespace mlir;
 using namespace neura;
 
-// Registers the dialect inside MLIR.
-NeuraDialect::NeuraDialect(MLIRContext *context)
-    : Dialect(getDialectNamespace(), context, TypeID::get<NeuraDialect>()) {
-  initialize();
-}
+#include "NeuraDialect.cpp.inc"
 
 void NeuraDialect::initialize() {
   addOperations<
     #define GET_OP_LIST
-    #include "NeuraDialect/NeuraOps.cpp.inc"
+    #include "NeuraOps.cpp.inc"
   >();
 }
-
-// Defines the virtual destructor.
-NeuraDialect::~NeuraDialect() = default;
-
-// Registers the dialect with MLIR.
-// static mlir::DialectRegistration<NeuraDialect> NeuraDialectRegistration;
-void registerNeuraDialect(mlir::DialectRegistry &registry) {
-  registry.insert<NeuraDialect>();
-}
-
-// Defines the TypeID for NeuraDialect.
-MLIR_DEFINE_EXPLICIT_TYPE_ID(::mlir::neura::NeuraDialect)
 
