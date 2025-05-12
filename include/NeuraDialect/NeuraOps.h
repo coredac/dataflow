@@ -8,7 +8,7 @@
 #include "mlir/IR/Builders.h"
 
 #define GET_OP_CLASSES
-#include "NeuraDialect/NeuraOps.h.inc"
+#include "NeuraOps.h.inc"
 
 // Additional definitions or includes can go here.
 

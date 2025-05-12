@@ -1,6 +1,6 @@
 // NeuraOps.td - Custom operation definitions.
 include "mlir/IR/OpBase.td"
-include "NeuraDialect.td"
+include "NeuraDialect/NeuraDialect.td"
 
 // Defines an addition operation.
 def Neura_AddOp : Op<NeuraDialect, "add"> {

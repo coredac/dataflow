@@ -12,6 +12,6 @@
 #endif
 
 // Includes generated TableGen headers.
-#include "NeuraDialect/NeuraDialect.h.inc"
+#include "NeuraDialect.h.inc"
 
 #endif // NEURADIALECT_NEURADIALECT_H
