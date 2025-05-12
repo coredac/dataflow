@@ -1,0 +1,15 @@
+import os
+import lit.formats
+
+config.name = 'Neura Dialect Tests'
+config.test_format = lit.formats.ShTest(True)
+config.suffixes = ['.mlir']
+config.test_source_root = os.path.dirname(__file__)
+config.test_exec_root = os.path.dirname(__file__)
+
+# Tool substitutions from CMake
+config.substitutions.append(('mlir-neura-opt', '@MLIR_NEURA_OPT@'))
+config.substitutions.append(('FileCheck', '@FILECHECK@'))
+config.substitutions.append(('mlir-opt', '@MLIR_OPT@'))
+config.substitutions.append(('mlir-translate', '@MLIR_TRANSLATE@'))
+config.substitutions.append(('llc', '@LLC@'))
