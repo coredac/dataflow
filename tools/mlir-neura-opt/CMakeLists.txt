@@ -15,6 +15,7 @@ target_link_libraries(mlir-neura-opt PRIVATE
   MLIRFuncDialect   # Builtin dialect required by custom dialect
   MLIRArithDialect
   NeuraArithToNeura
+  NeuraTransforms
 )
 
 # Includes directories.
