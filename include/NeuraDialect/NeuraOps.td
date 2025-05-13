@@ -11,3 +11,13 @@ def Neura_AddOp : Op<NeuraDialect, "add"> {
   let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($result)";
   // let traits = [Pure];
 }
+
+// Defines a move operation for data communication.
+def Neura_MovOp : Op<NeuraDialect, "mov"> {
+  let summary = "Move operation";
+  let opName = "mov";
+  let arguments = (ins AnyType:$lhs);
+  let results = (outs AnyType:$result);
+  let assemblyFormat = "$lhs attr-dict `:` type($lhs) `->` type($result)";
+  // let traits = [Pure];
+}
