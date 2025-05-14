@@ -12,39 +12,43 @@ struct InsertMovForNeuraOps : public RewritePattern {
   InsertMovForNeuraOps(MLIRContext *context)
       : RewritePattern(/*matchAnyOpTypeTag=*/MatchAnyOpTypeTag(), /*benefit=*/1, context) {}
 
-  // using RewritePattern::RewritePattern;
-
   LogicalResult matchAndRewrite(Operation *op, PatternRewriter &rewriter) const override {
     if (op->getDialect()->getNamespace() != "neura" ||
         isa<neura::MovOp>(op)) {
       return failure();
     }
 
-    llvm::errs() << "[cheng] step into matching and rewrite";
+    // Skips ops that already being inserted mov on the operands.
+    bool allInputsAreMov = llvm::all_of(op->getOperands(), [](Value v) {
+      return isa_and_nonnull<neura::MovOp>(v.getDefiningOp());
+    });
+    if (allInputsAreMov) {
+      return failure();
+    }
+
+    // Makes sure none of the operand has being processed.
+    bool hasAnyMovInput = llvm::any_of(op->getOperands(), [](Value v) {
+      return isa_and_nonnull<neura::MovOp>(v.getDefiningOp());
+    });
+    assert(!hasAnyMovInput && "Unexpected: operand already wrapped in neura.mov");
+
     Location loc = op->getLoc();
 
-    // Wrap operands in mov
+    // Wraps operands in mov.
     SmallVector<Value> newOperands;
     for (Value operand : op->getOperands()) {
       auto mov = rewriter.create<neura::MovOp>(loc, operand.getType(), operand);
       newOperands.push_back(mov);
     }
 
-    // Clone op with new operands
+    // Clones op with new operands.
     OperationState state(loc, op->getName());
     state.addOperands(newOperands);
     state.addTypes(op->getResultTypes());
     state.addAttributes(op->getAttrs());
+
     Operation *newOp = rewriter.create(state);
-
-    // Wrap each result in a mov
-    SmallVector<Value> newResults;
-    for (Value result : newOp->getResults()) {
-      auto mov = rewriter.create<neura::MovOp>(loc, result.getType(), result);
-      newResults.push_back(mov);
-    }
-
-    rewriter.replaceOp(op, newResults);
+    rewriter.replaceOp(op, newOp->getResults());
     return success();
   }
 };
