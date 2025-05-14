@@ -1,5 +1,5 @@
-add_mlir_library(NeuraArithToNeura
-  ArithToNeuraPass.cpp
+add_mlir_library(NeuraLlvmToNeura
+  LlvmToNeuraPass.cpp
 
   DEPENDS
   NeuraOpsIncGen
@@ -9,12 +9,13 @@ add_mlir_library(NeuraArithToNeura
   LINK_LIBS PUBLIC
   MLIRArithDialect
   MLIRFuncDialect
+  MLIRLLVMDialect
   MLIRIR
   MLIRPass
   MLIRTransforms
 )
 
-target_include_directories(NeuraArithToNeura PUBLIC
+target_include_directories(NeuraLlvmToNeura PUBLIC
     ${CMAKE_BINARY_DIR}/lib/NeuraDialect
     ${MLIR_INCLUDE_DIRS}
     ${LLVM_INCLUDE_DIRS}
@@ -22,6 +23,6 @@ target_include_directories(NeuraArithToNeura PUBLIC
     ${CMAKE_BINARY_DIR}/include
 )
 
-target_compile_definitions(NeuraArithToNeura
+target_compile_definitions(NeuraLlvmToNeura
   PRIVATE ${LLVM_DEFINITIONS}
 )
