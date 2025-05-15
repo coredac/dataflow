@@ -5,12 +5,22 @@ add_definitions(${MLIR_DEFINITIONS})
 
 set(LLVM_TARGET_DEFINITIONS ${CMAKE_CURRENT_SOURCE_DIR}/../../include/NeuraDialect/NeuraOps.td)
 
-mlir_tablegen(NeuraOps.h.inc -gen-op-decls -I${CMAKE_SOURCE_DIR}/include)
-mlir_tablegen(NeuraOps.cpp.inc -gen-op-defs -I${CMAKE_SOURCE_DIR}/include)
+mlir_tablegen(NeuraOps.h.inc -gen-op-decls
+  -I${MLIR_SOURCE_DIR}/include
+  -I${CMAKE_SOURCE_DIR}/include)
+mlir_tablegen(NeuraOps.cpp.inc -gen-op-defs
+  -I${MLIR_SOURCE_DIR}/include
+  -I${CMAKE_SOURCE_DIR}/include)
 add_public_tablegen_target(NeuraOpsIncGen)
 
-mlir_tablegen(NeuraDialect.h.inc -gen-dialect-decls -dialect=neura -I${CMAKE_SOURCE_DIR}/include)
-mlir_tablegen(NeuraDialect.cpp.inc -gen-dialect-defs -dialect=neura -I${CMAKE_SOURCE_DIR}/include)
+mlir_tablegen(NeuraDialect.h.inc -gen-dialect-decls
+  -dialect=neura
+  -I${MLIR_SOURCE_DIR}/include
+  -I${CMAKE_SOURCE_DIR}/include)
+mlir_tablegen(NeuraDialect.cpp.inc -gen-dialect-defs
+  -dialect=neura
+  -I${MLIR_SOURCE_DIR}/include
+  -I${CMAKE_SOURCE_DIR}/include)
 add_public_tablegen_target(NeuraDialectIncGen)
 
 add_public_tablegen_target(MLIRNeuraIncGen)
