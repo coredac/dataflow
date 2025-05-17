@@ -1,2 +1,3 @@
 add_subdirectory(NeuraDialect)
 add_subdirectory(Conversion/ArithToNeura)
+add_subdirectory(Transforms)
