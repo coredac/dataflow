@@ -1,16 +1,35 @@
 // NeuraOps.td - Custom operation definitions.
-include "mlir/IR/OpBase.td"
+
 include "NeuraDialect/NeuraDialect.td"
 
 // Defines an addition operation.
 def Neura_AddOp : Op<NeuraDialect, "add"> {
-  let summary = "Addition operation";
+  let summary = "Integer addition operation";
   let opName = "add";
-  let arguments = (ins F32:$lhs, F32:$rhs);
-  let results = (outs F32:$result);
-  let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($result)";
-  // let traits = [Pure];
+  let arguments = (ins AnyInteger:$lhs, AnyInteger:$rhs);
+  let results = (outs AnyInteger:$result);
+  // let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($result)";
+  let traits = [SameOperandsAndResultElementType];
 }
+
+// Defines an addition operation.
+def Neura_FAddOp : Op<NeuraDialect, "fadd"> {
+  let summary = "Floating addition operation";
+  let opName = "fadd";
+  let arguments = (ins AnyFloat:$lhs, AnyFloat:$rhs);
+  let results = (outs AnyFloat:$result);
+  // let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($result)";
+  let traits = [SameOperandsAndResultElementType];
+}
+
+def Neura_FAddFAddOp : Op<NeuraDialect, "fadd_fadd"> {
+  let summary = "Fused fadd(fadd(a, b), c)";
+  let arguments = (ins AnyFloat:$a, AnyFloat:$b, AnyFloat:$c);
+  let results = (outs AnyFloat:$result);
+  // let assemblyFormat = "$a `,` $b `,` $c attr-dict `:` type($result)";
+  let traits = [SameOperandsAndResultElementType];
+}
+
 
 // Defines a move operation for data communication.
 def Neura_MovOp : Op<NeuraDialect, "mov"> {

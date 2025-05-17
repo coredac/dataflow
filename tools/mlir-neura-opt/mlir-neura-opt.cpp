@@ -10,6 +10,7 @@
 #include "Conversion/LlvmToNeura/LlvmToNeura.h"
 #include "NeuraDialect/NeuraDialect.h"
 #include "Transforms/InsertMovPass.h"
+#include "Transforms/FusePatternsPass.h"
 
 int main(int argc, char **argv) {
   // Registers MLIR dialects.
@@ -27,6 +28,10 @@ int main(int argc, char **argv) {
   });
   mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
     return mlir::neura::createInsertMovPass();
+  });
+
+  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
+    return mlir::neura::createFusePatternsPass();
   });
 
   // Runs the MLIR optimizer.

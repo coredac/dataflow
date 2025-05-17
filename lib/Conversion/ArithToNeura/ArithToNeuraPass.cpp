@@ -7,18 +7,20 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
+namespace mlir {
+namespace neura {
+// Uses arith2neura instead of llvm to avoid conflicts.
+namespace arith2neura {
+
+#include "ArithToNeuraPatterns.inc"
+
+} // namespace arith2neura
+} // namespace neura
+} // namespace mlir
+
 using namespace mlir;
 
 namespace {
-struct ArithAddFOpLowering : public OpRewritePattern<arith::AddFOp> {
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(arith::AddFOp op,
-                                PatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<neura::AddOp>(op, op.getType(), op.getLhs(), op.getRhs());
-    return success();
-  }
-};
 
 struct LowerArithToNeuraPass
     : public PassWrapper<LowerArithToNeuraPass, OperationPass<func::FuncOp>> {
@@ -36,8 +38,7 @@ struct LowerArithToNeuraPass
 
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
-    getOperation().dump();
-    patterns.add<ArithAddFOpLowering>(&getContext());
+    mlir::neura::arith2neura::populateWithGenerated(patterns);
     if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns)))) {
       signalPassFailure();
     }

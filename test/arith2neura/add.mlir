@@ -3,6 +3,6 @@
 func.func @test(%a: f32) -> f32 {
   %b = arith.constant 2.0 : f32
   %res = arith.addf %a, %b : f32
-  // CHECK: neura.add
+  // CHECK: neura.fadd
   return %res : f32
 }
