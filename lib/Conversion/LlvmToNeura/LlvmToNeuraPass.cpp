@@ -1,7 +1,9 @@
-#include "Conversion/ArithToNeura/ArithToNeura.h"
+#include "Conversion/LlvmToNeura/LlvmToNeura.h"
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraOps.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
@@ -10,24 +12,24 @@
 using namespace mlir;
 
 namespace {
-struct ArithAddFOpLowering : public OpRewritePattern<arith::AddFOp> {
+struct LlvmAddFOpLowering : public OpRewritePattern<mlir::LLVM::FAddOp> {
   using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(arith::AddFOp op,
+  LogicalResult matchAndRewrite(mlir::LLVM::FAddOp op,
                                 PatternRewriter &rewriter) const override {
     rewriter.replaceOpWithNewOp<neura::AddOp>(op, op.getType(), op.getLhs(), op.getRhs());
     return success();
   }
 };
 
-struct LowerArithToNeuraPass
-    : public PassWrapper<LowerArithToNeuraPass, OperationPass<func::FuncOp>> {
+struct LowerLlvmToNeuraPass
+    : public PassWrapper<LowerLlvmToNeuraPass, OperationPass<func::FuncOp>> {
 
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LowerArithToNeuraPass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LowerLlvmToNeuraPass)
 
-  StringRef getArgument() const override { return "lower-arith-to-neura"; }
+  StringRef getArgument() const override { return "lower-llvm-to-neura"; }
   StringRef getDescription() const override {
-    return "Lower arithmetic operations to Neura dialect operations";
+    return "Lower LLVM operations to Neura dialect operations";
   }
 
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -36,12 +38,7 @@ struct LowerArithToNeuraPass
 
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
-    llvm::errs() << "[cheng] check runOnOperation: ";
-    getOperation().dump();
-    getOperation().walk([](Operation *op) {
-      llvm::errs() << "[cheng] Saw op: " << op->getName() << "\n";
-    });
-    patterns.add<ArithAddFOpLowering>(&getContext());
+    patterns.add<LlvmAddFOpLowering>(&getContext());
     if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns)))) {
       signalPassFailure();
     }
@@ -49,6 +46,6 @@ struct LowerArithToNeuraPass
 };
 } // namespace
 
-std::unique_ptr<Pass> mlir::neura::createLowerArithToNeuraPass() {
-  return std::make_unique<LowerArithToNeuraPass>();
+std::unique_ptr<Pass> mlir::neura::createLowerLlvmToNeuraPass() {
+  return std::make_unique<LowerLlvmToNeuraPass>();
 }
