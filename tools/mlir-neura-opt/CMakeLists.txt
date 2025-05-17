@@ -6,15 +6,17 @@ add_executable(mlir-neura-opt
 
 # Links MLIR libraries.
 target_link_libraries(mlir-neura-opt PRIVATE
-  MLIROptLib        # MLIR optimizer library
+  MLIRDialect       # MLIR Dialect
   MLIRIR            # MLIR Core IR
+  MLIRLLVMDialect
+  MLIROptLib        # MLIR optimizer library
   MLIRSupport       # MLIR Support utilities
   MLIRTransforms    # MLIR transformation passes
-  MLIRDialect       # MLIR Dialect
   NeuraDialect      # Custom dialect
   MLIRFuncDialect   # Builtin dialect required by custom dialect
   MLIRArithDialect
   NeuraArithToNeura
+  NeuraLlvmToNeura
   NeuraTransforms
 )
 
