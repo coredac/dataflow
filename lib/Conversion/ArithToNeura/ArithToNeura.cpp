@@ -15,12 +15,7 @@ struct ArithAddFOpLowering : public OpRewritePattern<arith::AddFOp> {
 
   LogicalResult matchAndRewrite(arith::AddFOp op,
                                 PatternRewriter &rewriter) const override {
-llvm::errs() << "[cheng] step into matchAndRewriter()";
     rewriter.replaceOpWithNewOp<neura::AddOp>(op, op.getType(), op.getLhs(), op.getRhs());
-
-llvm::errs() << "[cheng] Matched arith.addf: ";
-// op.dump();
-
     return success();
   }
 };
@@ -40,8 +35,6 @@ struct LowerArithToNeuraPass
   }
 
   void runOnOperation() override {
-    // getContext().loadDialect<mlir::neura::NeuraDialect>();
-
     RewritePatternSet patterns(&getContext());
     llvm::errs() << "[cheng] check runOnOperation: ";
     getOperation().dump();

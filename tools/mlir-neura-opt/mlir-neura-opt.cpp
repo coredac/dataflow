@@ -7,6 +7,7 @@
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "Conversion/ArithToNeura/ArithToNeura.h"
 #include "NeuraDialect/NeuraDialect.h"
+#include "Transforms/InsertMovPass.h"
 
 int main(int argc, char **argv) {
   // Registers MLIR dialects.
@@ -17,6 +18,9 @@ int main(int argc, char **argv) {
 
   mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
     return mlir::neura::createLowerArithToNeuraPass();
+  });
+  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
+    return mlir::neura::createInsertMovPass();
   });
 
   // Runs the MLIR optimizer.
