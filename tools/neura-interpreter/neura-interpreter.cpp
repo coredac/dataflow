@@ -1,3 +1,4 @@
+#include "llvm/Support/Format.h"
 #include "llvm/Support/SourceMgr.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/IR/MLIRContext.h"
@@ -74,7 +75,7 @@ int main(int argc, char **argv) {
         valueMap[faddOp.getResult()] = lhs + rhs;
       } else if (auto retOp = dyn_cast<func::ReturnOp>(op)) {
         float result = valueMap[retOp.getOperand(0)];
-        llvm::outs() << "[neura-interpreter] Result: " << result << "\n";
+        llvm::outs() << "[neura-interpreter] Output: " << llvm::format("%.6f", result) << "\n";
       } else {
         llvm::errs() << "Unhandled op: ";
         op.print(llvm::errs());
