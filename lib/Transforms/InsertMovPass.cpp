@@ -72,21 +72,19 @@ struct InsertMovPass
     patterns.add<InsertMovForNeuraOps>(&getContext());
     FrozenRewritePatternSet frozen(std::move(patterns));
 
-    // patterns.add<InsertMovForNeuraOps>(&getContext());
     ModuleOp module_op = getOperation();
-    for (Operation &func_op : module_op.getOps()) {
-      if (func::FuncOp mlir_func_op = dyn_cast<func::FuncOp>(&func_op)) {
-        if (failed(applyPatternsAndFoldGreedily(mlir_func_op.getBody(), frozen))) {
-          signalPassFailure();
-        }
-      } else if (LLVM::LLVMFuncOp llvm_func_op = dyn_cast<LLVM::LLVMFuncOp>(&func_op)) {
-        if (failed(applyPatternsAndFoldGreedily(llvm_func_op.getBody(), frozen))) {
-          signalPassFailure();
+
+    // Applies to every region inside the module (regardless of func type,
+    // e.g., mlir func or llvm func).
+    module_op.walk([&](Operation *op) {
+      if (!op->getRegions().empty()) {
+        for (Region &region : op->getRegions()) {
+          if (failed(applyPatternsAndFoldGreedily(region, frozen))) {
+            signalPassFailure();
+          }
         }
       }
-    }
-    // if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
-    //   signalPassFailure();
+    });
   }
 };
 } // namespace
