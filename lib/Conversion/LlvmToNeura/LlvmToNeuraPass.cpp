@@ -24,8 +24,22 @@ using namespace mlir;
 
 namespace {
 
+// Lowers integer add from mlir.llvm.add to nuera.add. We provide the lowering
+// here instead of tablegen due to that mlir.llvm.add uses an EnumProperty
+// (IntegerOverflowFlags) defined via MLIR interfaces — which DRR cannot match
+// on or extract from.
+struct LlvmAddToNeuraAdd : public OpRewritePattern<mlir::LLVM::AddOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mlir::LLVM::AddOp op,
+                                PatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<neura::AddOp>(op, op.getType(), op.getLhs(), op.getRhs());
+    return success();
+  }
+};
+
 struct LowerLlvmToNeuraPass
-    : public PassWrapper<LowerLlvmToNeuraPass, OperationPass<func::FuncOp>> {
+    : public PassWrapper<LowerLlvmToNeuraPass, OperationPass<ModuleOp>> {
 
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LowerLlvmToNeuraPass)
 
@@ -40,9 +54,18 @@ struct LowerLlvmToNeuraPass
 
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
-    mlir::neura::llvm2neura::populateWithGenerated(patterns);
-    if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns)))) {
-      signalPassFailure();
+    patterns.add<LlvmAddToNeuraAdd>(&getContext());
+    FrozenRewritePatternSet frozen(std::move(patterns));
+
+    ModuleOp module_op = getOperation();
+    for (Operation &func_op : module_op.getOps()) {
+      if (LLVM::LLVMFuncOp llvm_func_op = dyn_cast<LLVM::LLVMFuncOp>(&func_op)) {
+        if (failed(applyPatternsAndFoldGreedily(llvm_func_op.getBody(), frozen)))
+          signalPassFailure();
+      } else if (func::FuncOp mlir_func_op = dyn_cast<func::FuncOp>(&func_op)) {
+        if (failed(applyPatternsAndFoldGreedily(mlir_func_op.getBody(), frozen)))
+          signalPassFailure();
+      }
     }
   }
 };
