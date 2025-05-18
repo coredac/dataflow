@@ -22,6 +22,35 @@ def Neura_FAddOp : Op<NeuraDialect, "fadd"> {
   let traits = [SameOperandsAndResultElementType];
 }
 
+// Defines a multiplication operation.
+def Neura_FMulOp : Op<NeuraDialect, "fmul"> {
+  let summary = "Floating multiplication operation";
+  let opName = "fmul";
+  let arguments = (ins AnyFloat:$lhs, AnyFloat:$rhs);
+  let results = (outs AnyFloat:$result);
+  // let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($result)";
+  let traits = [SameOperandsAndResultElementType];
+}
+
+def VectorOfAnyFloat :
+  TypeConstraint<
+    CPred<
+      "mlir::isa<::mlir::VectorType>($_self) && "
+      "mlir::isa<::mlir::FloatType>(mlir::cast<::mlir::VectorType>($_self).getElementType())"
+    >,
+    "vector of floats"
+  >;
+
+// Defines a vector multiplication operation.
+def Neura_VFMulOp : Op<NeuraDialect, "vfmul"> {
+  let summary = "Vector floating multiplication operation";
+  let opName = "vfmul";
+  let arguments = (ins VectorOfAnyFloat:$lhs, VectorOfAnyFloat:$rhs);
+  let results = (outs VectorOfAnyFloat:$result);
+  // let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($result)";
+  let traits = [SameOperandsAndResultElementType];
+}
+
 def Neura_FAddFAddOp : Op<NeuraDialect, "fadd_fadd"> {
   let summary = "Fused fadd(fadd(a, b), c)";
   let arguments = (ins AnyFloat:$a, AnyFloat:$b, AnyFloat:$c);
@@ -30,6 +59,13 @@ def Neura_FAddFAddOp : Op<NeuraDialect, "fadd_fadd"> {
   let traits = [SameOperandsAndResultElementType];
 }
 
+def Neura_FMulFAddOp : Op<NeuraDialect, "fmul_fadd"> {
+  let summary = "Fused fmul(fadd(a, b), c)";
+  let arguments = (ins AnyFloat:$a, AnyFloat:$b, AnyFloat:$c);
+  let results = (outs AnyFloat:$result);
+  // let assemblyFormat = "$a `,` $b `,` $c attr-dict `:` type($result)";
+  let traits = [SameOperandsAndResultElementType];
+}
 
 // Defines a move operation for data communication.
 def Neura_MovOp : Op<NeuraDialect, "mov"> {

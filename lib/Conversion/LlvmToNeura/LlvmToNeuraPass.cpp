@@ -38,6 +38,43 @@ struct LlvmAddToNeuraAdd : public OpRewritePattern<mlir::LLVM::AddOp> {
   }
 };
 
+struct LlvmFMulToNeuraFMul : public OpRewritePattern<mlir::LLVM::FMulOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mlir::LLVM::FMulOp op,
+                                PatternRewriter &rewriter) const override {
+    Value lhs = op->getOperand(0);
+    Value rhs = op->getOperand(1);
+    Type result_type = op->getResult(0).getType();
+
+    // Only matches scalar float.
+    if (!mlir::isa<FloatType>(result_type))
+      return failure();
+
+    rewriter.replaceOpWithNewOp<neura::FMulOp>(op, result_type, lhs, rhs);
+    return success();
+  }
+};
+
+struct LlvmVFMulToNeuraVFMul: public OpRewritePattern<mlir::LLVM::FMulOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mlir::LLVM::FMulOp op,
+                                PatternRewriter &rewriter) const override {
+    Value lhs = op->getOperand(0);
+    Value rhs = op->getOperand(1);
+    Type result_type = op->getResult(0).getType();
+
+    // Only matches vector<xf32>.
+    auto vecTy = mlir::dyn_cast<VectorType>(result_type);
+    if (!vecTy || !mlir::isa<FloatType>(vecTy.getElementType()))
+      return failure();
+
+    rewriter.replaceOpWithNewOp<neura::VFMulOp>(op, result_type, lhs, rhs);
+    return success();
+  }
+};
+
 struct LowerLlvmToNeuraPass
     : public PassWrapper<LowerLlvmToNeuraPass, OperationPass<ModuleOp>> {
 
@@ -54,19 +91,26 @@ struct LowerLlvmToNeuraPass
 
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
+    // Adds DRR patterns.
+    mlir::neura::llvm2neura::populateWithGenerated(patterns);
     patterns.add<LlvmAddToNeuraAdd>(&getContext());
+    patterns.add<LlvmFMulToNeuraFMul>(&getContext());
+    patterns.add<LlvmVFMulToNeuraVFMul>(&getContext());
     FrozenRewritePatternSet frozen(std::move(patterns));
 
     ModuleOp module_op = getOperation();
-    for (Operation &func_op : module_op.getOps()) {
-      if (LLVM::LLVMFuncOp llvm_func_op = dyn_cast<LLVM::LLVMFuncOp>(&func_op)) {
-        if (failed(applyPatternsAndFoldGreedily(llvm_func_op.getBody(), frozen)))
-          signalPassFailure();
-      } else if (func::FuncOp mlir_func_op = dyn_cast<func::FuncOp>(&func_op)) {
-        if (failed(applyPatternsAndFoldGreedily(mlir_func_op.getBody(), frozen)))
-          signalPassFailure();
+
+    // Applies to every region inside the module (regardless of func type,
+    // e.g., mlir func or llvm func).
+    module_op.walk([&](Operation *op) {
+      if (!op->getRegions().empty()) {
+        for (Region &region : op->getRegions()) {
+          if (failed(applyPatternsAndFoldGreedily(region, frozen))) {
+            signalPassFailure();
+          }
+        }
       }
-    }
+    });
   }
 };
 } // namespace

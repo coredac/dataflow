@@ -7,3 +7,4 @@ def : Pat<
   (LLVM_FAddOp $lhs, $rhs, $_fastmath),
   (Neura_FAddOp $lhs, $rhs)
 >;
+
