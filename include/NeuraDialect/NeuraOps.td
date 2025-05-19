@@ -60,7 +60,7 @@ def Neura_FAddFAddOp : Op<NeuraDialect, "fadd_fadd"> {
 }
 
 def Neura_FMulFAddOp : Op<NeuraDialect, "fmul_fadd"> {
-  let summary = "Fused fmul(fadd(a, b), c)";
+  let summary = "Fused fadd(fmul(a, b), c)";
   let arguments = (ins AnyFloat:$a, AnyFloat:$b, AnyFloat:$c);
   let results = (outs AnyFloat:$result);
   // let assemblyFormat = "$a `,` $b `,` $c attr-dict `:` type($result)";
