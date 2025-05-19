@@ -40,12 +40,16 @@ add_definitions(${MLIR_DEFINITIONS})
 
 # Tools built by this project or LLVM
 set(MLIR_NEURA_OPT ${CMAKE_BINARY_DIR}/tools/mlir-neura-opt/mlir-neura-opt)
+set(NEURA_INTERPRETER ${CMAKE_BINARY_DIR}/tools/neura-interpreter/neura-interpreter)
 set(FILECHECK ${LLVM_TOOLS_BINARY_DIR}/FileCheck)
 set(MLIR_OPT ${LLVM_TOOLS_BINARY_DIR}/mlir-opt)
 set(MLIR_TRANSLATE ${LLVM_TOOLS_BINARY_DIR}/mlir-translate)
 set(LLC ${LLVM_TOOLS_BINARY_DIR}/llc)
 
-# Configure lit.cfg from lit.cfg.in
+# Builds the interpreter.
+add_subdirectory(tools/neura-interpreter)
+
+# Configures lit.cfg from lit.cfg.in
 configure_file(
   ${CMAKE_SOURCE_DIR}/test/lit.cfg.in
   #  ${CMAKE_BINARY_DIR}/test/lit.cfg
@@ -53,10 +57,11 @@ configure_file(
   @ONLY
 )
 
-# Add a custom target for running lit tests
+# Adds a custom target for running lit tests
 add_custom_target(check-neura
   COMMAND ${LLVM_EXTERNAL_LIT} -sv ${CMAKE_BINARY_DIR}/test
   DEPENDS mlir-neura-opt
   WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
   COMMENT "Running Sora Dialect Tests with lit"
 )
+
