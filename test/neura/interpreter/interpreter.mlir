@@ -8,6 +8,6 @@ module {
     %1 = neura.mov %cst : f32 -> f32
     %2 = "neura.fadd"(%0, %1) : (f32, f32) -> f32
     return %2 : f32
-    // CHECK: 1.1
+    // CHECK: 11.0
   }
 }
