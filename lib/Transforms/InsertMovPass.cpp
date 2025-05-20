@@ -1,9 +1,10 @@
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraOps.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
 
 using namespace mlir;
 
@@ -54,7 +55,7 @@ struct InsertMovForNeuraOps : public RewritePattern {
 };
 
 struct InsertMovPass
-    : public PassWrapper<InsertMovPass, OperationPass<func::FuncOp>> {
+    : public PassWrapper<InsertMovPass, OperationPass<ModuleOp>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(InsertMovPass)
 
   StringRef getArgument() const override { return "insert-mov"; }
@@ -69,8 +70,21 @@ struct InsertMovPass
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
     patterns.add<InsertMovForNeuraOps>(&getContext());
-    if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
-      signalPassFailure();
+    FrozenRewritePatternSet frozen(std::move(patterns));
+
+    ModuleOp module_op = getOperation();
+
+    // Applies to every region inside the module (regardless of func type,
+    // e.g., mlir func or llvm func).
+    module_op.walk([&](Operation *op) {
+      if (!op->getRegions().empty()) {
+        for (Region &region : op->getRegions()) {
+          if (failed(applyPatternsAndFoldGreedily(region, frozen))) {
+            signalPassFailure();
+          }
+        }
+      }
+    });
   }
 };
 } // namespace
