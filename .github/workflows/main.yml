@@ -64,8 +64,6 @@ jobs:
     - name: setup dataflow tool-chain
       working-directory: ${{github.workspace}}
       run: |
-        git clone https://github.com/coredac/dataflow.git
-        cd dataflow
         mkdir build && cd build
         cmake -G Ninja .. \
           -DLLVM_DIR=${{github.workspace}}/llvm-project/build/lib/cmake/llvm \
