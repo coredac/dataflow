@@ -76,3 +76,26 @@ def Neura_MovOp : Op<NeuraDialect, "mov"> {
   let assemblyFormat = "$lhs attr-dict `:` type($lhs) `->` type($result)";
   // let traits = [Pure];
 }
+
+def Neura_ICmpOp : Op<NeuraDialect, "icmp"> {
+  let summary = "Integer compare operation";
+  let opName = "icmp";
+  let arguments = (ins AnyInteger:$lhs, AnyInteger:$rhs,
+                   StrAttr:$predicate);
+  let results = (outs I1:$result);
+  // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
+  // let traits = [SameOperandsAndResultElementType];
+}
+
+def Neura_LoadOp : Op<NeuraDialect, "load"> {
+  let arguments = (ins AnyType:$addr);
+  let results = (outs AnyType:$value);
+  // let assemblyFormat = "$addr attr-dict `:` type($value)";
+}
+
+def Neura_StoreOp : Op<NeuraDialect, "store"> {
+  let arguments = (ins AnyType:$value, AnyType:$addr);
+  let results = (outs);
+  // let assemblyFormat = "$value `,` $addr attr-dict";
+}
+

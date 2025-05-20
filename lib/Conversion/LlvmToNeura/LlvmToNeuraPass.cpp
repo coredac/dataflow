@@ -76,6 +76,22 @@ struct LlvmVFMulToNeuraVFMul: public OpRewritePattern<mlir::LLVM::FMulOp> {
   }
 };
 
+struct LlvmICmpToNeuraICmp : public OpRewritePattern<LLVM::ICmpOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::ICmpOp op,
+                                PatternRewriter &rewriter) const override {
+    auto pred = op.getPredicate();
+    auto lhs = op.getLhs();
+    auto rhs = op.getRhs();
+    auto resultType = op.getType();
+
+    rewriter.replaceOpWithNewOp<neura::ICmpOp>(
+        op, resultType, lhs, rhs, rewriter.getStringAttr(LLVM::stringifyICmpPredicate(pred)));
+    return success();
+  }
+};
+
 struct LowerLlvmToNeuraPass
     : public PassWrapper<LowerLlvmToNeuraPass, OperationPass<ModuleOp>> {
 
@@ -97,6 +113,7 @@ struct LowerLlvmToNeuraPass
     patterns.add<LlvmAddToNeuraAdd>(&getContext());
     patterns.add<LlvmFMulToNeuraFMul>(&getContext());
     patterns.add<LlvmVFMulToNeuraVFMul>(&getContext());
+    patterns.add<LlvmICmpToNeuraICmp>(&getContext());
     FrozenRewritePatternSet frozen(std::move(patterns));
 
     ModuleOp module_op = getOperation();
