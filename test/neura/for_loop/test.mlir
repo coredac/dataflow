@@ -16,3 +16,4 @@
 // CHECK:      [[LHS:%.*]] = neura.mov %{{.*}}
 // CHECK-NEXT: [[RHS:%.*]] = neura.mov %{{.*}}
 // CHECK-NEXT: [[RES:%.*]] = "neura.add"([[LHS]], [[RHS]])
+// CHECK:      neura.icmp
