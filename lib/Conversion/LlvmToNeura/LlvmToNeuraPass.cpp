@@ -1,4 +1,5 @@
 #include "Conversion/LlvmToNeura/LlvmToNeura.h"
+#include "Common/AcceleratorAttrs.h"
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
@@ -102,11 +103,14 @@ struct LowerLlvmToNeuraPass
 
     // Applies to every region inside the module (regardless of func type,
     // e.g., mlir func or llvm func).
-    module_op.walk([&](Operation *op) {
-      if (!op->getRegions().empty()) {
-        for (Region &region : op->getRegions()) {
-          if (failed(applyPatternsAndFoldGreedily(region, frozen))) {
-            signalPassFailure();
+    module_op.walk([&](FunctionOpInterface func) {
+      if (func->hasAttr(mlir::accel::kAcceleratorAttr)) {
+        auto target = func->getAttrOfType<StringAttr>(mlir::accel::kAcceleratorAttr);
+        if (target && target.getValue() == mlir::accel::kNeuraTarget) {
+          for (Region &region : func->getRegions()) {
+            if (failed(applyPatternsAndFoldGreedily(region, frozen))) {
+              signalPassFailure();
+            }
           }
         }
       }

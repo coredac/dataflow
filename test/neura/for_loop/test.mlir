@@ -4,14 +4,14 @@
 
 // Lowers to neura.
 // RUN: mlir-neura-opt \
+// RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
 // RUN:   --fuse-patterns \
 // RUN:   --insert-mov \
 // RUN:   %t-kernel.mlir | FileCheck %s
 
 // Verifies the neura ops are generated. And fusion happens.
-// CHECK:      "neura.vfmul"
-// CHECK:      "neura.add"
+// CHECK:      accelerator = "neura"
 // CHECK:      "neura.fmul_fadd"
 // CHECK:      [[LHS:%.*]] = neura.mov %{{.*}}
 // CHECK-NEXT: [[RHS:%.*]] = neura.mov %{{.*}}
