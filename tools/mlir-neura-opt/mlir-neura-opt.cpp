@@ -10,6 +10,7 @@
 #include "Conversion/ArithToNeura/ArithToNeura.h"
 #include "Conversion/LlvmToNeura/LlvmToNeura.h"
 #include "NeuraDialect/NeuraDialect.h"
+#include "Transforms/AssignAcceleratorPass.h"
 #include "Transforms/InsertMovPass.h"
 #include "Transforms/FusePatternsPass.h"
 
@@ -24,6 +25,9 @@ int main(int argc, char **argv) {
 
   mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
     return mlir::neura::createLowerArithToNeuraPass();
+  });
+  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
+    return mlir::neura::createAssignAcceleratorPass();
   });
   mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
     return mlir::neura::createLowerLlvmToNeuraPass();
