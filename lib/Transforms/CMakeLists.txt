@@ -16,6 +16,7 @@ add_mlir_library(NeuraTransforms
   LINK_LIBS PUBLIC
     MLIRIR
     MLIRFuncDialect
+    MLIRLLVMDialect
     MLIRPass
     MLIRSupport
     MLIRTransformUtils

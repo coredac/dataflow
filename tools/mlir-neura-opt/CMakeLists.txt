@@ -8,6 +8,7 @@ add_executable(mlir-neura-opt
 target_link_libraries(mlir-neura-opt PRIVATE
   MLIRDialect       # MLIR Dialect
   MLIRIR            # MLIR Core IR
+  MLIRDLTIDialect
   MLIRLLVMDialect
   MLIROptLib        # MLIR optimizer library
   MLIRSupport       # MLIR Support utilities

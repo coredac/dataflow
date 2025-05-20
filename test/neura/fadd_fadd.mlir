@@ -1,3 +1,4 @@
+// Applies pattern fusion before mov insertion.
 // RUN: mlir-neura-opt --lower-arith-to-neura --fuse-patterns --insert-mov %s | FileCheck %s
 
 func.func @test(%a: f32, %b: f32) -> f32 {
