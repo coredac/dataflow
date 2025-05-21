@@ -1,4 +1,4 @@
-// RUN: mlir-neura-opt --lower-llvm-to-neura --insert-mov %s | FileCheck %s
+// RUN: mlir-neura-opt --assign-accelerator --lower-llvm-to-neura --insert-mov %s | FileCheck %s
 
 func.func @test(%a: f32) -> f32 {
   %b = llvm.mlir.constant(2.0 : f32) : f32
