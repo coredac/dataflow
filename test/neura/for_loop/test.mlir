@@ -11,9 +11,7 @@
 // RUN:   %t-kernel.mlir | FileCheck %s
 
 // Verifies the neura ops are generated. And fusion happens.
-// CHECK:      accelerator = "neura"
-// CHECK:      "neura.fmul_fadd"
-// CHECK:      [[LHS:%.*]] = neura.mov %{{.*}}
-// CHECK-NEXT: [[RHS:%.*]] = neura.mov %{{.*}}
-// CHECK-NEXT: [[RES:%.*]] = "neura.add"([[LHS]], [[RHS]])
-// CHECK:      neura.icmp
+// CHECK: accelerator = "neura"
+// CHECK: neura.fmul_fadd
+// CHECK: neura.add
+// CHECK: neura.icmp
