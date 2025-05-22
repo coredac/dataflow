@@ -13,3 +13,8 @@ def : Pat<
   (Neura_ConstantOp $value)
 >;
 
+def : Pat<
+  (LLVM_OrOp $lhs, $rhs),
+  (Neura_OrOp $lhs, $rhs)
+>;
+

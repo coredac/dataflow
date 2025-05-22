@@ -41,6 +41,14 @@ def Neura_FMulOp : Op<NeuraDialect, "fmul"> {
   let traits = [SameOperandsAndResultElementType];
 }
 
+def Neura_OrOp : Op<NeuraDialect, "or"> {
+  let summary = "Bitwise OR operation";
+  let arguments = (ins AnySignlessInteger:$lhs, AnySignlessInteger:$rhs);
+  let results = (outs AnySignlessInteger:$result);
+  let traits = [SameOperandsAndResultElementType];
+  // let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($result)";
+}
+
 // Defines a move operation for data communication.
 def Neura_MovOp : Op<NeuraDialect, "mov"> {
   let summary = "Move operation";
