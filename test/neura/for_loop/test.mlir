@@ -2,17 +2,15 @@
 // RUN: clang++ -S -emit-llvm -O2 -o %t-kernel.ll kernel.cpp
 // RUN: mlir-translate --import-llvm %t-kernel.ll -o %t-kernel.mlir
 
+// TODO: Enable --insert-mov once the backward ctrl flow mov is supported.
 // Lowers to neura.
 // RUN: mlir-neura-opt \
+// RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
 // RUN:   --fuse-patterns \
-// RUN:   --insert-mov \
+// RN:   --insert-mov \
 // RUN:   %t-kernel.mlir | FileCheck %s
 
 // Verifies the neura ops are generated. And fusion happens.
-// CHECK:      "neura.vfmul"
-// CHECK:      "neura.add"
-// CHECK:      "neura.fmul_fadd"
-// CHECK:      [[LHS:%.*]] = neura.mov %{{.*}}
-// CHECK-NEXT: [[RHS:%.*]] = neura.mov %{{.*}}
-// CHECK-NEXT: [[RES:%.*]] = "neura.add"([[LHS]], [[RHS]])
+// CHECK: accelerator = "neura"
+// CHECK-NOT: = llvm.

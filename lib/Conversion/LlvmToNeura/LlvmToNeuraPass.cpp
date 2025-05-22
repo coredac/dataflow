@@ -1,4 +1,5 @@
 #include "Conversion/LlvmToNeura/LlvmToNeura.h"
+#include "Common/AcceleratorAttrs.h"
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
@@ -75,6 +76,110 @@ struct LlvmVFMulToNeuraVFMul: public OpRewritePattern<mlir::LLVM::FMulOp> {
   }
 };
 
+struct LlvmICmpToNeuraICmp : public OpRewritePattern<LLVM::ICmpOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::ICmpOp op,
+                                PatternRewriter &rewriter) const override {
+    auto pred = op.getPredicate();
+    auto lhs = op.getLhs();
+    auto rhs = op.getRhs();
+    auto resultType = op.getType();
+
+    rewriter.replaceOpWithNewOp<neura::ICmpOp>(
+        op, resultType, lhs, rhs, rewriter.getStringAttr(LLVM::stringifyICmpPredicate(pred)));
+    return success();
+  }
+};
+
+struct LlvmGEPToNeuraGEP : public OpRewritePattern<mlir::LLVM::GEPOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mlir::LLVM::GEPOp op,
+                                PatternRewriter &rewriter) const override {
+    Value base = op.getBase();
+    SmallVector<Value> indexValues;
+
+    for (auto gepIndex : op.getIndices()) {
+      if (auto val = gepIndex.dyn_cast<Value>()) {
+        indexValues.push_back(val);
+      } else if (auto intAttr = gepIndex.dyn_cast<IntegerAttr>()) {
+        auto cst = rewriter.create<neura::ConstantOp>(
+            op.getLoc(), rewriter.getIndexType(), intAttr);
+        indexValues.push_back(cst);
+      } else {
+        return op.emitOpError("Unsupported GEP index kind");
+      }
+    }
+
+    rewriter.replaceOpWithNewOp<neura::GEP>(op, op.getType(), base, indexValues);
+    return success();
+  }
+};
+
+struct LlvmLoadToNeuraLoad : public OpRewritePattern<mlir::LLVM::LoadOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mlir::LLVM::LoadOp op,
+                                PatternRewriter &rewriter) const override {
+    Value ptr = op.getAddr();  // getPointer() is deprecated
+    Type resultType = op.getResult().getType();
+    rewriter.replaceOpWithNewOp<neura::LoadOp>(op, resultType, ptr);
+    return success();
+  }
+};
+
+struct LlvmStoreToNeuraStore : public OpRewritePattern<mlir::LLVM::StoreOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mlir::LLVM::StoreOp op,
+                                PatternRewriter &rewriter) const override {
+    Value value = op.getValue();
+    Value addr = op.getAddr();  // getPointer() is deprecated
+    rewriter.replaceOpWithNewOp<neura::StoreOp>(op, value, addr);
+    return success();
+  }
+};
+
+struct LlvmCondBrToNeuraCondBr : public OpRewritePattern<LLVM::CondBrOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(LLVM::CondBrOp op,
+                                PatternRewriter &rewriter) const override {
+    // Get the source operation's successors (basic blocks)
+    Block *trueDest = op.getTrueDest();
+    Block *falseDest = op.getFalseDest();
+
+    // Get the operands for each destination
+    ValueRange trueOperands = op.getTrueDestOperands();
+    ValueRange falseOperands = op.getFalseDestOperands();
+
+    // Create the new operation with proper successors
+    auto newOp = rewriter.create<neura::CondBr>(
+        op.getLoc(),       // Location
+        op.getCondition(), // Condition
+        trueOperands,      // True destination operands
+        falseOperands,     // False destination operands
+        trueDest,          // True destination block
+        falseDest          // False destination block
+    );
+
+    // Replace the old op with the new one
+    rewriter.replaceOp(op, newOp->getResults());
+
+    return success();
+  }
+};
+
+struct LlvmReturnToNeuraReturn : public OpRewritePattern<LLVM::ReturnOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::ReturnOp op,
+                                PatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<neura::ReturnOp>(op, op.getOperands());
+    return success();
+  }
+};
+
 struct LowerLlvmToNeuraPass
     : public PassWrapper<LowerLlvmToNeuraPass, OperationPass<ModuleOp>> {
 
@@ -96,17 +201,27 @@ struct LowerLlvmToNeuraPass
     patterns.add<LlvmAddToNeuraAdd>(&getContext());
     patterns.add<LlvmFMulToNeuraFMul>(&getContext());
     patterns.add<LlvmVFMulToNeuraVFMul>(&getContext());
+    patterns.add<LlvmICmpToNeuraICmp>(&getContext());
+    patterns.add<LlvmGEPToNeuraGEP>(&getContext());
+    patterns.add<LlvmLoadToNeuraLoad>(&getContext());
+    patterns.add<LlvmStoreToNeuraStore>(&getContext());
+    patterns.add<LlvmCondBrToNeuraCondBr>(&getContext());
+    patterns.add<LlvmReturnToNeuraReturn>(&getContext());
+
     FrozenRewritePatternSet frozen(std::move(patterns));
 
     ModuleOp module_op = getOperation();
 
     // Applies to every region inside the module (regardless of func type,
     // e.g., mlir func or llvm func).
-    module_op.walk([&](Operation *op) {
-      if (!op->getRegions().empty()) {
-        for (Region &region : op->getRegions()) {
-          if (failed(applyPatternsAndFoldGreedily(region, frozen))) {
-            signalPassFailure();
+    module_op.walk([&](FunctionOpInterface func) {
+      if (func->hasAttr(mlir::accel::kAcceleratorAttr)) {
+        auto target = func->getAttrOfType<StringAttr>(mlir::accel::kAcceleratorAttr);
+        if (target && target.getValue() == mlir::accel::kNeuraTarget) {
+          for (Region &region : func->getRegions()) {
+            if (failed(applyPatternsAndFoldGreedily(region, frozen))) {
+              signalPassFailure();
+            }
           }
         }
       }
