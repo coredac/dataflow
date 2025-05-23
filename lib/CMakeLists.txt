@@ -1,3 +1,12 @@
-add_subdirectory(NeuraDialect)
-add_subdirectory(Conversion)
+add_mlir_dialect_library(MLIRNeura
+        Neura.cpp
+
+        DEPENDS
+        MLIRNeuraIncGen
+        
+        LINK_LIBS PUBLIC
+        MLIRIR
+        MLIRSupport
+        )
+
 add_subdirectory(Transforms)
