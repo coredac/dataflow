@@ -59,8 +59,9 @@ jobs:
           -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
         cmake --build . --target check-mlir
-        clang++ -v
         dpkg -l | grep llvm
+        sudo apt-get purge llvm-13
+        sudo apt-get purge llvm-15
         
     # setup mlir-cgra
     - name: setup dataflow tool-chain
