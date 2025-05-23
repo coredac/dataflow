@@ -42,7 +42,7 @@ jobs:
     - name: install a specific version of LLVM
       working-directory: ${{github.workspace}}
       run: |
-        git clone https://github.com/llvm/llvm-project.git
+        git clone --depth 1 https://github.com/llvm/llvm-project.git
         cd llvm-project
         git checkout release/19.x
         mkdir build && cd build
