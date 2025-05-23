@@ -34,45 +34,20 @@ jobs:
         sudo apt-get install ccache
         sudo apt-get install lld
  
-    # setup LLVM
-    - name: install a specific version of LLVM
-      working-directory: ${{github.workspace}}
+    # install llvm/clang via apt
+    - name: install llvm/clang via apt
       run: |
-        git clone https://github.com/llvm/llvm-project.git
-        cd llvm-project
-        git checkout cd70802
-        mkdir build && cd build
-        cmake -G Ninja ../llvm \
-          -DLLVM_ENABLE_PROJECTS="mlir" \
-          -DLLVM_BUILD_EXAMPLES=OFF \
-          -DLLVM_TARGETS_TO_BUILD="Native" \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DLLVM_ENABLE_ASSERTIONS=ON \
-          -DCMAKE_C_COMPILER=clang \
-          -DCMAKE_CXX_COMPILER=clang++ \
-          -DCMAKE_CXX_STANDARD=17 \
-          -DCMAKE_CXX_FLAGS="-std=c++17 -frtti" \
-          -DLLVM_ENABLE_LLD=ON \
-          -DMLIR_INSTALL_AGGREGATE_OBJECTS=ON \
-          -DLLVM_ENABLE_RTTI=ON \
-          -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-
-        cmake --build . --target check-mlir
+        sudo apt-get -y install llvm-14 llvm-14-dev llvm-14-tools clang-14
         dpkg -l | grep llvm
-        sudo apt-get purge llvm-13
-        sudo apt-get purge llvm-15
-        
+
     # setup mlir-cgra
     - name: setup dataflow tool-chain
       working-directory: ${{github.workspace}}
       run: |
         mkdir build && cd build
         cmake -G Ninja .. \
-          -DLLVM_DIR=${{github.workspace}}/llvm-project/build/lib/cmake/llvm \
-          -DMLIR_DIR=${{github.workspace}}/llvm-project/build/lib/cmake/mlir \
-          -DMLIR_SOURCE_DIR=${{github.workspace}}/llvm-project/mlir \
-          -DMLIR_BINARY_DIR=${{github.workspace}}/llvm-project/build \
+          -DLLVM_DIR=/usr/lib/llvm-14/lib/cmake/llvm \
+          -DMLIR_DIR=/usr/lib/llvm-14/lib/cmake/mlir \
           -DCMAKE_CXX_FLAGS="-std=c++17"
 
         ninja
