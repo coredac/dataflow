@@ -34,13 +34,17 @@ jobs:
         sudo apt-get install ccache
         sudo apt-get install lld
  
+    # install clang for LLVM build
+    - name: install clang
+      run: sudo apt-get install -y clang
+
     # setup LLVM
     - name: install a specific version of LLVM
       working-directory: ${{github.workspace}}
       run: |
         git clone https://github.com/llvm/llvm-project.git
         cd llvm-project
-        git checkout cd70802
+        git checkout release/19.x
         mkdir build && cd build
         cmake -G Ninja ../llvm \
           -DLLVM_ENABLE_PROJECTS="mlir" \
@@ -55,6 +59,7 @@ jobs:
           -DLLVM_ENABLE_LLD=ON \
           -DMLIR_INSTALL_AGGREGATE_OBJECTS=ON \
           -DLLVM_ENABLE_RTTI=ON \
+          -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
           -DCMAKE_C_COMPILER_LAUNCHER=ccache \
           -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
