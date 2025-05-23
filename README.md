@@ -54,3 +54,16 @@ Build LLVM & Neura
  $ /workspace/llvm-project/build/bin/llvm-lit *
 ```
 
+Docker-based Environment Setup
+--------------------------------------------------------
+You can quickly set up the build and test environment using the provided Dockerfile:
+
+```sh
+# In the root directory of this repo:
+$ cd docker
+$ docker build -t neura:v1 .
+$ docker run --name myneura -it neura:v1
+```
+
+This will automatically clone, build, and test LLVM/MLIR and Neura inside a container, ensuring a consistent environment.
+
