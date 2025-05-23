@@ -7,6 +7,9 @@
 
 using namespace mlir;
 
+#define GEN_PASS_DEF_ASSIGNACCELERATOR
+#include "NeuraDialect/NeuraPasses.h.inc"
+
 namespace {
 struct AssignAcceleratorPass : public PassWrapper<AssignAcceleratorPass, OperationPass<ModuleOp>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(AssignAcceleratorPass)

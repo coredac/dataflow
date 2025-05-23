@@ -7,14 +7,18 @@
 #include "mlir/IR/OpImplementation.h"
 
 using namespace mlir;
-using namespace neura;
+using namespace mlir::neura;
 
-#include "NeuraDialect.cpp.inc"
+#include "NeuraDialect/NeuraDialect.cpp.inc"
 
 void NeuraDialect::initialize() {
   addOperations<
     #define GET_OP_LIST
-    #include "NeuraOps.cpp.inc"
+    #include "NeuraDialect/Neura.cpp.inc"
   >();
 }
+
+#define GET_OP_CLASSES
+#include "NeuraDialect/Neura.cpp.inc"
+
 

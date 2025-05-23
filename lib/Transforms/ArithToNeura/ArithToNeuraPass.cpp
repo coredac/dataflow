@@ -1,7 +1,7 @@
-#include "Conversion/ArithToNeura/ArithToNeura.h"
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "NeuraDialect/NeuraPasses.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
@@ -19,8 +19,13 @@ namespace arith2neura {
 } // namespace mlir
 
 using namespace mlir;
+using namespace mlir::func;
+using namespace mlir::neura;
 
-namespace {
+#define GEN_PASS_DEF_LOWERARITHTONEURA
+#include "NeuraDialect/NeuraPasses.h.inc"
+
+namespace{
 
 struct LowerArithToNeuraPass
     : public PassWrapper<LowerArithToNeuraPass, OperationPass<func::FuncOp>> {
