@@ -1,7 +1,7 @@
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 
 add_mlir_library(
-    NeuraTransforms
+    MLIRNeuraTransforms
     InsertMovPass.cpp
     FusePatternsPass.cpp
     AssignAcceleratorPass.cpp
@@ -15,9 +15,9 @@ add_mlir_library(
       MLIRSupport
       MLIRTransforms
       MLIRNeura
-      MLIRNeuraArithToNeuraPass
-      MLIRNeuraLlvmToNeuraPass
+      # MLIRNeuraArithToNeuraPass
+      # MLIRNeuraLlvmToNeuraPass
       ${dialect_libs}
 )
-add_subdirectory(ArithToNeura)
-add_subdirectory(LlvmToNeura)
+# add_subdirectory(ArithToNeura)
+# add_subdirectory(LlvmToNeura)
