@@ -1,2 +1,0 @@
-add_subdirectory(ArithToNeura)
-add_subdirectory(LlvmToNeura)

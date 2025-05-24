@@ -1,5 +1,6 @@
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraOps.h"
+#include "NeuraDialect/NeuraPasses.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/PatternMatch.h"
@@ -7,6 +8,9 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 using namespace mlir;
+
+#define GEN_PASS_DEF_INSERTMOV
+#include "NeuraDialect/NeuraPasses.h.inc"
 
 namespace {
 struct InsertMovForNeuraOps : public RewritePattern {

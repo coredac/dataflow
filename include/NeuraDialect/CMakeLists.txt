@@ -1,9 +1,5 @@
-include(TableGen)
-include(AddLLVM)
-include(AddMLIR)
+add_mlir_dialect(Neura neura)
 
-set(MLIR_TBLGEN_INCLUDES
-  ${MLIR_SOURCE_DIR}/include  # MLIR source include directory
-  ${MLIR_BINARY_DIR}/include  # MLIR build include directory
-)
-
+set(LLVM_TARGET_DEFINITIONS NeuraPasses.td)
+mlir_tablegen(NeuraPasses.h.inc --gen-pass-decls)
+add_public_tablegen_target(MLIRNeuraTransformsIncGen)
