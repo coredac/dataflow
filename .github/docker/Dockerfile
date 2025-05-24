@@ -19,7 +19,7 @@ RUN apt-get update \
     	&& cd /cgra \
 	&& git clone https://github.com/yuqisun/dataflow.git \
 	&& cd dataflow \
-	&& until git clone --depth 1 --branch release/19.x https://github.com/llvm/llvm-project.git; do sleep 5; done \
+	&& until git clone --branch release/19.x https://github.com/llvm/llvm-project.git; do sleep 5; done \
 	&& cd llvm-project \
 	&& git checkout cd70802 \
 	&& mkdir build && cd build \
