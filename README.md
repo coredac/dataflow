@@ -2,14 +2,13 @@
 
 Build LLVM & Neura
 --------------------------------------------------------
- - Clone llvm-project.
-
- - Clone this repo.
-
- - Build LLVM:
-   - Check out to commit `cd70802` (a stable version randomly picked, will sync to the latest version).
-   - Build:
+ - Clone llvm-project (we prefer llvm-19).
 ```sh
+$ git clone --depth 1 --branch release/19.x https://github.com/llvm/llvm-project.git
+```
+ - Build LLVM:
+```sh
+ $ cd llvm-project
  $ mkdir build && cd build
  # May need install ccache and lld.
  $ cmake -G Ninja ../llvm \
@@ -25,6 +24,7 @@ Build LLVM & Neura
      -DLLVM_ENABLE_LLD=ON \
      -DMLIR_INSTALL_AGGREGATE_OBJECTS=ON \
      -DLLVM_ENABLE_RTTI=ON \
+     -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
      -DCMAKE_C_COMPILER_LAUNCHER=ccache \
      -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
  $ cmake --build . --target check-mlir
