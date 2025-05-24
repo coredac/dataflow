@@ -21,7 +21,7 @@ RUN apt-get update \
 	&& cd dataflow \
 	&& until git clone --depth 1 --branch release/19.x https://github.com/llvm/llvm-project.git; do sleep 5; done \
 	&& cd llvm-project \
-	&& git checkout release/19.x \
+	&& git checkout cd70802 \
 	&& mkdir build && cd build \
 	&& cmake -G Ninja ../llvm \
           -DLLVM_ENABLE_PROJECTS="mlir" \

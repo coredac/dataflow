@@ -43,6 +43,7 @@ jobs:
       working-directory: ${{github.workspace}}
       run: |
         git clone --depth 1 --branch release/19.x https://github.com/llvm/llvm-project.git
+        git checkout cd70802
         cd llvm-project
         mkdir build && cd build
         cmake -G Ninja ../llvm \
@@ -65,6 +66,7 @@ jobs:
         cmake --build . --target check-mlir
         dpkg -l | grep llvm
         sudo apt-get purge llvm-13
+        sudo apt-get purge llvm-14
         sudo apt-get purge llvm-15
         
     # setup mlir-cgra
