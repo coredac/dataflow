@@ -48,7 +48,15 @@ struct InsertMovForNeuraOps : public RewritePattern {
     state.addTypes(op->getResultTypes());
     state.addAttributes(op->getAttrs());
 
+    // Copies successors for terminator operations.
+    if (op->hasTrait<OpTrait::IsTerminator>()) {
+      for (Block *successor : op->getSuccessors()) {
+        state.addSuccessors(successor);
+      }
+    }
+
     Operation *newOp = rewriter.create(state);
+
     rewriter.replaceOp(op, newOp->getResults());
     return success();
   }

@@ -8,7 +8,7 @@
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
 // RUN:   --fuse-patterns \
-// RN:   --insert-mov \
+// RUN:   --insert-mov \
 // RUN:   %t-kernel.mlir | FileCheck %s
 
 // Verifies the neura ops are generated. And fusion happens.
