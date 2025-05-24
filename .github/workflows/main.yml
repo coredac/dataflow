@@ -42,9 +42,8 @@ jobs:
     - name: install a specific version of LLVM
       working-directory: ${{github.workspace}}
       run: |
-        git clone --branch release/19.x https://github.com/llvm/llvm-project.git
+        git clone --depth 1 --branch release/19.x https://github.com/llvm/llvm-project.git
         cd llvm-project
-        git checkout cd708029e0b2869e80abe31ddb175f7c35361f90
         mkdir build && cd build
         cmake -G Ninja ../llvm \
           -DLLVM_ENABLE_PROJECTS="mlir" \

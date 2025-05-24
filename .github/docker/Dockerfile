@@ -19,9 +19,8 @@ RUN apt-get update \
     	&& cd /cgra \
 	&& git clone https://github.com/yuqisun/dataflow.git \
 	&& cd dataflow \
-	&& until git clone --branch release/19.x https://github.com/llvm/llvm-project.git; do sleep 5; done \
+	&& until git clone --depth 1 --branch release/19.x https://github.com/llvm/llvm-project.git; do sleep 5; done \
 	&& cd llvm-project \
-	&& git checkout cd708029e0b2869e80abe31ddb175f7c35361f90 \
 	&& mkdir build && cd build \
 	&& cmake -G Ninja ../llvm \
           -DLLVM_ENABLE_PROJECTS="mlir" \
