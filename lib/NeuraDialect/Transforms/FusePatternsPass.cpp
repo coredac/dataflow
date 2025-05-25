@@ -6,6 +6,9 @@
 
 using namespace mlir;
 
+#define GEN_PASS_DEF_FUSEPATTERNS
+#include "NeuraDialect/NeuraPasses.h.inc"
+
 namespace {
 
 struct FuseFAddFAddPattern : public OpRewritePattern<neura::FAddOp> {
