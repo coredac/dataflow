@@ -5,7 +5,7 @@ set(LIBS
         ${dialect_libs}
         ${conversion_libs}
         MLIRNeuraTransforms
-        MLIRNeuraConversion
+        MLIRConversion
         MLIRNeura
         MLIRTransforms
         MLIROptLib

@@ -20,10 +20,6 @@ std::unique_ptr<mlir::Pass> createInsertMovPass();
 std::unique_ptr<mlir::Pass> createFusePatternsPass();
 std::unique_ptr<mlir::Pass> createAssignAcceleratorPass();
 
-// Conversion passes
-std::unique_ptr<mlir::Pass> createLowerArithToNeuraPass();
-std::unique_ptr<mlir::Pass> createLowerLlvmToNeuraPass();
-
 #define GEN_PASS_REGISTRATION
 #include "NeuraDialect/NeuraPasses.h.inc"
 

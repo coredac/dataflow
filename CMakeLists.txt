@@ -10,10 +10,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED YES)
 
 add_compile_options(-g)
 
-# set(MLIR_DIR /home/lucas/llvm-project/build/lib/cmake/mlir)
-# set(LLVM_DIR /home/lucas/llvm-project/build/lib/cmake/llvm)
-# set(MLIR_SRC_DIR /home/lucas/llvm-project/mlir)
-# set(MLIR_BINARY_DIR /home/lucas/llvm-project/build)
+set(MLIR_DIR /home/lucas/llvm-project/build/lib/cmake/mlir)
+set(LLVM_DIR /home/lucas/llvm-project/build/lib/cmake/llvm)
+set(MLIR_SRC_DIR /home/lucas/llvm-project/mlir)
+set(MLIR_BINARY_DIR /home/lucas/llvm-project/build)
 message(STATUS "Using MLIRConfig.cmake in: ${MLIR_DIR}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 

@@ -10,6 +10,7 @@
 
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraPasses.h"
+#include "Conversion/ConversionPasses.h"
 
 int main(int argc, char **argv) {
   // Registers MLIR dialects.
@@ -21,6 +22,7 @@ int main(int argc, char **argv) {
   registry.insert<mlir::LLVM::LLVMDialect>();
 
   mlir::neura::registerPasses();
+  mlir::registerPasses();
   
   // Runs the MLIR optimizer.
   return mlir::asMainReturnCode(
