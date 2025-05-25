@@ -1,7 +1,4 @@
-set(LLVM_TARGET_DEFINITIONS
-  ${CMAKE_CURRENT_SOURCE_DIR}/ArithToNeuraPatterns.td
-)
-
+set(LLVM_TARGET_DEFINITIONS ${CMAKE_CURRENT_SOURCE_DIR}/ArithToNeuraPatterns.td)
 mlir_tablegen(ArithToNeuraPatterns.inc
   -gen-rewriters
   -I ${MLIR_SOURCE_DIR}/include
@@ -9,35 +6,21 @@ mlir_tablegen(ArithToNeuraPatterns.inc
   -I ${CMAKE_SOURCE_DIR}/include
   -I ${CMAKE_CURRENT_SOURCE_DIR}
 )
-add_public_tablegen_target(ArithToNeuraPatternGen)
+add_public_tablegen_target(MLIRNeuraArithToNeuraIncGen)
 
-add_mlir_library(NeuraArithToNeura
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
+
+add_mlir_conversion_library(MLIRNeuraArithToNeuraPass
   ArithToNeuraPass.cpp
 
   DEPENDS
-  ArithToNeuraPatternGen
-  NeuraOpsIncGen
-  NeuraDialectIncGen
-  NeuraDialect
+  MLIRNeuraArithToNeuraIncGen
+  MLIRConversionIncGen
 
   LINK_LIBS PUBLIC
-  MLIRArithDialect
-  MLIRFuncDialect
-  MLIRIR
-  MLIRPass
-  MLIRTransforms
+    MLIRIR
+    MLIRPass
+    MLIRSupport
+    MLIRTransforms
+    # MLIRNeura
 )
-
-target_include_directories(NeuraArithToNeura PUBLIC
-    ${CMAKE_BINARY_DIR}/lib/NeuraDialect
-    ${CMAKE_BINARY_DIR}/lib/Conversion/ArithToNeura
-    ${MLIR_INCLUDE_DIRS}
-    ${LLVM_INCLUDE_DIRS}
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_BINARY_DIR}/include
-)
-
-target_compile_definitions(NeuraArithToNeura
-  PRIVATE ${LLVM_DEFINITIONS}
-)
-

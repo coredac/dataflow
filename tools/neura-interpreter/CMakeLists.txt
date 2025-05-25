@@ -1,21 +1,18 @@
 add_executable(neura-interpreter neura-interpreter.cpp)
+get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
+get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
+set(LIBS
+        ${dialect_libs}
+        ${conversion_libs}
+        MLIRNeuraTransforms
+        MLIRConversion
+        MLIRNeura
+        MLIRTransforms
+        MLIROptLib
+        MLIRPass
+        MLIRIR MLIRParser MLIRSupport
+        )
 
-target_include_directories(neura-interpreter
-  PRIVATE
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_BINARY_DIR}/include
-)
-
-target_link_libraries(neura-interpreter
-  PRIVATE
-    MLIRParser
-    MLIRIR
-    MLIRArithDialect
-    MLIRSupport
-    MLIRFuncDialect
-    MLIRDialect       # Optional: for builtin
-    NeuraDialect      # Your dialect
-)
+target_link_libraries(neura-interpreter PRIVATE ${LIBS})
 
 mlir_check_all_link_libraries(neura-interpreter)
-

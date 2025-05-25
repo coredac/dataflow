@@ -1,4 +1,3 @@
-#include "Conversion/LlvmToNeura/LlvmToNeura.h"
 #include "Common/AcceleratorAttrs.h"
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraOps.h"
@@ -9,6 +8,7 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "Conversion/ConversionPasses.h"
 
 namespace mlir {
 namespace neura {
@@ -22,9 +22,13 @@ namespace llvm2neura {
 } // namespace mlir
 
 using namespace mlir;
+using namespace mlir::neura;
+
+#define GEN_PASS_DEF_LOWERLLVMTONEURA
+#include "NeuraDialect/NeuraPasses.h.inc"
+
 
 namespace {
-
 // Lowers integer add from mlir.llvm.add to nuera.add. We provide the lowering
 // here instead of tablegen due to that mlir.llvm.add uses an EnumProperty
 // (IntegerOverflowFlags) defined via MLIR interfaces — which DRR cannot match
@@ -230,6 +234,6 @@ struct LowerLlvmToNeuraPass
 };
 } // namespace
 
-std::unique_ptr<Pass> mlir::neura::createLowerLlvmToNeuraPass() {
+std::unique_ptr<Pass> mlir::createLowerLlvmToNeuraPass() {
   return std::make_unique<LowerLlvmToNeuraPass>();
 }
