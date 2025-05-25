@@ -8,16 +8,16 @@ mlir_tablegen(LlvmToNeuraPatterns.inc
   -I ${CMAKE_SOURCE_DIR}/include
   -I ${CMAKE_CURRENT_SOURCE_DIR}
 )
-add_public_tablegen_target(MLIRLlvmToNeuraPatternGen)
+add_public_tablegen_target(MLIRLlvmToNeuraPatternIncGen)
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
-add_mlir_library(MLIRNeuraLlvmToNeuraPass
+add_mlir_conversion_library(MLIRNeuraLlvmToNeuraPass
   LlvmToNeuraPass.cpp
 
   DEPENDS
-  MLIRLlvmToNeuraPatternGen
-  MLIRNeuraTransformsIncGen
+  MLIRLlvmToNeuraPatternIncGen
+  MLIRConversionIncGen
 
   LINK_LIBS PUBLIC
   MLIRArithDialect

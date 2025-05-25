@@ -6,6 +6,7 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "Conversion/ConversionPasses.h"
 
 namespace mlir {
 namespace neura {
@@ -51,6 +52,6 @@ struct LowerArithToNeuraPass
 };
 } // namespace
 
-std::unique_ptr<Pass> mlir::neura::createLowerArithToNeuraPass() {
+std::unique_ptr<mlir::Pass> mlir::createLowerArithToNeuraPass() {
   return std::make_unique<LowerArithToNeuraPass>();
 }

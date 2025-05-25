@@ -19,11 +19,11 @@ add_subdirectory(LlvmToNeura)
 #       MLIRNeuraLlvmToNeuraPass
 #       ${dialect_libs}
 # )
-add_library(MLIRNeuraConversion INTERFACE)
+add_library(MLIRConversion INTERFACE)
 
-add_dependencies(MLIRNeuraConversion MLIRNeuraTransformsIncGen)
+add_dependencies(MLIRConversion MLIRConversionIncGen)
 
-target_link_libraries(MLIRNeuraConversion INTERFACE
+target_link_libraries(MLIRConversion INTERFACE
   MLIRIR
   MLIRPass
   MLIRSupport
