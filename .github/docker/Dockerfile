@@ -12,9 +12,8 @@ RUN apt-get update \
 	&& apt-get install ninja-build -y \
 	&& apt-get install ccache -y \
 	&& apt-get install lld -y \
-	&& apt-get -y install cmake -y \
 	&& apt-get install -y clang \
-	&& apt-get -y install git \
+	&& apt-get -y install build-essential cmake git libxml2-dev zlib1g-dev libncurses5-dev \
 	&& mkdir /cgra \
     	&& cd /cgra \
 	&& git clone https://github.com/yuqisun/dataflow.git \
@@ -23,7 +22,7 @@ RUN apt-get update \
 	&& cd llvm-project \
 	&& mkdir build && cd build \
 	&& cmake -G Ninja ../llvm \
-          -DLLVM_ENABLE_PROJECTS="mlir" \
+          -DLLVM_ENABLE_PROJECTS="clang;mlir" \
           -DLLVM_BUILD_EXAMPLES=OFF \
           -DLLVM_TARGETS_TO_BUILD="Native" \
           -DCMAKE_BUILD_TYPE=Release \
@@ -38,7 +37,9 @@ RUN apt-get update \
           -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
           -DCMAKE_C_COMPILER_LAUNCHER=ccache \
           -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-	&& cmake --build . --target check-mlir \
+	# && cmake --build . --target check-mlir \
+	&& ninja \
+	&& ninja check-clang check-mlir \
 	&& dpkg -l | grep llvm \
 	&& cd /cgra/dataflow \
 	&& mkdir build && cd build \
@@ -51,6 +52,8 @@ RUN apt-get update \
 	&& ninja \
 	&& cd /cgra/dataflow/test \
 	&& /cgra/dataflow/llvm-project/build/bin/llvm-lit * -v
+
+ENV PATH=/cgra/dataflow/llvm-project/build/bin:$PATH
 
 CMD ["tail", "-f", "/dev/null"]
 

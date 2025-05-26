@@ -12,7 +12,7 @@ $ git clone --depth 1 --branch release/19.x https://github.com/llvm/llvm-project
  $ mkdir build && cd build
  # May need install ccache and lld.
  $ cmake -G Ninja ../llvm \
-     -DLLVM_ENABLE_PROJECTS="mlir" \
+     -DLLVM_ENABLE_PROJECTS="clang;mlir" \
      -DLLVM_BUILD_EXAMPLES=OFF \
      -DLLVM_TARGETS_TO_BUILD="Native" \
      -DCMAKE_BUILD_TYPE=Release \
@@ -28,6 +28,9 @@ $ git clone --depth 1 --branch release/19.x https://github.com/llvm/llvm-project
      -DCMAKE_C_COMPILER_LAUNCHER=ccache \
      -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
  $ cmake --build . --target check-mlir
+ $ ninja
+ $ ninja check-clang check-mlir
+ $ export PATH=/workspace/llvm-project/build/bin:$PATH
 ```
 
  - Build Neura:
@@ -56,8 +59,17 @@ $ git clone --depth 1 --branch release/19.x https://github.com/llvm/llvm-project
 
 Docker-based Environment Setup
 --------------------------------------------------------
-You can quickly set up the build and test environment using the provided Dockerfile:
+**Option 1: Pull Pre-built Image**
 
+You can directly pull and use the pre-built Docker image:
+```sh
+$ docker pull cgra/neura:v1
+$ docker run --name myneura -it cgra/neura:v1
+```
+
+**Option 2: Build Image from Dockerfile**
+
+Alternatively, you can build the Docker image yourself using the provided Dockerfile:
 ```sh
 # In the root directory of this repo:
 $ cd docker
@@ -65,5 +77,4 @@ $ docker build -t neura:v1 .
 $ docker run --name myneura -it neura:v1
 ```
 
-This will automatically clone, build, and test LLVM/MLIR and Neura inside a container, ensuring a consistent environment.
-
+Both methods will provide a consistent environment with LLVM/MLIR(version 19) and Neura built and ready to use.
