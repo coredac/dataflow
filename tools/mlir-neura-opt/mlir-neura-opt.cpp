@@ -7,12 +7,10 @@
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
-#include "Conversion/ArithToNeura/ArithToNeura.h"
-#include "Conversion/LlvmToNeura/LlvmToNeura.h"
+
 #include "NeuraDialect/NeuraDialect.h"
-#include "Transforms/AssignAcceleratorPass.h"
-#include "Transforms/InsertMovPass.h"
-#include "Transforms/FusePatternsPass.h"
+#include "NeuraDialect/NeuraPasses.h"
+#include "Conversion/ConversionPasses.h"
 
 int main(int argc, char **argv) {
   // Registers MLIR dialects.
@@ -23,22 +21,9 @@ int main(int argc, char **argv) {
   registry.insert<mlir::DLTIDialect>();
   registry.insert<mlir::LLVM::LLVMDialect>();
 
-  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
-    return mlir::neura::createLowerArithToNeuraPass();
-  });
-  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
-    return mlir::neura::createAssignAcceleratorPass();
-  });
-  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
-    return mlir::neura::createLowerLlvmToNeuraPass();
-  });
-  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
-    return mlir::neura::createInsertMovPass();
-  });
-  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
-    return mlir::neura::createFusePatternsPass();
-  });
-
+  mlir::neura::registerPasses();
+  mlir::registerPasses();
+  
   // Runs the MLIR optimizer.
   return mlir::asMainReturnCode(
       mlir::MlirOptMain(argc, argv, "Neura Dialect Optimizer", registry));
