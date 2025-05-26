@@ -35,6 +35,7 @@ RUN apt-get update \
           -DMLIR_INSTALL_AGGREGATE_OBJECTS=ON \
           -DLLVM_ENABLE_RTTI=ON \
           -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
+		  -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
           -DCMAKE_C_COMPILER_LAUNCHER=ccache \
           -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
 	# && cmake --build . --target check-mlir \
