@@ -9,23 +9,23 @@
 
 using namespace mlir;
 
-#define GEN_PASS_DEF_INSERTMOV
+#define GEN_PASS_DEF_InsertCtrlMov
 #include "NeuraDialect/NeuraPasses.h.inc"
 
 namespace {
-struct InsertMovForNeuraOps : public RewritePattern {
-  InsertMovForNeuraOps(MLIRContext *context)
+struct InsertCtrlMovForNeuraOps : public RewritePattern {
+  InsertCtrlMovForNeuraOps(MLIRContext *context)
       : RewritePattern(/*matchAnyOpTypeTag=*/MatchAnyOpTypeTag(), /*benefit=*/1, context) {}
 
   LogicalResult matchAndRewrite(Operation *op, PatternRewriter &rewriter) const override {
     if (op->getDialect()->getNamespace() != "neura" ||
-        isa<neura::MovOp>(op)) {
+        isa<neura::CtrlMovOp>(op)) {
       return failure();
     }
 
     // Skips ops that already being inserted mov on the operands.
     bool allInputsAreMov = llvm::all_of(op->getOperands(), [](Value v) {
-      return isa_and_nonnull<neura::MovOp>(v.getDefiningOp());
+      return isa_and_nonnull<neura::CtrlMovOp>(v.getDefiningOp());
     });
     if (allInputsAreMov) {
       return failure();
@@ -33,7 +33,7 @@ struct InsertMovForNeuraOps : public RewritePattern {
 
     // Makes sure none of the operand has being processed.
     bool hasAnyMovInput = llvm::any_of(op->getOperands(), [](Value v) {
-      return isa_and_nonnull<neura::MovOp>(v.getDefiningOp());
+      return isa_and_nonnull<neura::CtrlMovOp>(v.getDefiningOp());
     });
     assert(!hasAnyMovInput && "Unexpected: operand already wrapped in neura.mov");
 
@@ -42,7 +42,7 @@ struct InsertMovForNeuraOps : public RewritePattern {
     // Wraps operands in mov.
     SmallVector<Value> newOperands;
     for (Value operand : op->getOperands()) {
-      auto mov = rewriter.create<neura::MovOp>(loc, operand.getType(), operand);
+      auto mov = rewriter.create<neura::CtrlMovOp>(loc, operand.getType(), operand);
       newOperands.push_back(mov);
     }
 
@@ -58,13 +58,13 @@ struct InsertMovForNeuraOps : public RewritePattern {
   }
 };
 
-struct InsertMovPass
-    : public PassWrapper<InsertMovPass, OperationPass<ModuleOp>> {
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(InsertMovPass)
+struct InsertCtrlMovPass
+    : public PassWrapper<InsertCtrlMovPass, OperationPass<ModuleOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(InsertCtrlMovPass)
 
-  StringRef getArgument() const override { return "insert-mov"; }
+  StringRef getArgument() const override { return "insert-ctrl-mov"; }
   StringRef getDescription() const override {
-    return "Insert neura.mov before and after all neura dialect operations.";
+    return "Insert neura.ctrl_mov before all neura dialect operations.";
   }
 
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -73,7 +73,7 @@ struct InsertMovPass
 
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
-    patterns.add<InsertMovForNeuraOps>(&getContext());
+    patterns.add<InsertCtrlMovForNeuraOps>(&getContext());
     FrozenRewritePatternSet frozen(std::move(patterns));
 
     ModuleOp module_op = getOperation();
@@ -96,8 +96,8 @@ struct InsertMovPass
 namespace mlir {
 namespace neura {
 
-std::unique_ptr<Pass> createInsertMovPass() {
-  return std::make_unique<InsertMovPass>();
+std::unique_ptr<Pass> createInsertCtrlMovPass() {
+  return std::make_unique<InsertCtrlMovPass>();
 }
 
 } // namespace neura
