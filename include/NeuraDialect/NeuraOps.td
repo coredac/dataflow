@@ -28,7 +28,7 @@ def Neura_FAddOp : Op<NeuraDialect, "fadd"> {
   let arguments = (ins AnyFloat:$lhs, AnyFloat:$rhs, Optional<AnyType>:$predicate);
   let results = (outs AnyFloat:$result);
   // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
-  let traits = [SameOperandsAndResultElementType];
+  //let traits = [SameOperandsAndResultElementType];
 }
 
 // Defines a floating-point multiplication operation.
@@ -38,7 +38,7 @@ def Neura_FMulOp : Op<NeuraDialect, "fmul"> {
   let arguments = (ins AnyFloat:$lhs, AnyFloat:$rhs, Optional<AnyType>:$predicate);
   let results = (outs AnyFloat:$result);
   // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
-  let traits = [SameOperandsAndResultElementType];
+  // let traits = [SameOperandsAndResultElementType];
 }
 
 // Defines a bitwise OR operation.
@@ -90,7 +90,26 @@ def Neura_CondBr : Op<NeuraDialect, "cond_br", [Terminator, AttrSizedOperandSegm
                    Variadic<AnyType>:$trueArgs,
                    Variadic<AnyType>:$falseArgs);
   let successors = (successor AnySuccessor:$trueDest, AnySuccessor:$falseDest);
-  let assemblyFormat = "$condition ($predicate^ `:` type($predicate))? `then` $trueArgs `:` type($trueArgs) `to` $trueDest `else` $falseArgs `:` type($falseArgs) `to` $falseDest attr-dict";
+  let assemblyFormat = "$condition ($predicate^ `:` type($predicate))? `then` ($trueArgs^)? `:` type($trueArgs) `to` $trueDest `else` ($falseArgs^)? `:` type($falseArgs) `to` $falseDest attr-dict";
+}
+
+// Defines an unconditional branch operation.
+def Neura_Br : Op<NeuraDialect, "br", [Terminator]> {
+  let arguments = (ins Variadic<AnyType>:$args);
+  let successors = (successor AnySuccessor:$dest);
+  let assemblyFormat = "($args^)? `:` type($args) `to` $dest attr-dict";
+}
+
+def Neura_SelOp : Op<NeuraDialect, "sel"> {
+  let arguments = (ins AnyType:$ifTrue, AnyType:$ifFalse, I1:$cond);
+  let results = (outs AnyType:$result);
+  // let assemblyFormat = "$ifTrue `,` $ifFalse `,` $cond attr-dict `:` type($ifTrue)";
+}
+
+def Neura_NotOp : Op<NeuraDialect, "not"> {
+  let arguments = (ins I1:$input);
+  let results = (outs I1:$output);
+  // let assemblyFormat = "$input attr-dict `:` type($output)";
 }
 
 // Defines a return operation.
@@ -140,12 +159,24 @@ def Neura_FMulFAddOp : Op<NeuraDialect, "fmul_fadd"> {
   let traits = [SameOperandsAndResultElementType];
 }
 
-// Defines a move operation for data communication.
-def Neura_MovOp : Op<NeuraDialect, "mov"> {
-  let summary = "Move operation";
-  let opName = "mov";
-  let arguments = (ins AnyType:$lhs);
-  let results = (outs AnyType:$result);
-  // let assemblyFormat = "$lhs `,` $predicate attr-dict `:` type($lhs) `->` type($result)";
-  // let traits = [Pure];
+// Defines base move operation.
+class NeuraBaseMov<string mnemonic> :
+    Op<NeuraDialect, mnemonic> {
+  let arguments = (ins AnyType:$input);
+  let results = (outs AnyType:$output);
+  // let assemblyFormat = "$input attr-dict `:` type($input) `->` type($output)";
+}
+
+def Neura_MovOp : NeuraBaseMov<"mov"> {
+  let summary = "Base move operation";
+}
+
+// Data movement operation.
+def Neura_DataMovOp  : NeuraBaseMov<"data_mov"> {
+  let summary = "Data movement operation";
+}
+
+// Control movement operation.
+def Neura_CtrlMovOp  : NeuraBaseMov<"ctrl_mov"> {
+  let summary = "Control movement operation";
 }

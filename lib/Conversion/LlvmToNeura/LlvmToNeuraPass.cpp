@@ -195,6 +195,23 @@ struct LlvmCondBrToNeuraCondBr : public OpRewritePattern<LLVM::CondBrOp> {
   }
 };
 
+struct LlvmBrToNeuraBr : public OpRewritePattern<LLVM::BrOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mlir::LLVM::BrOp op,
+                                PatternRewriter &rewriter) const override {
+    // Get the destination block and its operands
+    Block *dest = op.getDest();
+    ValueRange destOperands = op.getDestOperands();
+
+    // Create the new Neura_Br operation
+    rewriter.replaceOpWithNewOp<neura::Br>(
+        op, destOperands, dest);
+
+    return success();
+  }
+};
+
 struct LlvmReturnToNeuraReturn : public OpRewritePattern<LLVM::ReturnOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -232,6 +249,7 @@ struct LowerLlvmToNeuraPass
     patterns.add<LlvmLoadToNeuraLoad>(&getContext());
     patterns.add<LlvmStoreToNeuraStore>(&getContext());
     patterns.add<LlvmCondBrToNeuraCondBr>(&getContext());
+    patterns.add<LlvmBrToNeuraBr>(&getContext());
     patterns.add<LlvmReturnToNeuraReturn>(&getContext());
 
     FrozenRewritePatternSet frozen(std::move(patterns));
