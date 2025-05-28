@@ -35,8 +35,8 @@ jobs:
         sudo apt-get install lld
  
     # install clang for LLVM build
-    # - name: install clang
-    #   run: sudo apt-get install -y clang
+    - name: check clang version
+      run: clang --version
 
     # setup LLVM
     - name: install a specific version of LLVM
