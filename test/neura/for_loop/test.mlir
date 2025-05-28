@@ -1,5 +1,5 @@
 // Compiles the original kernel to mlir, then lower back to llvm, eventually binary.
-// RUN: clang++ -S -emit-llvm -O2 -o %t-kernel.ll kernel.cpp
+// RUN: clang++-19 -S -emit-llvm -O1 -o %t-kernel.ll kernel.cpp
 // RUN: mlir-translate --import-llvm %t-kernel.ll -o %t-kernel.mlir
 
 // TODO: Enable --insert-mov once the backward ctrl flow mov is supported.
