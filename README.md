@@ -7,6 +7,10 @@ Build LLVM & Neura
 $ git clone --depth 1 --branch release/19.x https://github.com/llvm/llvm-project.git
 ```
  - Build LLVM:
+ > **Note:**  
+> `clang` is optional for building Neura itself, but installing and building `clang` together with `mlir` (by setting `-DLLVM_ENABLE_PROJECTS="clang;mlir"`) ensures that you have a `clang`/`clang++` matching the same LLVM/MLIR version (19).  
+> This is recommended if you want to use `clang++` for C++ to LLVM IR/MLIR workflows and to avoid version mismatch issues.
+
 ```sh
  $ cd llvm-project
  $ mkdir build && cd build

@@ -2,7 +2,7 @@
 // We recommend using the clang++ built from the same LLVM/MLIR 19.x source.
 // Please add your build directory to PATH before running tests:
 // `export PATH=/path/to/llvm-project/build/bin:$PATH`
-// This ensures all clang++ invocations use the correct version.
+// This ensures all clang++ invocations use the same version.
 
 // Compiles the original kernel.
 // RUN: clang++ kernel.cpp -o %t-kernel.out
