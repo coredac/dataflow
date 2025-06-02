@@ -73,6 +73,10 @@ int main(int argc, char **argv) {
         float lhs = valueMap[faddOp.getLhs()];
         float rhs = valueMap[faddOp.getRhs()];
         valueMap[faddOp.getResult()] = lhs + rhs;
+      } else if (auto fsubOp = dyn_cast<neura::FSubOp>(op)) {
+        float lhs = valueMap[fsubOp.getLhs()];
+        float rhs = valueMap[fsubOp.getRhs()];
+        valueMap[fsubOp.getResult()] = lhs - rhs;
       } else if (auto retOp = dyn_cast<func::ReturnOp>(op)) {
         float result = valueMap[retOp.getOperand(0)];
         llvm::outs() << "[neura-interpreter] Output: " << llvm::format("%.6f", result) << "\n";
