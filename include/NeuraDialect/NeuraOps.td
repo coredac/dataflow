@@ -31,6 +31,16 @@ def Neura_FAddOp : Op<NeuraDialect, "fadd"> {
   let traits = [SameOperandsAndResultElementType];
 }
 
+// Defines a floating-point substraction operation.
+def Neura_FSubOp: Op<NeuraDialect, "fsub"> {
+  let summary = "Floating substraction operation";
+  let opName = "fsub";
+  let arguments = (ins AnyFloat:$lhs, AnyFloat:$rhs);
+  let results = (outs AnyFloat:$result);
+  // let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($result)";
+  let traits = [SameOperandsAndResultElementType];
+}
+
 // Defines a floating-point multiplication operation.
 def Neura_FMulOp : Op<NeuraDialect, "fmul"> {
   let summary = "Floating multiplication operation";

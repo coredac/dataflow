@@ -3,9 +3,15 @@ include "mlir/IR/PatternBase.td"
 include "mlir/Dialect/LLVMIR/LLVMOps.td"
 include "NeuraDialect/NeuraOps.td"
 
+// Floating point binary operations.
 def : Pat<
   (LLVM_FAddOp $lhs, $rhs, $_fastmath),
   (Neura_FAddOp $lhs, $rhs)
+>;
+
+def : Pat<
+  (LLVM_FSubOp $lhs, $rhs, $_fastmath),
+  (Neura_FSubOp $lhs, $rhs)
 >;
 
 def : Pat<
