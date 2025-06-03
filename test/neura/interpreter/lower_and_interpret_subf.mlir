@@ -23,8 +23,10 @@
 // RUN:   -o %t-neura.mlir
 
 // RUN: neura-interpreter %t-neura.mlir >> %t-dumped_output.txt
-
 // RUN: FileCheck %s < %t-dumped_output.txt
+
+// RUN: FileCheck %s -check-prefix=GOLDEN < %t-dumped_output.txt
+// GOLDEN: 7.0
 
 module {
   func.func @test() -> f32 attributes { llvm.emit_c_interface }{
