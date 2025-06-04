@@ -77,7 +77,12 @@ int main(int argc, char **argv) {
         float lhs = valueMap[fsubOp.getLhs()];
         float rhs = valueMap[fsubOp.getRhs()];
         valueMap[fsubOp.getResult()] = lhs - rhs;
-      } else if (auto retOp = dyn_cast<func::ReturnOp>(op)) {
+      } else if (auto fmulOp = dyn_cast<neura::FMulOp>(op)) {
+        float lhs = valueMap[fmulOp.getLhs()];
+        float rhs = valueMap[fmulOp.getRhs()];
+        valueMap[fmulOp.getResult()] = lhs - rhs;
+      }
+      else if (auto retOp = dyn_cast<func::ReturnOp>(op)) {
         float result = valueMap[retOp.getOperand(0)];
         llvm::outs() << "[neura-interpreter] Output: " << llvm::format("%.6f", result) << "\n";
       } else {

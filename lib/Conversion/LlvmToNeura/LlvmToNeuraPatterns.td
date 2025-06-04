@@ -15,6 +15,11 @@ def : Pat<
 >;
 
 def : Pat<
+  (LLVM_FMulOp $lhs, $rhs, $_fastmath),
+  (Neura_FMulOp $lhs, $rhs)
+>;
+
+def : Pat<
   (LLVM_ConstantOp $value),
   (Neura_ConstantOp $value)
 >;
