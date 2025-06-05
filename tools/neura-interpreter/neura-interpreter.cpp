@@ -80,7 +80,7 @@ int main(int argc, char **argv) {
       } else if (auto fmulOp = dyn_cast<neura::FMulOp>(op)) {
         float lhs = valueMap[fmulOp.getLhs()];
         float rhs = valueMap[fmulOp.getRhs()];
-        valueMap[fmulOp.getResult()] = lhs - rhs;
+        valueMap[fmulOp.getResult()] = lhs * rhs;
       }
       else if (auto retOp = dyn_cast<func::ReturnOp>(op)) {
         float result = valueMap[retOp.getOperand(0)];
