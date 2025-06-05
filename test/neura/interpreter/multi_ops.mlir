@@ -29,22 +29,14 @@
 // GOLDEN: 7.0
 
 module {
-  func.func @test_sub() -> f32 attributes { llvm.emit_c_interface }{
+  func.func @test() -> f32 attributes { llvm.emit_c_interface }{
     %arg0 = arith.constant 9.0 : f32
     %cst = arith.constant 2.0 : f32
     %0 = arith.subf %arg0, %cst : f32
+    %1 = arith.mulf %arg0, %0 : f32
     // CHECK: Golden output: [[OUTPUT:[0-9]+\.[0-9]+]]
     // CHECK: [neura-interpreter] Output: [[OUTPUT]]
-    return %0 : f32
-  }
-
-  func.func @test_mul() -> f32 attributes { llvm.emit_c_interface } {
-    %arg0 = arith.constant 9.0 : f32
-    %cst = arith.constant 2.0 : f32
-    %0 = arith.mulf %arg0, %cst : f32
-    // CHECK: Golden output: [[OUTPUT:[0-9]+\.[0-9]+]]
-    // CHECK: [neura-interpreter] Output: [[OUTPUT]]
-    return %0 : f32
+    return %1 : f32
   }
 }
 
