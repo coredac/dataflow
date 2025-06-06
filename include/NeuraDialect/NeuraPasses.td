@@ -41,4 +41,13 @@ def TransformCtrlToDataFlow : Pass<"transform-ctrl-to-data-flow", "ModuleOp"> {
   let constructor = "neura::createTransformCtrlToDataFlowPass()";
 }
 
+def LeveragePredicatedValue : Pass<"leverage-predicated-value", "ModuleOp"> {
+  let summary = "Convert values to predicated values in Neura dialect";
+  let description = [{
+    This pass converts regular values to predicated values in Neura dialect operations.
+    Each value is wrapped in a predicated value type with a default true predicate.
+  }];
+  let constructor = "neura::createLeveragePredicatedValuePass()";
+}
+
 #endif // NEURA_PASSES_TD

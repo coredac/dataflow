@@ -6,7 +6,10 @@ include "NeuraDialect/NeuraDialect.td"
 // Defines basic scalar operations.
 
 def Neura_ConstantOp : Op<NeuraDialect, "constant"> {
-  let arguments = (ins AnyAttr:$value);
+  let arguments = (ins 
+    AnyAttr:$value,
+    OptionalAttr<BoolAttr>:$predicate  // Add optional predicate attribute
+  );
   let results = (outs AnyType:$result);
   // let assemblyFormat = "attr-dict `:` type($result)";
 }
@@ -21,22 +24,42 @@ def Neura_AddOp : Op<NeuraDialect, "add"> {
   let traits = [SameOperandsAndResultElementType];
 }
 
+// // Defines a floating-point addition operation.
+// def Neura_FAddOp : Op<NeuraDialect, "fadd"> {
+//   let summary = "Floating addition operation";
+//   let opName = "fadd";
+//   let arguments = (ins AnyFloat:$lhs, AnyFloat:$rhs, Optional<AnyType>:$predicate);
+//   let results = (outs AnyFloat:$result);
+//   // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
+//   //let traits = [SameOperandsAndResultElementType];
+// }
+
 // Defines a floating-point addition operation.
 def Neura_FAddOp : Op<NeuraDialect, "fadd"> {
   let summary = "Floating addition operation";
   let opName = "fadd";
-  let arguments = (ins AnyFloat:$lhs, AnyFloat:$rhs, Optional<AnyType>:$predicate);
-  let results = (outs AnyFloat:$result);
+  let arguments = (ins AnyType:$lhs, AnyType:$rhs, Optional<AnyType>:$predicate);
+  let results = (outs AnyType:$result);
   // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
   //let traits = [SameOperandsAndResultElementType];
 }
+
+// // Defines a floating-point multiplication operation.
+// def Neura_FMulOp : Op<NeuraDialect, "fmul"> {
+//   let summary = "Floating multiplication operation";
+//   let opName = "fmul";
+//   let arguments = (ins AnyFloat:$lhs, AnyFloat:$rhs, Optional<AnyType>:$predicate);
+//   let results = (outs AnyFloat:$result);
+//   // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
+//   // let traits = [SameOperandsAndResultElementType];
+// }
 
 // Defines a floating-point multiplication operation.
 def Neura_FMulOp : Op<NeuraDialect, "fmul"> {
   let summary = "Floating multiplication operation";
   let opName = "fmul";
-  let arguments = (ins AnyFloat:$lhs, AnyFloat:$rhs, Optional<AnyType>:$predicate);
-  let results = (outs AnyFloat:$result);
+  let arguments = (ins AnyType:$lhs, AnyType:$rhs, Optional<AnyType>:$predicate);
+  let results = (outs AnyType:$result);
   // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
   // let traits = [SameOperandsAndResultElementType];
 }
@@ -50,14 +73,38 @@ def Neura_OrOp : Op<NeuraDialect, "or"> {
   let traits = [SameOperandsAndResultElementType];
 }
 
+// // Defines an integer compare operation.
+// def Neura_ICmpOp : Op<NeuraDialect, "icmp"> {
+//   let summary = "Integer compare operation";
+//   let opName = "icmp";
+//   let arguments = (ins AnyInteger:$lhs, AnyInteger:$rhs, Optional<AnyType>:$predicate,
+//                    StrAttr:$cmpType);
+//   let results = (outs I1:$result);
+//   // let assemblyFormat = "$lhs `,` $rhs `,` $cmpTypeAttr `,` $cmp_type attr-dict `:` type($result)";
+//   // let traits = [SameOperandsAndResultElementType];
+// }
+
 // Defines an integer compare operation.
 def Neura_ICmpOp : Op<NeuraDialect, "icmp"> {
   let summary = "Integer compare operation";
   let opName = "icmp";
-  let arguments = (ins AnyInteger:$lhs, AnyInteger:$rhs, Optional<AnyType>:$predicate,
+  let arguments = (ins AnyType:$lhs, AnyType:$rhs, Optional<AnyType>:$predicate,
+                   StrAttr:$cmpType);
+  let results = (outs AnyType:$result);
+  // let assemblyFormat = "$lhs `,` $rhs `,` $cmpTypeAttr `,` $cmp_type attr-dict `:` type($result)";
+  // let traits = [SameOperandsAndResultElementType];
+}
+
+// Defines a floating-point compare operation.
+def Neura_FCmpOp : Op<NeuraDialect, "fcmp"> {
+  let summary = "Floating-point compare operation";
+  let opName = "fcmp";
+  let arguments = (ins AnyFloat:$lhs,
+                   AnyFloat:$rhs,
+                   Optional<AnyType>:$predicate,
                    StrAttr:$cmpType);
   let results = (outs I1:$result);
-  // let assemblyFormat = "$lhs `,` $rhs `,` $cmpTypeAttr `,` $cmp_type attr-dict `:` type($result)";
+  // let assemblyFormat = "$lhs `,` $rhs `,` $cmpType attr-dict `:` type($result)";
   // let traits = [SameOperandsAndResultElementType];
 }
 
@@ -83,14 +130,24 @@ def Neura_GEP : Op<NeuraDialect, "gep"> {
   // let assemblyFormat = "$base `[` $indicesAndPredicate `]` `,` $predicate attr-dict";
 }
 
+// // Defines a conditional branch operation.
+// def Neura_CondBr : Op<NeuraDialect, "cond_br", [Terminator, AttrSizedOperandSegments]> {
+//   let arguments = (ins I1:$condition,
+//                    Optional<AnyType>:$predicate,
+//                    Variadic<AnyType>:$trueArgs,
+//                    Variadic<AnyType>:$falseArgs);
+//   let successors = (successor AnySuccessor:$trueDest, AnySuccessor:$falseDest);
+//   let assemblyFormat = "$condition ($predicate^ `:` type($predicate))? `then` ($trueArgs^)? `:` type($trueArgs) `to` $trueDest `else` ($falseArgs^)? `:` type($falseArgs) `to` $falseDest attr-dict";
+// }
+
 // Defines a conditional branch operation.
 def Neura_CondBr : Op<NeuraDialect, "cond_br", [Terminator, AttrSizedOperandSegments]> {
-  let arguments = (ins I1:$condition,
+  let arguments = (ins AnyType:$condition,
                    Optional<AnyType>:$predicate,
                    Variadic<AnyType>:$trueArgs,
                    Variadic<AnyType>:$falseArgs);
   let successors = (successor AnySuccessor:$trueDest, AnySuccessor:$falseDest);
-  let assemblyFormat = "$condition ($predicate^ `:` type($predicate))? `then` ($trueArgs^)? `:` type($trueArgs) `to` $trueDest `else` ($falseArgs^)? `:` type($falseArgs) `to` $falseDest attr-dict";
+  let assemblyFormat = "$condition `:` type($condition) ($predicate^ `:` type($predicate))? `then` ($trueArgs^)? `:` type($trueArgs) `to` $trueDest `else` ($falseArgs^)? `:` type($falseArgs) `to` $falseDest attr-dict";
 }
 
 // Defines an unconditional branch operation.
@@ -159,24 +216,71 @@ def Neura_FMulFAddOp : Op<NeuraDialect, "fmul_fadd"> {
   let traits = [SameOperandsAndResultElementType];
 }
 
-// Defines base move operation.
-class NeuraBaseMov<string mnemonic> :
-    Op<NeuraDialect, mnemonic> {
+// ----------------------------------------------------
+// Defines move operations.
+def Neura_DataMovOp : Op<NeuraDialect, "data_mov"> {
+  let summary = "Data movement operation";
   let arguments = (ins AnyType:$input);
   let results = (outs AnyType:$output);
   // let assemblyFormat = "$input attr-dict `:` type($input) `->` type($output)";
 }
 
-def Neura_MovOp : NeuraBaseMov<"mov"> {
-  let summary = "Base move operation";
+// ----------------------------------------------------
+// Defines ctrl-related operations.
+
+// Phi operation for merging values in dataflow form
+def Neura_PhiOp : Op<NeuraDialect, "phi"> {
+  let summary = "Phi node in dataflow form";
+  let description = [{
+    Merges values from different control paths in dataflow form.
+    Used with reserve and ctrl_mov to represent control flow.
+    
+    Example:
+      %v = neura.reserve : f32           // Create placeholder
+      %result = neura.phi %init, %v      // Merge initial and loop-carried values
+      neura.ctrl_mov %next to %v         // Connect next iteration
+  }];
+
+  let arguments = (ins AnyType:$init_val, AnyType:$loop_val);
+  let results = (outs AnyType:$result);
+
+  // Explicitly specify types for operands in the assembly format
+  let assemblyFormat = "$init_val `:` type($init_val) `,` $loop_val `:` type($loop_val) attr-dict `:` type($result)";
 }
 
-// Data movement operation.
-def Neura_DataMovOp  : NeuraBaseMov<"data_mov"> {
-  let summary = "Data movement operation";
-}
-
-// Control movement operation.
-def Neura_CtrlMovOp  : NeuraBaseMov<"ctrl_mov"> {
+// Control movement extending base move but with different signature.
+def Neura_CtrlMovOp : Op<NeuraDialect, "ctrl_mov"> {
   let summary = "Control movement operation";
+  let description = [{
+    Connects a value to a reserved placeholder in the dataflow.
+    Used to establish control flow dependencies.
+
+    Example:
+      ctrl_mov %value to %placeholder : f32  // Connect value to placeholder
+  }];
+
+  // Add type constraints for both operands
+  let arguments = (ins AnyType:$value, AnyType:$target);
+  let results = (outs);
+
+  // Correct assembly format - types must be space-separated
+  let assemblyFormat = "$value `->` $target attr-dict `:` type($value) type($target)";
+}
+
+// Reserve operation for control flow values.
+def Neura_ReserveOp : Op<NeuraDialect, "reserve"> {
+  let summary = "Creates a placeholder for control flow values";
+  let description = [{
+    Creates a placeholder value that will be connected via ctrl_mov.
+    Used to represent control flow dependencies in dataflow form.
+    
+    Example:
+      %v = neura.reserve : f32      // Create placeholder
+      %result = neura.phi %init, %v // Use in phi node
+      neura.ctrl_mov %next to %v    // Connect value
+  }];
+
+  let arguments = (ins);
+  let results = (outs AnyType:$result);
+  let assemblyFormat = "attr-dict `:` type($result)";
 }
