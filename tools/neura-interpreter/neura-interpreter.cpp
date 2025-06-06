@@ -19,7 +19,7 @@
 
 using namespace mlir;
 
-// Add PredicatedData struct at the top
+// Data structure to hold both value and predicate.
 struct PredicatedData {
   float value;
   bool predicate;
@@ -52,7 +52,7 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  // Change map to store PredicatedData instead of just float
+  // Changes map to store PredicatedData instead of just float.
   llvm::DenseMap<Value, PredicatedData> valueMap;
 
   for (auto func : module->getOps<func::FuncOp>()) {
@@ -75,9 +75,10 @@ int main(int argc, char **argv) {
         valueMap[constOp.getResult()] = val;
       } else if (auto constOp = dyn_cast<neura::ConstantOp>(op)) {
         auto attr = constOp.getValue();
-        PredicatedData val{0.0f, true};  // default to true
+        // Initializes PredicatedData with default values.
+        PredicatedData val{0.0f, true};
       
-        // Handle value attribute
+        // Handles value attribute.
         if (auto floatAttr = llvm::dyn_cast<mlir::FloatAttr>(attr)) {
             val.value = floatAttr.getValueAsDouble();
         } else if (auto intAttr = llvm::dyn_cast<mlir::IntegerAttr>(attr)) {
@@ -87,7 +88,7 @@ int main(int argc, char **argv) {
             return 1;
         }
 
-        // Try getting predicate attribute
+        // Tries getting predicate attribute.
         if (auto predAttr = constOp->getAttrOfType<BoolAttr>("predicate")) {
             val.predicate = predAttr.getValue();
         }

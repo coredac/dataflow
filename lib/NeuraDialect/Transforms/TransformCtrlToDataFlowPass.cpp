@@ -16,31 +16,31 @@ void processBlockRecursively(Block *block, Block &entry_block, Value predicate, 
                            SmallVector<Value> &results, DenseSet<Block *> &visited_blocks,
                            DenseMap<BlockArgument, Value> &arg_mapping,
                            DenseMap<Value, Value> &value_mapping) {
-  // Check if the block has already been visited
+  // Checks if the block has already been visited.
   if (visited_blocks.contains(block)) {
     llvm::errs() << "Skipping already visited block:\n";
     block->dump();
     return;
   }
 
-  // Mark the block as visited
+  // Marks the block as visited.
   visited_blocks.insert(block);
 
   llvm::errs() << "Processing block:\n";
   block->dump();
 
-  // Handle block arguments first
+  // Handle. block arguments first.
   for (BlockArgument arg : block->getArguments()) {
     llvm::errs() << "Processing block argument: " << arg << "\n";
     
-    // Check if we already have a mapping for this argument
+    // Checks if we already have a mapping for this argument.
     if (auto mapped = arg_mapping.lookup(arg)) {
       llvm::errs() << "Found existing mapping for argument\n";
       continue;
     }
 
     builder.setInsertionPointToEnd(&entry_block);
-    // Create a new constant operation with zero value and true predicate
+    // Creates a new constant operation with zero value and true predicate.
     OperationState state(arg.getLoc(), neura::ConstantOp::getOperationName());
     state.addAttribute("value", builder.getZeroAttr(arg.getType()));
     state.addAttribute("predicate", builder.getBoolAttr(true));
@@ -55,13 +55,13 @@ void processBlockRecursively(Block *block, Block &entry_block, Value predicate, 
     llvm::errs() << "Created sel operation for argument:\n";
     sel->dump();
 
-    // Store mapping
+    // Stores mapping.
     arg_mapping.try_emplace(arg, sel.getResult());
     value_mapping[arg] = sel.getResult();
     results.push_back(sel.getResult());
   }
 
-  // Process operations
+  // Processes operations.
   SmallVector<Operation *> ops_to_process;
   for (Operation &op : *block) {
     ops_to_process.push_back(&op);
@@ -119,7 +119,7 @@ void processBlockRecursively(Block *block, Block &entry_block, Value predicate, 
     builder.setInsertionPointToEnd(&entry_block);
     Operation *cloned_op = builder.clone(*op);
 
-    // Replace operands with mapped values
+    // Replaces operands with mapped values.
     for (unsigned i = 0; i < cloned_op->getNumOperands(); ++i) {
       Value operand = cloned_op->getOperand(i);
       if (auto mapped = value_mapping.lookup(operand)) {
@@ -131,7 +131,7 @@ void processBlockRecursively(Block *block, Block &entry_block, Value predicate, 
       cloned_op->insertOperands(cloned_op->getNumOperands(), predicate);
     }
 
-    // Store mappings and results
+    // Stores mappings and results.
     for (unsigned i = 0; i < op->getNumResults(); ++i) {
       Value orig_result = op->getResult(i);
       Value new_result = cloned_op->getResult(i);
@@ -195,7 +195,7 @@ struct TransformCtrlToDataFlowPass
       builder.setInsertionPoint(cond_br);
       auto not_cond = builder.create<neura::NotOp>(loc, cond.getType(), cond);
 
-      // Process branches
+      // Processes branches.
       DenseMap<BlockArgument, Value> arg_mapping;
       DenseMap<Value, Value> value_mapping;
       DenseSet<Block *> visited_blocks;
@@ -209,7 +209,7 @@ struct TransformCtrlToDataFlowPass
       llvm::errs() << "Entry block after processing:\n";
       entry_block.dump();
 
-      // Create final return operation
+      // Creates final return operation.
       if (!true_results.empty() && !false_results.empty()) {
         builder.setInsertionPoint(cond_br);
         auto sel = builder.create<neura::SelOp>(
@@ -217,15 +217,15 @@ struct TransformCtrlToDataFlowPass
         builder.create<func::ReturnOp>(loc, sel.getResult());
       }
 
-      // Replace all uses with mapped values
+      // Replaces all uses with mapped values.
       for (auto &[orig, mapped] : value_mapping) {
         orig.replaceAllUsesWith(mapped);
       }
 
-      // Now erase the conditional branch
+      // Erases the conditional branch.
       cond_br->erase();
 
-      // Finally erase all other blocks
+      // Finally erases all other blocks.
       SmallVector<Block *> blocks_to_erase;
       for (Block &block : llvm::make_early_inc_range(func.getBody())) {
         if (&block != &entry_block) {

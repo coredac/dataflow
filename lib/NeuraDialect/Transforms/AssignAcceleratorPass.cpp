@@ -34,7 +34,7 @@ struct AssignAcceleratorPass : public PassWrapper<AssignAcceleratorPass, Operati
 };
 } // namespace
 
-/// Register the pass
+/// Registers the pass.
 namespace mlir {
 namespace neura {
 std::unique_ptr<Pass> createAssignAcceleratorPass() {
