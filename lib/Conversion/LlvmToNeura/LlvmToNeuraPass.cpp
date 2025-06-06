@@ -62,6 +62,16 @@ struct LlvmFAddToNeuraFAdd : public OpRewritePattern<mlir::LLVM::FAddOp> {
   }
 };
 
+struct LlvmOrToNeuraOr : public OpRewritePattern<mlir::LLVM::OrOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mlir::LLVM::OrOp op,
+                                PatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<neura::OrOp>(op, op.getType(), op.getLhs(), op.getRhs(), Value());
+    return success();
+  }
+};
+
 struct LlvmFMulToNeuraFMul : public OpRewritePattern<mlir::LLVM::FMulOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -293,6 +303,7 @@ struct LowerLlvmToNeuraPass
     mlir::neura::llvm2neura::populateWithGenerated(patterns);
     patterns.add<LlvmConstantToNeuraConstant>(&getContext());
     patterns.add<LlvmAddToNeuraAdd>(&getContext());
+    patterns.add<LlvmOrToNeuraOr>(&getContext());
     patterns.add<LlvmFAddToNeuraFAdd>(&getContext());
     patterns.add<LlvmFMulToNeuraFMul>(&getContext());
     patterns.add<LlvmVFMulToNeuraVFMul>(&getContext());
