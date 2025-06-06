@@ -116,6 +116,23 @@ struct LlvmICmpToNeuraICmp : public OpRewritePattern<LLVM::ICmpOp> {
   }
 };
 
+struct LlvmFCmpToNeuraFCmp : public OpRewritePattern<LLVM::FCmpOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::FCmpOp op,
+                                PatternRewriter &rewriter) const override {
+    auto pred = op.getPredicate();
+    auto lhs = op.getLhs();
+    auto rhs = op.getRhs();
+    auto resultType = op.getType();
+
+    rewriter.replaceOpWithNewOp<neura::FCmpOp>(
+        op, resultType, lhs, rhs, Value(),
+        rewriter.getStringAttr(LLVM::stringifyFCmpPredicate(pred)));
+    return success();
+  }
+};
+
 struct LlvmGEPToNeuraGEP : public OpRewritePattern<mlir::LLVM::GEPOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -128,8 +145,12 @@ struct LlvmGEPToNeuraGEP : public OpRewritePattern<mlir::LLVM::GEPOp> {
       if (auto val = gepIndex.dyn_cast<Value>()) {
         indexValues.push_back(val);
       } else if (auto intAttr = gepIndex.dyn_cast<IntegerAttr>()) {
-        auto cst = rewriter.create<neura::ConstantOp>(
-            op.getLoc(), rewriter.getIndexType(), intAttr);
+        // Create constant operation state manually
+        OperationState state(op.getLoc(), neura::ConstantOp::getOperationName());
+        state.addAttribute("value", intAttr);
+        state.addAttribute("predicate", rewriter.getBoolAttr(true));
+        state.addTypes(rewriter.getIndexType());
+        Value cst = rewriter.create(state)->getResult(0);
         indexValues.push_back(cst);
       } else {
         return op.emitOpError("Unsupported GEP index kind");
@@ -222,6 +243,36 @@ struct LlvmReturnToNeuraReturn : public OpRewritePattern<LLVM::ReturnOp> {
   }
 };
 
+struct FuncReturnToNeuraReturn : public OpRewritePattern<func::ReturnOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(func::ReturnOp op,
+                                PatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<neura::ReturnOp>(op, op.getOperands());
+    return success();
+  }
+};
+
+struct LlvmConstantToNeuraConstant : public OpRewritePattern<LLVM::ConstantOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::ConstantOp op,
+                              PatternRewriter &rewriter) const override {
+    auto attr = op.getValue();
+    
+    // Create operation state manually
+    OperationState state(op.getLoc(), neura::ConstantOp::getOperationName());
+    state.addAttribute("value", attr);
+    state.addAttribute("predicate", rewriter.getBoolAttr(true));
+    state.addTypes(op.getType());
+    
+    // Create the operation and replace
+    Operation *newOp = rewriter.create(state);
+    rewriter.replaceOp(op, newOp->getResults());
+    return success();
+  }
+};
+
 struct LowerLlvmToNeuraPass
     : public PassWrapper<LowerLlvmToNeuraPass, OperationPass<ModuleOp>> {
 
@@ -240,17 +291,20 @@ struct LowerLlvmToNeuraPass
     RewritePatternSet patterns(&getContext());
     // Adds DRR patterns.
     mlir::neura::llvm2neura::populateWithGenerated(patterns);
+    patterns.add<LlvmConstantToNeuraConstant>(&getContext());
     patterns.add<LlvmAddToNeuraAdd>(&getContext());
     patterns.add<LlvmFAddToNeuraFAdd>(&getContext());
     patterns.add<LlvmFMulToNeuraFMul>(&getContext());
     patterns.add<LlvmVFMulToNeuraVFMul>(&getContext());
     patterns.add<LlvmICmpToNeuraICmp>(&getContext());
+    patterns.add<LlvmFCmpToNeuraFCmp>(&getContext());
     patterns.add<LlvmGEPToNeuraGEP>(&getContext());
     patterns.add<LlvmLoadToNeuraLoad>(&getContext());
     patterns.add<LlvmStoreToNeuraStore>(&getContext());
     patterns.add<LlvmCondBrToNeuraCondBr>(&getContext());
     patterns.add<LlvmBrToNeuraBr>(&getContext());
     patterns.add<LlvmReturnToNeuraReturn>(&getContext());
+    patterns.add<FuncReturnToNeuraReturn>(&getContext());
 
     FrozenRewritePatternSet frozen(std::move(patterns));
 

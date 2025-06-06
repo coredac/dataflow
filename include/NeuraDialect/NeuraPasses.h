@@ -21,6 +21,7 @@ std::unique_ptr<mlir::Pass> createInsertCtrlMovPass();
 std::unique_ptr<mlir::Pass> createFusePatternsPass();
 std::unique_ptr<mlir::Pass> createAssignAcceleratorPass();
 std::unique_ptr<mlir::Pass> createTransformCtrlToDataFlowPass();
+std::unique_ptr<mlir::Pass> createLeveragePredicatedValuePass();
 
 #define GEN_PASS_REGISTRATION
 #include "NeuraDialect/NeuraPasses.h.inc"

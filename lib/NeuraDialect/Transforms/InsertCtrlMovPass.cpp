@@ -41,10 +41,10 @@ struct InsertCtrlMovForNeuraOps : public RewritePattern {
 
     // Wraps operands in mov.
     SmallVector<Value> newOperands;
-    for (Value operand : op->getOperands()) {
-      auto mov = rewriter.create<neura::CtrlMovOp>(loc, operand.getType(), operand);
-      newOperands.push_back(mov);
-    }
+    // for (Value operand : op->getOperands()) {
+    //   auto mov = rewriter.create<neura::CtrlMovOp>(loc, operand.getType(), operand);
+    //   newOperands.push_back(mov);
+    // }
 
     // Clones op with new operands.
     OperationState state(loc, op->getName());

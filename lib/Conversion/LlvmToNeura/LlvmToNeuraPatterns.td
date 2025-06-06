@@ -3,9 +3,9 @@ include "mlir/IR/PatternBase.td"
 include "mlir/Dialect/LLVMIR/LLVMOps.td"
 include "NeuraDialect/NeuraOps.td"
 
-def : Pat<
-  (LLVM_ConstantOp $value),
-  (Neura_ConstantOp $value)
->;
+// def : Pat<
+//   (LLVM_ConstantOp $value),
+//   (Neura_ConstantOp $value, (BoolAttr<APBool<true>>))
+// >;
 
 

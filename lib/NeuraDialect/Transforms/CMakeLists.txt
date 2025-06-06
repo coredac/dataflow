@@ -7,6 +7,7 @@ add_mlir_library(
     FusePatternsPass.cpp
     AssignAcceleratorPass.cpp
     TransformCtrlToDataFlowPass.cpp
+    LeveragePredicatedValuePass.cpp
 
     DEPENDS
     MLIRNeuraTransformsIncGen
