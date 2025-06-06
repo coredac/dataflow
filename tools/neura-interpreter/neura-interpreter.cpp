@@ -101,13 +101,21 @@ int main(int argc, char **argv) {
         auto lhs = valueMap[faddOp.getLhs()];
         auto rhs = valueMap[faddOp.getRhs()];
         
-        // Always perform addition, but combine predicates
+        // Always performs addition, but combines predicate.
         PredicatedData result;
         result.value = lhs.value + rhs.value;
         result.predicate = lhs.predicate && rhs.predicate;
         
         valueMap[faddOp.getResult()] = result;
+      } else if (auto fsubOp = dyn_cast<neura::FSubOp>(op)) {
+        auto lhs = valueMap[fsubOp.getLhs()];
+        auto rhs = valueMap[fsubOp.getRhs()];
 
+        // Always performs addition, but combines predicate.
+        PredicatedData result;
+        result.value = lhs.value - rhs.value;
+        result.predicate = lhs.predicate && rhs.predicate;
+        valueMap[fsubOp.getResult()] = result;
       } else if (auto retOp = dyn_cast<func::ReturnOp>(op)) {
         auto result = valueMap[retOp.getOperand(0)];
         llvm::outs() << "[neura-interpreter] Output: " << llvm::format("%.6f", result.value);

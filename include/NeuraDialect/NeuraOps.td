@@ -24,16 +24,6 @@ def Neura_AddOp : Op<NeuraDialect, "add"> {
   let traits = [SameOperandsAndResultElementType];
 }
 
-// // Defines a floating-point addition operation.
-// def Neura_FAddOp : Op<NeuraDialect, "fadd"> {
-//   let summary = "Floating addition operation";
-//   let opName = "fadd";
-//   let arguments = (ins AnyFloat:$lhs, AnyFloat:$rhs, Optional<AnyType>:$predicate);
-//   let results = (outs AnyFloat:$result);
-//   // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
-//   //let traits = [SameOperandsAndResultElementType];
-// }
-
 // Defines a floating-point addition operation.
 def Neura_FAddOp : Op<NeuraDialect, "fadd"> {
   let summary = "Floating addition operation";
@@ -44,15 +34,15 @@ def Neura_FAddOp : Op<NeuraDialect, "fadd"> {
   //let traits = [SameOperandsAndResultElementType];
 }
 
-// // Defines a floating-point multiplication operation.
-// def Neura_FMulOp : Op<NeuraDialect, "fmul"> {
-//   let summary = "Floating multiplication operation";
-//   let opName = "fmul";
-//   let arguments = (ins AnyFloat:$lhs, AnyFloat:$rhs, Optional<AnyType>:$predicate);
-//   let results = (outs AnyFloat:$result);
-//   // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
-//   // let traits = [SameOperandsAndResultElementType];
-// }
+// Defines a floating-point substraction operation.
+def Neura_FSubOp: Op<NeuraDialect, "fsub"> {
+  let summary = "Floating substraction operation";
+  let opName = "fsub";
+  let arguments = (ins AnyFloat:$lhs, AnyFloat:$rhs);
+  let results = (outs AnyFloat:$result);
+  // let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($result)";
+  let traits = [SameOperandsAndResultElementType];
+}
 
 // Defines a floating-point multiplication operation.
 def Neura_FMulOp : Op<NeuraDialect, "fmul"> {
@@ -72,17 +62,6 @@ def Neura_OrOp : Op<NeuraDialect, "or"> {
   // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
   let traits = [SameOperandsAndResultElementType];
 }
-
-// // Defines an integer compare operation.
-// def Neura_ICmpOp : Op<NeuraDialect, "icmp"> {
-//   let summary = "Integer compare operation";
-//   let opName = "icmp";
-//   let arguments = (ins AnyInteger:$lhs, AnyInteger:$rhs, Optional<AnyType>:$predicate,
-//                    StrAttr:$cmpType);
-//   let results = (outs I1:$result);
-//   // let assemblyFormat = "$lhs `,` $rhs `,` $cmpTypeAttr `,` $cmp_type attr-dict `:` type($result)";
-//   // let traits = [SameOperandsAndResultElementType];
-// }
 
 // Defines an integer compare operation.
 def Neura_ICmpOp : Op<NeuraDialect, "icmp"> {
@@ -129,16 +108,6 @@ def Neura_GEP : Op<NeuraDialect, "gep"> {
   let results = (outs AnyType:$result);
   // let assemblyFormat = "$base `[` $indicesAndPredicate `]` `,` $predicate attr-dict";
 }
-
-// // Defines a conditional branch operation.
-// def Neura_CondBr : Op<NeuraDialect, "cond_br", [Terminator, AttrSizedOperandSegments]> {
-//   let arguments = (ins I1:$condition,
-//                    Optional<AnyType>:$predicate,
-//                    Variadic<AnyType>:$trueArgs,
-//                    Variadic<AnyType>:$falseArgs);
-//   let successors = (successor AnySuccessor:$trueDest, AnySuccessor:$falseDest);
-//   let assemblyFormat = "$condition ($predicate^ `:` type($predicate))? `then` ($trueArgs^)? `:` type($trueArgs) `to` $trueDest `else` ($falseArgs^)? `:` type($falseArgs) `to` $falseDest attr-dict";
-// }
 
 // Defines a conditional branch operation.
 def Neura_CondBr : Op<NeuraDialect, "cond_br", [Terminator, AttrSizedOperandSegments]> {
