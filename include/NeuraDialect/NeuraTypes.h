@@ -10,14 +10,14 @@ namespace mlir {
 namespace neura {
 
 namespace detail {
-// Storage class for predicated value type
+// Storage class for predicated value type.
 struct PredicatedValueStorage : public mlir::TypeStorage {
   using KeyTy = std::pair<Type, IntegerType>;  // valueType and predicateType
 
   PredicatedValueStorage(Type valueType, IntegerType predicateType)
       : valueType(valueType), predicateType(predicateType) {}
 
-  // Required storage class methods
+  // Required storage class methods.
   bool operator==(const KeyTy& key) const {
     return key.first == valueType && key.second == predicateType;
   }
@@ -46,12 +46,9 @@ class PredicatedValue : public mlir::Type::TypeBase<
                                      detail::PredicatedValueStorage>;
   static constexpr llvm::StringLiteral name = "data";
 
-  // Fix: Use the Base constructor, don't define your own
   using Base::Base;
-//   explicit PredicatedValue(TypeStorage* storage)
-//       : Base(static_cast<detail::PredicatedValueStorage*>(storage)) {}
 
-  // Static method to create a PredicatedValue instance
+  // Static method to create a PredicatedValue instance.
   static PredicatedValue get(MLIRContext* context, Type valueType,
                              IntegerType predicateType) {
     return Base::get(context, valueType, predicateType);

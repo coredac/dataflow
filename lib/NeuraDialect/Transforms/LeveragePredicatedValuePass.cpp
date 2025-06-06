@@ -20,7 +20,7 @@ struct applyPredicatedDataType : public RewritePattern {
   LogicalResult matchAndRewrite(Operation *op, PatternRewriter &rewriter) const override {
     llvm::errs() << "Processing op: " << *op << "\n";
 
-    // Skip if not a Neura op or already using predicated values
+    // Skips if not a Neura op or already using predicated values.
     if (op->getDialect()->getNamespace() != "neura") {
         llvm::errs() << "Skipping non-Neura op\n";
         return failure();
@@ -32,7 +32,7 @@ struct applyPredicatedDataType : public RewritePattern {
         return failure();
     }
 
-    // Convert result types to predicated form
+    // Converts result types to predicated form.
     SmallVector<Type> newResults;
     for (Type t : op->getResultTypes()) {
         auto predicatedTy = mlir::neura::PredicatedValue::get(
@@ -42,14 +42,14 @@ struct applyPredicatedDataType : public RewritePattern {
         newResults.push_back(predicatedTy);
     }
 
-    // Clone the operation with new result types
+    // Clones the operation with new result types.
     OperationState state(op->getLoc(), op->getName());
     state.addOperands(op->getOperands());
     state.addTypes(newResults);
     state.addAttributes(op->getAttrs());
     Operation *newOp = rewriter.create(state);
 
-    // Replace the old op with the new one
+    // Replaces the old op with the new one.
     rewriter.replaceOp(op, newOp->getResults());
     llvm::errs() << "Converted op to predicated form: " << *newOp << "\n";
     if (!newResults.empty()) {
@@ -75,13 +75,13 @@ struct LeveragePredicatedValuePass
   void runOnOperation() override {
     ModuleOp module = getOperation();
     
-    // Process each function
+    // Processes each function.
     module.walk([&](func::FuncOp func) {
       // Get operations in topological order (operands before users)
       SmallVector<Operation*> orderedOps;
       getOperationsInTopologicalOrder(func, orderedOps);
 
-      // Process each operation in order
+      // Processes each operation in order.
       for (Operation *op : orderedOps) {
         if (failed(applyPredicatedDataType(op))) {
           llvm::errs() << "Failed to convert op to predicated form: " << *op << "\n";
@@ -93,16 +93,16 @@ struct LeveragePredicatedValuePass
   }
 
 private:
-  // Get operations in topological order
+  // Gets operations in topological order.
   void getOperationsInTopologicalOrder(func::FuncOp func, 
                                      SmallVector<Operation*> &ordered) {
     DenseSet<Operation*> visited;
     func.walk<WalkOrder::PreOrder>([&](Operation *op) {
-      // Use standard DFS to build topological order
+      // Uses standard DFS to build topological order.
       if (visited.contains(op))
         return;
         
-      // Visit operands first
+      // Visits operands first.
       for (Value operand : op->getOperands()) {
         if (auto defOp = operand.getDefiningOp()) {
           if (!visited.contains(defOp)) {
@@ -112,7 +112,7 @@ private:
         }
       }
       
-      // Then visit current op
+      // Then visits current op.
       if (!visited.contains(op)) {
         visited.insert(op);
         ordered.push_back(op);
@@ -120,24 +120,24 @@ private:
     });
   }
 
-  // Convert a single operation to use predicated values
+  // Converts a single operation to use predicated values.
   LogicalResult applyPredicatedDataType(Operation *op) {
     llvm::errs() << "Processing op: " << *op << "\n";
 
-    // Skip if not a Neura op
+    // Skips if not a Neura op.
     if (op->getDialect()->getNamespace() != "neura") {
       llvm::errs() << "Skipping non-Neura op\n";
       return success();
     }
 
-    // Skip if no results or already predicated
+    // Skips if no results or already predicated.
     if (op->getNumResults() == 0 || 
         llvm::any_of(op->getResultTypes(), 
           [](Type t) { return mlir::isa<mlir::neura::PredicatedValue>(t); })) {
       return success();
     }
 
-    // Convert result types to predicated form
+    // Converts result types to predicated form.
     OpBuilder builder(op);
     SmallVector<Type> newResults;
     for (Type t : op->getResultTypes()) {
@@ -148,14 +148,14 @@ private:
       newResults.push_back(predicatedTy);
     }
 
-    // Clone with new result types
+    // Clones with new result types.
     OperationState state(op->getLoc(), op->getName());
     state.addOperands(op->getOperands());
     state.addTypes(newResults);
     state.addAttributes(op->getAttrs());
     Operation *newOp = builder.create(state);
 
-    // Replace old op
+    // Replaces old op.
     op->replaceAllUsesWith(newOp);
     op->erase();
     return success();
