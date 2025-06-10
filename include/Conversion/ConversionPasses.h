@@ -12,11 +12,11 @@
 
 namespace mlir {
 
-// Passes defined in GraphPasses.td
+// Passes defined in GraphPasses.td.
 #define GEN_PASS_DECL
 #include "Conversion/ConversionPasses.h.inc"
 
-// Conversion passes
+// Conversion passes.
 std::unique_ptr<mlir::Pass> createLowerArithToNeuraPass();
 std::unique_ptr<mlir::Pass> createLowerLlvmToNeuraPass();
 

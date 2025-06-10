@@ -7,9 +7,19 @@
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/Builders.h"
 
+// First includes the interface declarations.
+#define GET_OP_INTERFACE_CLASSES
+#include "NeuraDialect/Neura.h.inc"
+#undef GET_OP_INTERFACE_CLASSES
+
+// Then includes the op declarations.
+#define GET_OP_DECLARATIONS
+#include "NeuraDialect/Neura.h.inc"
+#undef GET_OP_DECLARATIONS
+
+// Finally includes the op definitions.
 #define GET_OP_CLASSES
 #include "NeuraDialect/Neura.h.inc"
-
-// Additional definitions or includes can go here.
+#undef GET_OP_CLASSES
 
 #endif // NEURA_OPS_H

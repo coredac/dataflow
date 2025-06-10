@@ -10,7 +10,9 @@ set(LIBS
         MLIRTransforms
         MLIROptLib
         MLIRPass
-        MLIRIR MLIRParser MLIRSupport
+        MLIRIR
+        MLIRParser
+        MLIRSupport
         )
 
 target_link_libraries(mlir-neura-opt PRIVATE ${LIBS})
