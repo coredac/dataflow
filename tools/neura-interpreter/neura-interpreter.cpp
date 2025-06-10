@@ -19,6 +19,12 @@
 
 using namespace mlir;
 
+// Data structure to hold both value and predicate.
+struct PredicatedData {
+  float value;
+  bool predicate;
+};
+
 int main(int argc, char **argv) {
   if (argc < 2) {
     llvm::errs() << "Usage: neura-interpreter <input.mlir>\n";
@@ -46,7 +52,8 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  llvm::DenseMap<Value, float> valueMap;
+  // Changes map to store PredicatedData instead of just float.
+  llvm::DenseMap<Value, PredicatedData> valueMap;
 
   for (auto func : module->getOps<func::FuncOp>()) {
     Block &block = func.getBody().front();
@@ -54,32 +61,69 @@ int main(int argc, char **argv) {
     for (Operation &op : block.getOperations()) {
       if (auto constOp = dyn_cast<mlir::arith::ConstantOp>(op)) {
         auto attr = constOp.getValue();
-      
-        float val = 0.0f;
+        PredicatedData val{0.0f, true};  // arith constants always have true predicate
       
         if (auto floatAttr = llvm::dyn_cast<mlir::FloatAttr>(attr)) {
-          val = floatAttr.getValueAsDouble();  // or .convertToFloat()
+          val.value = floatAttr.getValueAsDouble();
         } else if (auto intAttr = llvm::dyn_cast<mlir::IntegerAttr>(attr)) {
-          val = static_cast<float>(intAttr.getInt()); // interpret integer as float
+          val.value = static_cast<float>(intAttr.getInt());
         } else {
           llvm::errs() << "Unsupported constant type in arith.constant\n";
           return 1;
         }
       
         valueMap[constOp.getResult()] = val;
-      } else if (auto movOp = dyn_cast<neura::MovOp>(op)) {
+      } else if (auto constOp = dyn_cast<neura::ConstantOp>(op)) {
+        auto attr = constOp.getValue();
+        // Initializes PredicatedData with default values.
+        PredicatedData val{0.0f, true};
+      
+        // Handles value attribute.
+        if (auto floatAttr = llvm::dyn_cast<mlir::FloatAttr>(attr)) {
+            val.value = floatAttr.getValueAsDouble();
+        } else if (auto intAttr = llvm::dyn_cast<mlir::IntegerAttr>(attr)) {
+            val.value = static_cast<float>(intAttr.getInt());
+        } else {
+            llvm::errs() << "Unsupported constant type in neura.constant\n";
+            return 1;
+        }
+
+        // Tries getting predicate attribute.
+        if (auto predAttr = constOp->getAttrOfType<BoolAttr>("predicate")) {
+            val.predicate = predAttr.getValue();
+        }
+        
+        valueMap[constOp.getResult()] = val;
+
+      } else if (auto movOp = dyn_cast<neura::DataMovOp>(op)) {
         valueMap[movOp.getResult()] = valueMap[movOp.getOperand()];
+
       } else if (auto faddOp = dyn_cast<neura::FAddOp>(op)) {
-        float lhs = valueMap[faddOp.getLhs()];
-        float rhs = valueMap[faddOp.getRhs()];
-        valueMap[faddOp.getResult()] = lhs + rhs;
+        auto lhs = valueMap[faddOp.getLhs()];
+        auto rhs = valueMap[faddOp.getRhs()];
+        
+        // Always performs addition, but combines predicate.
+        PredicatedData result;
+        result.value = lhs.value + rhs.value;
+        result.predicate = lhs.predicate && rhs.predicate;
+        
+        valueMap[faddOp.getResult()] = result;
       } else if (auto fsubOp = dyn_cast<neura::FSubOp>(op)) {
-        float lhs = valueMap[fsubOp.getLhs()];
-        float rhs = valueMap[fsubOp.getRhs()];
-        valueMap[fsubOp.getResult()] = lhs - rhs;
+        auto lhs = valueMap[fsubOp.getLhs()];
+        auto rhs = valueMap[fsubOp.getRhs()];
+
+        // Always performs addition, but combines predicate.
+        PredicatedData result;
+        result.value = lhs.value - rhs.value;
+        result.predicate = lhs.predicate && rhs.predicate;
+        valueMap[fsubOp.getResult()] = result;
       } else if (auto retOp = dyn_cast<func::ReturnOp>(op)) {
-        float result = valueMap[retOp.getOperand(0)];
-        llvm::outs() << "[neura-interpreter] Output: " << llvm::format("%.6f", result) << "\n";
+        auto result = valueMap[retOp.getOperand(0)];
+        llvm::outs() << "[neura-interpreter] Output: " << llvm::format("%.6f", result.value);
+        if (!result.predicate) {
+          llvm::outs() << " (predicate=false)";
+        }
+        llvm::outs() << "\n";
       } else {
         llvm::errs() << "Unhandled op: ";
         op.print(llvm::errs());

@@ -10,7 +10,10 @@ set(LIBS
         MLIRTransforms
         MLIROptLib
         MLIRPass
-        MLIRIR MLIRParser MLIRSupport
+        MLIRIR
+        MLIRParser
+        MLIRSupport
+        MLIRInferTypeOpInterface
         )
 
 target_link_libraries(neura-interpreter PRIVATE ${LIBS})
