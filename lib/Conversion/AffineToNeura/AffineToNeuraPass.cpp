@@ -50,13 +50,15 @@ struct AffineLoadLowering : public OpRewritePattern<affine::AffineLoadOp> {
     }
 
     for (AffineExpr expr : map.getResults()) {
-      if (auto constExpr = expr.dyn_cast<AffineConstantExpr>()) {
+      if (expr.isa<AffineConstantExpr>()) {
+        auto constExpr = expr.cast<AffineConstantExpr>();
         auto indexType = rewriter.getIndexType();
         auto valueAttr =
             rewriter.getIntegerAttr(indexType, constExpr.getValue());
         newIndices.push_back(rewriter.create<neura::ConstantOp>(
             loc, indexType, valueAttr, nullptr));
-      } else if (auto dimExpr = expr.dyn_cast<AffineDimExpr>()) {
+      } else if (expr.isa<AffineDimExpr>()) {
+        auto dimExpr = expr.cast<AffineDimExpr>();
         if (dimExpr.getPosition() >= map.getNumDims() ||
             dimExpr.getPosition() >=
                 mapOperands
@@ -65,7 +67,8 @@ struct AffineLoadLowering : public OpRewritePattern<affine::AffineLoadOp> {
               "affine map dimension out of bounds for map operands");
         }
         newIndices.push_back(mapOperands[dimExpr.getPosition()]);
-      } else if (auto symExpr = expr.dyn_cast<AffineSymbolExpr>()) {
+      } else if (expr.isa<AffineSymbolExpr>()) {
+        auto symExpr = expr.cast<AffineSymbolExpr>();
         unsigned symbolOperandIndex = map.getNumDims() + symExpr.getPosition();
         if (symbolOperandIndex >= mapOperands.size()) {
           return loadOp.emitError(
@@ -86,7 +89,7 @@ struct AffineLoadLowering : public OpRewritePattern<affine::AffineLoadOp> {
       }
     }
 
-    auto memRefType = memref.getType().dyn_cast<MemRefType>();
+    auto memRefType = memref.getType().cast<MemRefType>();
     if (!memRefType) {
       return loadOp.emitError("base of load is not a MemRefType");
     }
@@ -119,20 +122,23 @@ struct AffineStoreLowering : public OpRewritePattern<affine::AffineStoreOp> {
     newIndices.reserve(map.getNumResults());
 
     for (AffineExpr expr : map.getResults()) {
-      if (auto constExpr = expr.dyn_cast<AffineConstantExpr>()) {
+      if (expr.isa<AffineConstantExpr>()) {
+        auto constExpr = expr.cast<AffineConstantExpr>();
         auto indexType = rewriter.getIndexType();
         auto valueAttr =
             rewriter.getIntegerAttr(indexType, constExpr.getValue());
         newIndices.push_back(rewriter.create<neura::ConstantOp>(
             loc, indexType, valueAttr, nullptr));
-      } else if (auto dimExpr = expr.dyn_cast<AffineDimExpr>()) {
+      } else if (expr.isa<AffineDimExpr>()) {
+        auto dimExpr = expr.cast<AffineDimExpr>();
         if (dimExpr.getPosition() >= map.getNumDims() ||
             dimExpr.getPosition() >= mapOperands.size()) {
           return storeOp.emitError(
               "affine map dimension out of bounds for map operands");
         }
         newIndices.push_back(mapOperands[dimExpr.getPosition()]);
-      } else if (auto symExpr = expr.dyn_cast<AffineSymbolExpr>()) {
+      } else if (expr.isa<AffineSymbolExpr>()) {
+        auto symExpr = expr.cast<AffineSymbolExpr>();
         unsigned symbolOperandIndex = map.getNumDims() + symExpr.getPosition();
         if (symbolOperandIndex >= mapOperands.size()) {
           return storeOp.emitError(
@@ -150,7 +156,7 @@ struct AffineStoreLowering : public OpRewritePattern<affine::AffineStoreOp> {
       }
     }
 
-    auto memRefType = memref.getType().dyn_cast<MemRefType>();
+    auto memRefType = memref.getType().cast<MemRefType>();
     if (!memRefType) {
       return storeOp.emitError("base of store is not a MemRefType");
     }
@@ -290,10 +296,13 @@ struct AffineApplyLowering : public OpRewritePattern<affine::AffineApplyOp> {
 
     AffineExpr expr = map.getResult(0);
     // d0 + cst
-    if (auto binExpr = expr.dyn_cast<AffineBinaryOpExpr>()) {
+    if (expr.isa<AffineBinaryOpExpr>()) {
+      auto binExpr = expr.cast<AffineBinaryOpExpr>();
       if (binExpr.getKind() == AffineExprKind::Add) {
-        if (auto dim = binExpr.getLHS().dyn_cast<AffineDimExpr>()) {
-          if (auto cst = binExpr.getRHS().dyn_cast<AffineConstantExpr>()) {
+        if (binExpr.getLHS().isa<AffineDimExpr>()) {
+          auto dim = binExpr.getLHS().cast<AffineDimExpr>();
+          if (binExpr.getRHS().isa<AffineConstantExpr>()) {
+            auto cst = binExpr.getRHS().cast<AffineConstantExpr>();
             auto cstVal = rewriter.create<neura::ConstantOp>(
                 loc, rewriter.getIndexType(),
                 rewriter.getIntegerAttr(rewriter.getIndexType(),
@@ -311,9 +320,9 @@ struct AffineApplyLowering : public OpRewritePattern<affine::AffineApplyOp> {
 
     // You can add more cases here for different affine expressions
     // For now, we will just emit an error for unsupported expressions.
-    return applyOp.emitError("Unsupported affine expression in AffineApplyOp: ")
-           << expr
-           << ". Only simple affine expressions like d0 + cst are supported.";
+    return applyOp.emitError(
+               "Unsupported complex affine expression in AffineApplyOp.\n")
+           << "Only simple affine expressions like d0 + cst are supported.\n";
   }
 };
 
