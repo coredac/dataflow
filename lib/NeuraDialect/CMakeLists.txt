@@ -18,6 +18,7 @@ add_public_tablegen_target(MLIRNeuraDialectIncGen)
 add_mlir_dialect_library(MLIRNeura
         Neura.cpp
         NeuraTypes.cpp
+        NeuraPasses.cpp
 
         ADDITIONAL_HEADER_DIRS
         ${PROJECT_SOURCE_DIR}/include/NeuraDialect
