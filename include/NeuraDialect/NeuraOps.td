@@ -11,7 +11,7 @@ def Neura_ConstantOp : Op<NeuraDialect, "constant"> {
     OptionalAttr<BoolAttr>:$predicate  // Add optional predicate attribute
   );
   let results = (outs AnyType:$result);
-  // let assemblyFormat = "attr-dict `:` type($result)";
+  let assemblyFormat = "attr-dict `:` type($result)";
 }
 
 // Defines an addition operation.

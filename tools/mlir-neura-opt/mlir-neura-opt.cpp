@@ -3,6 +3,7 @@
 #include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/InitAllDialects.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/InitAllPasses.h"
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Support/LogicalResult.h"
@@ -20,6 +21,8 @@ int main(int argc, char **argv) {
   registry.insert<mlir::arith::ArithDialect>();
   registry.insert<mlir::DLTIDialect>();
   registry.insert<mlir::LLVM::LLVMDialect>();
+  registry.insert<mlir::affine::AffineDialect>();
+  registry.insert<mlir::memref::MemRefDialect>();
 
   mlir::neura::registerPasses();
   mlir::registerPasses();

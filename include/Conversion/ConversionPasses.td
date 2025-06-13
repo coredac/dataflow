@@ -20,4 +20,10 @@ def LowerLlvmToNeura : Pass<"lower-llvm-to-neura", "ModuleOp">{
   let constructor = "mlir::createLowerLlvmToNeuraPass()";
 }
 
+def LowerAffineToNeura : Pass<"lower-affine-to-neura", "FuncOp">{
+  let summary = "Lower affine to Neura dialect";
+  let description = [{Lower affine dialect operations to Neura dialect operations.}];
+  let constructor = "mlir::createLowerAffineToNeuraPass()";
+}
+
 #endif // CONVERSION_PASSES_TD

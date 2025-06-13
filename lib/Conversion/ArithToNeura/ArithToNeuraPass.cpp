@@ -24,7 +24,7 @@ using namespace mlir::func;
 using namespace mlir::neura;
 
 #define GEN_PASS_DEF_LOWERARITHTONEURA
-#include "NeuraDialect/NeuraPasses.h.inc"
+#include "Conversion/ConversionPasses.h.inc"
 
 namespace{
 
