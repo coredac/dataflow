@@ -1,6 +1,7 @@
 // NeuraOps.td - Custom operation definitions.
 
 include "NeuraDialect/NeuraDialect.td"
+include "mlir/IR/CommonTypeConstraints.td"
 
 // ----------------------------------------------------
 // Defines basic scalar operations.
@@ -18,8 +19,8 @@ def Neura_ConstantOp : Op<NeuraDialect, "constant"> {
 def Neura_AddOp : Op<NeuraDialect, "add"> {
   let summary = "Integer addition operation";
   let opName = "add";
-  let arguments = (ins AnyInteger:$lhs, AnyInteger:$rhs, Optional<AnyType>:$predicate);
-  let results = (outs AnyInteger:$result);
+  let arguments = (ins SignlessIntegerLike:$lhs, SignlessIntegerLike:$rhs, Optional<AnyType>:$predicate);
+  let results = (outs SignlessIntegerLike:$result);
   // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
   let traits = [SameOperandsAndResultElementType];
 }

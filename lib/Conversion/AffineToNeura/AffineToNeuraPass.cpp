@@ -3,6 +3,7 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/IRMapping.h"
@@ -275,6 +276,47 @@ struct AffineForLowering : public OpRewritePattern<affine::AffineForOp> {
   }
 };
 
+struct AffineApplyLowering : public OpRewritePattern<affine::AffineApplyOp> {
+  using OpRewritePattern<affine::AffineApplyOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(affine::AffineApplyOp applyOp,
+                                PatternRewriter &rewriter) const override {
+    AffineMap map = applyOp.getAffineMap();
+    ValueRange operands = applyOp.getMapOperands();
+    auto loc = applyOp.getLoc();
+
+    if (map.getNumResults() != 1) {
+      return applyOp.emitError("AffineApplyOp must have a single result");
+    }
+
+    AffineExpr expr = map.getResult(0);
+    // d0 + cst
+    if (auto binExpr = expr.dyn_cast<AffineBinaryOpExpr>()) {
+      if (binExpr.getKind() == AffineExprKind::Add) {
+        if (auto dim = binExpr.getLHS().dyn_cast<AffineDimExpr>()) {
+          if (auto cst = binExpr.getRHS().dyn_cast<AffineConstantExpr>()) {
+            auto cstVal = rewriter.create<neura::ConstantOp>(
+                loc, rewriter.getIndexType(),
+                rewriter.getIntegerAttr(rewriter.getIndexType(),
+                                        cst.getValue()),
+                nullptr);
+            auto addOp = rewriter.create<neura::AddOp>(
+                loc, cstVal.getType(), operands[dim.getPosition()], cstVal,
+                nullptr);
+            rewriter.replaceOp(applyOp, addOp.getResult());
+            return success();
+          }
+        }
+      }
+    }
+
+    // You can add more cases here for different affine expressions
+    // For now, we will just emit an error for unsupported expressions.
+    return applyOp.emitError("Unsupported affine expression in AffineApplyOp: ")
+           << expr
+           << ". Only simple affine expressions like d0 + cst are supported.";
+  }
+};
+
 struct LowerAffineToNeuraPass
     : public PassWrapper<LowerAffineToNeuraPass, OperationPass<func::FuncOp>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LowerAffineToNeuraPass)
@@ -293,18 +335,12 @@ struct LowerAffineToNeuraPass
     FuncOp funcOp = getOperation();
     MLIRContext *context = funcOp.getContext();
 
-    // ConversionTarget target(*context);
-    // target.addIllegalOp<affine::AffineLoadOp, affine::AffineStoreOp, affine::AffineForOp>();
-    // target.addLegalDialect<neura::NeuraDialect, arith::ArithDialect,
-    //                        memref::MemRefDialect, affine::AffineDialect,
-    //                        func::FuncDialect>();
-
     RewritePatternSet patterns(context);
-    patterns.add<AffineLoadLowering, AffineStoreLowering, AffineForLowering>(
-        context);
+    patterns.add<AffineLoadLowering, AffineStoreLowering, AffineForLowering,
+                 AffineApplyLowering>(context);
 
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
-                                      std::move(patterns)))) {
+                                            std::move(patterns)))) {
       funcOp.emitError("Failed to lower affine operations to Neura dialect");
       signalPassFailure();
     }
