@@ -19,6 +19,7 @@ namespace mlir {
 // Conversion passes.
 std::unique_ptr<mlir::Pass> createLowerArithToNeuraPass();
 std::unique_ptr<mlir::Pass> createLowerLlvmToNeuraPass();
+std::unique_ptr<mlir::Pass> createLowerAffineToNeuraPass();
 
 #define GEN_PASS_REGISTRATION
 #include "Conversion/ConversionPasses.h.inc"

@@ -36,18 +36,27 @@ def InsertCtrlMov : Pass<"insert-ctrl-mov", "ModuleOp"> {
 
 def TransformCtrlToDataFlow : Pass<"transform-ctrl-to-data-flow", "ModuleOp"> {
   let summary = "Inserts ctrl move operations in the Neura dialect";
-  let description =
-      [{Transform ctrl to predicate-based data flow.}];
+  let description = [{Transform ctrl to predicate - based data flow.}];
   let constructor = "neura::createTransformCtrlToDataFlowPass()";
 }
 
 def LeveragePredicatedValue : Pass<"leverage-predicated-value", "ModuleOp"> {
   let summary = "Convert values to predicated values in Neura dialect";
-  let description = [{
-    This pass converts regular values to predicated values in Neura dialect operations.
-    Each value is wrapped in a predicated value type with a default true predicate.
-  }];
+  let description = [{This pass converts regular values to predicated values in
+                          Neura dialect operations
+                              .Each value is wrapped in a predicated value type
+                                  with a default true predicate.}];
   let constructor = "neura::createLeveragePredicatedValuePass()";
 }
+
+//=========================================================//
+// Passes for the CGRA Mapping
+//=========================================================//
+// def GenerateDFG : Pass<"generate-dfg", "ModuleOp"> {
+//   let summary = "Generates a Data Flow Graph (DFG) for the Neura dialect";
+//   let description =
+//       [{This pass generates a DFG from the Neura dialect operations.}];
+//   let constructor = "neura::createGenerateDFGPass()";
+// }
 
 #endif // NEURA_PASSES_TD
