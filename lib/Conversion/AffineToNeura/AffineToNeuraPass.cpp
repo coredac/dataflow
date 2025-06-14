@@ -327,7 +327,7 @@ struct AffineApplyLowering : public OpRewritePattern<affine::AffineApplyOp> {
 };
 
 struct LowerAffineToNeuraPass
-    : public PassWrapper<LowerAffineToNeuraPass, OperationPass<func::FuncOp>> {
+    : public PassWrapper<LowerAffineToNeuraPass, OperationPass<ModuleOp>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LowerAffineToNeuraPass)
 
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -341,8 +341,8 @@ struct LowerAffineToNeuraPass
   }
 
   void runOnOperation() override {
-    FuncOp funcOp = getOperation();
-    MLIRContext *context = funcOp.getContext();
+    ModuleOp moduleOp = getOperation();
+    MLIRContext *context = moduleOp.getContext();
 
     RewritePatternSet patterns(context);
     patterns.add<AffineLoadLowering, AffineStoreLowering, AffineForLowering,
@@ -350,7 +350,7 @@ struct LowerAffineToNeuraPass
 
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {
-      funcOp.emitError("Failed to lower affine operations to Neura dialect");
+      moduleOp.emitError("Failed to lower affine operations to Neura dialect");
       signalPassFailure();
     }
   }

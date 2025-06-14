@@ -44,7 +44,7 @@ struct ArithFAddToNeuraFAdd : public OpRewritePattern<mlir::arith::AddFOp> {
 };
 
 struct LowerArithToNeuraPass
-    : public PassWrapper<LowerArithToNeuraPass, OperationPass<func::FuncOp>> {
+    : public PassWrapper<LowerArithToNeuraPass, OperationPass<ModuleOp>> {
 
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LowerArithToNeuraPass)
 
