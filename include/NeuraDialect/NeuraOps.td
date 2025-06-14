@@ -320,12 +320,12 @@ def Neura_LoopControlOp: Op<NeuraDialect, "loop_control", [Terminator]>{
                    Index:$step,
                    Index:$bound, 
                    DefaultValuedAttr<StrAttr, "\"lt\"">:$loop_type, // Loop type: "lt", "le", "gt", "ge", "eq", "ne"
-                   Variadic<AnyType>:$passthrough_args // Additional arguments to pass through to the successors
+                   Variadic<AnyType>:$body_args // Additional arguments to pass through to the successors
                    );
   let results = (outs);
   let successors = (successor
                     AnySuccessor:$body, // loop body successors
                     AnySuccessor:$exit // exit successors
                     );
-  let assemblyFormat = "`current_index` `:` $current_index `,` `step` `:` $step `,` `bound` `:` $bound `,` `loop_type` `:` $loop_type (`passthrough` `(` $passthrough_args^ `:` type($passthrough_args) `)`)? `then` $body `else` $exit attr-dict";
+  let assemblyFormat = "`current_index` `:` $current_index `,` `step` `:` $step `,` `bound` `:` $bound `,` `loop_type` `:` $loop_type `then` $body(`(`$body_args^ `:` type($body_args)`)`)? `else` $exit attr-dict";
 }

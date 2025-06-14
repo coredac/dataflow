@@ -13,7 +13,7 @@
 namespace mlir {
 namespace neura {
 
-
+void registerNeuraLegalizePassPipeline();
     
 // Passes defined in GraphPasses.td
 #define GEN_PASS_DECL
@@ -27,7 +27,7 @@ std::unique_ptr<mlir::Pass> createTransformCtrlToDataFlowPass();
 std::unique_ptr<mlir::Pass> createLeveragePredicatedValuePass();
 
 // Passes used for neura compiler
-std::unique_ptr<mlir::Pass> createGenerateDFGPass();
+// std::unique_ptr<mlir::Pass> createGenerateDFGPass();
 
 #define GEN_PASS_REGISTRATION
 #include "NeuraDialect/NeuraPasses.h.inc"

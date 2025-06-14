@@ -245,11 +245,15 @@ struct AffineForLowering : public OpRewritePattern<affine::AffineForOp> {
 
     // 4. header: loop_control
     rewriter.setInsertionPointToEnd(headerBlock);
+    SmallVector<Value, 4> bodyArgs;
+    bodyArgs.push_back(headerBlock->getArgument(0)); // current index
+    // You can add more arguments if needed
+
     rewriter.create<neura::LoopControlOp>(
         loc,
         headerBlock->getArgument(0), // current index
         stepVal, upperBoundVal, rewriter.getStringAttr("lt"),
-        ValueRange{}, // passthrough
+        bodyArgs, // passthrough
         bodyBlock, exitBlock);
 
     // 5. body: clone forOp body, mapping index
