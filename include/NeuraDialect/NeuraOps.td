@@ -19,8 +19,8 @@ def Neura_ConstantOp : Op<NeuraDialect, "constant"> {
 def Neura_AddOp : Op<NeuraDialect, "add"> {
   let summary = "Integer addition operation";
   let opName = "add";
-  let arguments = (ins SignlessIntegerLike:$lhs, SignlessIntegerLike:$rhs, Optional<AnyType>:$predicate);
-  let results = (outs SignlessIntegerLike:$result);
+  let arguments = (ins AnyType:$lhs, AnyType:$rhs, Optional<AnyType>:$predicate);
+  let results = (outs AnyType:$result);
   // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
   let traits = [SameOperandsAndResultElementType];
 }
