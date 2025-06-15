@@ -28,6 +28,20 @@ using namespace mlir::neura;
 
 namespace{
 
+struct ArithFMulToNeuraFMul : public OpRewritePattern<mlir::arith::MulFOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(arith::MulFOp op,
+                                PatternRewriter &rewriter) const override {
+    Value lhs = op.getLhs();
+    Value rhs = op.getRhs();
+    Type resultType = op.getType();
+
+    rewriter.replaceOpWithNewOp<neura::FMulOp>(op, resultType, lhs, rhs, Value());
+    return success();
+  }
+};
+
 struct LowerArithToNeuraPass
     : public PassWrapper<LowerArithToNeuraPass, OperationPass<func::FuncOp>> {
 
@@ -44,6 +58,7 @@ struct LowerArithToNeuraPass
 
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
+    patterns.add<ArithFMulToNeuraFMul>(&getContext());
     mlir::neura::arith2neura::populateWithGenerated(patterns);
     if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns)))) {
       signalPassFailure();
