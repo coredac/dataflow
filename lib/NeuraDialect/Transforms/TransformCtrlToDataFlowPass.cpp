@@ -49,7 +49,7 @@ void createPhiNodesForBlock(Block *block, OpBuilder &builder,
             break;
           }
         }
-        assert(found_in_block_argument && "Live-in value defined outside the block must be passed as a block argument");
+        // assert(found_in_block_argument && "Live-in value defined outside the block must be passed as a block argument");
         live_ins.push_back(operand);
       }
 
@@ -75,49 +75,59 @@ void createPhiNodesForBlock(Block *block, OpBuilder &builder,
                   block->front().getLoc();
 
     SmallVector<Value> phi_operands;
+    BlockArgument arg = dyn_cast<BlockArgument>(live_in);
+    // Handles the case where live_in is not a block argument.
+    if (!arg) {
+      phi_operands.push_back(live_in);
+    } else {
+      // Finds index of live_in in block arguments.
+      unsigned arg_index = arg.getArgNumber();
+      for (Block *pred : block->getPredecessors()) {
+        Value incoming;
+        Operation *term = pred->getTerminator();
 
-    // Finds index of live_in in block arguments.
-    auto arg = dyn_cast<BlockArgument>(live_in);
-    assert(arg && "Expected live_in to be a block argument");
-    unsigned arg_index = arg.getArgNumber();
-
-    for (Block *pred : block->getPredecessors()) {
-      Value incoming;
-      Operation *term = pred->getTerminator();
-
-      // If it's a branch or cond_br, get the value passed into this block argument
-      if (auto br = dyn_cast<neura::Br>(term)) {
-        auto args = br.getArgs();
-        assert(arg_index < args.size());
-        incoming = args[arg_index];
-      } else if (auto condBr = dyn_cast<neura::CondBr>(term)) {
-        if (condBr.getTrueDest() == block) {
-          auto trueArgs = condBr.getTrueArgs();
-          assert(arg_index < trueArgs.size());
-          incoming = trueArgs[arg_index];
-        } else if (condBr.getFalseDest() == block) {
-          auto falseArgs = condBr.getFalseArgs();
-          assert(arg_index < falseArgs.size());
-          incoming = falseArgs[arg_index];
+        // If it's a branch or cond_br, get the value passed into this block argument
+        if (auto br = dyn_cast<neura::Br>(term)) {
+          auto args = br.getArgs();
+          assert(arg_index < args.size());
+          incoming = args[arg_index];
+        } else if (auto condBr = dyn_cast<neura::CondBr>(term)) {
+          if (condBr.getTrueDest() == block) {
+            auto trueArgs = condBr.getTrueArgs();
+            assert(arg_index < trueArgs.size());
+            incoming = trueArgs[arg_index];
+          } else if (condBr.getFalseDest() == block) {
+            auto falseArgs = condBr.getFalseArgs();
+            assert(arg_index < falseArgs.size());
+            incoming = falseArgs[arg_index];
+          } else {
+            llvm::errs() << "cond_br does not target block:\n" << *block << "\n";
+            continue;
+          }
         } else {
-          llvm::errs() << "cond_br does not target block:\n" << *block << "\n";
+          llvm::errs() << "Unknown branch terminator in block: " << *pred << "\n";
           continue;
         }
-      } else {
-        llvm::errs() << "Unknown branch terminator in block: " << *pred << "\n";
-        continue;
+        phi_operands.push_back(incoming);
       }
-      phi_operands.push_back(incoming);
     }
 
-    // Use default value if no incoming values found
     assert(!phi_operands.empty());
 
-    // Create the phi node with dynamic number of operands
+    // Creates the phi node with dynamic number of operands.
     auto phi_op = builder.create<neura::PhiOp>(loc, predicated_type, phi_operands);
 
-    // Replace block argument use with the phi result
-    arg.replaceAllUsesWith(phi_op.getResult());
+    // Saves users to be replaced *after* phi is constructed.
+    SmallVector<OpOperand *> uses_to_be_replaced;
+    for (OpOperand &use : live_in.getUses()) {
+      if (use.getOwner() != phi_op) {
+        uses_to_be_replaced.push_back(&use);
+      }
+    }
+    // Replaces block argument use with the phi result.
+    for (OpOperand *use : uses_to_be_replaced) {
+      use->set(phi_op.getResult());
+    }
     value_map[live_in] = phi_op.getResult();
   }
 }
