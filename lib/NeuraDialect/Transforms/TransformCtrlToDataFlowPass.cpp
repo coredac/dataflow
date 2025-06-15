@@ -49,7 +49,6 @@ void createPhiNodesForBlock(Block *block, OpBuilder &builder,
             break;
           }
         }
-        // assert(found_in_block_argument && "Live-in value defined outside the block must be passed as a block argument");
         live_ins.push_back(operand);
       }
 
