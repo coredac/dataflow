@@ -113,6 +113,39 @@ void createPhiNodesForBlock(Block *block, OpBuilder &builder,
 
     assert(!phi_operands.empty());
 
+    // Puts all operands into a set to ensure uniqueness. Specifically, following
+    // case is handled:
+    // ---------------------------------------------------------
+    // ^bb1:
+    //   "neura.br"(%a)[^bb3] : (!neura.data<f32, i1>) -> ()
+    //
+    // ^bb2:
+    //   "neura.br"(%a)[^bb3] : (!neura.data<f32, i1>) -> ()
+    //
+    // ^bb3(%x: !neura.data<f32, i1>):
+    //   ...
+    // ---------------------------------------------------------
+    // In above case, %a is used in both branches of the control flow, so we
+    // don't need a phi node, but we still need to replace its uses with the
+    // result of the phi node.
+    // This ensures that we only create a phi node if there are multiple unique
+    // operands.
+    llvm::SmallDenseSet<Value, 4> unique_operands(phi_operands.begin(), phi_operands.end());
+
+    if (unique_operands.size() == 1) {
+      // No phi needed, but still replace
+      Value single = *unique_operands.begin();
+      SmallVector<OpOperand *, 4> uses;
+      for (OpOperand &use : live_in.getUses()) {
+        uses.push_back(&use);
+      }
+      for (OpOperand *use : uses) {
+        use->set(single);
+      }
+      value_map[live_in] = single;
+      continue;
+    }
+
     // Creates the phi node with dynamic number of operands.
     auto phi_op = builder.create<neura::PhiOp>(loc, predicated_type, phi_operands);
 
