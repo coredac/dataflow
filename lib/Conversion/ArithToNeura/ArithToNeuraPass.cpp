@@ -28,9 +28,6 @@ using namespace mlir::neura;
 
 namespace{
 
-
-
-
 struct ArithFMulToNeuraFMul : public OpRewritePattern<mlir::arith::MulFOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -44,7 +41,6 @@ struct ArithFMulToNeuraFMul : public OpRewritePattern<mlir::arith::MulFOp> {
     return success();
   }
 };
-
 
 struct LowerArithToNeuraPass
     : public PassWrapper<LowerArithToNeuraPass, OperationPass<func::FuncOp>> {
