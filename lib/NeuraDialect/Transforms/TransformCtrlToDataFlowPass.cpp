@@ -123,7 +123,7 @@ void createPhiNodesForBlock(Block *block, OpBuilder &builder,
         uses_to_be_replaced.push_back(&use);
       }
     }
-    // Replaces block argument use with the phi result.
+    // Replaces live-in uses with the phi result.
     for (OpOperand *use : uses_to_be_replaced) {
       use->set(phi_op.getResult());
     }
