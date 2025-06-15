@@ -28,7 +28,8 @@ void getBlocksInPostOrder(Block *startBlock, SmallVectorImpl<Block *> &postOrder
 
 // Creates phi nodes for all live-in values in the given block.
 void createPhiNodesForBlock(Block *block, OpBuilder &builder,
-                            DenseMap<Value, Value> &value_map) {
+                            DenseMap<Value, Value> &value_map,
+                            SmallVectorImpl<std::tuple<Value, Value, Block *>> &deferred_ctrl_movs) {
   if (block->hasNoPredecessors()) {
     // Skips phi insertion for entry block.
     return;
@@ -41,17 +42,9 @@ void createPhiNodesForBlock(Block *block, OpBuilder &builder,
       // Identifies operands defined in other blocks.
       if (operand.getDefiningOp() &&
           operand.getDefiningOp()->getBlock() != block) {
-        // Checks if the live-in is a block argument. SSA form forces this rule.
-        bool found_in_block_argument = false;
-        for (BlockArgument arg : block->getArguments()) {
-          if (arg == operand) {
-            found_in_block_argument = true;
-            break;
-          }
-        }
         live_ins.push_back(operand);
+        continue;
       }
-
       // Collects all block arguments.
       if (auto blockArg = llvm::dyn_cast<BlockArgument>(operand)) {
         live_ins.push_back(operand);
@@ -107,7 +100,19 @@ void createPhiNodesForBlock(Block *block, OpBuilder &builder,
           llvm::errs() << "Unknown branch terminator in block: " << *pred << "\n";
           continue;
         }
-        phi_operands.push_back(incoming);
+
+        // If the incoming value is defined in the same block, inserts a `neura.reserve`
+        // and defer a backward ctrl move.
+        if (incoming.getDefiningOp() && incoming.getDefiningOp()->getBlock() == block) {
+          builder.setInsertionPointToStart(block);
+          auto placeholder = builder.create<neura::ReserveOp>(loc, incoming.getType());
+          phi_operands.push_back(placeholder.getResult());
+          // Defers the backward ctrl move operation to be inserted after all phi operands
+          // are defined. Inserted: (real_defined_value, just_created_reserve, current_block).
+          deferred_ctrl_movs.emplace_back(incoming, placeholder.getResult(), block);
+        } else {
+          phi_operands.push_back(incoming);
+        }
       }
     }
 
@@ -181,6 +186,13 @@ struct TransformCtrlToDataFlowPass
   void runOnOperation() override {
     ModuleOp module = getOperation();
 
+    // Declares a vector to hold deferred backward ctrl move operations.
+    // This is useful when a live-in value is defined within the same block.
+    // The tuple contains:
+    // - real value (the one that is defined in the same block, after the placeholder)
+    // - placeholder value (the one that will be used in the phi node)
+    // - block where the backward ctrl move should be inserted
+    SmallVector<std::tuple<Value, Value, Block *>, 4> deferred_ctrl_movs;
     module.walk([&](func::FuncOp func) {
       // Get blocks in post-order
       SmallVector<Block *> postOrder;
@@ -194,7 +206,7 @@ struct TransformCtrlToDataFlowPass
       // Process blocks bottom-up
       for (Block *block : postOrder) {
         // Creates phi nodes for live-ins.
-        createPhiNodesForBlock(block, builder, value_map);
+        createPhiNodesForBlock(block, builder, value_map, deferred_ctrl_movs);
       }
 
       // Flattens blocks into the entry block.
@@ -234,6 +246,15 @@ struct TransformCtrlToDataFlowPass
         block->erase();
       }
     });
+
+    // Inserts the deferred backward ctrl move operations after phi operands
+    // are defined.
+    for (auto &[realVal, placeholder, block] : deferred_ctrl_movs) {
+      Operation *defOp = realVal.getDefiningOp();
+      assert(defOp && "Backward ctrl move's source must be an op result");
+      OpBuilder movBuilder(defOp->getBlock(), ++Block::iterator(defOp));
+      movBuilder.create<neura::CtrlMovOp>(defOp->getLoc(), realVal, placeholder);
+    }
   }
 };
 } // namespace
