@@ -133,8 +133,8 @@ def Neura_SelOp : Op<NeuraDialect, "sel"> {
 }
 
 def Neura_NotOp : Op<NeuraDialect, "not"> {
-  let arguments = (ins I1:$input);
-  let results = (outs I1:$output);
+  let arguments = (ins AnyType:$input);
+  let results = (outs AnyType:$output);
   // let assemblyFormat = "$input attr-dict `:` type($output)";
 }
 
@@ -252,4 +252,36 @@ def Neura_ReserveOp : Op<NeuraDialect, "reserve"> {
   let arguments = (ins);
   let results = (outs AnyType:$result);
   let assemblyFormat = "attr-dict `:` type($result)";
+}
+
+def Neura_GrantPredicateOp : Op<NeuraDialect, "grant_predicate"> {
+  let summary = "Grants a new predicate to a predicated value.";
+  let description = [{
+    Takes a predicated value and a predicate (i1), producing a new predicated
+    value whose predicate bit is set to the given condition.
+    
+    Example:
+      %g = neura.grant_predicate %val, %pred : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
+  }];
+
+  let arguments = (ins AnyType:$value, AnyType:$predicate);
+  let results = (outs AnyType:$result);
+
+  let assemblyFormat = "$value `,` $predicate attr-dict `:` type($value) `,` type($predicate) `->` type($result)";
+}
+
+def Neura_GrantOnceOp : Op<NeuraDialect, "grant_once"> {
+  let summary = "Marks a value as valid once.";
+  let description = [{
+    Grants a value a one-time predicate: the resulting value is considered valid
+    only during its first activation. Used to initialize recurrence cycles.
+    
+    Example:
+      %v = neura.grant_once %init : !neura.data<f32, i1> -> !neura.data<f32, i1>
+  }];
+
+  let arguments = (ins AnyType:$value);
+  let results = (outs AnyType:$result);
+
+  // let assemblyFormat = "$value attr-dict `:` type($value) `->` type($result)";
 }
