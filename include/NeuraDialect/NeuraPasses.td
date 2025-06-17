@@ -50,4 +50,12 @@ def LeveragePredicatedValue : Pass<"leverage-predicated-value", "ModuleOp"> {
   let constructor = "neura::createLeveragePredicatedValuePass()";
 }
 
+def MapToAccelerator : Pass<"map-to-accelerator", "ModuleOp"> {
+  let summary = "Map Neura operations onto a given accelerator";
+  let description = [{
+    This pass performs mapping from Neura operations to accelerator.
+  }];
+  let constructor = "neura::createMapToAcceleratorPass()";
+}
+
 #endif // NEURA_PASSES_TD
