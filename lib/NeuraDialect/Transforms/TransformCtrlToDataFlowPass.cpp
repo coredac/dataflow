@@ -12,6 +12,48 @@ using namespace mlir;
 #define GEN_PASS_DEF_TransformCtrlToDataFlow
 #include "NeuraDialect/NeuraPasses.h.inc"
 
+// Inserts `grant_once` for every predicated value defined in the entry block
+// that is used outside of the block (i.e., a live-out).
+void insertGrantOnceInEntryBlock(Block *entry_block, OpBuilder &builder,
+                                 DenseMap<Value, Value> &granted_once_map) {
+  SmallVector<Value> live_out_values;
+
+  // Step 1: Collects all live-out values first.
+  for (Operation &op : *entry_block) {
+    for (Value result : op.getResults()) {
+      if (!isa<neura::PredicatedValue>(result.getType()))
+        continue;
+
+      bool is_live_out = llvm::any_of(result.getUses(), [&](OpOperand &use) {
+        Operation *user = use.getOwner();
+        return user->getBlock() != entry_block || isa<neura::Br, neura::CondBr>(user);
+      });
+
+      if (is_live_out && !granted_once_map.contains(result))
+        live_out_values.push_back(result);
+    }
+  }
+
+  // Step 2: Inserts grant_once for each candidate.
+  for (Value val : live_out_values) {
+    Operation *def_op = val.getDefiningOp();
+    if (!def_op)
+      continue;
+
+    builder.setInsertionPointAfter(def_op);
+    auto granted = builder.create<neura::GrantOnceOp>(def_op->getLoc(), val.getType(), val);
+    granted_once_map[val] = granted.getResult();
+
+    // Replaces external uses with granted result.
+    for (OpOperand &use : llvm::make_early_inc_range(val.getUses())) {
+      Operation *user = use.getOwner();
+      if (user->getBlock() != entry_block || isa<neura::Br, neura::CondBr>(user)) {
+        use.set(granted.getResult());
+      }
+    }
+  }
+}
+
 // Returns blocks in post-order traversal order.
 void getBlocksInPostOrder(Block *startBlock, SmallVectorImpl<Block *> &postOrder,
                          DenseSet<Block *> &visited) {
@@ -27,9 +69,9 @@ void getBlocksInPostOrder(Block *startBlock, SmallVectorImpl<Block *> &postOrder
 }
 
 // Creates phi nodes for all live-in values in the given block.
-void createPhiNodesForBlock(Block *block, OpBuilder &builder,
-                            DenseMap<Value, Value> &value_map,
-                            SmallVectorImpl<std::tuple<Value, Value, Block *>> &deferred_ctrl_movs) {
+void createPhiNodesForBlock(
+    Block *block, OpBuilder &builder, DenseMap<Value, Value> &value_map,
+    SmallVectorImpl<std::tuple<Value, Value, Value, Block *>> &deferred_ctrl_movs) {
   if (block->hasNoPredecessors()) {
     // Skips phi insertion for entry block.
     return;
@@ -63,8 +105,8 @@ void createPhiNodesForBlock(Block *block, OpBuilder &builder,
 
     // Uses the location from the first operation in the block or block's parent operation.
     Location loc = block->empty() ?
-                  block->getParent()->getLoc() :
-                  block->front().getLoc();
+                   block->getParent()->getLoc() :
+                   block->front().getLoc();
 
     SmallVector<Value> phi_operands;
     BlockArgument arg = dyn_cast<BlockArgument>(live_in);
@@ -76,6 +118,7 @@ void createPhiNodesForBlock(Block *block, OpBuilder &builder,
       unsigned arg_index = arg.getArgNumber();
       for (Block *pred : block->getPredecessors()) {
         Value incoming;
+        Value branch_pred;
         Operation *term = pred->getTerminator();
 
         // If it's a branch or cond_br, get the value passed into this block argument
@@ -84,18 +127,33 @@ void createPhiNodesForBlock(Block *block, OpBuilder &builder,
           assert(arg_index < args.size());
           incoming = args[arg_index];
         } else if (auto condBr = dyn_cast<neura::CondBr>(term)) {
+          Value cond = condBr.getCondition();
+          branch_pred = cond; // by default
+
+          OpBuilder pred_builder(condBr);
+          Location pred_loc = condBr.getLoc();
+
           if (condBr.getTrueDest() == block) {
             auto trueArgs = condBr.getTrueArgs();
             assert(arg_index < trueArgs.size());
             incoming = trueArgs[arg_index];
+            // Keep branch_pred = cond
           } else if (condBr.getFalseDest() == block) {
             auto falseArgs = condBr.getFalseArgs();
             assert(arg_index < falseArgs.size());
             incoming = falseArgs[arg_index];
+            // Negates cond for false edge.
+            branch_pred = pred_builder.create<neura::NotOp>(pred_loc, cond.getType(), cond);
+
           } else {
             llvm::errs() << "cond_br does not target block:\n" << *block << "\n";
-            continue;
+            assert(false);
           }
+
+          // Applies grant_predicate.
+          incoming = pred_builder.create<neura::GrantPredicateOp>(
+            pred_loc, incoming.getType(), incoming, branch_pred);
+
         } else {
           llvm::errs() << "Unknown branch terminator in block: " << *pred << "\n";
           continue;
@@ -108,8 +166,10 @@ void createPhiNodesForBlock(Block *block, OpBuilder &builder,
           auto placeholder = builder.create<neura::ReserveOp>(loc, incoming.getType());
           phi_operands.push_back(placeholder.getResult());
           // Defers the backward ctrl move operation to be inserted after all phi operands
-          // are defined. Inserted: (real_defined_value, just_created_reserve, current_block).
-          deferred_ctrl_movs.emplace_back(incoming, placeholder.getResult(), block);
+          // are defined. Inserted:
+          // (real_defined_value, just_created_reserve, branch_pred, current_block).
+          deferred_ctrl_movs.emplace_back(
+            incoming, placeholder.getResult(), branch_pred, block);
         } else {
           phi_operands.push_back(incoming);
         }
@@ -191,9 +251,15 @@ struct TransformCtrlToDataFlowPass
     // The tuple contains:
     // - real value (the one that is defined in the same block, after the placeholder)
     // - placeholder value (the one that will be used in the phi node)
+    // - branch predicate (if any, for cond_br)
     // - block where the backward ctrl move should be inserted
-    SmallVector<std::tuple<Value, Value, Block *>, 4> deferred_ctrl_movs;
+    SmallVector<std::tuple<Value, Value, Value, Block *>, 4> deferred_ctrl_movs;
     module.walk([&](func::FuncOp func) {
+
+      OpBuilder builder(func.getContext());
+      DenseMap<Value, Value> granted_once_map;
+      insertGrantOnceInEntryBlock(&func.getBody().front(), builder, granted_once_map);
+
       // Get blocks in post-order
       SmallVector<Block *> postOrder;
       DenseSet<Block *> visited;
@@ -201,7 +267,6 @@ struct TransformCtrlToDataFlowPass
 
       // Value mapping for phi node creation.
       DenseMap<Value, Value> value_map;
-      OpBuilder builder(func.getContext());
 
       // Process blocks bottom-up
       for (Block *block : postOrder) {
@@ -249,12 +314,25 @@ struct TransformCtrlToDataFlowPass
 
     // Inserts the deferred backward ctrl move operations after phi operands
     // are defined.
-    for (auto &[realVal, placeholder, block] : deferred_ctrl_movs) {
-      Operation *defOp = realVal.getDefiningOp();
-      assert(defOp && "Backward ctrl move's source must be an op result");
-      OpBuilder movBuilder(defOp->getBlock(), ++Block::iterator(defOp));
-      movBuilder.create<neura::CtrlMovOp>(defOp->getLoc(), realVal, placeholder);
+    for (auto &[real_dependent, placeholder, branch_pred, block] : deferred_ctrl_movs) {
+      Operation *def_op = real_dependent.getDefiningOp();
+      assert(def_op && "Backward ctrl move's source must be an op result");
+
+      // Find the correct insertion point: after both real_dependent and branch_pred
+      Operation *insert_after = def_op;
+      if (Operation *pred_def = branch_pred.getDefiningOp()) {
+        if (insert_after->isBeforeInBlock(pred_def))
+          insert_after = pred_def;
+      }
+
+      OpBuilder mov_builder(insert_after->getBlock(), ++Block::iterator(insert_after));
+      Location insert_loc = insert_after->getLoc();
+
+      Value guarded_val = real_dependent;
+
+      mov_builder.create<neura::CtrlMovOp>(insert_loc, guarded_val, placeholder);
     }
+
   }
 };
 } // namespace
