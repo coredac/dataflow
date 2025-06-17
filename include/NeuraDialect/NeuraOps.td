@@ -238,11 +238,11 @@ def Neura_PhiOp : Op<NeuraDialect, "phi"> {
       neura.ctrl_mov %next to %v         // Connect next iteration
   }];
 
-  let arguments = (ins AnyType:$init_val, AnyType:$loop_val);
+  let arguments = (ins Variadic<AnyType>:$inputs);
   let results = (outs AnyType:$result);
 
   // Explicitly specify types for operands in the assembly format
-  let assemblyFormat = "$init_val `:` type($init_val) `,` $loop_val `:` type($loop_val) attr-dict `:` type($result)";
+  // let assemblyFormat = "$init_val `:` type($init_val) `,` $loop_val `:` type($loop_val) attr-dict `,` type($result)";
 }
 
 // Control movement extending base move but with different signature.
