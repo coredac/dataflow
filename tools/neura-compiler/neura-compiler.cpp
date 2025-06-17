@@ -1,17 +1,17 @@
-// tools/mlir-neura-opt/mlir-neura-opt.cpp
+// neura-compiler.cpp
 
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/InitAllDialects.h"
-#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/InitAllPasses.h"
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 
+#include "Conversion/ConversionPasses.h"
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraPasses.h"
-#include "Conversion/ConversionPasses.h"
 
 int main(int argc, char **argv) {
   // Registers MLIR dialects.
@@ -24,9 +24,8 @@ int main(int argc, char **argv) {
   registry.insert<mlir::affine::AffineDialect>();
   registry.insert<mlir::memref::MemRefDialect>();
 
-  mlir::neura::registerPasses();
-  mlir::registerPasses();
-  
+  mlir::neura::registerNeuraLegalizePassPipeline();
+
   // Runs the MLIR optimizer.
   return mlir::asMainReturnCode(
       mlir::MlirOptMain(argc, argv, "Neura Dialect Optimizer", registry));

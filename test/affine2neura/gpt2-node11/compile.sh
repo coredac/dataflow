@@ -1,0 +1,3 @@
+/home/lucas/Project/NeuraCompiler/thirdparty/Polygeist/build/bin/cgeist ./node11.cpp -S --raise-scf-to-affine -o ./node11.mlir
+/home/lucas/Project/NeuraCompiler/thirdparty/Polygeist/build/bin/polygeist-opt ./node11.mlir --affine-loop-unroll="unroll-factor=2" -o ./node11_unroll.mlir
+# /home/lucas/Project/NeuraCompiler/thirdparty/Polygeist/build/bin/polygeist-opt ./node27_unroll.mlir --affine-loop-tile="tile-size=2" -o ./node27_tile.mlir

@@ -101,6 +101,34 @@ def Neura_StoreOp : Op<NeuraDialect, "store"> {
   // let assemblyFormat = "$value `,` $addr `,` $predicate attr-dict";
 }
 
+// Defines a load operation with integrated address calculation.
+def Neura_LoadIndexedOp: Op<NeuraDialect, "load_indexed", [AttrSizedOperandSegments]>{
+  let summary = "Load with integrated address calculation for multi-dimensional arrays";
+  let description = [{
+    Calculates the address using the base address and indices.
+    Load the value at the calculated address.
+    Example:
+      %value = neura.load_indexed %base [%arg1, %arg2] : f32
+  }];
+  let arguments = (ins Arg<AnyMemRef, "the load operation">:$base, Variadic<Index>:$indices, Optional<AnyType>:$predicate);
+  let results = (outs AnyType:$result);
+  let assemblyFormat = "type($base) $base `[` $indices `]` ($predicate^ `:` type($predicate))? attr-dict `:` type($result)";
+}
+
+//Defines a store operation with integrated address calculation.
+def Neura_StoreIndexedOp: Op<NeuraDialect, "store_indexed", [AttrSizedOperandSegments]> {
+  let summary = "Store with integrated address calculation for multi-dimensional arrays";
+  let description = [{
+    Calculates the address using the base address and indices.
+    Store the value at the calculated address.
+    Example:
+      neura.store_indexed %value, %base [%arg1, %arg2] : f32
+  }];
+  let arguments = (ins AnyType:$value, Arg<AnyMemRef, "the store operation">:$base, Variadic<Index>:$indices, Optional<AnyType>:$predicate);
+  let results = (outs);
+  let assemblyFormat = "$value `to` type($base) $base `[` $indices `]` ($predicate^ `:` type($predicate))? attr-dict `:` type($value)";
+}
+
 // Defines a pointer computation operation.
 def Neura_GEP : Op<NeuraDialect, "gep"> {
   let summary = "Pointer computation using offset indices";
@@ -252,4 +280,52 @@ def Neura_ReserveOp : Op<NeuraDialect, "reserve"> {
   let arguments = (ins);
   let results = (outs AnyType:$result);
   let assemblyFormat = "attr-dict `:` type($result)";
+}
+
+// ----------------------------------------------------
+// Defines loop related operations.
+
+// Loop iteration operation for index increament and compare
+// TODO: Add support for more complex loop structures using LoopInterOp
+def Neura_LoopIterOp : Op<NeuraDialect, "loop_iter", [AttrSizedOperandSegments]> {
+  let summary = "CGRA-optimized loop iteration operation";
+  let description = [{
+    Takes the current loop index, a step value, and an upper bound as the inputs.
+    Outputs the next loop index and a boolean condition indicating whether the loop should continue.
+    
+    Example:
+      %next_index, %continue = neura.loop_control current_index: 0, step: 1, bound: 10 : i32 i1}];
+
+  let arguments = (ins Index: $current_index, 
+                   Index:$step, 
+                   Index:$bound,
+                   Optional<AnyType>:$loop_type, // 0: <, 1: <=, 2: >, 3: >=
+                   Optional<AnyType>:$predicate);
+  let results = (outs Index:$next_index, I1:$continue_condition);
+  let assemblyFormat = "`current_index` `:` $current_index `,` `step` `:` $step `,` `bound` `:` $bound `:` type($bound) ($loop_type^ `:` type($loop_type))? ($predicate^ `:` type($predicate))? attr-dict `:` type($next_index) type($continue_condition)";
+}
+
+// Loop control operation that integrates loop iteration and control flow.
+def Neura_LoopControlOp: Op<NeuraDialect, "loop_control", [Terminator]>{
+  let summary = "Intergrated loop control operation for simple loops";
+  let description = [{
+    This operation is an integrated loop control operation that combines the loop iteration and control flow.
+    It has three main actions:
+    1. Calculates the next iteration's index: `next_index = current_index + step`
+    2. Checks if the loop should continue based on the current index and bound.
+    3. If the loop should continue, it branches to the loop body, and yields related values.
+    4. Otherwise, it exits the loop.
+  }];
+  let arguments = (ins Index:$current_index, // Current loop index
+                   Index:$step,
+                   Index:$bound, 
+                   DefaultValuedAttr<StrAttr, "\"lt\"">:$loop_type, // Loop type: "lt", "le", "gt", "ge", "eq", "ne"
+                   Variadic<AnyType>:$body_args // Additional arguments to pass through to the successors
+                   );
+  let results = (outs);
+  let successors = (successor
+                    AnySuccessor:$body, // loop body successors
+                    AnySuccessor:$exit // exit successors
+                    );
+  let assemblyFormat = "`current_index` `:` $current_index `,` `step` `:` $step `,` `bound` `:` $bound `,` `loop_type` `:` $loop_type `then` $body(`(`$body_args^ `:` type($body_args)`)`)? `else` $exit attr-dict";
 }
