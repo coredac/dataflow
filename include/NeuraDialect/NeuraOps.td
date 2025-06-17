@@ -1,7 +1,6 @@
 // NeuraOps.td - Custom operation definitions.
 
 include "NeuraDialect/NeuraDialect.td"
-include "mlir/IR/CommonTypeConstraints.td"
 
 // ----------------------------------------------------
 // Defines basic scalar operations.
@@ -287,6 +286,7 @@ def Neura_ReserveOp : Op<NeuraDialect, "reserve"> {
 // Defines loop related operations.
 
 // Loop iteration operation for index increament and compare
+// TODO: Add support for more complex loop structures using LoopInterOp
 def Neura_LoopIterOp : Op<NeuraDialect, "loop_iter", [AttrSizedOperandSegments]> {
   let summary = "CGRA-optimized loop iteration operation";
   let description = [{

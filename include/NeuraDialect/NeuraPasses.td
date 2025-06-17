@@ -49,14 +49,4 @@ def LeveragePredicatedValue : Pass<"leverage-predicated-value", "ModuleOp"> {
   let constructor = "neura::createLeveragePredicatedValuePass()";
 }
 
-//=========================================================//
-// Passes for the CGRA Mapping
-//=========================================================//
-// def GenerateDFG : Pass<"generate-dfg", "ModuleOp"> {
-//   let summary = "Generates a Data Flow Graph (DFG) for the Neura dialect";
-//   let description =
-//       [{This pass generates a DFG from the Neura dialect operations.}];
-//   let constructor = "neura::createGenerateDFGPass()";
-// }
-
 #endif // NEURA_PASSES_TD

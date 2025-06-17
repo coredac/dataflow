@@ -1,0 +1,4 @@
+7.853746e-03 affine2neura/gpt2-node27/node27.mlir
+1.136017e-02 affine2neura/deep-nested/deep_nested.mlir
+7.997274e-03 affine2neura/gpt2-node11/node11.mlir
+7.548809e-03 affine2neura/gpt2-node30/node30.mlir
