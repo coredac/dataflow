@@ -285,3 +285,19 @@ def Neura_GrantOnceOp : Op<NeuraDialect, "grant_once"> {
 
   // let assemblyFormat = "$value attr-dict `:` type($value) `->` type($result)";
 }
+
+def Neura_GrantAlwaysOp : Op<NeuraDialect, "grant_always"> {
+  let summary = "Marks a value as valid once.";
+  let description = [{
+    Grants a value always-valid predicate: the resulting value is considered valid
+    during the entire application lifetime.
+    
+    Example:
+      %v = neura.grant_always %init : !neura.data<f32, i1> -> !neura.data<f32, i1>
+  }];
+
+  let arguments = (ins AnyType:$value);
+  let results = (outs AnyType:$result);
+
+  // let assemblyFormat = "$value attr-dict `:` type($value) `->` type($result)";
+}
