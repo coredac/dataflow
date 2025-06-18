@@ -7,7 +7,7 @@ Build LLVM & Neura
  - Clone this repo.
 
  - Build LLVM:
-   - Check out to commit `cd70802` (a stable version randomly picked, will sync to the latest version).
+   - Check out to commit `6146a88` (a stable version randomly picked, will sync to the latest version).
    - Build:
 ```sh
  $ mkdir build && cd build
