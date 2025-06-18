@@ -328,7 +328,7 @@ struct LowerLlvmToNeuraPass
         auto target = func->getAttrOfType<StringAttr>(mlir::accel::kAcceleratorAttr);
         if (target && target.getValue() == mlir::accel::kNeuraTarget) {
           for (Region &region : func->getRegions()) {
-            if (failed(applyPatternsAndFoldGreedily(region, frozen))) {
+            if (failed(applyPatternsGreedily(region, frozen))) {
               signalPassFailure();
             }
           }
