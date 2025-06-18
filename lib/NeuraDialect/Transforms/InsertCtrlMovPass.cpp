@@ -83,7 +83,7 @@ struct InsertCtrlMovPass
     module_op.walk([&](Operation *op) {
       if (!op->getRegions().empty()) {
         for (Region &region : op->getRegions()) {
-          if (failed(applyPatternsAndFoldGreedily(region, frozen))) {
+          if (failed(applyPatternsGreedily(region, frozen))) {
             signalPassFailure();
           }
         }

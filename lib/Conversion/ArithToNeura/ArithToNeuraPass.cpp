@@ -61,7 +61,7 @@ struct LowerArithToNeuraPass
     RewritePatternSet patterns(&getContext());
     mlir::neura::arith2neura::populateWithGenerated(patterns);
     patterns.add<ArithFAddToNeuraFAdd>(&getContext());
-    if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns)))) {
+    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       signalPassFailure();
     }
   }
