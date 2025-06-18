@@ -40,7 +40,7 @@ jobs:
       run: |
         git clone https://github.com/llvm/llvm-project.git
         cd llvm-project
-        git checkout cd70802
+        git checkout 6146a88
         mkdir build && cd build
         cmake -G Ninja ../llvm \
           -DLLVM_ENABLE_PROJECTS="mlir" \
