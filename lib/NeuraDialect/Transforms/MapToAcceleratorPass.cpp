@@ -53,10 +53,17 @@ struct MapToAcceleratorPass
                     << longest->length << "):\n";
         for (Operation *op : longest->operations)
           op->print(llvm::errs()), llvm::errs() << "\n";
-        IntegerAttr mii_attr = IntegerAttr::get(
+        IntegerAttr rec_mii_attr = IntegerAttr::get(
             IntegerType::get(func.getContext(), 32), longest->length);
-        func->setAttr("RecMII", mii_attr);
+        func->setAttr("RecMII", rec_mii_attr);
       }
+
+      AcceleratorConfig config{/*numTiles=*/8}; // Example
+      int res_mii = calculateResMii(func, config);
+      IntegerAttr res_mii_attr = IntegerAttr::get(
+          IntegerType::get(func.getContext(), 32), res_mii);
+      func->setAttr("ResMII", res_mii_attr);
+
     });
   }
 };
