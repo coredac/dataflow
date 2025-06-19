@@ -24,6 +24,14 @@ def Neura_AddOp : Op<NeuraDialect, "add"> {
   let traits = [SameOperandsAndResultElementType];
 }
 
+def Neura_SubOp : Op<NeuraDialect, "sub"> {
+  let summary = "Integer substraction operation";
+  let arguments = (ins AnyType:$lhs, AnyType:$rhs, Optional<AnyType>:$predicate);
+  let results = (outs AnyType:$result);
+  // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
+  let traits = [SameOperandsAndResultElementType];
+}
+
 // Defines a floating-point addition operation.
 def Neura_FAddOp : Op<NeuraDialect, "fadd"> {
   let summary = "Floating addition operation";
@@ -38,7 +46,7 @@ def Neura_FAddOp : Op<NeuraDialect, "fadd"> {
 def Neura_FSubOp: Op<NeuraDialect, "fsub"> {
   let summary = "Floating substraction operation";
   let opName = "fsub";
-  let arguments = (ins AnyFloat:$lhs, AnyFloat:$rhs);
+  let arguments = (ins AnyFloat:$lhs, AnyFloat:$rhs, Optional<AnyType>:$predicate);
   let results = (outs AnyFloat:$result);
   // let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($result)";
   let traits = [SameOperandsAndResultElementType];
@@ -52,6 +60,13 @@ def Neura_FMulOp : Op<NeuraDialect, "fmul"> {
   let results = (outs AnyType:$result);
   // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
   // let traits = [SameOperandsAndResultElementType];
+}
+
+def Neura_FDivOp : Op<NeuraDialect, "fdiv"> {
+  let summary = "Floating division operation";
+  let arguments = (ins AnyFloat:$lhs, AnyFloat:$rhs, Optional<AnyType>:$predicate);
+  let results = (outs AnyFloat:$result);
+  // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
 }
 
 // Defines a bitwise OR operation.
@@ -142,6 +157,14 @@ def Neura_NotOp : Op<NeuraDialect, "not"> {
 def Neura_ReturnOp : Op<NeuraDialect, "return", [Terminator]> {
   let arguments = (ins Variadic<AnyType>:$values);
   // let assemblyFormat = "($values^)? `,` $predicate attr-dict";
+}
+
+// Defines a cast operation for type conversion.
+def Neura_CastOp : Op<NeuraDialect, "cast">{
+  let summary = "Generic type conversion operation";
+  let arguments = (ins AnyType:$input, StrAttr:$cast_type, Optional<AnyType>:$predicate);
+  let results = (outs AnyType:$result);
+  // let assemblyFormat = "$input type($input) `->` type($output) `,` $predicate attr-dict";
 }
 
 // ----------------------------------------------------
