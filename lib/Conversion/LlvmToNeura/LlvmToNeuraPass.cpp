@@ -9,6 +9,7 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "Conversion/ConversionPasses.h"
+#include "llvm/Support/raw_ostream.h"
 
 namespace mlir {
 namespace neura {
@@ -58,6 +59,26 @@ struct LlvmFAddToNeuraFAdd : public OpRewritePattern<mlir::LLVM::FAddOp> {
 
     // Optional predicate: default to 'none'
     rewriter.replaceOpWithNewOp<neura::FAddOp>(op, result_type, lhs, rhs, Value());
+    return success();
+  }
+};
+
+struct LlvmFSubToNeuraFSub : public OpRewritePattern<mlir::LLVM::FSubOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mlir::LLVM::FSubOp op,
+                                PatternRewriter &rewriter) const override {
+    Value lhs = op->getOperand(0);
+    Value rhs = op.getOperand(1);
+    Type result_type = op->getResult(0).getType();
+
+    // Only matches scalar float.
+    if (!mlir::isa<FloatType>(result_type)){
+      return failure();
+    }
+
+    // Optional predicate: default to 'none'
+    rewriter.replaceOpWithNewOp<neura::FSubOp>(op, result_type, lhs, rhs, Value());
     return success();
   }
 };
@@ -316,6 +337,7 @@ struct LowerLlvmToNeuraPass
     patterns.add<LlvmBrToNeuraBr>(&getContext());
     patterns.add<LlvmReturnToNeuraReturn>(&getContext());
     patterns.add<FuncReturnToNeuraReturn>(&getContext());
+    patterns.add<LlvmFSubToNeuraFSub>(&getContext());
 
     FrozenRewritePatternSet frozen(std::move(patterns));
 
