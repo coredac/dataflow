@@ -1,6 +1,6 @@
 #include <deque>
 
-#include "NeuraDialect/Mapping/mapping_util.h"
+#include "NeuraDialect/mapping/mapping_util.h"
 #include "NeuraDialect/NeuraOps.h"
 #include "mlir/IR/Operation.h"
 
