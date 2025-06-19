@@ -9,6 +9,7 @@ add_mlir_library(
     TransformCtrlToDataFlowPass.cpp
     LeveragePredicatedValuePass.cpp
     MapToAcceleratorPass.cpp
+    mapping/mapping_util.cpp
 
     DEPENDS
     MLIRNeuraTransformsIncGen
