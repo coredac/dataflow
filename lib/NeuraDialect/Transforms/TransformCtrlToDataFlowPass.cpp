@@ -14,9 +14,9 @@ using namespace mlir;
 
 // Inserts `grant_once` for every predicated value defined in the entry block
 // that is used outside of the block (i.e., a live-out).
-void insertGrantOnceInEntryBlock(Block *entry_block, OpBuilder &builder,
-                                 DenseMap<Value, Value> &granted_once_map) {
-  SmallVector<Value> live_out_values;
+void GrantPredicateInEntryBlock(Block *entry_block, OpBuilder &builder) {
+  SmallVector<Value> live_out_arg_values;
+  SmallVector<Value> live_out_non_arg_values;
 
   // Step 1: Collects all live-out values first.
   for (Operation &op : *entry_block) {
@@ -24,30 +24,63 @@ void insertGrantOnceInEntryBlock(Block *entry_block, OpBuilder &builder,
       if (!isa<neura::PredicatedValue>(result.getType()))
         continue;
 
-      bool is_live_out = llvm::any_of(result.getUses(), [&](OpOperand &use) {
-        Operation *user = use.getOwner();
-        return user->getBlock() != entry_block || isa<neura::Br, neura::CondBr>(user);
-      });
+      bool used_in_branch = false;
+      bool used_elsewhere = false;
 
-      if (is_live_out && !granted_once_map.contains(result))
-        live_out_values.push_back(result);
+      for (OpOperand &use : result.getUses()) {
+        Operation *user = use.getOwner();
+
+        // Case 1: Operand of a branch/cond_br → grant_once
+        if (isa<neura::Br, neura::CondBr>(user)) {
+            used_in_branch = true;
+        }
+
+        // Case 2: Used directly in other blocks → grant_always
+        if (user->getBlock() != entry_block) {
+          used_elsewhere = true;
+        }
+      }
+
+      if (used_in_branch)
+        live_out_arg_values.push_back(result);
+      if (used_elsewhere)
+        live_out_non_arg_values.push_back(result);
     }
   }
 
   // Step 2: Inserts grant_once for each candidate.
-  for (Value val : live_out_values) {
+  // Inserts grant_once.
+  for (Value val : live_out_arg_values) {
     Operation *def_op = val.getDefiningOp();
     if (!def_op)
       continue;
 
     builder.setInsertionPointAfter(def_op);
     auto granted = builder.create<neura::GrantOnceOp>(def_op->getLoc(), val.getType(), val);
-    granted_once_map[val] = granted.getResult();
 
-    // Replaces external uses with granted result.
+    // Replaces uses in branch ops.
     for (OpOperand &use : llvm::make_early_inc_range(val.getUses())) {
       Operation *user = use.getOwner();
-      if (user->getBlock() != entry_block || isa<neura::Br, neura::CondBr>(user)) {
+      if (isa<neura::Br, neura::CondBr>(user)) {
+        use.set(granted.getResult());
+      }
+    }
+  }
+
+  // Inserts grant_always.
+  for (Value val : live_out_non_arg_values) {
+    Operation *def_op = val.getDefiningOp();
+    if (!def_op)
+      continue;
+
+    builder.setInsertionPointAfter(def_op);
+    auto granted = builder.create<neura::GrantAlwaysOp>(def_op->getLoc(), val.getType(), val);
+
+    // Replaces direct external uses (not in entry block, not in branch ops).
+    for (OpOperand &use : llvm::make_early_inc_range(val.getUses())) {
+      Operation *user = use.getOwner();
+      if (user->getBlock() != entry_block &&
+          !isa<neura::Br, neura::CondBr>(user)) {
         use.set(granted.getResult());
       }
     }
@@ -283,8 +316,7 @@ struct TransformCtrlToDataFlowPass
     module.walk([&](func::FuncOp func) {
 
       OpBuilder builder(func.getContext());
-      DenseMap<Value, Value> granted_once_map;
-      insertGrantOnceInEntryBlock(&func.getBody().front(), builder, granted_once_map);
+      GrantPredicateInEntryBlock(&func.getBody().front(), builder);
 
       // Get blocks in post-order
       SmallVector<Block *> postOrder;
