@@ -2,6 +2,7 @@
 
 #include "NeuraDialect/mapping/mapping_util.h"
 #include "NeuraDialect/NeuraOps.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Operation.h"
 
 using namespace mlir;
@@ -47,10 +48,10 @@ void traverseAlongPath(Operation *op, Value reserve_value,
 
 } // namespace
 
-SmallVector<RecurrenceCycle, 4> mlir::neura::collectRecurrenceCycles(Operation *root_op) {
+SmallVector<RecurrenceCycle, 4> mlir::neura::collectRecurrenceCycles(Operation *func_op) {
   SmallVector<RecurrenceCycle, 4> recurrence_cycles;
 
-  root_op->walk([&](neura::CtrlMovOp ctrl_mov_op) {
+  func_op->walk([&](neura::CtrlMovOp ctrl_mov_op) {
     Value target = ctrl_mov_op.getTarget();
     auto reserve_op = target.getDefiningOp<neura::ReserveOp>();
     if (!reserve_op)
@@ -76,4 +77,28 @@ SmallVector<RecurrenceCycle, 4> mlir::neura::collectRecurrenceCycles(Operation *
   });
 
   return recurrence_cycles;
+}
+
+int mlir::neura::calculateResMii(Operation *func_op, const AcceleratorConfig &config) {
+  int num_ops = 0;
+
+  // Count all "compute" operations (non-terminators, non-block ops).
+  func_op->walk([&](Operation *op) {
+    // Skips non-materialized ops.
+    if (isa<func::FuncOp>(op) ||
+        isa<neura::ConstantOp,
+            neura::CtrlMovOp,
+            neura::ReserveOp,
+            neura::ReturnOp>(op)) {
+      return;
+    }
+    ++num_ops;
+  });
+
+  llvm::errs() << "[calculateResMii] Total operations: " << num_ops << "\n";
+
+  // Avoid divide-by-zero
+  int tiles = std::max(1, config.num_tiles);
+
+  return llvm::divideCeil(num_ops, tiles);
 }
