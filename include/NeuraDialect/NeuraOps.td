@@ -287,7 +287,7 @@ def Neura_GrantOnceOp : Op<NeuraDialect, "grant_once"> {
 }
 
 def Neura_GrantAlwaysOp : Op<NeuraDialect, "grant_always"> {
-  let summary = "Marks a value as valid once.";
+  let summary = "Marks a value as valid always.";
   let description = [{
     Grants a value always-valid predicate: the resulting value is considered valid
     during the entire application lifetime.
