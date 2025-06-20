@@ -1,0 +1,47 @@
+// RUN: mlir-opt %s --lower-affine --convert-scf-to-cf --convert-cf-to-llvm -o %t-llvm.mlir
+// RUN: mlir-neura-opt %t-llvm.mlir --assign-accelerator --lower-arith-to-neura | FileCheck %s
+module attributes {} {
+  func.func @_Z10bert_node9PA128_A768_KfPA128_A768_d(%arg0: memref<?x128x768xf32>, %arg1: memref<?x128x768xf64>) attributes {} {
+    affine.for %arg2 = 0 to 128 {
+      affine.for %arg3 = 0 to 768 {
+        %0 = affine.load %arg0[0, %arg2, %arg3] : memref<?x128x768xf32>
+        %1 = arith.extf %0 : f32 to f64
+        affine.store %1, %arg1[0, %arg2, %arg3] : memref<?x128x768xf64>
+      }
+    }
+    return
+  }
+}
+
+
+// CHECK: func.func @_Z10bert_node9PA128_A768_KfPA128_A768_d(%arg0: memref<?x128x768xf32>, %arg1: memref<?x128x768xf64>) attributes {accelerator = "neura"} {
+// CHECK-NEXT: %0 = "neura.constant"() <{value = 768 : index}> : () -> index
+// CHECK-NEXT: %1 = "neura.constant"() <{value = 1 : index}> : () -> index
+// CHECK-NEXT: %2 = "neura.constant"() <{value = 128 : index}> : () -> index
+// CHECK-NEXT: %3 = "neura.constant"() <{value = 0 : index}> : () -> index
+// CHECK-NEXT: %4 = builtin.unrealized_conversion_cast %3 : index to i64
+// CHECK-NEXT: llvm.br ^bb1(%4 : i64)
+// CHECK-NEXT: ^bb1(%5: i64):  // 2 preds: ^bb0, ^bb5
+// CHECK-NEXT: %6 = builtin.unrealized_conversion_cast %5 : i64 to index
+// CHECK-NEXT: %7 = "neura.icmp"(%6, %2) <{cmpType = "slt"}> : (index, index) -> i1
+// CHECK-NEXT: llvm.cond_br %7, ^bb2, ^bb6
+// CHECK-NEXT: ^bb2:  // pred: ^bb1
+// CHECK-NEXT: %8 = builtin.unrealized_conversion_cast %3 : index to i64
+// CHECK-NEXT: llvm.br ^bb3(%8 : i64)
+// CHECK-NEXT: ^bb3(%9: i64):  // 2 preds: ^bb2, ^bb4
+// CHECK-NEXT: %10 = builtin.unrealized_conversion_cast %9 : i64 to index
+// CHECK-NEXT: %11 = "neura.icmp"(%10, %0) <{cmpType = "slt"}> : (index, index) -> i1
+// CHECK-NEXT: llvm.cond_br %11, ^bb4, ^bb5
+// CHECK-NEXT: ^bb4:  // pred: ^bb3
+// CHECK-NEXT: %12 = memref.load %arg0[%3, %6, %10] : memref<?x128x768xf32>
+// CHECK-NEXT: %13 = "neura.cast"(%12) <{cast_type = "extf"}> : (f32) -> f64
+// CHECK-NEXT: memref.store %13, %arg1[%3, %6, %10] : memref<?x128x768xf64>
+// CHECK-NEXT: %14 = "neura.add"(%10, %1) : (index, index) -> index
+// CHECK-NEXT: %15 = builtin.unrealized_conversion_cast %14 : index to i64
+// CHECK-NEXT: llvm.br ^bb3(%15 : i64)
+// CHECK-NEXT: ^bb5:  // pred: ^bb3
+// CHECK-NEXT: %16 = "neura.add"(%6, %1) : (index, index) -> index
+// CHECK-NEXT: %17 = builtin.unrealized_conversion_cast %16 : index to i64
+// CHECK-NEXT: llvm.br ^bb1(%17 : i64)
+// CHECK-NEXT: ^bb6:  // pred: ^bb1
+// CHECK-NEXT: return

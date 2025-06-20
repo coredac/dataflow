@@ -4,8 +4,9 @@ include "mlir/Dialect/LLVMIR/LLVMOps.td"
 include "NeuraDialect/NeuraOps.td"
 
 // Floating point binary operations.
-def : Pat<
-  (LLVM_FSubOp $lhs, $rhs, $_fastmath),
-  (Neura_FSubOp $lhs, $rhs)
->;
+// Deprecated Pattern: Because we need the predicate bit to be set to null initially
+// def : Pat<
+//   (LLVM_FSubOp $lhs, $rhs, $_fastmath),
+//   (Neura_FSubOp $lhs, $rhs)
+// >;
 
