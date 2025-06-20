@@ -24,15 +24,14 @@ module attributes {} {
 // CHECK-NEXT: ^bb1(%5: i64):  // 2 preds: ^bb0, ^bb2
 // CHECK-NEXT: %6 = "neura.cast"(%5) <{cast_type = "int_to_index"}> : (i64) -> index
 // CHECK-NEXT: %7 = "neura.icmp"(%6, %1) <{cmpType = "slt"}> : (index, index) -> i1
-// CHECK-NEXT: neura.cond_br %7 : i1 then :  to ^bb2 else :  to ^bb3
+// CHECK-NEXT: neura.cond_br %7 : i1 then to ^bb2 else to ^bb3
 // CHECK-NEXT: ^bb2:  // pred: ^bb1
-// CHECK-NEXT: %8 = neura.load_indexed %arg0[%3, %6] memref<?x128xi32> : i32
+// CHECK-NEXT: %8 = neura.load_indexed %arg0[%3, %6 : index, index] memref<?x128xi32> : i32
 // CHECK-NEXT: %9 = "neura.icmp"(%8, %2) <{cmpType = "sgt"}> : (i32, i32) -> i1
 // CHECK-NEXT: %10 = "neura.cast"(%9) <{cast_type = "extui"}> : (i1) -> i8
-// CHECK-NEXT: neura.store_indexed %10 to %arg1[%3, %6] memref<?x128xi8> : i8
+// CHECK-NEXT: neura.store_indexed %10 to %arg1[%3, %6 : index, index] memref<?x128xi8> : i8
 // CHECK-NEXT: %11 = "neura.add"(%6, %0) : (index, index) -> index
 // CHECK-NEXT: %12 = "neura.cast"(%11) <{cast_type = "index_to_int"}> : (index) -> i64
 // CHECK-NEXT: neura.br %12 : i64 to ^bb1
 // CHECK-NEXT: ^bb3:  // pred: ^bb1
 // CHECK-NEXT: "neura.return"() : () -> ()
-// CHECK-NEXT: }

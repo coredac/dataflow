@@ -57,5 +57,4 @@ def MapToAccelerator : Pass<"map-to-accelerator", "ModuleOp"> {
   }];
   let constructor = "neura::createMapToAcceleratorPass()";
 }
-
 #endif // NEURA_PASSES_TD
