@@ -116,6 +116,34 @@ def Neura_StoreOp : Op<NeuraDialect, "store"> {
   // let assemblyFormat = "$value `,` $addr `,` $predicate attr-dict";
 }
 
+// Defines a load operation with integrated address calculation.
+def Neura_LoadIndexedOp: Op<NeuraDialect, "load_indexed", [AttrSizedOperandSegments]>{
+  let summary = "Load with integrated address calculation for multi-dimensional arrays";
+  let description = [{
+    Calculates the address using the base address and indices.
+    Load the value at the calculated address.
+    Example:
+      %value = neura.load_indexed %base [%arg1, %arg2] : f32
+  }];
+  let arguments = (ins Arg<AnyMemRef, "the load operation">:$base, Variadic<Index>:$indices, Optional<AnyType>:$predicate);
+  let results = (outs AnyType:$result);
+  let assemblyFormat = "$base `[` $indices `]` type($base) ($predicate^ `:` type($predicate))? attr-dict `:` type($result)";
+}
+
+//Defines a store operation with integrated address calculation.
+def Neura_StoreIndexedOp: Op<NeuraDialect, "store_indexed", [AttrSizedOperandSegments]> {
+  let summary = "Store with integrated address calculation for multi-dimensional arrays";
+  let description = [{
+    Calculates the address using the base address and indices.
+    Store the value at the calculated address.
+    Example:
+      neura.store_indexed %value, %base [%arg1, %arg2] : f32
+  }];
+  let arguments = (ins AnyType:$value, Arg<AnyMemRef, "the store operation">:$base, Variadic<Index>:$indices, Optional<AnyType>:$predicate);
+  let results = (outs);
+  let assemblyFormat = "$value `to` $base `[` $indices `]` type($base) ($predicate^ `:` type($predicate))? attr-dict `:` type($value)";
+}
+
 // Defines a pointer computation operation.
 def Neura_GEP : Op<NeuraDialect, "gep"> {
   let summary = "Pointer computation using offset indices";

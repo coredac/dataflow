@@ -3,6 +3,7 @@ get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 add_subdirectory(ArithToNeura)
 add_subdirectory(LlvmToNeura)
 add_subdirectory(MemRefToNeura)
+add_subdirectory(BuiltinToNeura)
 
 # add_mlir_library(
 #     MLIRNeuraConversion
@@ -32,5 +33,7 @@ target_link_libraries(MLIRConversion INTERFACE
   MLIRNeura
   MLIRNeuraArithToNeuraPass
   MLIRNeuraLlvmToNeuraPass
+  MLIRNeuraMemRefToNeuraPass
+  MLIRNeuraBuiltinToNeuraPass
   ${dialect_libs}
 )

@@ -26,4 +26,10 @@ def LowerMemRefToNeura : Pass<"lower-memref-to-neura", "ModuleOp">{
   let constructor = "mlir::createLowerMemRefToNeuraPass()";
 }
 
+def LowerBuiltinToNeura : Pass<"lower-builtin-to-neura", "ModuleOp">{
+  let summary = "Lower Builtin to Neura dialect";
+  let description = [{Lower Builtin operations to Neura dialect operations.}];
+  let constructor = "mlir::createLowerBuiltinToNeuraPass()";
+}
+
 #endif // CONVERSION_PASSES_TD
