@@ -17,7 +17,7 @@
 // RUN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \
 // RUN:   --map-to-accelerator \
-// RUN:   | FileCheck %s -check-prefix=RECMII
+// RUN:   | FileCheck %s -check-prefix=MII
 
 func.func @loop_test() -> f32 {
   %n = llvm.mlir.constant(10 : i64) : i64
@@ -81,4 +81,4 @@ func.func @loop_test() -> f32 {
 // CTRL2DATA-NEXT:   "neura.return"(%18) : (!neura.data<f32, i1>) -> ()
 // CTRL2DATA-NEXT: }
 
-// RECMII: func.func @loop_test() -> f32 attributes {RecMII = 4 : i32, accelerator = "neura"}
+// MII: func.func @loop_test() -> f32 attributes {RecMII = 4 : i32, ResMII = 2 : i32, accelerator = "neura"}
