@@ -23,7 +23,7 @@ struct MemRefLoadLowering : public OpRewritePattern<memref::LoadOp> {
 
   LogicalResult matchAndRewrite(memref::LoadOp load_op,
                                 PatternRewriter &rewriter) const override {
-    // Create a Neura LoadIndexedOp from the MemRef LoadOp.
+    // Creates a Neura LoadIndexedOp from the MemRef LoadOp.
     Type result_type = load_op.getType();
     Value memref = load_op.getMemRef();
     ValueRange indices = load_op.getIndices();
@@ -39,7 +39,7 @@ struct MemRefStoreLowering : public OpRewritePattern<memref::StoreOp> {
 
   LogicalResult matchAndRewrite(memref::StoreOp store_op,
                                 PatternRewriter &rewriter) const override {
-    // Create a Neura StoreIndexedOp from the MemRef StoreOp.
+    // Creates a Neura StoreIndexedOp from the MemRef StoreOp.
     Value value = store_op.getValueToStore();
     Value memref = store_op.getMemRef();
     ValueRange indices = store_op.getIndices();
