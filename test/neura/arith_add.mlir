@@ -1,4 +1,4 @@
-// RUN: mlir-neura-opt --lower-arith-to-neura --insert-data-mov %s | FileCheck %s
+// RUN: mlir-neura-opt --assign-accelerator --lower-arith-to-neura --insert-data-mov %s | FileCheck %s
 
 func.func @test(%a: f32) -> f32 {
   %b = arith.constant 2.0 : f32

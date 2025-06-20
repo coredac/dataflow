@@ -20,6 +20,7 @@ namespace mlir {
 std::unique_ptr<mlir::Pass> createLowerArithToNeuraPass();
 std::unique_ptr<mlir::Pass> createLowerLlvmToNeuraPass();
 std::unique_ptr<mlir::Pass> createLowerMemRefToNeuraPass();
+std::unique_ptr<mlir::Pass> createLowerBuiltinToNeuraPass();
 
 #define GEN_PASS_REGISTRATION
 #include "Conversion/ConversionPasses.h.inc"
