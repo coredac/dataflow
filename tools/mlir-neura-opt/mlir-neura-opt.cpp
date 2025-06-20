@@ -20,6 +20,7 @@ int main(int argc, char **argv) {
   registry.insert<mlir::arith::ArithDialect>();
   registry.insert<mlir::DLTIDialect>();
   registry.insert<mlir::LLVM::LLVMDialect>();
+  registry.insert<mlir::memref::MemRefDialect>();
 
   mlir::neura::registerPasses();
   mlir::registerPasses();

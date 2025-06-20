@@ -2,6 +2,7 @@ get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 
 add_subdirectory(ArithToNeura)
 add_subdirectory(LlvmToNeura)
+add_subdirectory(MemRefToNeura)
 
 # add_mlir_library(
 #     MLIRNeuraConversion
