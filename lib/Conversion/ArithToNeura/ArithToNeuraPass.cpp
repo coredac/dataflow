@@ -34,10 +34,10 @@ struct ArithConstantToNeuraConstant
 
   LogicalResult matchAndRewrite(arith::ConstantOp op,
                                 PatternRewriter &rewriter) const override {
-    // Converts arith constant to Neura constant/
+    // Converts arith constant to Neura constant.
     Type result_type = op.getType();
     Attribute value = op.getValue();
-    // Optional predicate parameter can be null/
+    // Optional predicate parameter can be null.
     rewriter.replaceOpWithNewOp<neura::ConstantOp>(op, result_type, value,
                                                    nullptr);
     return success();
@@ -53,7 +53,7 @@ struct ArithAddIToNeuraAdd : public OpRewritePattern<mlir::arith::AddIOp> {
     Value rhs = op.getRhs();
     Type result_type = op.getType();
 
-    // Optional predicate: default to null/
+    // Optional predicate: default to null.
     rewriter.replaceOpWithNewOp<neura::AddOp>(op, result_type, lhs, rhs,
                                               nullptr);
     return success();
@@ -69,7 +69,7 @@ struct ArithFAddToNeuraFAdd : public OpRewritePattern<mlir::arith::AddFOp> {
     Value rhs = op.getRhs();
     Type result_type = op.getType();
 
-    // Optional predicate: default to null/
+    // Optional predicate: default to null.
     rewriter.replaceOpWithNewOp<neura::FAddOp>(op, result_type, lhs, rhs,
                                                nullptr);
     return success();
@@ -85,7 +85,7 @@ struct ArithSubIToNeuraSub : public OpRewritePattern<mlir::arith::SubIOp> {
     Value rhs = op.getRhs();
     Type result_type = op.getType();
 
-    // Optional predicate: default to null/
+    // Optional predicate: default to null.
     rewriter.replaceOpWithNewOp<neura::SubOp>(op, result_type, lhs, rhs,
                                               nullptr);
     return success();
@@ -101,7 +101,7 @@ struct ArithSubFToNeuraFSub : public OpRewritePattern<mlir::arith::SubFOp> {
     Value rhs = op.getRhs();
     Type result_type = op.getType();
 
-    // Optional predicate: default to null/
+    // Optional predicate: default to null.
     rewriter.replaceOpWithNewOp<neura::FSubOp>(op, result_type, lhs, rhs,
                                                nullptr);
     return success();
@@ -117,7 +117,7 @@ struct ArithMulFToNeuraFMul : public OpRewritePattern<mlir::arith::MulFOp> {
     Value rhs = op.getRhs();
     Type result_type = op.getType();
 
-    // Optional predicate: default to null/
+    // Optional predicate: default to null.
     rewriter.replaceOpWithNewOp<neura::FMulOp>(op, result_type, lhs, rhs,
                                                nullptr);
     return success();
