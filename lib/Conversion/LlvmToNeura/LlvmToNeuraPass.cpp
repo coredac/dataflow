@@ -25,10 +25,6 @@ namespace llvm2neura {
 using namespace mlir;
 using namespace mlir::neura;
 
-#define GEN_PASS_DEF_LOWERLLVMTONEURA
-#include "NeuraDialect/NeuraPasses.h.inc"
-
-
 namespace {
 // Lowers integer add from mlir.llvm.add to nuera.add. We provide the lowering
 // here instead of tablegen due to that mlir.llvm.add uses an EnumProperty
