@@ -125,9 +125,9 @@ def Neura_LoadIndexedOp: Op<NeuraDialect, "load_indexed", [AttrSizedOperandSegme
     Example:
       %value = neura.load_indexed %base [%arg1, %arg2] : f32
   }];
-  let arguments = (ins Arg<AnyMemRef, "the load operation">:$base, Variadic<Index>:$indices, Optional<AnyType>:$predicate);
+  let arguments = (ins Arg<AnyMemRef, "the load operation">:$base, Variadic<AnyType>:$indices, Optional<AnyType>:$predicate);
   let results = (outs AnyType:$result);
-  let assemblyFormat = "$base `[` $indices `]` type($base) ($predicate^ `:` type($predicate))? attr-dict `:` type($result)";
+  let assemblyFormat = "$base `[` $indices `:` type($indices) `]` type($base) ($predicate^ `:` type($predicate))? attr-dict `:` type($result)";
 }
 
 //Defines a store operation with integrated address calculation.
@@ -139,9 +139,9 @@ def Neura_StoreIndexedOp: Op<NeuraDialect, "store_indexed", [AttrSizedOperandSeg
     Example:
       neura.store_indexed %value, %base [%arg1, %arg2] : f32
   }];
-  let arguments = (ins AnyType:$value, Arg<AnyMemRef, "the store operation">:$base, Variadic<Index>:$indices, Optional<AnyType>:$predicate);
+  let arguments = (ins AnyType:$value, Arg<AnyMemRef, "the store operation">:$base, Variadic<AnyType>:$indices, Optional<AnyType>:$predicate);
   let results = (outs);
-  let assemblyFormat = "$value `to` $base `[` $indices `]` type($base) ($predicate^ `:` type($predicate))? attr-dict `:` type($value)";
+  let assemblyFormat = "$value `to` $base `[` $indices `:` type($indices) `]` type($base) ($predicate^ `:` type($predicate))? attr-dict `:` type($value)";
 }
 
 // Defines a pointer computation operation.
@@ -159,14 +159,14 @@ def Neura_CondBr : Op<NeuraDialect, "cond_br", [Terminator, AttrSizedOperandSegm
                    Variadic<AnyType>:$trueArgs,
                    Variadic<AnyType>:$falseArgs);
   let successors = (successor AnySuccessor:$trueDest, AnySuccessor:$falseDest);
-  let assemblyFormat = "$condition `:` type($condition) ($predicate^ `:` type($predicate))? `then` ($trueArgs^)? `:` type($trueArgs) `to` $trueDest `else` ($falseArgs^)? `:` type($falseArgs) `to` $falseDest attr-dict";
+  let assemblyFormat = "$condition `:` type($condition) ($predicate^ `:` type($predicate))? `then` ($trueArgs^ `:` type($trueArgs))? `to` $trueDest `else` ($falseArgs^ `:` type($falseArgs))? `to` $falseDest attr-dict";
 }
 
 // Defines an unconditional branch operation.
 def Neura_Br : Op<NeuraDialect, "br", [Terminator]> {
   let arguments = (ins Variadic<AnyType>:$args);
   let successors = (successor AnySuccessor:$dest);
-  let assemblyFormat = "($args^)? `:` type($args) `to` $dest attr-dict";
+  let assemblyFormat = "($args^ `:` type($args))? `to` $dest attr-dict";
 }
 
 def Neura_SelOp : Op<NeuraDialect, "sel"> {
