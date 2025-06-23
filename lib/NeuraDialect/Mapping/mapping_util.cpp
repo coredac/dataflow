@@ -1,6 +1,6 @@
 #include <deque>
 
-#include "NeuraDialect/mapping/mapping_util.h"
+#include "NeuraDialect/Mapping/mapping_util.h"
 #include "NeuraDialect/NeuraOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Operation.h"
@@ -79,7 +79,8 @@ SmallVector<RecurrenceCycle, 4> mlir::neura::collectRecurrenceCycles(Operation *
   return recurrence_cycles;
 }
 
-int mlir::neura::calculateResMii(Operation *func_op, const AcceleratorConfig &config) {
+int mlir::neura::calculateResMii(Operation *func_op,
+                                 const Architecture &architecture) {
   int num_ops = 0;
 
   // Count all "compute" operations (non-terminators, non-block ops).
@@ -98,7 +99,7 @@ int mlir::neura::calculateResMii(Operation *func_op, const AcceleratorConfig &co
   llvm::errs() << "[calculateResMii] Total operations: " << num_ops << "\n";
 
   // Avoid divide-by-zero
-  int tiles = std::max(1, config.num_tiles);
+  int num_tiles = std::max(1, architecture.getNumTiles());
 
-  return llvm::divideCeil(num_ops, tiles);
+  return llvm::divideCeil(num_ops, num_tiles);
 }
