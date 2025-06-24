@@ -77,6 +77,12 @@ private:
   Tile* dst_tile;
 };
 
+struct PairHash {
+  std::size_t operator()(const std::pair<int, int> &coord) const {
+    return std::hash<int>()(coord.first) ^ (std::hash<int>()(coord.second) << 1);
+  }
+};
+
 /// Describes the entire CGRA architecture.
 class Architecture {
 public:
@@ -87,12 +93,16 @@ public:
 
   Link* getLink(int id);
 
-  int getNumTiles() const { return static_cast<int>(tiles.size()); }
-  std::vector<Tile*> getAllTiles() { return tiles; }
+  int getNumTiles() const;
+  std::vector<Tile*> getAllTiles() const;
+  std::vector<Link*> getAllLinks() const;
 
 private:
-  std::vector<std::unique_ptr<Tile>> tileStorage;
-  std::vector<Tile*> tiles;
+  std::vector<std::unique_ptr<Tile>> tile_storage;
+//   std::vector<Tile*> tiles;
+  std::vector<std::unique_ptr<Link>> link_storage;
+  std::unordered_map<int, Tile*> id_to_tile;
+  std::unordered_map<std::pair<int, int>, Tile*, PairHash> coord_to_tile;
 };
 
 } // namespace neura
