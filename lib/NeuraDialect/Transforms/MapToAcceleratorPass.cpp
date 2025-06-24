@@ -5,6 +5,7 @@
 #include "NeuraDialect/NeuraOps.h"
 #include "NeuraDialect/NeuraTypes.h"
 #include "NeuraDialect/NeuraPasses.h"
+#include "NeuraDialect/Mapping/MappingState.h"
 #include "NeuraDialect/Mapping/mapping_util.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/PatternMatch.h"
@@ -44,6 +45,7 @@ struct MapToAcceleratorPass
       // Collects and reports recurrence cycles found in the function.
       auto recurrence_cycles = collectRecurrenceCycles(func);
       RecurrenceCycle *longest = nullptr;
+      int rec_mii = 1;
       for (auto &cycle : recurrence_cycles) {
         if (!longest || cycle.length > longest->length)
           longest = &cycle;
@@ -52,10 +54,12 @@ struct MapToAcceleratorPass
       if (longest) {
         llvm::errs() << "[MapToAcceleratorPass] Longest recurrence cycle (length "
                     << longest->length << "):\n";
-        for (Operation *op : longest->operations)
+        for (Operation *op : longest->operations) {
           op->print(llvm::errs()), llvm::errs() << "\n";
+        }
+        rec_mii = longest->length;
         IntegerAttr rec_mii_attr = IntegerAttr::get(
-            IntegerType::get(func.getContext(), 32), longest->length);
+            IntegerType::get(func.getContext(), 32), rec_mii);
         func->setAttr("RecMII", rec_mii_attr);
       }
 
@@ -66,6 +70,11 @@ struct MapToAcceleratorPass
           IntegerType::get(func.getContext(), 32), res_mii);
       func->setAttr("ResMII", res_mii_attr);
 
+      const int minII = std::min(rec_mii, res_mii);
+      constexpr int maxII = 5;
+      for (int ii = minII; ii <= maxII; ++ii) {
+        MappingState state(architecture, ii);
+      }
     });
   }
 };
