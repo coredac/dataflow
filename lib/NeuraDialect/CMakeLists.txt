@@ -19,6 +19,8 @@ add_mlir_dialect_library(MLIRNeura
         Neura.cpp
         NeuraTypes.cpp
         NeuraPasses.cpp
+        Mapping/mapping_util.cpp
+        Architecture/Architecture.cpp
 
         ADDITIONAL_HEADER_DIRS
         ${PROJECT_SOURCE_DIR}/include/NeuraDialect
