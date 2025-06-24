@@ -5,22 +5,6 @@ add_subdirectory(LlvmToNeura)
 add_subdirectory(MemRefToNeura)
 add_subdirectory(BuiltinToNeura)
 
-# add_mlir_library(
-#     MLIRNeuraConversion
-
-#     DEPENDS
-#     MLIRNeuraTransformsIncGen
-
-#     LINK_LIBS PUBLIC
-#       MLIRIR
-#       MLIRPass
-#       MLIRSupport
-#       MLIRTransforms
-#       MLIRNeura
-#       MLIRNeuraArithToNeuraPass
-#       MLIRNeuraLlvmToNeuraPass
-#       ${dialect_libs}
-# )
 add_library(MLIRConversion INTERFACE)
 
 add_dependencies(MLIRConversion MLIRConversionIncGen)
