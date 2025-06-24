@@ -81,4 +81,4 @@ func.func @loop_test() -> f32 {
 // CTRL2DATA-NEXT:   "neura.return"(%18) : (!neura.data<f32, i1>) -> ()
 // CTRL2DATA-NEXT: }
 
-// MII: func.func @loop_test() -> f32 attributes {RecMII = 4 : i32, ResMII = 2 : i32, accelerator = "neura"}
+// MII: func.func @loop_test() -> f32 attributes {RecMII = 4 : i32, ResMII = 4 : i32, accelerator = "neura"}

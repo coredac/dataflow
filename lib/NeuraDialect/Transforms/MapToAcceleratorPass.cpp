@@ -1,10 +1,11 @@
 #include <deque>
 
+#include "NeuraDialect/Architecture/Architecture.h"
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraOps.h"
 #include "NeuraDialect/NeuraTypes.h"
 #include "NeuraDialect/NeuraPasses.h"
-#include "NeuraDialect/mapping/mapping_util.h"
+#include "NeuraDialect/Mapping/mapping_util.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
@@ -58,8 +59,9 @@ struct MapToAcceleratorPass
         func->setAttr("RecMII", rec_mii_attr);
       }
 
-      AcceleratorConfig config{/*numTiles=*/8}; // Example
-      int res_mii = calculateResMii(func, config);
+      // AcceleratorConfig config{/*numTiles=*/8}; // Example
+      Architecture architecture(2, 2);
+      int res_mii = calculateResMii(func, architecture);
       IntegerAttr res_mii_attr = IntegerAttr::get(
           IntegerType::get(func.getContext(), 32), res_mii);
       func->setAttr("ResMII", res_mii_attr);
