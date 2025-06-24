@@ -125,7 +125,7 @@ def Neura_LoadIndexedOp: Op<NeuraDialect, "load_indexed", [AttrSizedOperandSegme
     Example:
       %value = neura.load_indexed %base [%arg1, %arg2] : f32
   }];
-  let arguments = (ins Arg<AnyMemRef, "the load operation">:$base, Variadic<AnyType>:$indices, Optional<AnyType>:$predicate);
+  let arguments = (ins AnyType:$base, Variadic<AnyType>:$indices, Optional<AnyType>:$predicate);
   let results = (outs AnyType:$result);
   let assemblyFormat = "$base `[` $indices `:` type($indices) `]` type($base) ($predicate^ `:` type($predicate))? attr-dict `:` type($result)";
 }
@@ -139,7 +139,7 @@ def Neura_StoreIndexedOp: Op<NeuraDialect, "store_indexed", [AttrSizedOperandSeg
     Example:
       neura.store_indexed %value, %base [%arg1, %arg2] : f32
   }];
-  let arguments = (ins AnyType:$value, Arg<AnyMemRef, "the store operation">:$base, Variadic<AnyType>:$indices, Optional<AnyType>:$predicate);
+  let arguments = (ins AnyType:$value, AnyType:$base, Variadic<AnyType>:$indices, Optional<AnyType>:$predicate);
   let results = (outs);
   let assemblyFormat = "$value `to` $base `[` $indices `:` type($indices) `]` type($base) ($predicate^ `:` type($predicate))? attr-dict `:` type($value)";
 }

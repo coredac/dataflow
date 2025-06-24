@@ -6,6 +6,7 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace mlir;
 
@@ -38,6 +39,7 @@ struct LeveragePredicatedValuePass
         if (block == &block->getParent()->front()) {
           return;
         }
+
         for (BlockArgument arg : block->getArguments()) {
           Type origType = arg.getType();
 
