@@ -95,6 +95,17 @@ int main(int argc, char **argv) {
         
         valueMap[constOp.getResult()] = val;
 
+      } else if (auto phiOp = dyn_cast<neura::PhiOp>(op)) {
+        PredicatedData result{0.0f, false}; // Default to a false predicate.
+        // Find the one operand with a true predicate.
+        for (Value operand : phiOp.getOperands()) {
+            auto incoming = valueMap[operand];
+            if (incoming.predicate) {
+                result = incoming;
+                break; // Found the active value.
+            }
+        }
+        valueMap[phiOp.getResult()] = result;
       } else if (auto movOp = dyn_cast<neura::DataMovOp>(op)) {
         valueMap[movOp.getResult()] = valueMap[movOp.getOperand()];
 
