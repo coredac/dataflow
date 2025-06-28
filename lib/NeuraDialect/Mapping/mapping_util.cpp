@@ -349,20 +349,20 @@ bool mlir::neura::tryHeuristicMapping(std::vector<Operation *> &sorted_ops,
     std::vector<MappingLoc> sorted_locs = calculateAward(op, architecture, mapping_state);
     // auto target_loc = getLocWithMinCost(loc_with_cost);
     if (sorted_locs.empty()) {
-      llvm::errs() << "[cheng] No locations found for op: " << *op << "\n";
+      llvm::errs() << "[DEBUG] No locations found for op: " << *op << "\n";
       return false; // No locations available for this operation.
     }
     assert(!sorted_locs.empty() &&
            "No locations found for the operation to map");
     MappingLoc target_loc = sorted_locs.front();
     if (placeAndRoute(op, target_loc, mapping_state)) {
-      llvm::errs() << "[cheng] Successfully scheduled op: " << *op
+      llvm::errs() << "[DEBUG] Successfully scheduled op: " << *op
                    << " at loc: " << target_loc.resource->getType()
                    << "#" << target_loc.resource->getId()
                    << " @t=" << target_loc.time_step << "\n";
       continue;
     } else {
-      llvm::errs() << "[cheng] Failed to schedule op: " << *op << "; target loc: " << target_loc.resource->getType() << "#" << target_loc.resource->getId() << " @t=" << target_loc.time_step << "\n";
+      llvm::errs() << "[DEBUG] Failed to schedule op: " << *op << "; target loc: " << target_loc.resource->getType() << "#" << target_loc.resource->getId() << " @t=" << target_loc.time_step << "\n";
     }
     // TODO: Optimization -- backtrack a few times if failed to schedule the op.
     // if (!tryMapMaterializedOp(op, mapping_state, visited))
@@ -563,14 +563,14 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc, Map
       std::vector<MappingLoc> route_path;
       if (tryRouteForwardMove(data_move, src_loc, target_loc, mapping_state, route_path)) {
         mapping_state.reserveRoute(data_move, route_path);
-        llvm::errs() << "[cheng] Successfully routed data move: " << *data_move
+        llvm::errs() << "[DEBUG] Successfully routed data move: " << *data_move
                      << " from " << src_loc.resource->getType() << "#" << src_loc.resource->getId()
                      << " @t=" << src_loc.time_step
                      << " to " << target_loc.resource->getType() << "#" << target_loc.resource->getId()
                      << " @t=" << target_loc.time_step << "\n";
         continue;
       }
-      llvm::errs() << "[cheng] Failed to route data move: " << *data_move
+      llvm::errs() << "[DEBUG] Failed to route data move: " << *data_move
                    << " from " << src_loc.resource->getType() << "#" << src_loc.resource->getId()
                    << " @t=" << src_loc.time_step
                    << " to " << target_loc.resource->getType() << "#" << target_loc.resource->getId()
@@ -582,34 +582,23 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc, Map
     // Checks whether the operation's user is a ctrl_mov.
     for (Operation *user : getCtrlMovUsers(op)) {
       auto ctrl_mov = dyn_cast<neura::CtrlMovOp>(user);
-      llvm::errs() << "[cheng] Found ctrl_mov user: " << *ctrl_mov << "\n";
+      llvm::errs() << "[DEBUG] Found ctrl_mov user: " << *ctrl_mov << "\n";
       assert(ctrl_mov && "Expected user to be a CtrlMovOp");
-      // // Handles backward dataflow on ctrl_mov.
-      // Value backward_op = ctrl_mov.getTarget();
-      // auto reserve_op = backward_op.getDefiningOp<neura::ReserveOp>();
-      // llvm::errs() << "[cheng] step 0 \n";
-      // assert(reserve_op && "Expected ctrl_mov target to be defined by ReserveOp");
       mlir::Operation *materialized_backward_op = getMaterializedBackwardUser(ctrl_mov);
-      // assert(materialized_backward_ops.size() == 1 &&
-      //        "Expected exactly one materialized operation for ReserveOp in ctrl_mov");
-      // Operation *materialized_backward_op = materialized_backward_ops.front();
-      // llvm::errs() << "[cheng] step 1 \n";
-      // // The materialized operation of a backward ctrl_mov is always a phi op.
       assert(isa<neura::PhiOp>(materialized_backward_op) &&
              "Expected materialized operation of ctrl_mov to be a PhiOp");
       // Gets the last location of the materialized operation.
       MappingLoc backward_loc = mapping_state.getAllLocsOfOp(materialized_backward_op).back();
-      llvm::errs() << "[cheng] step 2 \n";
       // Routes the ctrl_mov to the phi location.
       std::vector<MappingLoc> route_path;
       if (tryRouteBackwardMove(ctrl_mov, target_loc, backward_loc, mapping_state, route_path)) {
         mapping_state.reserveRoute(ctrl_mov, route_path);
-        llvm::errs() << "[cheng] Successfully routed ctrl_mov: " << *ctrl_mov
+        llvm::errs() << "[DEBUG] Successfully routed ctrl_mov: " << *ctrl_mov
                      << " to " << backward_loc.resource->getType() << "#" << backward_loc.resource->getId()
                      << " @t=" << backward_loc.time_step << "\n";
         continue;
       }
-      llvm::errs() << "[cheng] Failed to route ctrl_mov: " << *ctrl_mov
+      llvm::errs() << "[DEBUG] Failed to route ctrl_mov: " << *ctrl_mov
                    << " to " << backward_loc.resource->getType() << "#" << backward_loc.resource->getId()
                    << " @t=" << backward_loc.time_step << "\n";
       mapping_state.unbindOp(op);

@@ -84,9 +84,12 @@ struct MapToAcceleratorPass
           llvm::errs() << "[MapToAcceleratorPass] Successfully mapped function '"
                        << func.getName() << "' with II = " << ii << "\n";
           mapping_state.dumpOpToLocs(); // logs to stderr
+          mapping_state.encodeMappingState();
+          func->setAttr("CompiledII", IntegerAttr::get(
+              IntegerType::get(func.getContext(), 32), ii));
           break;
         }
-        llvm::errs() << "[cheng] mapping failed for II = " << ii << "\n";
+        llvm::errs() << "[DEBUG] mapping failed for II = " << ii << "\n";
         mapping_state.dumpOpToLocs(); // logs to stderr
       }
     });

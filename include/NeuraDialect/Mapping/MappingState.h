@@ -86,6 +86,9 @@ public:
   // Gets the target initiation interval (II) for the mapping.
   int getII() const { return II; }
 
+  // Embeds the mapping states onto the mapped operations.
+  void encodeMappingState();
+
   void dumpOpToLocs(llvm::raw_ostream &os = llvm::errs()) const;
 
 private:
