@@ -16,6 +16,15 @@
 // RUN:   --lower-llvm-to-neura \
 // RUN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \
+// RUN:   --insert-data-mov \
+// RUN:   | FileCheck %s -check-prefix=MOV
+
+// RUN: mlir-neura-opt %s \
+// RUN:   --assign-accelerator \
+// RUN:   --lower-llvm-to-neura \
+// RUN:   --leverage-predicated-value \
+// RUN:   --transform-ctrl-to-data-flow \
+// RUN:   --insert-data-mov \
 // RUN:   --map-to-accelerator \
 // RUN:   | FileCheck %s -check-prefix=MII
 
@@ -81,4 +90,52 @@ func.func @loop_test() -> f32 {
 // CTRL2DATA-NEXT:   "neura.return"(%18) : (!neura.data<f32, i1>) -> ()
 // CTRL2DATA-NEXT: }
 
-// MII: func.func @loop_test() -> f32 attributes {RecMII = 4 : i32, ResMII = 4 : i32, accelerator = "neura"}
+// MOV:      func.func @loop_test() -> f32 attributes {accelerator = "neura"} {
+// MOV-NEXT:   %0 = "neura.constant"() <{predicate = true, value = 10 : i64}> : () -> !neura.data<i64, i1>
+// MOV-NEXT:   %1 = "neura.data_mov"(%0) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
+// MOV-NEXT:   %2 = "neura.grant_always"(%1) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
+// MOV-NEXT:   %3 = "neura.constant"() <{predicate = true, value = 0 : i64}> : () -> !neura.data<i64, i1>
+// MOV-NEXT:   %4 = "neura.data_mov"(%3) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
+// MOV-NEXT:   %5 = "neura.grant_once"(%4) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
+// MOV-NEXT:   %6 = "neura.constant"() <{predicate = true, value = 1 : i64}> : () -> !neura.data<i64, i1>
+// MOV-NEXT:   %7 = "neura.data_mov"(%6) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
+// MOV-NEXT:   %8 = "neura.grant_always"(%7) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
+// MOV-NEXT:   %9 = "neura.constant"() <{predicate = true, value = 3.000000e+00 : f32}> : () -> !neura.data<f32, i1>
+// MOV-NEXT:   %10 = "neura.data_mov"(%9) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
+// MOV-NEXT:   %11 = "neura.grant_always"(%10) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
+// MOV-NEXT:   %12 = "neura.constant"() <{predicate = true, value = 0.000000e+00 : f32}> : () -> !neura.data<f32, i1>
+// MOV-NEXT:   %13 = "neura.data_mov"(%12) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
+// MOV-NEXT:   %14 = "neura.grant_once"(%13) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
+// MOV-NEXT:   %15 = neura.reserve : !neura.data<i64, i1>
+// MOV-NEXT:   %16 = "neura.data_mov"(%5) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
+// MOV-NEXT:   %17 = "neura.phi"(%16, %15) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
+// MOV-NEXT:   %18 = neura.reserve : !neura.data<f32, i1>
+// MOV-NEXT:   %19 = "neura.data_mov"(%14) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
+// MOV-NEXT:   %20 = "neura.phi"(%19, %18) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// MOV-NEXT:   %21 = "neura.data_mov"(%20) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
+// MOV-NEXT:   %22 = "neura.data_mov"(%11) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
+// MOV-NEXT:   %23 = "neura.fadd"(%21, %22) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// MOV-NEXT:   %24 = "neura.data_mov"(%17) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
+// MOV-NEXT:   %25 = "neura.data_mov"(%8) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
+// MOV-NEXT:   %26 = "neura.add"(%24, %25) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
+// MOV-NEXT:   %27 = "neura.data_mov"(%26) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
+// MOV-NEXT:   %28 = "neura.data_mov"(%2) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
+// MOV-NEXT:   %29 = "neura.icmp"(%27, %28) <{cmpType = "slt"}> : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i1, i1>
+// MOV-NEXT:   %30 = "neura.data_mov"(%29) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
+// MOV-NEXT:   %31 = "neura.not"(%30) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
+// MOV-NEXT:   %32 = "neura.data_mov"(%23) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
+// MOV-NEXT:   %33 = "neura.data_mov"(%31) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
+// MOV-NEXT:   %34 = neura.grant_predicate %32, %33 : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
+// MOV-NEXT:   %35 = "neura.data_mov"(%23) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
+// MOV-NEXT:   %36 = "neura.data_mov"(%29) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
+// MOV-NEXT:   %37 = neura.grant_predicate %35, %36 : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
+// MOV-NEXT:   neura.ctrl_mov %37 -> %18 : !neura.data<f32, i1> !neura.data<f32, i1>
+// MOV-NEXT:   %38 = "neura.data_mov"(%26) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
+// MOV-NEXT:   %39 = "neura.data_mov"(%29) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
+// MOV-NEXT:   %40 = neura.grant_predicate %38, %39 : !neura.data<i64, i1>, !neura.data<i1, i1> -> !neura.data<i64, i1>
+// MOV-NEXT:   neura.ctrl_mov %40 -> %15 : !neura.data<i64, i1> !neura.data<i64, i1>
+// MOV-NEXT:   %41 = "neura.data_mov"(%34) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
+// MOV-NEXT:   "neura.return"(%41) : (!neura.data<f32, i1>) -> ()
+// MOV-NEXT: }
+
+// MII: func.func @loop_test() -> f32 attributes {RecMII = 4 : i32, ResMII = 1 : i32, accelerator = "neura"}
