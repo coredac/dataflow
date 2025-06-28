@@ -51,7 +51,17 @@ std::optional<Operation*> MappingState::getOpAt(MappingLoc loc) const {
   return it->second;
 }
 
-const std::unordered_set<MappingLoc> &MappingState::getAllLocs() const {
+int MappingState::countOpsAtResource(BasicResource *resource) const {
+  int count = 0;
+  for (const auto &[loc, op] : loc_to_op) {
+    if (loc.resource == resource) {
+      count++;
+    }
+  }
+  return count;
+}
+
+const std::set<MappingLoc> &MappingState::getAllLocs() const {
   return all_locs;
 }
 

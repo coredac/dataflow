@@ -71,7 +71,7 @@ std::vector<MappingLoc> calculateAward(Operation *op,
                                        const Architecture &architecture,
                                        const MappingState &mapping_state);
 
-void updateAward(std::unordered_map<MappingLoc, int> &locs_with_award,
+void updateAward(std::map<MappingLoc, int> &locs_with_award,
                  MappingLoc loc, int award);
 
 bool canReachLocInTime(const MappingLoc &src_loc,

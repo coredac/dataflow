@@ -20,6 +20,12 @@ struct MappingLoc {
   bool operator==(const MappingLoc &other) const {
     return resource == other.resource && time_step == other.time_step;
   }
+
+  bool operator<(const MappingLoc &other) const {
+    if (time_step != other.time_step)
+      return time_step < other.time_step;
+    return resource->getId() < other.resource->getId();
+  }
 };
 
 } // namespace neura
@@ -59,8 +65,11 @@ public:
   // Gets the operation at a specific (tile/link, time_step) location.
   std::optional<Operation*> getOpAt(MappingLoc loc) const;
 
+  // Counts the number of operations at a specific resource across time steps.
+  int countOpsAtResource(BasicResource *resource) const;
+
   // Gets all MRRG nodes.
-  const std::unordered_set<MappingLoc> &getAllLocs() const;
+  const std::set<MappingLoc> &getAllLocs() const;
 
   // Gets all MRRG nodes allocated to a given op.
   const std::vector<MappingLoc> &getAllLocsOfOp(Operation *op) const;
@@ -95,20 +104,11 @@ private:
   // Initiation interval.
   int II;
   static constexpr int kMaxSteps = 10;
-  // FIXME: Should we initialize these in the constructor? It is super time-consuming.
-  // Especially when the architecture is modeled in detail later (e.g., registers, ports).
 
-  // Current and next step tiles and links for a given MappingLoc. Note that
-  // the key MappingLoc is either a pair of (tile, time_step) or (link, time_step).
-//   std::unordered_map<MappingLoc, std::vector<MappingLoc>> next_step_tiles;
-//   std::unordered_map<MappingLoc, std::vector<MappingLoc>> next_step_links;
-//   std::unordered_map<MappingLoc, std::vector<MappingLoc>> current_step_tiles;
-//   std::unordered_map<MappingLoc, std::vector<MappingLoc>> current_step_links;
-
-  std::unordered_set<MappingLoc> all_locs;
-  std::unordered_set<MappingLoc> occupied_locs;
-  std::unordered_map<MappingLoc, Operation*> loc_to_op;
-  std::unordered_map<Operation*, std::vector<MappingLoc>> op_to_locs;
+  std::set<MappingLoc> all_locs;
+  std::set<MappingLoc> occupied_locs;
+  std::map<MappingLoc, Operation*> loc_to_op;
+  std::map<Operation*, std::vector<MappingLoc>> op_to_locs;
 };
 
 } // namespace neura

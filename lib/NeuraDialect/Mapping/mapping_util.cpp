@@ -118,35 +118,51 @@ int mlir::neura::calculateResMii(Operation *func_op,
 std::vector<Operation *> mlir::neura::getTopologicallySortedOps(Operation *func_op) {
   std::vector<Operation *> sorted_ops;
   llvm::DenseMap<Operation *, int> pending_deps;
-  std::queue<Operation *> ready_queue;
+  std::deque<Operation *> ready_queue;
 
-  // Counts number of unresolved dependencies (operand defs) for each operation.
+  // Collects recurrence cycle ops.
+  auto recurrence_cycles = collectRecurrenceCycles(func_op);
+  llvm::DenseSet<Operation *> recurrence_ops;
+  for (const auto &cycle : recurrence_cycles)
+    for (Operation *op : cycle.operations)
+      recurrence_ops.insert(op);
+
+  // Counts unresolved dependencies for each op.
   func_op->walk([&](Operation *op) {
-    // Skips the function operation itself.
     if (op == func_op) return;
-
     int dep_count = 0;
-    for (Value operand : op->getOperands()) {
-      if (operand.getDefiningOp()) {
+    for (Value operand : op->getOperands())
+      if (operand.getDefiningOp())
         ++dep_count;
+    pending_deps[op] = dep_count;
+    if (dep_count == 0) {
+      // TODO: Prioritize recurrence ops. But cause compiled II regression.
+      if (recurrence_ops.contains(op)) {
+        // ready_queue.push_front(op);
+        ready_queue.push_back(op);
+      } else {
+        ready_queue.push_back(op);
       }
     }
-    pending_deps[op] = dep_count;
-    if (dep_count == 0)
-      ready_queue.push(op);
   });
 
-  // TODO: Prioritize the operations on the critical path.
-  // Performs a BFS-style topological sort.
+  // BFS-style topological sort with recurrence priority.
   while (!ready_queue.empty()) {
     Operation *op = ready_queue.front();
-    ready_queue.pop();
+    ready_queue.pop_front();
     sorted_ops.push_back(op);
 
     for (Value result : op->getResults()) {
       for (Operation *user : result.getUsers()) {
-        if (--pending_deps[user] == 0)
-          ready_queue.push(user);
+        if (--pending_deps[user] == 0) {
+          // TODO: Prioritize recurrence ops. But cause compiled II regression.
+          if (recurrence_ops.contains(user)) {
+            // ready_queue.push_front(user);
+            ready_queue.push_back(user);
+          } else {
+            ready_queue.push_back(user);
+          }
+        }
       }
     }
   }
@@ -456,7 +472,7 @@ bool mlir::neura::canReachLocInTime(const MappingLoc &src_loc,
   return false;
 }
 
-void mlir::neura::updateAward(std::unordered_map<MappingLoc, int> &locs_with_award,
+void mlir::neura::updateAward(std::map<MappingLoc, int> &locs_with_award,
                               MappingLoc loc, int award) {
   // Updates the award of the top element in the priority queue.
   if (locs_with_award.find(loc) != locs_with_award.end()) {
@@ -471,7 +487,7 @@ std::vector<MappingLoc> mlir::neura::calculateAward(Operation *op,
                                                     const MappingState &mapping_state) {
   // A heap of locations with their associated award. Note that we use a max-heap
   // to prioritize locations with higher awards.
-  std::unordered_map<MappingLoc, int> locs_with_award;
+  std::map<MappingLoc, int> locs_with_award;
 
   // Assembles all the producers.
   std::vector<Operation *> producers;
@@ -497,7 +513,7 @@ std::vector<MappingLoc> mlir::neura::calculateAward(Operation *op,
       earliest_start_time_step = std::max(earliest_start_time_step,
                                           producer_loc.time_step + 1);
     }
-    int award = mapping_state.getII() + 1;
+    int award = mapping_state.getII() + tile->getDstTiles().size();
     for (int t = earliest_start_time_step;
          t < earliest_start_time_step + mapping_state.getII(); t += 1) {
       MappingLoc tile_loc_candidate = {tile, t};
@@ -527,6 +543,22 @@ std::vector<MappingLoc> mlir::neura::calculateAward(Operation *op,
             [](const std::pair<MappingLoc, int> &a, const std::pair<MappingLoc, int> &b) {
               return a.second > b.second;
             });
+  // TODO: Needs to handle tie case and prioritize lower resource utilization, however,
+  // compiled II becomes worse after adding this tie-breaker.
+  // std::sort(locs_award_vec.begin(), locs_award_vec.end(),
+  //           [&](const std::pair<MappingLoc, int> &a, const std::pair<MappingLoc, int> &b) {
+  //               if (a.second != b.second) {
+  //                 return a.second > b.second;
+  //               }
+  //               // Tie-breaker: prioritizes lower resource utilization and earlier time step.
+  //               if (a.first.time_step != b.first.time_step) {
+  //                 return a.first.time_step > b.first.time_step;
+  //               }
+  //               const bool is_resource_a_lower_utilized =
+  //                   mapping_state.countOpsAtResource(a.first.resource) >
+  //                   mapping_state.countOpsAtResource(b.first.resource);
+  //               return is_resource_a_lower_utilized;
+  //             });
 
   // Extracts just the MappingLocs, already sorted by award.
   std::vector<MappingLoc> sorted_locs;

@@ -71,7 +71,7 @@ struct MapToAcceleratorPass
       func->setAttr("ResMII", res_mii_attr);
 
       const int minII = std::min(rec_mii, res_mii);
-      constexpr int maxII = 8;
+      constexpr int maxII = 10;
       std::vector<Operation*> sorted_ops = getTopologicallySortedOps(func);
       for (Operation *op : sorted_ops) {
         llvm::errs() << "[MapToAcceleratorPass] sorted op: "
