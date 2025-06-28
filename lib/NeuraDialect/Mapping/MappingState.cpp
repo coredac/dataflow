@@ -1,4 +1,5 @@
 #include "NeuraDialect/Mapping/MappingState.h"
+#include "mlir/IR/BuiltinTypes.h"
 
 using namespace mlir;
 using namespace mlir::neura;
@@ -9,19 +10,6 @@ MappingState::MappingState(const Architecture &arch, int II) : II(II) {
     for (int t = 0; t < II * kMaxSteps; ++t) {
       MappingLoc loc = {tile, t};
       all_locs.insert(loc);
-
-    //   // Create edges to neighboring tiles at t+1.
-    //   for (Tile* dst : tile->getDstTiles()) {
-    //     MappingLoc next_step_dst_tile_loc = {dst, (t + 1) % II}; // modulo II for reuse
-    //     next_step_tiles[loc].push_back(next_step_dst_tile_loc);
-    //   }
-
-    //   // TODO: Not sure whether we need the link on t or t+1.
-    //   // Creates edges to neighboring links at t.
-    //   for (Link* dst : tile->getOutLinks()) {
-    //     MappingLoc current_step_dst_link_loc = {dst, t % II};
-    //     next_step_tiles[loc].push_back(current_step_dst_link_loc);
-    //   }
     }
   }
 }
@@ -174,4 +162,40 @@ void MappingState::dumpOpToLocs(llvm::raw_ostream &os) const {
   }
 
   os << "=== End ===\n";
+}
+
+void MappingState::encodeMappingState() {
+  for (const auto &[op, locs] : op_to_locs) {
+    llvm::SmallVector<mlir::Attribute, 4> mapping_entries;
+    auto ctx = op->getContext();
+    for (const MappingLoc &loc : locs) {
+      std::string kind_str;
+      if (loc.resource->getKind() == ResourceKind::Tile) {
+        kind_str = "tile";
+      } else if (loc.resource->getKind() == ResourceKind::Link) {
+        kind_str = "link";
+      } else {
+        kind_str = "unknown";
+      }
+      auto dict = mlir::DictionaryAttr::get(
+        ctx,
+        {
+          mlir::NamedAttribute(
+            mlir::StringAttr::get(ctx, "resource"),
+            mlir::StringAttr::get(ctx, kind_str)
+          ),
+          mlir::NamedAttribute(
+            mlir::StringAttr::get(ctx, "id"),
+            mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32), loc.resource->getId())
+          ),
+          mlir::NamedAttribute(
+            mlir::StringAttr::get(ctx, "time_step"),
+            mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32), loc.time_step)
+          )
+        }
+      );
+      mapping_entries.push_back(dict);
+    }
+    op->setAttr("mapping_locs", mlir::ArrayAttr::get(ctx, mapping_entries));
+  }
 }
