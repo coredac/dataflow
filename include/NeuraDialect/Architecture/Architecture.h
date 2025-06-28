@@ -103,6 +103,7 @@ struct PairHash {
 };
 
 // Describes the CGRA architecture template.
+// TODO: Model architecture in detail (e.g., registers, ports).
 class Architecture {
 public:
   Architecture(int width, int height);
