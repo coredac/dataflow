@@ -55,14 +55,14 @@ module attributes {} {
 // CTRL2DATA-NEXT:     %6 = "neura.cast"(%4) <{cast_type = "index_to_int"}> : (!neura.data<index, i1>) -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %7 = "neura.grant_once"(%6) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %8 = neura.reserve : !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %9 = "neura.phi"(%7, %8) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %9 = "neura.phi"(%8, %7) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %10 = "neura.cast"(%9) <{cast_type = "int_to_index"}> : (!neura.data<i64, i1>) -> !neura.data<index, i1>
 // CTRL2DATA-NEXT:     %11 = "neura.icmp"(%10, %3) <{cmpType = "slt"}> : (!neura.data<index, i1>, !neura.data<index, i1>) -> !neura.data<i1, i1>
 // CTRL2DATA-NEXT:     %12 = "neura.not"(%11) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
 // CTRL2DATA-NEXT:     %13 = "neura.cast"(%5) <{cast_type = "index_to_int"}> : (!neura.data<index, i1>) -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %14 = neura.grant_predicate %13, %11 : !neura.data<i64, i1>, !neura.data<i1, i1> -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %15 = neura.reserve : !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %16 = "neura.phi"(%14, %15) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %16 = "neura.phi"(%15, %14) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %17 = "neura.cast"(%16) <{cast_type = "int_to_index"}> : (!neura.data<i64, i1>) -> !neura.data<index, i1>
 // CTRL2DATA-NEXT:     %18 = "neura.icmp"(%17, %3) <{cmpType = "slt"}> : (!neura.data<index, i1>, !neura.data<index, i1>) -> !neura.data<i1, i1>
 // CTRL2DATA-NEXT:     %19 = "neura.not"(%18) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
@@ -80,4 +80,4 @@ module attributes {} {
 // CTRL2DATA-NEXT:     %29 = neura.grant_predicate %28, %19 : !neura.data<i64, i1>, !neura.data<i1, i1> -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     neura.ctrl_mov %29 -> %8 : !neura.data<i64, i1> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     "neura.return"() : () -> ()
-// CTRL2DATA-NEXT:   }
+// CTRL2DATA-NEXT: }
