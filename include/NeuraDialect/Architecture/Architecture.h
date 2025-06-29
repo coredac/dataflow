@@ -119,6 +119,7 @@ public:
 
 private:
   // TODO: Model architecture in detail, e.g., ports, registers, crossbars, etc.
+  // https://github.com/coredac/dataflow/issues/52.
   std::vector<std::unique_ptr<Tile>> tile_storage;
   std::vector<std::unique_ptr<Link>> link_storage;
   std::unordered_map<int, Tile*> id_to_tile;
