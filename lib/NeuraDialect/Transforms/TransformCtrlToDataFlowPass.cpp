@@ -264,14 +264,14 @@ void createReserveAndPhiOps(func::FuncOp &func, ControlFlowInfo &ctrl_info,
   DenseMap<BlockArgument, SmallVector<Value>> arg_to_phi_operands;
 
   for (auto &edge : ctrl_info.all_edges) {
-    Block *source = edge->source;
     Block *target = edge->target;
 
     // Type 1 & 2: Backward cond_br/br edges with values.
     if (edge->is_back_edge && !edge->passed_values.empty()) {
       if (edge->passed_values.size() != target->getNumArguments()) {
-        llvm::errs() << "[ctrl2data] Error: Number of passed values does not match "
-                        "target block arguments.\n";
+        llvm::errs()
+            << "[ctrl2data] Error: Number of passed values does not match "
+               "target block arguments.\n";
         assert(false);
       }
       for (BlockArgument arg : target->getArguments()) {
@@ -279,10 +279,12 @@ void createReserveAndPhiOps(func::FuncOp &func, ControlFlowInfo &ctrl_info,
       }
     }
     // Type 3 & 4: Forward cond_br/br edges with values.
-    else if (!edge->is_back_edge && !edge->passed_values.empty()) {;
+    else if (!edge->is_back_edge && !edge->passed_values.empty()) {
+      ;
       if (edge->passed_values.size() != target->getNumArguments()) {
-        llvm::errs() << "[ctrl2data] Error: Number of passed values does not match "
-                        "target block arguments.\n";
+        llvm::errs()
+            << "[ctrl2data] Error: Number of passed values does not match "
+               "target block arguments.\n";
         assert(false);
       }
       for (BlockArgument arg : target->getArguments()) {
@@ -373,15 +375,14 @@ void createReserveAndPhiOps(func::FuncOp &func, ControlFlowInfo &ctrl_info,
       // No need to create a phi operation if there's only one operand.
 
       if (phi_operands.size() == 1) {
-        llvm::errs() << phi_operands[0] << "\n";
         arg_to_phi_result[arg] = phi_operands[0];
         arg.replaceAllUsesWith(phi_operands[0]);
       }
       continue;
     }
 
-
-    // Handles the blcockargument with/without reserve seperately (different insertion points).
+    // Handles the blcockargument with/without reserve seperately (different
+    // insertion points).
     if (arg_to_reserve.count(arg)) {
       Value reserve_value = arg_to_reserve[arg];
       builder.setInsertionPointAfter(reserve_value.getDefiningOp());
@@ -403,6 +404,7 @@ void createReserveAndPhiOps(func::FuncOp &func, ControlFlowInfo &ctrl_info,
     }
   }
 
+  llvm::errs() << func << "\n";
   // ================================================
   // Step 5: Handles Forward cond_br edges without values.
   // ================================================
@@ -423,34 +425,61 @@ void createReserveAndPhiOps(func::FuncOp &func, ControlFlowInfo &ctrl_info,
       conditions.push_back(condition);
     }
 
-
     // Unsupported case: multiple conditions for a single block.
     // TODO: Adds support if needed.
     if (conditions.size() > 1) {
-      llvm::errs()
-          << "[ctrl2data] Unsupported case: multiple conditions for a single block: "
-          << *target << "\n";
+      llvm::errs() << "[ctrl2data] Unsupported case: multiple conditions for a "
+                      "single block: "
+                   << *target << "\n";
       assert(false);
     }
 
     if (target->getArguments().empty()) {
+      // Grants predicate for all the live-in values in the target block.
+      DenseSet<Value> live_in_values;
       for (Operation &op : target->getOperations()) {
-        if (op.hasTrait<OpTrait::IsTerminator>() ||
-            isa<neura::PhiOp, neura::ReserveOp, neura::CtrlMovOp,
-                neura::GrantPredicateOp, neura::GrantAlwaysOp,
-                neura::GrantOnceOp, neura::NotOp>(op)) {
-          continue;
+        for (Value operand : op.getOperands()) {
+          if (operand.getDefiningOp() &&
+              operand.getDefiningOp()->getBlock() != target &&
+              !isa<neura::ReserveOp>(operand.getDefiningOp())) {
+            live_in_values.insert(operand);
+          }
+        }
+      }
+
+      // Apply grant_predicate for each live-in value.
+      for (Value live_in_value : live_in_values) {
+        // Finds the earliest use of the live-in value.
+        Operation *earliest_use = nullptr;
+        for (Operation &op : target->getOperations()) {
+          for (Value operand : op.getOperands()) {
+            if (operand == live_in_value) {
+              earliest_use = &op;
+              break;
+            }
+          }
+          if (earliest_use) {
+            break;
+          }
         }
 
-        builder.setInsertionPointAfter(&op);
+        if (earliest_use) {
+          builder.setInsertionPoint(earliest_use);
+        } else {
+          builder.setInsertionPointToStart(target);
+        }
 
-        for (Value result : op.getResults()) {
-          if (isa<neura::PredicatedValue>(result.getType())) {
-            // Creates a predicated value for the operation result.
-            Value predicated_value = builder.create<neura::GrantPredicateOp>(
-                op.getLoc(), result.getType(), result, conditions.front());
-            result.replaceAllUsesExcept(predicated_value,
-                                        predicated_value.getDefiningOp());
+        // Creates predicated version of the live-in value
+        Value predicated_value = builder.create<neura::GrantPredicateOp>(
+            live_in_value.getLoc(), live_in_value.getType(), live_in_value,
+            conditions[0]);
+
+        // Replace uses of the live-in value within this block only.
+        for (OpOperand &use :
+             llvm::make_early_inc_range(live_in_value.getUses())) {
+          if (use.getOwner()->getBlock() == target &&
+              use.getOwner() != predicated_value.getDefiningOp()) {
+            use.set(predicated_value);
           }
         }
       }
@@ -494,7 +523,8 @@ void transformControlFlowToDataFlow(func::FuncOp &func,
     }
   }
 
-  // Moves all operations from blocks to the entry block before the terminator.
+  // Moves all operations from blocks to the entry block before the
+  // terminator.
   for (Block *block : blocks_to_flatten) {
     auto &ops = block->getOperations();
     while (!ops.empty()) {
