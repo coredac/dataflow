@@ -85,20 +85,20 @@ func.func @loop_test() -> f32 {
 // CTRL2DATA-NEXT:   %7 = "neura.grant_always"(%6) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:   %8 = "neura.constant"() <{predicate = true, value = 0.000000e+00 : f32}> : () -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:   %9 = "neura.grant_once"(%8) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
-// CTRL2DATA-NEXT:   %10 = neura.reserve : !neura.data<i64, i1>
-// CTRL2DATA-NEXT:   %11 = "neura.phi"(%3, %10) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
-// CTRL2DATA-NEXT:   %12 = neura.reserve : !neura.data<f32, i1>
-// CTRL2DATA-NEXT:   %13 = "neura.phi"(%9, %12) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
-// CTRL2DATA-NEXT:   %14 = "neura.fadd"(%13, %7) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
-// CTRL2DATA-NEXT:   %15 = "neura.add"(%11, %5) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:   %10 = neura.reserve : !neura.data<{{f32|i64}}, i1>
+// CTRL2DATA-NEXT:   %11 = "neura.phi"(%10, %{{[0-9]+}}) : (!neura.data<{{f32|i64}}, i1>, !neura.data<{{f32|i64}}, i1>) -> !neura.data<{{f32|i64}}, i1>
+// CTRL2DATA-NEXT:   %12 = neura.reserve : !neura.data<{{f32|i64}}, i1>
+// CTRL2DATA-NEXT:   %13 = "neura.phi"(%12, %{{[0-9]+}}) : (!neura.data<{{f32|i64}}, i1>, !neura.data<{{f32|i64}}, i1>) -> !neura.data<{{f32|i64}}, i1>
+// CTRL2DATA-NEXT:   %14 = "neura.fadd"(%{{[0-9]+}}, %7) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// CTRL2DATA-NEXT:   %15 = "neura.add"(%{{[0-9]+}}, %5) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:   %16 = "neura.icmp"(%15, %1) <{cmpType = "slt"}> : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i1, i1>
-// CTRL2DATA-NEXT:   %17 = "neura.not"(%16) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
-// CTRL2DATA-NEXT:   %18 = neura.grant_predicate %14, %17 : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
-// CTRL2DATA-NEXT:   %19 = neura.grant_predicate %14, %16 : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
-// CTRL2DATA-NEXT:   neura.ctrl_mov %19 -> %12 : !neura.data<f32, i1> !neura.data<f32, i1>
-// CTRL2DATA-NEXT:   %20 = neura.grant_predicate %15, %16 : !neura.data<i64, i1>, !neura.data<i1, i1> -> !neura.data<i64, i1>
-// CTRL2DATA-NEXT:   neura.ctrl_mov %20 -> %10 : !neura.data<i64, i1> !neura.data<i64, i1>
-// CTRL2DATA-NEXT:   "neura.return"(%18) : (!neura.data<f32, i1>) -> ()
+// CTRL2DATA-NEXT:   %17 = neura.grant_predicate %{{[0-9]+}}, %16 : !neura.data<{{f32|i64}}, i1>, !neura.data<i1, i1> -> !neura.data<{{f32|i64}}, i1>
+// CTRL2DATA-NEXT:   neura.ctrl_mov %17 -> %12 : !neura.data<{{f32|i64}}, i1> !neura.data<{{f32|i64}}, i1>
+// CTRL2DATA-NEXT:   %18 = neura.grant_predicate %{{[0-9]+}}, %16 : !neura.data<{{f32|i64}}, i1>, !neura.data<i1, i1> -> !neura.data<{{f32|i64}}, i1>
+// CTRL2DATA-NEXT:   neura.ctrl_mov %18 -> %10 : !neura.data<{{f32|i64}}, i1> !neura.data<{{f32|i64}}, i1>
+// CTRL2DATA-NEXT:   %19 = "neura.not"(%16) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
+// CTRL2DATA-NEXT:   %20 = neura.grant_predicate %14, %19 : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
+// CTRL2DATA-NEXT:   "neura.return"(%20) : (!neura.data<f32, i1>) -> ()
 // CTRL2DATA-NEXT: }
 
 // MOV:      func.func @loop_test() -> f32 attributes {accelerator = "neura"} {

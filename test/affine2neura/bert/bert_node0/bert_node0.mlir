@@ -35,6 +35,4 @@ module attributes {} {
 // CHECK-NEXT: neura.br %12 : i64 to ^bb1
 // CHECK-NEXT: ^bb3:  // pred: ^bb1
 // CHECK-NEXT: "neura.return"() : () -> ()
-
-
-
+// CHECK-NEXT: }
