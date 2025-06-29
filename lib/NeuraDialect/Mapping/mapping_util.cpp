@@ -137,6 +137,7 @@ std::vector<Operation *> mlir::neura::getTopologicallySortedOps(Operation *func_
     pending_deps[op] = dep_count;
     if (dep_count == 0) {
       // TODO: Prioritize recurrence ops. But cause compiled II regression.
+      // https://github.com/coredac/dataflow/issues/59.
       if (recurrence_ops.contains(op)) {
         // ready_queue.push_front(op);
         ready_queue.push_back(op);
@@ -156,6 +157,7 @@ std::vector<Operation *> mlir::neura::getTopologicallySortedOps(Operation *func_
       for (Operation *user : result.getUsers()) {
         if (--pending_deps[user] == 0) {
           // TODO: Prioritize recurrence ops. But cause compiled II regression.
+          // https://github.com/coredac/dataflow/issues/59.
           if (recurrence_ops.contains(user)) {
             // ready_queue.push_front(user);
             ready_queue.push_back(user);
@@ -301,6 +303,9 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op,
         }
 
         // The last link can be held from arrival_time to dst_time - 1.
+        // TODO: We actually don't need to occupy the last link if the registers
+        // within the tile can be explicitly represented.
+        // https://github.com/coredac/dataflow/issues/52.
         bool all_free = true;
         assert(!current_path.empty() && "Path should not be empty when checking last link");
         MappingLoc last_link = current_path.back();
@@ -381,7 +386,7 @@ bool mlir::neura::tryHeuristicMapping(std::vector<Operation *> &sorted_ops,
       llvm::errs() << "[DEBUG] Failed to schedule op: " << *op << "; target loc: " << target_loc.resource->getType() << "#" << target_loc.resource->getId() << " @t=" << target_loc.time_step << "\n";
     }
     // TODO: Optimization -- backtrack a few times if failed to schedule the op.
-    // if (!tryMapMaterializedOp(op, mapping_state, visited))
+    // https://github.com/coredac/dataflow/issues/59
     return false;
   }
 
@@ -544,7 +549,7 @@ std::vector<MappingLoc> mlir::neura::calculateAward(Operation *op,
               return a.second > b.second;
             });
   // TODO: Needs to handle tie case and prioritize lower resource utilization, however,
-  // compiled II becomes worse after adding this tie-breaker.
+  // compiled II becomes worse after adding this tie-breaker: https://github.com/coredac/dataflow/issues/59.
   // std::sort(locs_award_vec.begin(), locs_award_vec.end(),
   //           [&](const std::pair<MappingLoc, int> &a, const std::pair<MappingLoc, int> &b) {
   //               if (a.second != b.second) {
