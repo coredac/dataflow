@@ -30,101 +30,101 @@ struct GenerateCodePass
   void runOnOperation() override {
     ModuleOp module = getOperation();
 
-    llvm::json::Array functionsArray;
+    llvm::json::Array functions_array;
 
     for (auto func : module.getOps<func::FuncOp>()) {
-      auto accelAttr = func->getAttrOfType<StringAttr>("accelerator");
-      if (!accelAttr || accelAttr.getValue() != "neura")
+      auto accel_attr = func->getAttrOfType<StringAttr>("accelerator");
+      if (!accel_attr || accel_attr.getValue() != "neura")
         continue;
 
-      llvm::json::Object funcObj;
-      funcObj["name"] = func.getName().str();
+      llvm::json::Object func_obj;
+      func_obj["name"] = func.getName().str();
 
-      if (auto iiAttr = func->getAttrOfType<IntegerAttr>("CompiledII"))
-        funcObj["CompiledII"] = iiAttr.getInt();
-      if (auto recAttr = func->getAttrOfType<IntegerAttr>("RecMII"))
-        funcObj["RecMII"] = recAttr.getInt();
-      if (auto resAttr = func->getAttrOfType<IntegerAttr>("ResMII"))
-        funcObj["ResMII"] = resAttr.getInt();
+      if (auto ii_attr = func->getAttrOfType<IntegerAttr>("CompiledII"))
+        func_obj["CompiledII"] = ii_attr.getInt();
+      if (auto recMII_attr = func->getAttrOfType<IntegerAttr>("RecMII"))
+        func_obj["RecMII"] = recMII_attr.getInt();
+      if (auto resMII_attr = func->getAttrOfType<IntegerAttr>("ResMII"))
+        func_obj["ResMII"] = resMII_attr.getInt();
 
-      llvm::json::Array opArray;
+      llvm::json::Array op_array;
 
       func.walk([&](Operation *op) {
         if (isa<func::ReturnOp>(op))
           return;
 
-        llvm::json::Object opObj;
-        opObj["name"] = op->getName().getStringRef().str();
+        llvm::json::Object op_obj;
+        op_obj["name"] = op->getName().getStringRef().str();
 
-        // Result types
-        llvm::json::Array resultTypes;
+        // Result types.
+        llvm::json::Array result_types;
         for (auto result : op->getResults()) {
-        std::string typeStr;
-        llvm::raw_string_ostream os(typeStr);
+        std::string type_str;
+        llvm::raw_string_ostream os(type_str);
         result.getType().print(os);
-        resultTypes.push_back(os.str());
+        result_types.push_back(os.str());
         }
-        opObj["result_types"] = std::move(resultTypes);
+        op_obj["result_types"] = std::move(result_types);
 
-        // Operands
-        llvm::json::Array operandIndices;
+        // Operands.
+        llvm::json::Array operand_indices;
         for (Value operand : op->getOperands()) {
-          if (auto definingOp = operand.getDefiningOp())
-            operandIndices.push_back(definingOp->getName().getStringRef().str());
+          if (auto defining_op = operand.getDefiningOp())
+            operand_indices.push_back(defining_op->getName().getStringRef().str());
           else
-            operandIndices.push_back("block_arg");
+            operand_indices.push_back("block_arg");
         }
-        opObj["operands"] = std::move(operandIndices);
+        op_obj["operands"] = std::move(operand_indices);
 
-        // Constants
-        if (auto constOp = mlir::dyn_cast<neura::ConstantOp>(op)) {
-          auto valAttr = constOp.getValue();
-          if (valAttr) {
-            if (auto intAttr = mlir::dyn_cast<IntegerAttr>(valAttr)) {
-              opObj["constant_value"] = std::to_string(intAttr.getInt());
-            } else if (auto floatAttr = mlir::dyn_cast<FloatAttr>(valAttr)) {
-              opObj["constant_value"] = std::to_string(floatAttr.getValueAsDouble());
+        // Constants.
+        if (auto const_op = mlir::dyn_cast<neura::ConstantOp>(op)) {
+          auto val_attr = const_op.getValue();
+          if (val_attr) {
+            if (auto int_attr = mlir::dyn_cast<IntegerAttr>(val_attr)) {
+              op_obj["constant_value"] = std::to_string(int_attr.getInt());
+            } else if (auto float_attr = mlir::dyn_cast<FloatAttr>(val_attr)) {
+              op_obj["constant_value"] = std::to_string(float_attr.getValueAsDouble());
             }
           }
         }
 
-        // Mapping locs
-        llvm::json::Array locArray;
-        if (auto attrArray = op->getAttrOfType<ArrayAttr>("mapping_locs")) {
-          for (Attribute attr : attrArray) {
+        // Mapping locs.
+        llvm::json::Array loc_array;
+        if (auto attr_array = op->getAttrOfType<ArrayAttr>("mapping_locs")) {
+          for (Attribute attr : attr_array) {
             if (auto loc = mlir::dyn_cast<DictionaryAttr>(attr)) {
-              llvm::json::Object locObj;
+              llvm::json::Object loc_obj;
               if (auto idAttr = mlir::dyn_cast<IntegerAttr>(loc.get("id")))
-                locObj["id"] = idAttr.getInt();
-              if (auto resAttr = mlir::dyn_cast<StringAttr>(loc.get("resource")))
-                locObj["resource"] = resAttr.getValue().str();
-              if (auto tsAttr = mlir::dyn_cast<IntegerAttr>(loc.get("time_step")))
-                locObj["time_step"] = tsAttr.getInt();
-              locArray.push_back(std::move(locObj));
+                loc_obj["id"] = idAttr.getInt();
+              if (auto resource_attr = mlir::dyn_cast<StringAttr>(loc.get("resource")))
+                loc_obj["resource"] = resource_attr.getValue().str();
+              if (auto timestep_attr = mlir::dyn_cast<IntegerAttr>(loc.get("time_step")))
+                loc_obj["time_step"] = timestep_attr.getInt();
+              loc_array.push_back(std::move(loc_obj));
             }
           }
         }
-        opObj["mapping_locs"] = std::move(locArray);
+        op_obj["mapping_locs"] = std::move(loc_array);
 
-        opArray.push_back(std::move(opObj));
+        op_array.push_back(std::move(op_obj));
       });
 
-      funcObj["operations"] = std::move(opArray);
-      functionsArray.push_back(std::move(funcObj));
+      func_obj["operations"] = std::move(op_array);
+      functions_array.push_back(std::move(func_obj));
     }
 
-    // Final JSON object
+    // Final JSON object.
     llvm::json::Object root;
-    root["functions"] = std::move(functionsArray);
+    root["functions"] = std::move(functions_array);
 
     // llvm::outs() << llvm::formatv("{0:2}", llvm::json::Value(std::move(root))) << "\n";
     std::error_code ec;
-    llvm::raw_fd_ostream jsonOut("generated-instructions.json", ec);
+    llvm::raw_fd_ostream json_out("generated-instructions.json", ec);
     if (ec) {
         getOperation()->emitError("Failed to open 'generated-instructions.json' for writing: " + ec.message());
         return signalPassFailure();
     }
-    jsonOut << llvm::formatv("{0:2}", llvm::json::Value(std::move(root))) << "\n";
+    json_out << llvm::formatv("{0:2}", llvm::json::Value(std::move(root))) << "\n";
   }
 };
 
