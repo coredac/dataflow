@@ -64,16 +64,33 @@ struct MapToAcceleratorPass
       }
 
       // AcceleratorConfig config{/*numTiles=*/8}; // Example
-      Architecture architecture(2, 2);
+      Architecture architecture(4, 4);
       int res_mii = calculateResMii(func, architecture);
       IntegerAttr res_mii_attr = IntegerAttr::get(
           IntegerType::get(func.getContext(), 32), res_mii);
       func->setAttr("ResMII", res_mii_attr);
 
       const int minII = std::min(rec_mii, res_mii);
-      constexpr int maxII = 5;
+      constexpr int maxII = 10;
+      std::vector<Operation*> sorted_ops = getTopologicallySortedOps(func);
+      for (Operation *op : sorted_ops) {
+        llvm::errs() << "[MapToAcceleratorPass] sorted op: "
+                      << *op << "\n";
+      }
       for (int ii = minII; ii <= maxII; ++ii) {
-        MappingState state(architecture, ii);
+        MappingState mapping_state(architecture, ii);
+        if (tryHeuristicMapping(sorted_ops, architecture, mapping_state)) {
+          // success
+          llvm::errs() << "[MapToAcceleratorPass] Successfully mapped function '"
+                       << func.getName() << "' with II = " << ii << "\n";
+          mapping_state.dumpOpToLocs(); // logs to stderr
+          mapping_state.encodeMappingState();
+          func->setAttr("CompiledII", IntegerAttr::get(
+              IntegerType::get(func.getContext(), 32), ii));
+          break;
+        }
+        llvm::errs() << "[DEBUG] mapping failed for II = " << ii << "\n";
+        mapping_state.dumpOpToLocs(); // logs to stderr
       }
     });
   }

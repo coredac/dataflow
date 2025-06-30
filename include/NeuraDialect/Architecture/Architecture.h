@@ -11,6 +11,12 @@
 namespace mlir {
 namespace neura {
 
+// Enum for identifying resource type.
+enum class ResourceKind {
+  Tile,
+  Link,
+};
+
 //===----------------------------------------------------------------------===//
 // BasicResource: abstract base class for Tile, Link, etc.
 //===----------------------------------------------------------------------===//
@@ -20,6 +26,7 @@ public:
   virtual ~BasicResource() = default;
   virtual int getId() const = 0;
   virtual std::string getType() const = 0;
+  virtual ResourceKind getKind() const = 0;
 };
 
 //===----------------------------------------------------------------------===//
@@ -36,6 +43,12 @@ public:
 
   int getId() const override;
   std::string getType() const override { return "tile"; }
+
+  ResourceKind getKind() const override { return ResourceKind::Tile; }
+
+  static bool classof(const BasicResource *res) {
+    return res && res->getKind() == ResourceKind::Tile;
+  }
 
   int getX() const;
   int getY() const;
@@ -64,8 +77,14 @@ public:
   Link(int id);
 
   int getId() const override;
+
   std::string getType() const override { return "link"; }
 
+  ResourceKind getKind() const override { return ResourceKind::Link; }
+
+  static bool classof(const BasicResource *res) {
+    return res && res->getKind() == ResourceKind::Link;
+  }
   Tile* getSrcTile() const;
   Tile* getDstTile() const;
 
@@ -83,7 +102,8 @@ struct PairHash {
   }
 };
 
-/// Describes the entire CGRA architecture.
+// Describes the CGRA architecture template.
+// TODO: Model architecture in detail (e.g., registers, ports).
 class Architecture {
 public:
   Architecture(int width, int height);
@@ -98,8 +118,9 @@ public:
   std::vector<Link*> getAllLinks() const;
 
 private:
+  // TODO: Model architecture in detail, e.g., ports, registers, crossbars, etc.
+  // https://github.com/coredac/dataflow/issues/52.
   std::vector<std::unique_ptr<Tile>> tile_storage;
-//   std::vector<Tile*> tiles;
   std::vector<std::unique_ptr<Link>> link_storage;
   std::unordered_map<int, Tile*> id_to_tile;
   std::unordered_map<std::pair<int, int>, Tile*, PairHash> coord_to_tile;
