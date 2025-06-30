@@ -28,6 +28,17 @@
 // RUN:   --map-to-accelerator \
 // RUN:   | FileCheck %s -check-prefix=MAPPING
 
+// RUN: mlir-neura-opt %s \
+// RUN:   --assign-accelerator \
+// RUN:   --lower-llvm-to-neura \
+// RUN:   --leverage-predicated-value \
+// RUN:   --transform-ctrl-to-data-flow \
+// RUN:   --insert-data-mov \
+// RUN:   --map-to-accelerator \
+// RUN:   --generate-code
+
+// RUN: FileCheck %s --input-file=generated-instructions.json -check-prefix=INST
+
 func.func @loop_test() -> f32 {
   %n = llvm.mlir.constant(10 : i64) : i64
   %c0 = llvm.mlir.constant(0 : i64) : i64
@@ -185,3 +196,12 @@ func.func @loop_test() -> f32 {
 // MAPPING-NEXT:   %41 = "neura.data_mov"(%34) {mapping_locs = []} : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
 // MAPPING-NEXT:   "neura.return"(%41) {mapping_locs = [{id = 1 : i32, resource = "tile", time_step = 7 : i32}]} : (!neura.data<f32, i1>) -> ()
 // MAPPING-NEXT: }
+
+// INST:        "name": "neura.fadd",
+// INST-NEXT:   "operands": [
+// INST-NEXT:     "neura.data_mov",
+// INST-NEXT:     "neura.data_mov"
+// INST-NEXT:   ],
+// INST-NEXT:   "result_types": [
+// INST-NEXT:     "!neura.data<f32, i1>"
+// INST-NEXT:   ]

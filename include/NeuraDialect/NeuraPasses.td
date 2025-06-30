@@ -57,4 +57,14 @@ def MapToAccelerator : Pass<"map-to-accelerator", "ModuleOp"> {
   }];
   let constructor = "neura::createMapToAcceleratorPass()";
 }
+
+def GenerateCode : Pass<"generate-code", "ModuleOp"> {
+  let summary = "Generate JSON-formatted instructions from mapped Neura IR";
+  let description = [{
+    This pass generates JSON file containing the instructions.
+    The instructions can be encoded into configuration signals.
+  }];
+  let constructor = "neura::createGenerateCodePass()";
+}
+
 #endif // NEURA_PASSES_TD
