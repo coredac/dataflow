@@ -128,6 +128,69 @@ struct ControlFlowInfo {
   }
 };
 
+// Checks if all the live-out values in a block are dominated by the block's
+// arguments.
+void assertLiveOutValuesDominatedByBlockArgs(func::FuncOp &func) {
+  llvm::errs()
+      << "[ctrl2data] Asserting live-out values dominated by block arguments\n";
+  for (Block &block : func.getBlocks()) {
+    if (&block == &func.getBody().front())
+      continue;
+
+    DenseSet<Value> live_out_values;
+    for (Operation &op : block) {
+      for (Value result : op.getResults()) {
+        for (OpOperand &use : result.getUses()) {
+          if (use.getOwner()->getBlock() != &block) {
+            live_out_values.insert(result);
+            break;
+          }
+        }
+      }
+    }
+
+    // Skips blocks with no live-out values.
+    if (live_out_values.empty())
+      continue;
+
+    DenseSet<Value> dominated_by_block_args;
+
+    for (BlockArgument arg : block.getArguments()) {
+      dominated_by_block_args.insert(arg);
+    }
+
+    if (block.getNumArguments() == 0 && !live_out_values.empty()) {
+      assert(false && "Block without arguments has live-out values");
+    }
+
+    bool changed = true;
+    while (changed) {
+      changed = false;
+      for (Operation &op : block) {
+        for (Value result : op.getResults()) {
+          if (dominated_by_block_args.count(result))
+            continue;
+
+          for (Value operand : op.getOperands()) {
+            if (dominated_by_block_args.count(operand)) {
+              dominated_by_block_args.insert(result);
+              changed = true;
+              break;
+            }
+          }
+        }
+      }
+    }
+    for (Value live_out : live_out_values) {
+      if (!dominated_by_block_args.count(live_out))
+        assert(false && "Live-out value not dominated by block arguments");
+    }
+  }
+
+  llvm::errs()
+      << "[ctrl2data] All live-out values are dominated by block arguments.\n";
+}
+
 // Builds control flow info for the given function.
 void buildControlFlowInfo(func::FuncOp &func, ControlFlowInfo &ctrl_info,
                           DominanceInfo &dom_info) {
@@ -404,7 +467,6 @@ void createReserveAndPhiOps(func::FuncOp &func, ControlFlowInfo &ctrl_info,
     }
   }
 
-  llvm::errs() << func << "\n";
   // ================================================
   // Step 5: Handles Forward cond_br edges without values.
   // ================================================
@@ -493,13 +555,16 @@ void transformControlFlowToDataFlow(func::FuncOp &func,
                                     DominanceInfo &dom_info,
                                     OpBuilder &builder) {
 
+  // Asserts that all live-out values are dominated by block arguments.
+  assertLiveOutValuesDominatedByBlockArgs(func);
+
   // Creates reserve and phi operations for each block argument.
   DenseMap<BlockArgument, Value> arg_to_reserve;
   DenseMap<BlockArgument, Value> arg_to_phi_result;
   createReserveAndPhiOps(func, ctrl_info, arg_to_reserve, arg_to_phi_result,
                          builder);
 
-  // Step 2: Replaces blockarguments with phi results
+  // Replaces blockarguments with phi results
   for (auto &arg_to_phi_pair : arg_to_phi_result) {
     BlockArgument arg = arg_to_phi_pair.first;
     Value phi_result = arg_to_phi_pair.second;

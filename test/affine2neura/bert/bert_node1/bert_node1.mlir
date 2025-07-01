@@ -66,18 +66,18 @@ module attributes {} {
 // CTRL2DATA-NEXT:     %17 = "neura.cast"(%16) <{cast_type = "int_to_index"}> : (!neura.data<i64, i1>) -> !neura.data<index, i1>
 // CTRL2DATA-NEXT:     %18 = "neura.icmp"(%17, %3) <{cmpType = "slt"}> : (!neura.data<index, i1>, !neura.data<index, i1>) -> !neura.data<i1, i1>
 // CTRL2DATA-NEXT:     %19 = "neura.not"(%18) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
-// CTRL2DATA-NEXT:     %20 = neura.grant_predicate %{{[0-9]+}}, %18 : !neura.data<index, i1>, !neura.data<i1, i1> -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %21 = neura.grant_predicate %{{[0-9]+}}, %18 : !neura.data<index, i1>, !neura.data<i1, i1> -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %22 = neura.load_indexed %arg0[%{{[0-9]+}}, %{{[0-9]+}}, %{{[0-9]+}}, %{{[0-9]+}}, %{{[0-9]+}}, %{{[0-9]+}} : !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>] memref<?x1x1x1x1x128xi8> : !neura.data<i8, i1>
+// CTRL2DATA-DAG:     %[[VAL1:.*]] = neura.grant_predicate %5, %18 : !neura.data<index, i1>, !neura.data<i1, i1> -> !neura.data<index, i1>
+// CTRL2DATA-DAG:     %[[VAL2:.*]] = neura.grant_predicate %17, %18 : !neura.data<index, i1>, !neura.data<i1, i1> -> !neura.data<index, i1>
+// CTRL2DATA-NEXT:     %22 = neura.load_indexed %arg0[%[[VAL1:.*]], %[[VAL1:.*]], %[[VAL1:.*]], %[[VAL1:.*]], %[[VAL1:.*]], %[[VAL2:.*]] : !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>] memref<?x1x1x1x1x128xi8> : !neura.data<i8, i1>
 // CTRL2DATA-NEXT:     %23 = neura.grant_predicate %10, %18 : !neura.data<index, i1>, !neura.data<i1, i1> -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     neura.store_indexed %22 to %arg1[%{{[0-9]+}}, %{{[0-9]+}}, %23, %{{[0-9]+}}, %{{[0-9]+}}, %{{[0-9]+}} : !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>] memref<?x1x128x1x1x128xi8> : !neura.data<i8, i1>
+// CTRL2DATA-NEXT:     neura.store_indexed %22 to %arg1[%[[VAL1:.*]], %[[VAL1:.*]], %23, %[[VAL1:.*]], %[[VAL1:.*]], %[[VAL2:.*]] : !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>] memref<?x1x128x1x1x128xi8> : !neura.data<i8, i1>
 // CTRL2DATA-NEXT:     %24 = neura.grant_predicate %1, %18 : !neura.data<index, i1>, !neura.data<i1, i1> -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %25 = "neura.add"(%{{[0-9]+}}, %24) : (!neura.data<index, i1>, !neura.data<index, i1>) -> !neura.data<index, i1>
+// CTRL2DATA-NEXT:     %25 = "neura.add"(%[[VAL2:.*]], %24) : (!neura.data<index, i1>, !neura.data<index, i1>) -> !neura.data<index, i1>
 // CTRL2DATA-NEXT:     %26 = "neura.cast"(%25) <{cast_type = "index_to_int"}> : (!neura.data<index, i1>) -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     neura.ctrl_mov %26 -> %15 : !neura.data<i64, i1> !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %27 = neura.grant_predicate %{{[0-9]+}}, %19 : !neura.data<index, i1>, !neura.data<i1, i1> -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %28 = neura.grant_predicate %{{[0-9]+}}, %19 : !neura.data<index, i1>, !neura.data<i1, i1> -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %29 = "neura.add"(%{{[0-9]+}}, %{{[0-9]+}}) : (!neura.data<index, i1>, !neura.data<index, i1>) -> !neura.data<index, i1>
+// CTRL2DATA-DAG:     %[[VAL3:.*]] = neura.grant_predicate %10, %19 : !neura.data<index, i1>, !neura.data<i1, i1> -> !neura.data<index, i1>
+// CTRL2DATA-DAG:     %[[VAL4:.*]] = neura.grant_predicate %1, %19 : !neura.data<index, i1>, !neura.data<i1, i1> -> !neura.data<index, i1>
+// CTRL2DATA-NEXT:     %29 = "neura.add"(%[[VAL3:.*]], %[[VAL4:.*]]) : (!neura.data<index, i1>, !neura.data<index, i1>) -> !neura.data<index, i1>
 // CTRL2DATA-NEXT:     %30 = "neura.cast"(%29) <{cast_type = "index_to_int"}> : (!neura.data<index, i1>) -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     neura.ctrl_mov %30 -> %8 : !neura.data<i64, i1> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     "neura.return"() : () -> ()

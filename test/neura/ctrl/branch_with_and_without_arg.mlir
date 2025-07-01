@@ -59,12 +59,12 @@ func.func @test(%in: i64) -> f32 {
 // CTRL2DATA-NEXT:    %7 = "neura.grant_once"(%6) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:    %8 = "neura.icmp"(%arg0, %0) <{cmpType = "eq"}> : (i64, !neura.data<i64, i1>) -> !neura.data<i1, i1>
 // CTRL2DATA-NEXT:    %9 = "neura.grant_once"(%8) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
-// CTRL2DATA-DAG:    %{{[0-9]+}} = neura.grant_predicate %7, %9 : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
-// CTRL2DATA-DAG:    %{{[0-9]+}} = "neura.not"(%9) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
-// CTRL2DATA-DAG:    %{{[0-9]+}} = neura.grant_predicate %2, %{{[0-9]+}} : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
-// CTRL2DATA-DAG:    %{{[0-9]+}} = neura.grant_predicate %5, %{{[0-9]+}} : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
-// CTRL2DATA-NEXT:    %14 = "neura.fadd"(%{{[0-9]+}}, %{{[0-9]+}}) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
-// CTRL2DATA-NEXT:    %15 = "neura.fmul"(%{{[0-9]+}}, %4) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// CTRL2DATA-DAG:    %[[VAL1:.*]] = neura.grant_predicate %7, %9 : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
+// CTRL2DATA-DAG:    %[[NOT:.*]] = "neura.not"(%9) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
+// CTRL2DATA-DAG:    %[[VAL2:.*]] = neura.grant_predicate %2, %[[NOT:.*]] : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
+// CTRL2DATA-DAG:    %[[VAL3:.*]] = neura.grant_predicate %5, %[[NOT:.*]] : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
+// CTRL2DATA-NEXT:    %14 = "neura.fadd"(%[[VAL2:.*]], %[[VAL3:.*]]) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// CTRL2DATA-NEXT:    %15 = "neura.fmul"(%[[VAL1:.*]], %4) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:    %16 = "neura.phi"(%14, %15) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:    "neura.return"(%16) : (!neura.data<f32, i1>) -> ()
 // CTRL2DATA-NEXT:  }
