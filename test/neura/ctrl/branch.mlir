@@ -63,13 +63,13 @@ func.func @test(%in: i64) -> f32 {
 // CTRL2DATA-NEXT:   %8 = "neura.grant_once"(%7) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:   %9 = "neura.icmp"(%arg0, %0) <{cmpType = "eq"}> : (i64, !neura.data<i64, i1>) -> !neura.data<i1, i1>
 // CTRL2DATA-NEXT:   %10 = "neura.grant_once"(%9) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
-// CTRL2DATA-DAG:    %{{[0-9]+}} = neura.grant_predicate %6, %10 : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
-// CTRL2DATA-DAG:    %{{[0-9]+}} = neura.grant_predicate %8, %10 : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
-// CTRL2DATA-DAG:    %{{[0-9]+}} = "neura.not"(%10) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
-// CTRL2DATA-DAG:    %{{[0-9]+}} = neura.grant_predicate %2, %{{[0-9]+}} : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
-// CTRL2DATA-DAG:    %{{[0-9]+}} = neura.grant_predicate %4, %{{[0-9]+}} : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
-// CTRL2DATA-NEXT:   %16 = "neura.fadd"(%{{[0-9]+}}, %{{[0-9]+}}) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
-// CTRL2DATA-NEXT:   %17 = "neura.fmul"(%{{[0-9]+}}, %{{[0-9]+}}) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// CTRL2DATA-DAG:    %[[TRUE_VAL1:.*]] = neura.grant_predicate %6, %10 : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
+// CTRL2DATA-DAG:    %[[TRUE_VAL2:.*]] = neura.grant_predicate %8, %10 : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
+// CTRL2DATA-DAG:    %[[NOT:.*]] = "neura.not"(%10) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
+// CTRL2DATA-DAG:    %[[FALSE_VAL1:.*]] = neura.grant_predicate %2, %[[NOT:.*]] : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
+// CTRL2DATA-DAG:    %[[FALSE_VAL2:.*]] = neura.grant_predicate %4, %[[NOT:.*]] : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
+// CTRL2DATA-NEXT:   %16 = "neura.fadd"(%[[FALSE_VAL1:.*]], %[[FALSE_VAL2:.*]]) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// CTRL2DATA-NEXT:   %17 = "neura.fmul"(%[[TRUE_VAL1:.*]], %[[TRUE_VAL2:.*]]) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:   %18 = "neura.phi"(%16, %17) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:   "neura.return"(%18) : (!neura.data<f32, i1>) -> ()
 // CTRL2DATA-NEXT: }
