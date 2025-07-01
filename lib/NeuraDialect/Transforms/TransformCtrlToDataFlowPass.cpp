@@ -316,6 +316,8 @@ void createReserveAndPhiOps(func::FuncOp &func, ControlFlowInfo &ctrl_info,
   // Type 5: Forward cond_br edges without values.
   // Type 6: Forward br edges without values.
   // For Backward edges without values, they can be transformed into type 1 or 2
+
+  // Uses llvm::MapVector instead of DenseMap to maintain insertion order.
   llvm::MapVector<BlockArgument, SmallVector<ControlFlowInfo::Edge *>>
       backward_value_edges;
   llvm::MapVector<BlockArgument, SmallVector<ControlFlowInfo::Edge *>>
@@ -497,6 +499,7 @@ void createReserveAndPhiOps(func::FuncOp &func, ControlFlowInfo &ctrl_info,
 
     if (target->getArguments().empty()) {
       // Grants predicate for all the live-in values in the target block.
+      // Uses SetVector instead of DenseSet to maintain insertion order.
       SetVector<Value> live_in_values;
       for (Operation &op : target->getOperations()) {
         for (Value operand : op.getOperands()) {
