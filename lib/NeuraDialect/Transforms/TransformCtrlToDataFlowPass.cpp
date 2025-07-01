@@ -1,16 +1,32 @@
 #include "Common/AcceleratorAttrs.h"
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraOps.h"
-#include "NeuraDialect/NeuraTypes.h"
 #include "NeuraDialect/NeuraPasses.h"
-#include "mlir/IR/PatternMatch.h"
-#include "mlir/Pass/Pass.h"
+#include "NeuraDialect/NeuraTypes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Block.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/Dominance.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/Value.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/Error.h"
+#include "llvm/Support/raw_ostream.h"
+#include <cassert>
+#include <memory>
 
 using namespace mlir;
 
 #define GEN_PASS_DEF_TransformCtrlToDataFlow
 #include "NeuraDialect/NeuraPasses.h.inc"
+
+// TODO: Needs to enbale a deterministic ctrol to data flow transformation
+// https://github.com/coredac/dataflow/issues/64
 
 // Inserts `grant_once` for every predicated value defined in the entry block
 // that is used outside of the block (i.e., a live-out).
@@ -32,7 +48,7 @@ void GrantPredicateInEntryBlock(Block *entry_block, OpBuilder &builder) {
 
         // Case 1: Operand of a branch/cond_br → grant_once
         if (isa<neura::Br, neura::CondBr>(user)) {
-            used_in_branch = true;
+          used_in_branch = true;
         }
 
         // Case 2: Used directly in other blocks → grant_always
@@ -56,7 +72,8 @@ void GrantPredicateInEntryBlock(Block *entry_block, OpBuilder &builder) {
       continue;
 
     builder.setInsertionPointAfter(def_op);
-    auto granted = builder.create<neura::GrantOnceOp>(def_op->getLoc(), val.getType(), val);
+    auto granted = builder.create<neura::GrantOnceOp>(def_op->getLoc(),
+                                                      val.getType(), val);
 
     // Replaces uses in branch ops.
     for (OpOperand &use : llvm::make_early_inc_range(val.getUses())) {
@@ -74,7 +91,8 @@ void GrantPredicateInEntryBlock(Block *entry_block, OpBuilder &builder) {
       continue;
 
     builder.setInsertionPointAfter(def_op);
-    auto granted = builder.create<neura::GrantAlwaysOp>(def_op->getLoc(), val.getType(), val);
+    auto granted = builder.create<neura::GrantAlwaysOp>(def_op->getLoc(),
+                                                        val.getType(), val);
 
     // Replaces direct external uses (not in entry block, not in branch ops).
     for (OpOperand &use : llvm::make_early_inc_range(val.getUses())) {
@@ -87,215 +105,526 @@ void GrantPredicateInEntryBlock(Block *entry_block, OpBuilder &builder) {
   }
 }
 
-// Returns blocks in post-order traversal order.
-void getBlocksInPostOrder(Block *startBlock, SmallVectorImpl<Block *> &postOrder,
-                         DenseSet<Block *> &visited) {
-  if (!visited.insert(startBlock).second)
-    return;
+// Control flow struct.
+struct ControlFlowInfo {
+  struct Edge {
+    Block *source;
+    Block *target;
+    Value condition; // Optional condition for the edge.
+    bool is_not_condition;
+    SmallVector<Value> passed_values; // Values passed to the target block.
+    bool is_back_edge;
+  };
+  std::vector<std::unique_ptr<Edge>> all_edges; // All edges in the function.
+  DenseMap<Block *, SmallVector<Edge *>>
+      incoming_edges; // Incoming edges for each block.
+  DenseMap<Block *, SmallVector<Edge *>>
+      outgoing_edges; // Outgoing edges for each block.
 
-  // Visits successors first.
-  for (Block *succ : startBlock->getSuccessors())
-    getBlocksInPostOrder(succ, postOrder, visited);
+  DenseMap<Block *, SmallVector<Edge *>> back_edges;
+  DenseMap<Block *, SmallVector<Edge *>> forward_edges;
+  DenseSet<Block *> blocks_with_back_edges; // Blocks with backward edges.
 
-  // Adds current block to post-order sequence.
-  postOrder.push_back(startBlock);
+  Edge *createEdge() {
+    all_edges.push_back(std::make_unique<Edge>());
+    return all_edges.back().get();
+  }
+};
+
+// Checks if all the live-out values in a block are dominated by the block's
+// arguments.
+void assertLiveOutValuesDominatedByBlockArgs(func::FuncOp &func) {
+  llvm::errs()
+      << "[ctrl2data] Asserting live-out values dominated by block arguments\n";
+  for (Block &block : func.getBlocks()) {
+    if (&block == &func.getBody().front())
+      continue;
+
+    DenseSet<Value> live_out_values;
+    for (Operation &op : block) {
+      for (Value result : op.getResults()) {
+        for (OpOperand &use : result.getUses()) {
+          if (use.getOwner()->getBlock() != &block) {
+            live_out_values.insert(result);
+            break;
+          }
+        }
+      }
+    }
+
+    // Skips blocks with no live-out values.
+    if (live_out_values.empty())
+      continue;
+
+    DenseSet<Value> dominated_by_block_args;
+
+    for (BlockArgument arg : block.getArguments()) {
+      dominated_by_block_args.insert(arg);
+    }
+
+    if (block.getNumArguments() == 0 && !live_out_values.empty()) {
+      assert(false && "Block without arguments has live-out values");
+    }
+
+    bool changed = true;
+    while (changed) {
+      changed = false;
+      for (Operation &op : block) {
+        for (Value result : op.getResults()) {
+          if (dominated_by_block_args.count(result))
+            continue;
+
+          for (Value operand : op.getOperands()) {
+            if (dominated_by_block_args.count(operand)) {
+              dominated_by_block_args.insert(result);
+              changed = true;
+              break;
+            }
+          }
+        }
+      }
+    }
+    for (Value live_out : live_out_values) {
+      if (!dominated_by_block_args.count(live_out))
+        assert(false && "Live-out value not dominated by block arguments");
+    }
+  }
+
+  llvm::errs()
+      << "[ctrl2data] All live-out values are dominated by block arguments.\n";
 }
 
-// Creates phi nodes for all live-in values in the given block.
-void createPhiNodesForBlock(
-    Block *block, OpBuilder &builder,
-    SmallVectorImpl<std::tuple<Value, Value, Value, Block *>> &deferred_ctrl_movs) {
-  if (block->hasNoPredecessors()) {
-    // Skips phi insertion for entry block.
-    return;
+// Builds control flow info for the given function.
+void buildControlFlowInfo(func::FuncOp &func, ControlFlowInfo &ctrl_info,
+                          DominanceInfo &dom_info) {
+  for (Block &block : func.getBlocks()) {
+    Operation *terminator = block.getTerminator();
+
+    if (auto cond_br = dyn_cast<neura::CondBr>(terminator)) {
+      Block *true_dest = cond_br.getTrueDest();
+      Block *false_dest = cond_br.getFalseDest();
+
+      // Creates an edge for true destination.
+      ControlFlowInfo::Edge *true_edge = ctrl_info.createEdge();
+      true_edge->source = &block;
+      true_edge->target = true_dest;
+      true_edge->condition = cond_br.getCondition();
+      true_edge->is_not_condition = false;
+      true_edge->is_back_edge = dom_info.dominates(true_dest, &block);
+      for (Value passed_value : cond_br.getTrueArgs()) {
+        true_edge->passed_values.push_back(passed_value);
+      }
+
+      // Creates an edge for false destination.
+      ControlFlowInfo::Edge *false_edge = ctrl_info.createEdge();
+      false_edge->source = &block;
+      false_edge->target = false_dest;
+      false_edge->condition = cond_br.getCondition();
+      false_edge->is_not_condition = true;
+      false_edge->is_back_edge = dom_info.dominates(false_dest, &block);
+      for (Value passed_value : cond_br.getFalseArgs()) {
+        false_edge->passed_values.push_back(passed_value);
+      }
+
+      // Creates the blocks to edges mapping.
+      ctrl_info.outgoing_edges[&block].push_back(true_edge);
+      ctrl_info.outgoing_edges[&block].push_back(false_edge);
+      ctrl_info.incoming_edges[true_dest].push_back(true_edge);
+      ctrl_info.incoming_edges[false_dest].push_back(false_edge);
+
+      // Handles back edges.
+      if (true_edge->is_back_edge) {
+        ctrl_info.back_edges[&block].push_back(true_edge);
+        ctrl_info.blocks_with_back_edges.insert(&block);
+      } else {
+        ctrl_info.forward_edges[&block].push_back(true_edge);
+      }
+      if (false_edge->is_back_edge) {
+        ctrl_info.back_edges[&block].push_back(false_edge);
+        ctrl_info.blocks_with_back_edges.insert(&block);
+      } else {
+        ctrl_info.forward_edges[&block].push_back(false_edge);
+      }
+
+    } else if (auto br = dyn_cast<neura::Br>(terminator)) {
+      Block *dest = br.getDest();
+
+      // Creates unconditional edge to the destination block.
+      ControlFlowInfo::Edge *edge = ctrl_info.createEdge();
+      edge->source = &block;
+      edge->target = dest;
+      edge->condition = nullptr; // No condition for Br.
+      edge->is_not_condition = false;
+      edge->is_back_edge = dom_info.dominates(dest, &block);
+      for (Value passed_value : br.getArgs()) {
+        edge->passed_values.push_back(passed_value);
+      }
+
+      // Updates the blocks to edges mapping.
+      ctrl_info.outgoing_edges[&block].push_back(edge);
+      ctrl_info.incoming_edges[dest].push_back(edge);
+
+      // Handles back edges.
+      if (edge->is_back_edge) {
+        ctrl_info.back_edges[&block].push_back(edge);
+        ctrl_info.blocks_with_back_edges.insert(&block);
+      } else {
+        ctrl_info.forward_edges[&block].push_back(edge);
+      }
+
+    } else if (auto rt = dyn_cast<neura::ReturnOp>(terminator)) {
+      llvm::errs() << "[ctrl2data] ReturnOp found: " << *rt << "\n";
+    } else {
+      llvm::errs() << "[ctrl2data] Unknown terminator: " << *terminator << "\n";
+      assert(false);
+    }
+  }
+}
+
+Value getPrecessedCondition(Value condition, bool is_not_condition,
+                            DenseMap<Value, Value> &condition_cache,
+                            OpBuilder &builder) {
+  if (!is_not_condition) {
+    return condition;
   }
 
-  // Collects all live-in values.
-  std::vector<Value> live_ins;
-  for (Operation &op : *block) {
-    for (Value operand : op.getOperands()) {
-      // Identifies operands defined in other blocks.
-      if (operand.getDefiningOp() &&
-          operand.getDefiningOp()->getBlock() != block) {
-        live_ins.push_back(operand);
-        continue;
+  auto it = condition_cache.find(condition);
+  if (it != condition_cache.end()) {
+    return it->second;
+  }
+
+  Block *source = condition.getDefiningOp()->getBlock();
+  builder.setInsertionPoint(source->getTerminator());
+  Value not_condition = builder.create<neura::NotOp>(
+      condition.getLoc(), condition.getType(), condition);
+  condition_cache[condition] = not_condition;
+  return not_condition;
+}
+
+void createReserveAndPhiOps(func::FuncOp &func, ControlFlowInfo &ctrl_info,
+                            DenseMap<BlockArgument, Value> &arg_to_reserve,
+                            DenseMap<BlockArgument, Value> &arg_to_phi_result,
+                            OpBuilder &builder) {
+  DominanceInfo dom_info(func);
+
+  // ================================================
+  // Step 1: Categorizes edges into six types.
+  // ================================================
+  // Type 1: Backward cond_br edges with values.
+  // Type 2: Backward br edges with values.
+  // Type 3: Forward cond_br edges with values.
+  // Type 4: Forward br edges with values.
+  // Type 5: Forward cond_br edges without values.
+  // Type 6: Forward br edges without values.
+  // For Backward edges without values, they can be transformed into type 1 or 2
+
+  DenseMap<BlockArgument, SmallVector<ControlFlowInfo::Edge *>>
+      backward_value_edges;
+  DenseMap<BlockArgument, SmallVector<ControlFlowInfo::Edge *>>
+      forward_value_edges;
+  DenseMap<Block *, SmallVector<ControlFlowInfo::Edge *>>
+      block_conditional_edges;
+
+  DenseMap<Value, Value> condition_cache;
+
+  DenseMap<BlockArgument, SmallVector<Value>> arg_to_phi_operands;
+
+  for (auto &edge : ctrl_info.all_edges) {
+    Block *target = edge->target;
+
+    // Type 1 & 2: Backward cond_br/br edges with values.
+    if (edge->is_back_edge && !edge->passed_values.empty()) {
+      if (edge->passed_values.size() != target->getNumArguments()) {
+        llvm::errs()
+            << "[ctrl2data] Error: Number of passed values does not match "
+               "target block arguments.\n";
+        assert(false);
       }
-      // Collects all block arguments.
-      if (auto blockArg = llvm::dyn_cast<BlockArgument>(operand)) {
-        live_ins.push_back(operand);
+      for (BlockArgument arg : target->getArguments()) {
+        backward_value_edges[arg].push_back(edge.get());
+      }
+    }
+    // Type 3 & 4: Forward cond_br/br edges with values.
+    else if (!edge->is_back_edge && !edge->passed_values.empty()) {
+      ;
+      if (edge->passed_values.size() != target->getNumArguments()) {
+        llvm::errs()
+            << "[ctrl2data] Error: Number of passed values does not match "
+               "target block arguments.\n";
+        assert(false);
+      }
+      for (BlockArgument arg : target->getArguments()) {
+        forward_value_edges[arg].push_back(edge.get());
+      }
+    }
+    // Type 5 & 6: Forward cond_br/br edges without values.
+    else if (!edge->is_back_edge && edge->passed_values.empty()) {
+      if (edge->condition) {
+        // Only Type 5 needs to be processed here.
+        // If the edge has a condition, store it for later use.
+        block_conditional_edges[target].push_back(edge.get());
       }
     }
   }
 
-  builder.setInsertionPointToStart(block);
-  for (Value live_in : live_ins) {
-    // Creates predicated type for phi node.
-    Type live_in_type = live_in.getType();
-    Type predicated_type = isa<neura::PredicatedValue>(live_in_type)
-        ? live_in_type
-        : neura::PredicatedValue::get(builder.getContext(), live_in_type, builder.getI1Type());
+  // ================================================
+  // Step 2: Creates reserve and ctrl_mov operations for needed blockarguments.
+  // ================================================
+  // Handles Type 1 & 2 edges.
+  for (auto &backward_pair : backward_value_edges) {
+    BlockArgument arg = backward_pair.first;
+    auto &edges = backward_pair.second;
+    Block *block = arg.getOwner();
+    builder.setInsertionPointToStart(block);
+    neura::ReserveOp reserve_op =
+        builder.create<neura::ReserveOp>(arg.getLoc(), arg.getType());
+    arg_to_reserve[arg] = reserve_op.getResult();
+    arg_to_phi_operands[arg].push_back(reserve_op.getResult());
 
-    // Uses the location from the first operation in the block or block's parent operation.
-    Location loc = block->empty() ?
-                   block->getParent()->getLoc() :
-                   block->front().getLoc();
-    SmallVector<Value> phi_operands;
-    llvm::SmallDenseSet<Operation*, 4> just_created_consumer_ops;
-    BlockArgument arg = dyn_cast<BlockArgument>(live_in);
-    // TODO: Following logic needs to be refactored.
-    for (Block *pred : block->getPredecessors()) {
-      Value incoming;
-      Value branch_pred;
-      Operation *term = pred->getTerminator();
-      // If it's a branch or cond_br, get the value passed into this block argument
-      if (auto br = dyn_cast<neura::Br>(term)) {
-        auto args = br.getArgs();
-        if (arg) {
-          unsigned arg_index = arg.getArgNumber();
-          assert(arg_index < args.size());
-          incoming = args[arg_index];
-        } else if (live_in.getDefiningOp()->getBlock() == pred) {
-          // Handles the case where live_in is not a block argument.
-          incoming = live_in;
-        } else {
-          // If live_in is not a block argument and not defined in the block, skips.
-          continue;
-        }
-      } else if (auto condBr = dyn_cast<neura::CondBr>(term)) {
-        Value cond = condBr.getCondition();
-        branch_pred = cond; // by default
-        OpBuilder pred_builder(condBr);
-        Location pred_loc = condBr.getLoc();
+    // Creates ctrl_mov operations for reserved values.
+    for (ControlFlowInfo::Edge *edge : edges) {
+      Value val = edge->passed_values[arg.getArgNumber()];
+      builder.setInsertionPoint(edge->source->getTerminator());
 
-        if (condBr.getTrueDest() == block) {
-          if (arg) {
-            auto trueArgs = condBr.getTrueArgs();
-            unsigned arg_index = arg.getArgNumber();
-            assert(arg_index < trueArgs.size());
-            incoming = trueArgs[arg_index];
-          } else if (live_in.getDefiningOp()->getBlock() == pred) {
-            // Handles the case where live_in is not a block argument.
-            incoming = live_in;
-          } else {
-            // If live_in is not a block argument and not defined in the block, skips.
-            continue;
-          }
-          // Applies grant_predicate.
-          incoming = pred_builder.create<neura::GrantPredicateOp>(
-            pred_loc, incoming.getType(), incoming, cond);
-          just_created_consumer_ops.insert(incoming.getDefiningOp());
-          // Keep branch_pred = cond
-        } else if (condBr.getFalseDest() == block) {
-          if (arg) {
-            auto falseArgs = condBr.getFalseArgs();
-            unsigned arg_index = arg.getArgNumber();
-            assert(arg_index < falseArgs.size());
-            incoming = falseArgs[arg_index];
-          } else if (live_in.getDefiningOp()->getBlock() == pred) {
-            // Handles the case where live_in is not a block argument.
-            incoming = live_in;
-          } else {
-            // If live_in is not a block argument and not defined in the block, skips.
-            continue;
-          }
-          // Negates cond for false edge.
-          branch_pred = pred_builder.create<neura::NotOp>(pred_loc, cond.getType(), cond);
-          // Applies grant_predicate.
-          incoming = pred_builder.create<neura::GrantPredicateOp>(
-            pred_loc, incoming.getType(), incoming, branch_pred);
-          just_created_consumer_ops.insert(incoming.getDefiningOp());
-        } else {
-          llvm::errs() << "cond_br does not target block:\n" << *block << "\n";
-          assert(false);
-        }
-      } else {
-        llvm::errs() << "Unknown branch terminator in block: " << *pred << "\n";
-        continue;
+      Value predicated_val = val;
+      if (edge->condition) {
+        Value processed_condition = getPrecessedCondition(
+            edge->condition, edge->is_not_condition, condition_cache, builder);
+        predicated_val = builder.create<neura::GrantPredicateOp>(
+            edge->condition.getLoc(), val.getType(), predicated_val,
+            processed_condition);
       }
 
-      // If the incoming value is defined in the same block, inserts a `neura.reserve`
-      // and defer a backward ctrl move.
-      if (incoming.getDefiningOp() && incoming.getDefiningOp()->getBlock() == block) {
-        builder.setInsertionPointToStart(block);
-        auto placeholder = builder.create<neura::ReserveOp>(loc, incoming.getType());
-        phi_operands.push_back(placeholder.getResult());
-        // Defers the backward ctrl move operation to be inserted after all phi operands
-        // are defined. Inserted:
-        // (real_defined_value, just_created_reserve, branch_pred, current_block).
-        deferred_ctrl_movs.emplace_back(
-          incoming, placeholder.getResult(), branch_pred, block);
-      } else {
-        phi_operands.push_back(incoming);
-      }
-      // If live_in is not a block argument, we don't need to check for uniqueness.
-      if (!arg) {
-        continue;
-      }
+      // Creates ctrl_mov operation.
+      builder.create<neura::CtrlMovOp>(val.getLoc(), predicated_val,
+                                       reserve_op);
     }
+  }
 
-    assert(!phi_operands.empty());
+  // ================================================
+  // Step 3: Prepares for creating phi operations.
+  // ================================================
+  // Handles Type 3 & 4 edges.
 
-    // Puts all operands into a set to ensure uniqueness. Specifically, following
-    // case is handled:
-    // ---------------------------------------------------------
-    // ^bb1:
-    //   "neura.br"(%a)[^bb3] : (!neura.data<f32, i1>) -> ()
-    //
-    // ^bb2:
-    //   "neura.br"(%a)[^bb3] : (!neura.data<f32, i1>) -> ()
-    //
-    // ^bb3(%x: !neura.data<f32, i1>):
-    //   ...
-    // ---------------------------------------------------------
-    // In above case, %a is used in both branches of the control flow, so we
-    // don't need a phi node, but we still need to replace its uses with the
-    // result of the phi node.
-    // This ensures that we only create a phi node if there are multiple unique
-    // operands.
-    llvm::SmallDenseSet<Value, 4> unique_operands(phi_operands.begin(), phi_operands.end());
+  for (auto &forward_pair : forward_value_edges) {
+    BlockArgument arg = forward_pair.first;
+    auto &edges = forward_pair.second;
 
-    if (unique_operands.size() == 1) {
-      // No phi needed, but still replace
-      Value single = *unique_operands.begin();
-      SmallVector<OpOperand *, 4> uses;
-      for (OpOperand &use : live_in.getUses()) {
-        // Skip uses that were just created by the grant_predicate.
-        if (!just_created_consumer_ops.contains(use.getOwner())) {
-          uses.push_back(&use);
-        }
+    for (ControlFlowInfo::Edge *edge : edges) {
+      Value val = edge->passed_values[arg.getArgNumber()];
+
+      Value predicated_val = val;
+      if (edge->condition) {
+        builder.setInsertionPoint(edge->source->getTerminator());
+        Value processed_condition = getPrecessedCondition(
+            edge->condition, edge->is_not_condition, condition_cache, builder);
+
+        predicated_val = builder.create<neura::GrantPredicateOp>(
+            edge->condition.getLoc(), predicated_val.getType(), predicated_val,
+            processed_condition);
       }
-      for (OpOperand *use : uses) {
-        use->set(single);
+
+      arg_to_phi_operands[arg].push_back(predicated_val);
+    }
+  }
+
+  // ================================================
+  // Step 4: Creates phi operations for each block argument.
+  // ================================================
+  DenseSet<BlockArgument> args_needing_phi;
+
+  for (auto &arg_to_phi_pair : arg_to_phi_operands) {
+    BlockArgument arg = arg_to_phi_pair.first;
+    auto &phi_operands = arg_to_phi_pair.second;
+
+    if (phi_operands.size() <= 1) {
+      // No need to create a phi operation if there's only one operand.
+
+      if (phi_operands.size() == 1) {
+        arg_to_phi_result[arg] = phi_operands[0];
+        arg.replaceAllUsesWith(phi_operands[0]);
       }
-      // No need to proceed further to create a phi node, as we have a single unique operand.
       continue;
     }
 
-    // Creates the phi node with dynamic number of operands.
-    auto phi_op = builder.create<neura::PhiOp>(loc, predicated_type, phi_operands);
+    // Handles the blcockargument with/without reserve seperately (different
+    // insertion points).
+    if (arg_to_reserve.count(arg)) {
+      Value reserve_value = arg_to_reserve[arg];
+      builder.setInsertionPointAfter(reserve_value.getDefiningOp());
 
-    // Saves users to be replaced *after* phi is constructed.
-    SmallVector<OpOperand *> uses_to_be_replaced;
-    for (OpOperand &use : live_in.getUses()) {
-      if (use.getOwner() != phi_op) {
-        uses_to_be_replaced.push_back(&use);
+      // Creates phi operation for reserved values.
+      auto phi = builder.create<neura::PhiOp>(arg.getLoc(), arg.getType(),
+                                              phi_operands);
+      arg_to_phi_result[arg] = phi;
+    } else {
+      Block *placement = arg.getParentBlock();
+
+      builder.setInsertionPointToStart(placement);
+
+      // Creates phi operation for block argument without reserve.
+      auto phi = builder.create<neura::PhiOp>(arg.getLoc(), arg.getType(),
+                                              phi_operands);
+      arg.replaceAllUsesWith(phi);
+      arg_to_phi_result[arg] = phi;
+    }
+  }
+
+  // ================================================
+  // Step 5: Handles Forward cond_br edges without values.
+  // ================================================
+  // Handles Type 5 edges.
+  for (auto &condition_pair : block_conditional_edges) {
+    Block *target = condition_pair.first;
+    auto &edges = condition_pair.second;
+
+    if (edges.empty()) {
+      continue;
+    }
+
+    // Collects all conditions for the target block.
+    SmallVector<Value> conditions;
+    for (ControlFlowInfo::Edge *edge : edges) {
+      Value condition = getPrecessedCondition(
+          edge->condition, edge->is_not_condition, condition_cache, builder);
+      conditions.push_back(condition);
+    }
+
+    // Unsupported case: multiple conditions for a single block.
+    // TODO: Adds support if needed.
+    if (conditions.size() > 1) {
+      llvm::errs() << "[ctrl2data] Unsupported case: multiple conditions for a "
+                      "single block: "
+                   << *target << "\n";
+      assert(false);
+    }
+
+    if (target->getArguments().empty()) {
+      // Grants predicate for all the live-in values in the target block.
+      DenseSet<Value> live_in_values;
+      for (Operation &op : target->getOperations()) {
+        for (Value operand : op.getOperands()) {
+          if (operand.getDefiningOp() &&
+              operand.getDefiningOp()->getBlock() != target &&
+              !isa<neura::ReserveOp>(operand.getDefiningOp())) {
+            live_in_values.insert(operand);
+          }
+        }
+      }
+
+      // Applies grant_predicate for each live-in value.
+      for (Value live_in_value : live_in_values) {
+        // Finds the earliest use of the live-in value.
+        Operation *earliest_use = nullptr;
+        for (Operation &op : target->getOperations()) {
+          for (Value operand : op.getOperands()) {
+            if (operand == live_in_value) {
+              earliest_use = &op;
+              break;
+            }
+          }
+          if (earliest_use) {
+            break;
+          }
+        }
+
+        if (earliest_use) {
+          builder.setInsertionPoint(earliest_use);
+        } else {
+          builder.setInsertionPointToStart(target);
+        }
+
+        // Creates predicated version of the live-in value
+        Value predicated_value = builder.create<neura::GrantPredicateOp>(
+            live_in_value.getLoc(), live_in_value.getType(), live_in_value,
+            conditions[0]);
+
+        // Replace uses of the live-in value within this block only.
+        for (OpOperand &use :
+             llvm::make_early_inc_range(live_in_value.getUses())) {
+          if (use.getOwner()->getBlock() == target &&
+              use.getOwner() != predicated_value.getDefiningOp()) {
+            use.set(predicated_value);
+          }
+        }
       }
     }
-    // Replaces live-in uses with the phi result.
-    for (OpOperand *use : uses_to_be_replaced) {
-      use->set(phi_op.getResult());
+  }
+}
+
+// Transforms control flow into data flow.
+void transformControlFlowToDataFlow(func::FuncOp &func,
+                                    ControlFlowInfo &ctrl_info,
+                                    DominanceInfo &dom_info,
+                                    OpBuilder &builder) {
+
+  // Asserts that all live-out values are dominated by block arguments.
+  assertLiveOutValuesDominatedByBlockArgs(func);
+
+  // Creates reserve and phi operations for each block argument.
+  DenseMap<BlockArgument, Value> arg_to_reserve;
+  DenseMap<BlockArgument, Value> arg_to_phi_result;
+  createReserveAndPhiOps(func, ctrl_info, arg_to_reserve, arg_to_phi_result,
+                         builder);
+
+  // Replaces blockarguments with phi results
+  for (auto &arg_to_phi_pair : arg_to_phi_result) {
+    BlockArgument arg = arg_to_phi_pair.first;
+    Value phi_result = arg_to_phi_pair.second;
+    arg.replaceAllUsesWith(phi_result);
+  }
+
+  // Flattens blocks into the entry block.
+  Block *entryBlock = &func.getBody().front();
+  SmallVector<Block *> blocks_to_flatten;
+  for (Block &block : func.getBody()) {
+    if (&block != entryBlock)
+      blocks_to_flatten.push_back(&block);
+  }
+
+  // Erases terminators before moving ops into entry block.
+  for (Block *block : blocks_to_flatten) {
+    for (Operation &op : llvm::make_early_inc_range(*block)) {
+      if (isa<neura::Br>(op) || isa<neura::CondBr>(op)) {
+        op.erase();
+      }
     }
+  }
+
+  // Moves all operations from blocks to the entry block before the
+  // terminator.
+  for (Block *block : blocks_to_flatten) {
+    auto &ops = block->getOperations();
+    while (!ops.empty()) {
+      Operation &op = ops.front();
+      op.moveBefore(&entryBlock->back());
+    }
+  }
+
+  // Erases any remaining br/cond_br that were moved into the entry block.
+  for (Operation &op : llvm::make_early_inc_range(*entryBlock)) {
+    if (isa<neura::Br>(op) || isa<neura::CondBr>(op)) {
+      op.erase();
+    }
+  }
+
+  // Erases now-empty blocks
+  for (Block *block : blocks_to_flatten) {
+    block->erase();
   }
 }
 
 namespace {
-struct TransformCtrlToDataFlowPass 
+struct TransformCtrlToDataFlowPass
     : public PassWrapper<TransformCtrlToDataFlowPass, OperationPass<ModuleOp>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TransformCtrlToDataFlowPass)
 
-  StringRef getArgument() const override { return "transform-ctrl-to-data-flow"; }
+  StringRef getArgument() const override {
+    return "transform-ctrl-to-data-flow";
+  }
   StringRef getDescription() const override {
-    return "Transforms control flow into data flow using predicated execution";
+    return "Transforms control flow into data flow using predicated "
+           "execution";
   }
 
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -304,89 +633,20 @@ struct TransformCtrlToDataFlowPass
 
   void runOnOperation() override {
     ModuleOp module = getOperation();
-
-    // Declares a vector to hold deferred backward ctrl move operations.
-    // This is useful when a live-in value is defined within the same block.
-    // The tuple contains:
-    // - real value (the one that is defined in the same block, after the placeholder)
-    // - placeholder value (the one that will be used in the phi node)
-    // - branch predicate (if any, for cond_br)
-    // - block where the backward ctrl move should be inserted
-    SmallVector<std::tuple<Value, Value, Value, Block *>, 4> deferred_ctrl_movs;
     module.walk([&](func::FuncOp func) {
-
       OpBuilder builder(func.getContext());
       GrantPredicateInEntryBlock(&func.getBody().front(), builder);
 
-      // Get blocks in post-order
-      SmallVector<Block *> postOrder;
-      DenseSet<Block *> visited;
-      getBlocksInPostOrder(&func.getBody().front(), postOrder, visited);
+      DominanceInfo dom_info(func);
 
-      // Process blocks bottom-up
-      for (Block *block : postOrder) {
-        // Creates phi nodes for live-ins.
-        createPhiNodesForBlock(block, builder, deferred_ctrl_movs);
-      }
+      // Step 1: Analyzes the control flow and creates control flow info
+      // struct.
+      ControlFlowInfo ctrl_info;
+      buildControlFlowInfo(func, ctrl_info, dom_info);
 
-      // Flattens blocks into the entry block.
-      Block *entryBlock = &func.getBody().front();
-      SmallVector<Block *> blocks_to_flatten;
-      for (Block &block : func.getBody()) {
-        if (&block != entryBlock)
-          blocks_to_flatten.push_back(&block);
-      }
-
-      // Erases terminators before moving ops into entry block.
-      for (Block *block : blocks_to_flatten) {
-        for (Operation &op : llvm::make_early_inc_range(*block)) {
-          if (isa<neura::Br>(op) || isa<neura::CondBr>(op)) {
-            op.erase();
-          }
-        }
-      }
-
-      // Moves all operations from blocks to the entry block before the terminator.
-      for (Block *block : blocks_to_flatten) {
-        auto &ops = block->getOperations();
-        while (!ops.empty()) {
-          Operation &op = ops.front();
-          op.moveBefore(&entryBlock->back());
-        }
-      }
-
-      // Erases any remaining br/cond_br that were moved into the entry block.
-      for (Operation &op : llvm::make_early_inc_range(*entryBlock)) {
-        if (isa<neura::Br>(op) || isa<neura::CondBr>(op)) {
-          op.erase();
-        }
-      }
-
-      for (Block *block : blocks_to_flatten) {
-        block->erase();
-      }
+      // Step 2: Transforms control flow into data flow.
+      transformControlFlowToDataFlow(func, ctrl_info, dom_info, builder);
     });
-
-    // Inserts the deferred backward ctrl move operations after phi operands
-    // are defined.
-    for (auto &[real_dependent, placeholder, branch_pred, block] : deferred_ctrl_movs) {
-      Operation *def_op = real_dependent.getDefiningOp();
-      assert(def_op && "Backward ctrl move's source must be an op result");
-
-      // Find the correct insertion point: after both real_dependent and branch_pred
-      Operation *insert_after = def_op;
-      if (Operation *pred_def = branch_pred.getDefiningOp()) {
-        if (insert_after->isBeforeInBlock(pred_def))
-          insert_after = pred_def;
-      }
-
-      OpBuilder mov_builder(insert_after->getBlock(), ++Block::iterator(insert_after));
-      Location insert_loc = insert_after->getLoc();
-
-      Value guarded_val = real_dependent;
-
-      mov_builder.create<neura::CtrlMovOp>(insert_loc, guarded_val, placeholder);
-    }
   }
 };
 } // namespace
