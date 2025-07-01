@@ -26,9 +26,6 @@ using namespace mlir;
 #define GEN_PASS_DEF_TransformCtrlToDataFlow
 #include "NeuraDialect/NeuraPasses.h.inc"
 
-// TODO: Needs to enbale a deterministic ctrol to data flow transformation
-// https://github.com/coredac/dataflow/issues/64
-
 // Inserts `grant_once` for every predicated value defined in the entry block
 // that is used outside of the block (i.e., a live-out).
 void GrantPredicateInEntryBlock(Block *entry_block, OpBuilder &builder) {
