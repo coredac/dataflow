@@ -509,7 +509,7 @@ void createReserveAndPhiOps(func::FuncOp &func, ControlFlowInfo &ctrl_info,
         }
       }
 
-      // Apply grant_predicate for each live-in value.
+      // Applies grant_predicate for each live-in value.
       for (Value live_in_value : live_in_values) {
         // Finds the earliest use of the live-in value.
         Operation *earliest_use = nullptr;
