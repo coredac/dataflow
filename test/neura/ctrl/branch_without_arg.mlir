@@ -51,24 +51,24 @@ func.func @test(%in: i64) -> f32 {
 // CHECK-NEXT: }
 
 // CTRL2DATA:      func.func @test(%arg0: i64) -> f32 attributes {accelerator = "neura"} {
-// CTRL2DATA-NEXT:     %0 = "neura.constant"() <{predicate = true, value = 0 : i64}> : () -> !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %1 = "neura.constant"() <{predicate = true, value = 1.000000e+00 : f32}> : () -> !neura.data<f32, i1>
-// CTRL2DATA-NEXT:     %2 = "neura.grant_always"(%1) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
-// CTRL2DATA-NEXT:     %3 = "neura.constant"() <{predicate = true, value = 2.000000e+00 : f32}> : () -> !neura.data<f32, i1>
-// CTRL2DATA-NEXT:     %4 = "neura.grant_always"(%3) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
-// CTRL2DATA-NEXT:     %5 = "neura.constant"() <{predicate = true, value = 3.000000e+00 : f32}> : () -> !neura.data<f32, i1>
-// CTRL2DATA-NEXT:     %6 = "neura.grant_once"(%5) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
-// CTRL2DATA-NEXT:     %7 = "neura.constant"() <{predicate = true, value = 4.000000e+00 : f32}> : () -> !neura.data<f32, i1>
-// CTRL2DATA-NEXT:     %8 = "neura.grant_once"(%7) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
-// CTRL2DATA-NEXT:     %9 = "neura.icmp"(%arg0, %0) <{cmpType = "eq"}> : (i64, !neura.data<i64, i1>) -> !neura.data<i1, i1>
-// CTRL2DATA-NEXT:     %10 = "neura.grant_once"(%9) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
-// CTRL2DATA-DAG:      %[[VAL1:.*]] = neura.grant_predicate %6, %10 : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
-// CTRL2DATA-DAG:      %[[VAL2:.*]] = neura.grant_predicate %8, %10 : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
-// CTRL2DATA-NEXT:     %13 = "neura.not"(%10) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
-// CTRL2DATA-DAG:     %[[VAL3:.*]] = neura.grant_predicate %2, %13 : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
-// CTRL2DATA-DAG:     %[[VAL4:.*]] = neura.grant_predicate %4, %13 : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
-// CTRL2DATA-NEXT:     %16 = "neura.fadd"(%[[VAL3:.*]], %[[VAL4:.*]]) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
-// CTRL2DATA-NEXT:     %17 = "neura.fmul"(%[[VAL1:.*]], %[[VAL2:.*]]) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
-// CTRL2DATA-NEXT:     %18 = "neura.phi"(%16, %17) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
-// CTRL2DATA-NEXT:     "neura.return"(%18) : (!neura.data<f32, i1>) -> ()
-// CTRL2DATA-NEXT:   }
+// CTRL2DATA-NEXT:    %0 = "neura.constant"() <{predicate = true, value = 0 : i64}> : () -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:    %1 = "neura.constant"() <{predicate = true, value = 1.000000e+00 : f32}> : () -> !neura.data<f32, i1>
+// CTRL2DATA-NEXT:    %2 = "neura.grant_always"(%1) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
+// CTRL2DATA-NEXT:    %3 = "neura.constant"() <{predicate = true, value = 2.000000e+00 : f32}> : () -> !neura.data<f32, i1>
+// CTRL2DATA-NEXT:    %4 = "neura.grant_always"(%3) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
+// CTRL2DATA-NEXT:    %5 = "neura.constant"() <{predicate = true, value = 3.000000e+00 : f32}> : () -> !neura.data<f32, i1>
+// CTRL2DATA-NEXT:    %6 = "neura.grant_once"(%5) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
+// CTRL2DATA-NEXT:    %7 = "neura.constant"() <{predicate = true, value = 4.000000e+00 : f32}> : () -> !neura.data<f32, i1>
+// CTRL2DATA-NEXT:    %8 = "neura.grant_once"(%7) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
+// CTRL2DATA-NEXT:    %9 = "neura.icmp"(%arg0, %0) <{cmpType = "eq"}> : (i64, !neura.data<i64, i1>) -> !neura.data<i1, i1>
+// CTRL2DATA-NEXT:    %10 = "neura.grant_once"(%9) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
+// CTRL2DATA-NEXT:    %11 = neura.grant_predicate %6, %10 : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
+// CTRL2DATA-NEXT:    %12 = neura.grant_predicate %8, %10 : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
+// CTRL2DATA-NEXT:    %13 = "neura.not"(%10) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
+// CTRL2DATA-NEXT:    %14 = neura.grant_predicate %2, %13 : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
+// CTRL2DATA-NEXT:    %15 = neura.grant_predicate %4, %13 : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
+// CTRL2DATA-NEXT:    %16 = "neura.fadd"(%14, %15) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// CTRL2DATA-NEXT:    %17 = "neura.fmul"(%11, %12) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// CTRL2DATA-NEXT:    %18 = "neura.phi"(%16, %17) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// CTRL2DATA-NEXT:    "neura.return"(%18) : (!neura.data<f32, i1>) -> ()
+// CTRL2DATA-NEXT:  }

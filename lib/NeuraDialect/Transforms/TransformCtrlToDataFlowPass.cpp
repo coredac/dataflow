@@ -14,6 +14,7 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
@@ -24,9 +25,6 @@ using namespace mlir;
 
 #define GEN_PASS_DEF_TransformCtrlToDataFlow
 #include "NeuraDialect/NeuraPasses.h.inc"
-
-// TODO: Needs to enbale a deterministic ctrol to data flow transformation
-// https://github.com/coredac/dataflow/issues/64
 
 // Inserts `grant_once` for every predicated value defined in the entry block
 // that is used outside of the block (i.e., a live-out).
@@ -115,15 +113,16 @@ struct ControlFlowInfo {
     SmallVector<Value> passed_values; // Values passed to the target block.
     bool is_back_edge;
   };
-  std::vector<std::unique_ptr<Edge>> all_edges; // All edges in the function.
-  DenseMap<Block *, SmallVector<Edge *>>
+  SmallVector<std::unique_ptr<Edge>> all_edges; // All edges in the function.
+  llvm::MapVector<Block *, SmallVector<Edge *>>
       incoming_edges; // Incoming edges for each block.
-  DenseMap<Block *, SmallVector<Edge *>>
+  llvm::MapVector<Block *, SmallVector<Edge *>>
       outgoing_edges; // Outgoing edges for each block.
 
-  DenseMap<Block *, SmallVector<Edge *>> back_edges;
-  DenseMap<Block *, SmallVector<Edge *>> forward_edges;
-  DenseSet<Block *> blocks_with_back_edges; // Blocks with backward edges.
+  llvm::MapVector<Block *, SmallVector<Edge *>> back_edges;
+  llvm::MapVector<Block *, SmallVector<Edge *>> forward_edges;
+  llvm::SmallVector<Block *>
+      blocks_with_back_edges; // Blocks with backward edges.
 
   Edge *createEdge() {
     all_edges.push_back(std::make_unique<Edge>());
@@ -235,13 +234,13 @@ void buildControlFlowInfo(func::FuncOp &func, ControlFlowInfo &ctrl_info,
       // Handles back edges.
       if (true_edge->is_back_edge) {
         ctrl_info.back_edges[&block].push_back(true_edge);
-        ctrl_info.blocks_with_back_edges.insert(&block);
+        ctrl_info.blocks_with_back_edges.push_back(&block);
       } else {
         ctrl_info.forward_edges[&block].push_back(true_edge);
       }
       if (false_edge->is_back_edge) {
         ctrl_info.back_edges[&block].push_back(false_edge);
-        ctrl_info.blocks_with_back_edges.insert(&block);
+        ctrl_info.blocks_with_back_edges.push_back(&block);
       } else {
         ctrl_info.forward_edges[&block].push_back(false_edge);
       }
@@ -267,7 +266,7 @@ void buildControlFlowInfo(func::FuncOp &func, ControlFlowInfo &ctrl_info,
       // Handles back edges.
       if (edge->is_back_edge) {
         ctrl_info.back_edges[&block].push_back(edge);
-        ctrl_info.blocks_with_back_edges.insert(&block);
+        ctrl_info.blocks_with_back_edges.push_back(&block);
       } else {
         ctrl_info.forward_edges[&block].push_back(edge);
       }
@@ -282,7 +281,7 @@ void buildControlFlowInfo(func::FuncOp &func, ControlFlowInfo &ctrl_info,
 }
 
 Value getPrecessedCondition(Value condition, bool is_not_condition,
-                            DenseMap<Value, Value> &condition_cache,
+                            llvm::MapVector<Value, Value> &condition_cache,
                             OpBuilder &builder) {
   if (!is_not_condition) {
     return condition;
@@ -302,8 +301,8 @@ Value getPrecessedCondition(Value condition, bool is_not_condition,
 }
 
 void createReserveAndPhiOps(func::FuncOp &func, ControlFlowInfo &ctrl_info,
-                            DenseMap<BlockArgument, Value> &arg_to_reserve,
-                            DenseMap<BlockArgument, Value> &arg_to_phi_result,
+                            llvm::MapVector<BlockArgument, Value> &arg_to_reserve,
+                            llvm::MapVector<BlockArgument, Value> &arg_to_phi_result,
                             OpBuilder &builder) {
   DominanceInfo dom_info(func);
 
@@ -318,16 +317,17 @@ void createReserveAndPhiOps(func::FuncOp &func, ControlFlowInfo &ctrl_info,
   // Type 6: Forward br edges without values.
   // For Backward edges without values, they can be transformed into type 1 or 2
 
-  DenseMap<BlockArgument, SmallVector<ControlFlowInfo::Edge *>>
+  // Uses llvm::MapVector instead of DenseMap to maintain insertion order.
+  llvm::MapVector<BlockArgument, SmallVector<ControlFlowInfo::Edge *>>
       backward_value_edges;
-  DenseMap<BlockArgument, SmallVector<ControlFlowInfo::Edge *>>
+  llvm::MapVector<BlockArgument, SmallVector<ControlFlowInfo::Edge *>>
       forward_value_edges;
-  DenseMap<Block *, SmallVector<ControlFlowInfo::Edge *>>
+  llvm::MapVector<Block *, SmallVector<ControlFlowInfo::Edge *>>
       block_conditional_edges;
 
-  DenseMap<Value, Value> condition_cache;
+  llvm::MapVector<Value, Value> condition_cache;
 
-  DenseMap<BlockArgument, SmallVector<Value>> arg_to_phi_operands;
+  llvm::MapVector<BlockArgument, SmallVector<Value>> arg_to_phi_operands;
 
   for (auto &edge : ctrl_info.all_edges) {
     Block *target = edge->target;
@@ -431,8 +431,6 @@ void createReserveAndPhiOps(func::FuncOp &func, ControlFlowInfo &ctrl_info,
   // ================================================
   // Step 4: Creates phi operations for each block argument.
   // ================================================
-  DenseSet<BlockArgument> args_needing_phi;
-
   for (auto &arg_to_phi_pair : arg_to_phi_operands) {
     BlockArgument arg = arg_to_phi_pair.first;
     auto &phi_operands = arg_to_phi_pair.second;
@@ -501,7 +499,8 @@ void createReserveAndPhiOps(func::FuncOp &func, ControlFlowInfo &ctrl_info,
 
     if (target->getArguments().empty()) {
       // Grants predicate for all the live-in values in the target block.
-      DenseSet<Value> live_in_values;
+      // Uses SetVector instead of DenseSet to maintain insertion order.
+      SetVector<Value> live_in_values;
       for (Operation &op : target->getOperations()) {
         for (Value operand : op.getOperands()) {
           if (operand.getDefiningOp() &&
@@ -562,8 +561,8 @@ void transformControlFlowToDataFlow(func::FuncOp &func,
   assertLiveOutValuesDominatedByBlockArgs(func);
 
   // Creates reserve and phi operations for each block argument.
-  DenseMap<BlockArgument, Value> arg_to_reserve;
-  DenseMap<BlockArgument, Value> arg_to_phi_result;
+  llvm::MapVector<BlockArgument, Value> arg_to_reserve;
+  llvm::MapVector<BlockArgument, Value> arg_to_phi_result;
   createReserveAndPhiOps(func, ctrl_info, arg_to_reserve, arg_to_phi_result,
                          builder);
 
