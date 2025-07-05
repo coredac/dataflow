@@ -1,0 +1,85 @@
+architecture:
+  name: "NeuraCGRA"
+  version: "1.0"
+  width: 4
+  height: 4
+
+tile_defaults:
+  num_registers: 64
+  default_ports: ["N", "S", "W", "E"]
+  operations: ["add", "mul", "sub"]  # default ALU instructions
+
+link_defaults:
+  latency: 1
+  bandwidth: 32
+
+connectivity: "mesh"
+
+links:
+  - id: 0
+    x: 0
+    y: 0
+    src_tile: 0
+    dst_tile: 1
+    src_port: "E"
+    dst_port: "W"
+    latency: 1
+    bandwidth: 32
+
+  - id: 1
+    x: 1
+    y: 0
+    src_tile: 0
+    dst_tile: 4
+    src_port: "S"
+    dst_port: "N"
+
+tile_overrides:
+  - id: 0
+    x: 0
+    y: 0
+    operations: ["load"]
+    num_registers: 32
+    ports: ["S", "E"]
+
+  - id: 3
+    x: 3
+    y: 0
+    operations: ["store"]
+    num_registers: 32
+    ports: ["W"]
+
+  - id: 5
+    x: 1
+    y: 1
+    operations: ["add", "mul"]
+    num_registers: 32
+    memory:
+      capacity: 2048
+    ports: ["N", "S", "E", "W"]  # optional: matches defaults
+
+  - id: 6
+    x: 2
+    y: 1
+    operations: []
+    num_registers: 32
+    ports: ["E", "W"]
+
+extensions:
+  crossbar: false
+
+simulator:
+  execution_model: "serial"
+
+  logging:
+    enabled: true
+    file: "output.log"
+
+  driver:
+    name: "Driver"
+    frequency: "1GHz"
+
+  device:
+    name: "Device"
+    frequency: "1GHz"
+    bind_to_architecture: true
