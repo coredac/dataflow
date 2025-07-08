@@ -1,8 +1,8 @@
 // RUN: mlir-neura-opt \
 // RUN:   --assign-accelerator \
-// RUN:   --lower-llvm-to-neura
-// RN:   --transform-ctrl-to-data-flow \
-// RN:   %s | FileCheck %s
+// RUN:   --lower-llvm-to-neura \
+// RUN:   --transform-ctrl-to-data-flow \
+// RUN:   %s | FileCheck %s
 
 func.func @complex_test(%in: i64) -> f32 {
   %c0 = llvm.mlir.constant(0 : i64) : i64
@@ -30,15 +30,25 @@ func.func @complex_test(%in: i64) -> f32 {
 }
 
 // CHECK:      func.func @complex_test(%arg0: i64) -> f32 attributes {accelerator = "neura"} {
-// CHECK-NEXT:   %0 = "neura.constant"() <{value = 0 : i64}> : () -> i64
-// CHECK-NEXT:   %1 = "neura.constant"() <{value = 1.000000e+00 : f32}> : () -> f32
-// CHECK-NEXT:   %2 = "neura.constant"() <{value = 2.000000e+00 : f32}> : () -> f32
-// CHECK-NEXT:   %3 = "neura.constant"() <{value = 3.000000e+00 : f32}> : () -> f32
-// CHECK-NEXT:   %4 = "neura.constant"() <{value = 4.000000e+00 : f32}> : () -> f32
-// CHECK-NEXT:   %5 = "neura.icmp"(%arg0, %0) <{cmpType = "eq"}> : (i64, i64) -> i1
-// CHECK-NEXT:   %6 = "neura.not"(%5) : (i1) -> i1
-// CHECK-NEXT:   %7 = "neura.fmul"(%3, %4, %5) : (f32, f32, i1) -> f32
-// CHECK-NEXT:   %8 = "neura.fadd"(%1, %2, %6) : (f32, f32, i1) -> f32
-// CHECK-NEXT:   %9 = "neura.sel"(%7, %8, %5) : (f32, f32, i1) -> f32
-// CHECK-NEXT:   return %9 : f32
+// CHECK-NEXT: %0 = "neura.constant"() <{predicate = true, value = 0 : i64}> : () -> i64
+// CHECK-NEXT: %1 = "neura.constant"() <{predicate = true, value = 1.000000e+00 : f32}> : () -> f32
+// CHECK-NEXT: %2 = "neura.constant"() <{predicate = true, value = 2.000000e+00 : f32}> : () -> f32
+// CHECK-NEXT: %3 = "neura.constant"() <{predicate = true, value = 3.000000e+00 : f32}> : () -> f32
+// CHECK-NEXT: %4 = "neura.constant"() <{predicate = true, value = 4.000000e+00 : f32}> : () -> f32
+// CHECK-NEXT: %5 = "neura.icmp"(%arg0, %0) <{cmpType = "eq"}> : (i64, i64) -> i1
+// CHECK-NEXT: %6 = "neura.not"(%5) : (i1) -> i1
+// CHECK-NEXT: %7 = neura.grant_predicate %1, %6 : f32, i1 -> f32
+// CHECK-NEXT: %8 = neura.reserve : f32
+// CHECK-NEXT: %9 = "neura.phi"(%8, %7) : (f32, f32) -> f32
+// CHECK-NEXT: %10 = "neura.fcmp"(%9, %2) <{cmpType = "olt"}> : (f32, f32) -> i1
+// CHECK-NEXT: %11 = neura.grant_predicate %9, %10 : f32, i1 -> f32
+// CHECK-NEXT: %12 = "neura.not"(%10) : (i1) -> i1
+// CHECK-NEXT: %13 = neura.grant_predicate %9, %12 : f32, i1 -> f32
+// CHECK-NEXT: %14 = "neura.fadd"(%11, %1) : (f32, f32) -> f32
+// CHECK-NEXT: neura.ctrl_mov %14 -> %8 : f32 f32
+// CHECK-NEXT: %15 = neura.grant_predicate %3, %5 : f32, i1 -> f32
+// CHECK-NEXT: %16 = neura.grant_predicate %4, %5 : f32, i1 -> f32
+// CHECK-NEXT: %17 = "neura.fmul"(%15, %16) : (f32, f32) -> f32
+// CHECK-NEXT: %18 = "neura.phi"(%13, %17) : (f32, f32) -> f32
+// CHECK-NEXT: "neura.return"(%18) : (f32) -> ()
 // CHECK-NEXT: }
