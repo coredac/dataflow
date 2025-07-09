@@ -1,6 +1,7 @@
 // NeuraOps.td - Custom operation definitions.
 
 include "NeuraDialect/NeuraDialect.td"
+include "mlir/IR/BuiltinTypes.td"
 
 // ----------------------------------------------------
 // Defines basic scalar operations.
@@ -39,7 +40,7 @@ def Neura_FAddOp : Op<NeuraDialect, "fadd"> {
   let arguments = (ins AnyType:$lhs, AnyType:$rhs, Optional<AnyType>:$predicate);
   let results = (outs AnyType:$result);
   // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
-  //let traits = [SameOperandsAndResultElementType];
+  // let traits = [SameOperandsAndResultElementType];
 }
 
 // Defines a floating-point substraction operation.

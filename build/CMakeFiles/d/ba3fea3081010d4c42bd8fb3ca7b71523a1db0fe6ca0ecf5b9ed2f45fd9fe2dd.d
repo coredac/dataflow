@@ -1,0 +1,30 @@
+lib/Conversion/ArithToNeura/lib/Conversion/ArithToNeura/ArithToNeuraPatterns.inc: \
+  /home/item/dataflow/include/NeuraDialect/NeuraDialect.td \
+  /home/item/dataflow/include/NeuraDialect/NeuraOps.td \
+  /home/item/llvm-project/mlir/include/mlir/Dialect/Arith/IR/ArithBase.td \
+  /home/item/llvm-project/mlir/include/mlir/Dialect/Arith/IR/ArithOps.td \
+  /home/item/llvm-project/mlir/include/mlir/Dialect/Arith/IR/ArithOpsInterfaces.td \
+  /home/item/llvm-project/mlir/include/mlir/IR/AttrTypeBase.td \
+  /home/item/llvm-project/mlir/include/mlir/IR/BuiltinAttributeInterfaces.td \
+  /home/item/llvm-project/mlir/include/mlir/IR/BuiltinDialect.td \
+  /home/item/llvm-project/mlir/include/mlir/IR/BuiltinTypeInterfaces.td \
+  /home/item/llvm-project/mlir/include/mlir/IR/BuiltinTypes.td \
+  /home/item/llvm-project/mlir/include/mlir/IR/CommonAttrConstraints.td \
+  /home/item/llvm-project/mlir/include/mlir/IR/CommonTypeConstraints.td \
+  /home/item/llvm-project/mlir/include/mlir/IR/Constraints.td \
+  /home/item/llvm-project/mlir/include/mlir/IR/DialectBase.td \
+  /home/item/llvm-project/mlir/include/mlir/IR/EnumAttr.td \
+  /home/item/llvm-project/mlir/include/mlir/IR/Interfaces.td \
+  /home/item/llvm-project/mlir/include/mlir/IR/OpAsmInterface.td \
+  /home/item/llvm-project/mlir/include/mlir/IR/OpBase.td \
+  /home/item/llvm-project/mlir/include/mlir/IR/PatternBase.td \
+  /home/item/llvm-project/mlir/include/mlir/IR/Properties.td \
+  /home/item/llvm-project/mlir/include/mlir/IR/Traits.td \
+  /home/item/llvm-project/mlir/include/mlir/IR/Utils.td \
+  /home/item/llvm-project/mlir/include/mlir/Interfaces/CastInterfaces.td \
+  /home/item/llvm-project/mlir/include/mlir/Interfaces/ControlFlowInterfaces.td \
+  /home/item/llvm-project/mlir/include/mlir/Interfaces/InferIntRangeInterface.td \
+  /home/item/llvm-project/mlir/include/mlir/Interfaces/InferTypeOpInterface.td \
+  /home/item/llvm-project/mlir/include/mlir/Interfaces/SideEffectInterfaceBase.td \
+  /home/item/llvm-project/mlir/include/mlir/Interfaces/SideEffectInterfaces.td \
+  /home/item/llvm-project/mlir/include/mlir/Interfaces/VectorInterfaces.td
