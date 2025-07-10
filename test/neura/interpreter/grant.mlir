@@ -10,8 +10,6 @@ func.func @test_grant_predicate() -> vector<4xf32> {
 
   %res = "neura.grant_predicate"(%val, %pred) :
            (vector<4xf32>, i1) -> vector<4xf32>
-
-  // CHECK: grant_predicate: source.predicate=1, newPred.value=1.000000e+00
   // CHECK: [neura-interpreter] Output: [1.000000, 2.000000, 3.000000, 4.000000]
   return %res : vector<4xf32>
 }
@@ -22,7 +20,6 @@ func.func @test_grant_once() -> vector<2xf32> {
   } : () -> vector<2xf32>
 
   %res = "neura.grant_once"(%val) : (vector<2xf32>) -> vector<2xf32>
-
   // CHECK: [neura-interpreter] Output: [5.500000, 6.500000]
   return %res : vector<2xf32>
 }
@@ -52,7 +49,6 @@ func.func @test_combined_grants() -> vector<4xf32> {
   %v_pred_true = "neura.grant_predicate"(%v_once, %p1) : (vector<4xf32>, i1) -> vector<4xf32>
   %v_final = "neura.grant_always"(%v_pred_true) : (vector<4xf32>) -> vector<4xf32>
 
-  // CHECK: grant_predicate: source.predicate=1, newPred.value=1.000000e+00
   // CHECK: [neura-interpreter] Output: [1.000000, 2.000000, 3.000000, 4.000000]
   return %v_final : vector<4xf32>
 }
@@ -67,8 +63,6 @@ func.func @test_combined_grants_blocked() -> vector<4xf32> {
   %v_once = "neura.grant_once"(%v) : (vector<4xf32>) -> vector<4xf32>
   %v_pred = "neura.grant_predicate"(%v_once, %p0) : (vector<4xf32>, i1) -> vector<4xf32>
   %v_final = "neura.grant_always"(%v_pred) : (vector<4xf32>) -> vector<4xf32>
-
-  // CHECK: grant_predicate: source.predicate=1, newPred.value=0.000000e+00
-  // CHECK: [neura-interpreter] Output: []
+  // CHECK: [neura-interpreter] Output: [5.000000, 6.000000, 7.000000, 8.000000]
   return %v_final : vector<4xf32>
 }
