@@ -6,7 +6,7 @@ add_mlir_dialect_library(MLIRNeura
         Mapping/mapping_util.cpp
         Mapping/MappingState.cpp
         Mapping/MappingStrategy.cpp
-        Mapping/BacktrackMapping/BacktrackMapping.cpp
+        Mapping/HeuristicMapping/HeuristicMapping.cpp
         Architecture/Architecture.cpp
 
         ADDITIONAL_HEADER_DIRS

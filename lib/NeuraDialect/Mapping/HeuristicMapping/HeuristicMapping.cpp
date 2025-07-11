@@ -1,4 +1,4 @@
-#include "NeuraDialect/Mapping/BacktrackMapping/BacktrackMapping.h"
+#include "NeuraDialect/Mapping/HeuristicMapping/HeuristicMapping.h"
 #include "NeuraDialect/Mapping/mapping_util.h"
 #include "NeuraDialect/NeuraOps.h"
 #include "llvm/Support/raw_ostream.h"
@@ -6,14 +6,14 @@
 namespace mlir {
 namespace neura {
 
-bool BacktrackMapping::map(std::vector<Operation *> &sorted_ops,
+bool HeuristicMapping::map(std::vector<Operation *> &sorted_ops,
                            const Architecture &architecture,
                            MappingState &mapping_state) {
   // Start the backtracking mapping process from the first operation.
   return mapWithBacktrack(sorted_ops, architecture, mapping_state, 0, 0);
 }
 
-bool BacktrackMapping::mapWithBacktrack(std::vector<Operation *> &sorted_ops,
+bool HeuristicMapping::mapWithBacktrack(std::vector<Operation *> &sorted_ops,
                                         const Architecture &architecture,
                                         MappingState &mapping_state,
                                         size_t op_index, int backtrack_depth) {

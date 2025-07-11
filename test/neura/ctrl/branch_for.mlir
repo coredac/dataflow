@@ -25,7 +25,7 @@
 // RUN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \
 // RUN:   --insert-data-mov \
-// RUN:   --map-to-accelerator="mapping-strategy=backtrack" \
+// RUN:   --map-to-accelerator="mapping-strategy=heuristic" \
 // RUN:   | FileCheck %s -check-prefix=MAPPING
 
 // RUN: mlir-neura-opt %s \
@@ -34,7 +34,7 @@
 // RUN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \
 // RUN:   --insert-data-mov \
-// RUN:   --map-to-accelerator="mapping-strategy=backtrack" \
+// RUN:   --map-to-accelerator="mapping-strategy=heuristic" \
 // RUN:   --generate-code
  
 // RU: FileCheck %s --input-file=generated-instructions.json -check-prefix=INST

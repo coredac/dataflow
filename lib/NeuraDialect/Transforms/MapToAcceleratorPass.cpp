@@ -1,7 +1,7 @@
 #include <deque>
 
 #include "NeuraDialect/Architecture/Architecture.h"
-#include "NeuraDialect/Mapping/BacktrackMapping/BacktrackMapping.h"
+#include "NeuraDialect/Mapping/HeuristicMapping/HeuristicMapping.h"
 #include "NeuraDialect/Mapping/MappingState.h"
 #include "NeuraDialect/Mapping/mapping_util.h"
 #include "NeuraDialect/NeuraDialect.h"
@@ -41,10 +41,10 @@ struct MapToAcceleratorPass
   Option<std::string> mappingStrategy{
       *this, "mapping-strategy",
       llvm::cl::desc("Mapping strategy to use for mapping operations to the "
-                     "accelerator. Options: exhaustive, "
-                     "backtrack=max_loc,max_depth (default "
-                     "max_loc=5, max_depth=3), heuristic"),
-      llvm::cl::init("backtrack")};
+                     "accelerator. Options: greedy, exhaustive, "
+                     "heuristic=max_loc,max_depth (default "
+                     "max_loc=5, max_depth=3)"),
+      llvm::cl::init("heuristic")};
 
   void runOnOperation() override {
     ModuleOp module = getOperation();
@@ -52,19 +52,19 @@ struct MapToAcceleratorPass
     StringRef mappingStrategy_stringRef(mappingStrategy.getValue());
     // Creates a mapping strategy based on the provided option.
     std::unique_ptr<MappingStrategy> mapping_strategy;
-    if (mappingStrategy_stringRef == "heuristic") {
-      mapping_strategy = std::make_unique<BacktrackMapping>(INT_MAX, 1);
+    if (mappingStrategy_stringRef == "greedy") {
+      mapping_strategy = std::make_unique<HeuristicMapping>(INT_MAX, 1);
     } else if (mappingStrategy_stringRef == "exhaustive") {
-      mapping_strategy = std::make_unique<BacktrackMapping>(INT_MAX, INT_MAX);
-    } else if (mappingStrategy_stringRef == "backtrack") {
-      mapping_strategy = std::make_unique<BacktrackMapping>(
+      mapping_strategy = std::make_unique<HeuristicMapping>(INT_MAX, INT_MAX);
+    } else if (mappingStrategy_stringRef == "heuristic") {
+      mapping_strategy = std::make_unique<HeuristicMapping>(
           5, 3); // Randomly picked default values for max_loc and max_depth
-    } else if (mappingStrategy_stringRef.starts_with("backtrack=")) {
+    } else if (mappingStrategy_stringRef.starts_with("heuristic=")) {
       // Used for custom backtrack parameters.
-      // Example: "backtrack=5,3" means max_loc=5, max_depth=3
-      // Extracts the parameters after "backtrack=".
+      // Example: "heuristic=5,3" means max_loc=5, max_depth=3
+      // Extracts the parameters after "heuristic=".
       StringRef paramsRef =
-          mappingStrategy_stringRef.substr(strlen("backtrack="));
+          mappingStrategy_stringRef.substr(strlen("heuristic="));
       size_t comma_pos = paramsRef.find(',');
 
       if (comma_pos != StringRef::npos) {
@@ -75,10 +75,11 @@ struct MapToAcceleratorPass
         if (!max_loc_str.getAsInteger(10, max_loc) &&
             !max_depth_str.getAsInteger(10, max_depth)) {
           mapping_strategy =
-              std::make_unique<BacktrackMapping>(max_loc, max_depth);
-          llvm::errs() << "[MapToAcceleratorPass] Use custom backtrack: "
-                       << "max_location_to_try=" << max_loc
-                       << ", max_backtrack_depth=" << max_depth << "\n";
+              std::make_unique<HeuristicMapping>(max_loc, max_depth);
+          llvm::errs()
+              << "[MapToAcceleratorPass] Use custom backtrack parameters: "
+              << "max_location_to_try=" << max_loc
+              << ", max_backtrack_depth=" << max_depth << "\n";
         } else {
           llvm::errs()
               << "[MapToAcceleratorPass] Illegal backtrack parameters format: "
