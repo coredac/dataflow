@@ -9,21 +9,21 @@
 
 namespace mlir {
 namespace neura {
-class BacktrackMapping : public MappingStrategy {
+class HeuristicMapping : public MappingStrategy {
 public:
-  BacktrackMapping(int max_location_to_try = 5, int max_backtrack_depth = 3)
+  HeuristicMapping(int max_location_to_try = 5, int max_backtrack_depth = 3)
       : max_location_to_try(max_location_to_try), max_backtrack_depth(3) {}
   bool map(std::vector<Operation *> &sorted_ops,
            const Architecture &architecture,
            MappingState &mapping_state) override;
   std::string getName() const override {
     if (max_backtrack_depth == 1 && max_location_to_try == INT_MAX) {
-      return "heuristic";
+      return "greedy";
     } else if (max_backtrack_depth == INT_MAX &&
                max_location_to_try == INT_MAX) {
       return "exhaustive";
     } else {
-      return "backtrack";
+      return "heuristic";
     }
   }
 
