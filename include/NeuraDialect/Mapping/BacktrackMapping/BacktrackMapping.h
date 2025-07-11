@@ -3,6 +3,7 @@
 
 #include "NeuraDialect/Mapping/MappingState.h"
 #include "NeuraDialect/Mapping/MappingStrategy.h"
+#include <climits>
 #include <map>
 #include <set>
 
@@ -15,7 +16,16 @@ public:
   bool map(std::vector<Operation *> &sorted_ops,
            const Architecture &architecture,
            MappingState &mapping_state) override;
-  std::string getName() const override { return "backtrack_mapping"; }
+  std::string getName() const override {
+    if (max_backtrack_depth == 1 && max_location_to_try == INT_MAX) {
+      return "heuristic";
+    } else if (max_backtrack_depth == INT_MAX &&
+               max_location_to_try == INT_MAX) {
+      return "exhaustive";
+    } else {
+      return "backtrack";
+    }
+  }
 
 private:
   bool mapWithBacktrack(std::vector<Operation *> &sorted_ops,
