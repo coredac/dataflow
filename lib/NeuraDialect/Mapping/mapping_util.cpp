@@ -192,10 +192,12 @@ mlir::Operation *mlir::neura::getMaterializedBackwardUser(Operation *op) {
 
   // Skip ctrl_mov users of reserve; return the first phi user.
   for (Operation *user : reserve_op.getResult().getUsers()) {
-    if (isa<neura::CtrlMovOp>(user))
+    if (isa<neura::CtrlMovOp>(user)) {
       continue; // skip ctrl_mov user
-    if (isa<neura::PhiOp>(user))
+    }
+    if (isa<neura::PhiOp>(user)) {
       return user;
+    }
   }
   assert(false &&
          "No materialized backward user (i.e., phi) found for ctrl_mov");
@@ -297,16 +299,11 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
   // arrive at the next iteration).
   const int deadline_step =
       dst_loc.time_step + (is_backward_move ? state.getII() : 0);
-  // llvm::errs() << "src_tile: " << src_tile->getId()
-  //              << ", dst_tile: " << dst_tile->getId()
-  //              << ", deadline_step: " << deadline_step << "\n";
 
   // BFS-style search for a path from src_tile to dst_tile.
   while (!queue.empty()) {
     auto [current_tile, current_time, current_path] = queue.front();
     queue.pop();
-    // llvm::errs() << "Visiting tile: " << current_tile->getId()
-    //              << " at time: " << current_time << "\n";
 
     if (current_tile == dst_tile) {
       // Confirms path reaches the target tile no later than deadline step.
@@ -350,13 +347,9 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
 
     for (MappingLoc current_step_next_link :
          state.getCurrentStepLinks({current_tile, current_time})) {
-      if (!state.isAvailableAcrossTime(current_step_next_link))
+      if (!state.isAvailableAcrossTime(current_step_next_link)) {
         continue;
-
-      // llvm::errs() << "Exploring next link: "
-      //              << current_step_next_link.resource->getType() << "#"
-      //              << current_step_next_link.resource->getId()
-      //              << " at t=" << current_step_next_link.time_step << "\n";
+      }
       Link *next_link = dyn_cast<Link>(current_step_next_link.resource);
       Tile *next_tile = next_link->getDstTile();
       int next_time = current_time + 1;
@@ -367,9 +360,6 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
       std::vector<MappingLoc> extended_path = current_path;
       extended_path.push_back(current_step_next_link);
       queue.push({next_tile, next_time, std::move(extended_path)});
-      // llvm::errs() << "Added to queue: " << next_tile->getId()
-      //              << " at time: " << next_time
-      //              << " with path size: " << extended_path.size() << "\n";
     }
   }
 
@@ -707,7 +697,7 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
         mapping_state.releaseRoute(routed_ctrl_mov);
       }
 
-      for(Operation *routed_op : routed_operands) {
+      for (Operation *routed_op : routed_operands) {
         llvm::errs() << "[DEBUG] Releasing route for routed operand: "
                      << *routed_op << "\n";
         mapping_state.releaseRoute(routed_op);

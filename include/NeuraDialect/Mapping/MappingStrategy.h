@@ -12,18 +12,15 @@ namespace neura {
 class MappingStrategy {
 public:
   virtual ~MappingStrategy() = default;
-  
+
   // Applies the mapping strategy to map operations onto hardware
-  virtual bool map(std::vector<Operation*>& sorted_ops,
-                 const Architecture& architecture,
-                 MappingState& mapping_state) = 0;
-                 
+  virtual bool map(std::vector<Operation *> &sorted_ops,
+                   const Architecture &architecture,
+                   MappingState &mapping_state) = 0;
+
   // Gets the name of this strategy
   virtual std::string getName() const = 0;
 };
-
-// Factory function to create mapping strategies based on name
-std::unique_ptr<MappingStrategy> createMappingStrategy(const std::string& name);
 
 } // namespace neura
 } // namespace mlir

@@ -121,10 +121,6 @@ MappingState::getCurrentStepLinks(MappingLoc loc) const {
          "Current step links can only be queried for tiles");
   std::vector<MappingLoc> current_step_links;
   const int current_step = loc.time_step;
-  // llvm::errs() << "getCurrentStepLinks called for loc: "
-  //            << loc.resource->getType() << "#" << loc.resource->getId()
-  //            << " at t=" << current_step << "\n";
-  // assert(current_step < II * kMaxSteps && "Current step exceeds max steps");
   if (!(current_step < II * kMaxSteps)) {
     llvm::errs() << "Current step exceeds max steps: " << current_step
                  << ", max steps: " << II * kMaxSteps << "\n";
@@ -186,7 +182,6 @@ void MappingState::dumpOpToLocs(llvm::raw_ostream &os) const {
          << " @t=" << loc.time_step << "\n";
     }
   }
-
   os << "=== End ===\n";
 }
 
@@ -198,23 +193,56 @@ void MappingState::encodeMappingState() {
       std::string kind_str;
       if (loc.resource->getKind() == ResourceKind::Tile) {
         kind_str = "tile";
+        Tile *tile = dyn_cast<Tile>(loc.resource);
+        auto dict = mlir::DictionaryAttr::get(
+            ctx, {mlir::NamedAttribute(mlir::StringAttr::get(ctx, "resource"),
+                                       mlir::StringAttr::get(ctx, kind_str)),
+                  mlir::NamedAttribute(
+                      mlir::StringAttr::get(ctx, "id"),
+                      mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
+                                             loc.resource->getId())),
+                  mlir::NamedAttribute(
+                      mlir::StringAttr::get(ctx, "time_step"),
+                      mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
+                                             loc.time_step)),
+                  mlir::NamedAttribute(
+                      mlir::StringAttr::get(ctx, "x"),
+                      mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
+                                             tile->getX())),
+                  mlir::NamedAttribute(
+                      mlir::StringAttr::get(ctx, "y"),
+                      mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
+                                             tile->getY()))});
+        mapping_entries.push_back(dict);
       } else if (loc.resource->getKind() == ResourceKind::Link) {
         kind_str = "link";
+        auto dict = mlir::DictionaryAttr::get(
+            ctx, {mlir::NamedAttribute(mlir::StringAttr::get(ctx, "resource"),
+                                       mlir::StringAttr::get(ctx, kind_str)),
+                  mlir::NamedAttribute(
+                      mlir::StringAttr::get(ctx, "id"),
+                      mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
+                                             loc.resource->getId())),
+                  mlir::NamedAttribute(
+                      mlir::StringAttr::get(ctx, "time_step"),
+                      mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
+                                             loc.time_step))});
+        mapping_entries.push_back(dict);
       } else {
         kind_str = "unknown";
+        auto dict = mlir::DictionaryAttr::get(
+            ctx, {mlir::NamedAttribute(mlir::StringAttr::get(ctx, "resource"),
+                                       mlir::StringAttr::get(ctx, kind_str)),
+                  mlir::NamedAttribute(
+                      mlir::StringAttr::get(ctx, "id"),
+                      mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
+                                             loc.resource->getId())),
+                  mlir::NamedAttribute(
+                      mlir::StringAttr::get(ctx, "time_step"),
+                      mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
+                                             loc.time_step))});
+        mapping_entries.push_back(dict);
       }
-      auto dict = mlir::DictionaryAttr::get(
-          ctx, {mlir::NamedAttribute(mlir::StringAttr::get(ctx, "resource"),
-                                     mlir::StringAttr::get(ctx, kind_str)),
-                mlir::NamedAttribute(
-                    mlir::StringAttr::get(ctx, "id"),
-                    mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
-                                           loc.resource->getId())),
-                mlir::NamedAttribute(
-                    mlir::StringAttr::get(ctx, "time_step"),
-                    mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
-                                           loc.time_step))});
-      mapping_entries.push_back(dict);
     }
     op->setAttr("mapping_locs", mlir::ArrayAttr::get(ctx, mapping_entries));
   }
