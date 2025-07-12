@@ -101,8 +101,9 @@ struct MapToAcceleratorPass
     module.walk([&](func::FuncOp func) {
       // Skips functions not targeting the neura accelerator.
       auto accel_attr = func->getAttrOfType<StringAttr>("accelerator");
-      if (!accel_attr || accel_attr.getValue() != "neura")
+      if (!accel_attr || accel_attr.getValue() != "neura") {
         return;
+      }
 
       // Collects and reports recurrence cycles found in the function.
       auto recurrence_cycles = collectRecurrenceCycles(func);
@@ -114,8 +115,9 @@ struct MapToAcceleratorPass
         for (Operation *op : cycle.operations) {
           llvm::outs() << "  " << *op << "\n";
         }
-        if (!longest || cycle.length > longest->length)
+        if (!longest || cycle.length > longest->length) {
           longest = &cycle;
+        }
       }
 
       if (longest) {

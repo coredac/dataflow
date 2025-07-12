@@ -27,8 +27,9 @@ bool MappingState::bindOp(const MappingLoc &loc, Operation *op) {
 
 void MappingState::unbindOp(Operation *op) {
   auto it = op_to_locs.find(op);
-  if (it == op_to_locs.end())
+  if (it == op_to_locs.end()) {
     return;
+  }
 
   for (const MappingLoc &loc : it->second) {
     loc_to_op.erase(loc);
@@ -42,16 +43,18 @@ bool MappingState::isAvailableAcrossTime(const MappingLoc &loc) const {
   for (int t = loc.time_step % II; t < II * kMaxSteps; t += II) {
     MappingLoc checkLoc = loc;
     checkLoc.time_step = t;
-    if (occupied_locs.find(checkLoc) != occupied_locs.end())
+    if (occupied_locs.find(checkLoc) != occupied_locs.end()) {
       return false;
+    }
   }
   return true;
 }
 
 std::optional<Operation *> MappingState::getOpAt(MappingLoc loc) const {
   auto it = loc_to_op.find(loc);
-  if (it == loc_to_op.end())
+  if (it == loc_to_op.end()) {
     return std::nullopt;
+  }
   return it->second;
 }
 
@@ -72,8 +75,9 @@ const std::set<MappingLoc> &MappingState::getAllLocs() const {
 const std::vector<MappingLoc> &
 MappingState::getAllLocsOfOp(Operation *op) const {
   auto it = op_to_locs.find(op);
-  if (it != op_to_locs.end())
+  if (it != op_to_locs.end()) {
     return it->second;
+  }
 
   static const std::vector<MappingLoc> empty;
   return empty;
@@ -154,8 +158,9 @@ void MappingState::reserveRoute(Operation *op, ArrayRef<MappingLoc> path) {
 
 void MappingState::releaseRoute(Operation *op) {
   auto it = op_to_locs.find(op);
-  if (it == op_to_locs.end())
+  if (it == op_to_locs.end()) {
     return;
+  }
 
   const std::vector<MappingLoc> &route = it->second;
 
@@ -172,8 +177,9 @@ void MappingState::dumpOpToLocs(llvm::raw_ostream &os) const {
 
   for (const auto &[op, locs] : op_to_locs) {
     os << "  - " << op->getName();
-    if (auto name_attr = op->getAttrOfType<StringAttr>("sym_name"))
+    if (auto name_attr = op->getAttrOfType<StringAttr>("sym_name")) {
       os << " @" << name_attr;
+    }
     os << "\n";
 
     for (const MappingLoc &loc : locs) {

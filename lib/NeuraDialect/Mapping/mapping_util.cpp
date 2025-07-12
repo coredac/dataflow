@@ -33,8 +33,9 @@ void traverseAlongPath(Operation *op, Value reserve_value,
   for (Value operand : op->getOperands()) {
     if (operand == reserve_value) {
       Operation *res_op = reserve_value.getDefiningOp();
-      if (res_op)
+      if (res_op) {
         current_path.push_front(res_op);
+      }
 
       int effective_length = 0;
       for (Operation *op : current_path) {
@@ -49,8 +50,9 @@ void traverseAlongPath(Operation *op, Value reserve_value,
         length : static_cast<int>(effective_length)
       });
 
-      if (res_op)
+      if (res_op) {
         current_path.pop_front();
+      }
       continue;
     }
 
@@ -73,15 +75,17 @@ mlir::neura::collectRecurrenceCycles(Operation *func_op) {
   func_op->walk([&](neura::CtrlMovOp ctrl_mov_op) {
     Value target = ctrl_mov_op.getTarget();
     auto reserve_op = target.getDefiningOp<neura::ReserveOp>();
-    if (!reserve_op)
+    if (!reserve_op) {
       return;
+    }
 
     Value reserve_value = reserve_op.getResult();
     Value ctrl_mov_from = ctrl_mov_op.getValue();
 
     Operation *parent_op = ctrl_mov_from.getDefiningOp();
-    if (!parent_op)
+    if (!parent_op) {
       return;
+    }
 
     std::deque<Operation *> current_path;
     SmallVector<RecurrenceCycle, 4> collected_paths;
@@ -137,12 +141,15 @@ mlir::neura::getTopologicallySortedOps(Operation *func_op) {
 
   // Counts unresolved dependencies for each op.
   func_op->walk([&](Operation *op) {
-    if (op == func_op)
+    if (op == func_op) {
       return;
+    }
     int dep_count = 0;
-    for (Value operand : op->getOperands())
-      if (operand.getDefiningOp())
+    for (Value operand : op->getOperands()) {
+      if (operand.getDefiningOp()) {
         ++dep_count;
+      }
+    }
     pending_deps[op] = dep_count;
     if (dep_count == 0) {
       // TODO: Prioritize recurrence ops. But cause compiled II regression.
@@ -354,8 +361,9 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
       Tile *next_tile = next_link->getDstTile();
       int next_time = current_time + 1;
 
-      if (!visited.insert(next_tile).second)
+      if (!visited.insert(next_tile).second) {
         continue;
+      }
 
       std::vector<MappingLoc> extended_path = current_path;
       extended_path.push_back(current_step_next_link);
@@ -384,8 +392,9 @@ bool mlir::neura::tryHeuristicMapping(std::vector<Operation *> &sorted_ops,
   for (Operation *op : sorted_ops) {
     // TODO: Build up util func to distinguish materialized and non-materialized
     // ops.
-    if (isa<neura::DataMovOp, neura::CtrlMovOp, neura::ReserveOp>(op))
+    if (isa<neura::DataMovOp, neura::CtrlMovOp, neura::ReserveOp>(op)) {
       continue;
+    }
 
     std::vector<MappingLoc> sorted_locs =
         calculateAward(op, architecture, mapping_state);
@@ -474,18 +483,21 @@ bool mlir::neura::canReachLocInTime(const MappingLoc &src_loc,
       return true;
     }
 
-    if (current_time >= deadline_step)
+    if (current_time >= deadline_step) {
       continue;
+    }
 
     // Explores all next step tiles from the current location.
     for (const MappingLoc &next_loc :
          mapping_state.getNextStepTiles(current_loc)) {
-      if (!mapping_state.isAvailableAcrossTime(next_loc))
+      if (!mapping_state.isAvailableAcrossTime(next_loc)) {
         continue;
+      }
 
       int next_time = current_time + 1;
-      if (next_time > deadline_step)
+      if (next_time > deadline_step) {
         continue;
+      }
 
       Tile *next_tile = llvm::dyn_cast<Tile>(next_loc.resource);
       assert(next_tile && "Next location must be a Tile");
