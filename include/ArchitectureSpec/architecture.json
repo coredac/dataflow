@@ -24,26 +24,22 @@
     "bandwidth": 32
   },
   "connectivity": "mesh",
-  "links": [
-    {
-      "id": 0,
-      "x": 0, 
-      "y": 0,
-      "src_tile": 0,
-      "dst_tile": 1,
-      "src_port": "E",
-      "dst_port": "W",
-      "latency": 1,
-      "bandwidth": 32
-    },
+  "link_overrides": [
     {
       "id": 1,
-      "x": 1,
-      "y": 0,
-      "src_tile": 0,
-      "dst_tile": 4,
-      "src_port": "S",
-      "dst_port": "N"
+      "latency": 2,
+      "bandwidth": 32,
+      "src_tile_id": 0,
+      "dst_tile_id": 9,
+      "existence": true
+    },
+    {
+      "id": 2,
+      "latency": 3,
+      "bandwidth": 32,
+      "src_tile_id": 0,
+      "dst_tile_id": 8,
+      "existence": true
     }
   ],
   "tile_overrides": [
