@@ -32,6 +32,23 @@ def Neura_SubOp : Op<NeuraDialect, "sub"> {
   let traits = [SameOperandsAndResultElementType];
 }
 
+def Neura_MulOp : Op<NeuraDialect, "mul"> {
+  let summary = "Integer multiplication operation";
+  let opName = "mul";
+  let arguments = (ins AnyType:$lhs, AnyType:$rhs, Optional<AnyType>:$predicate);
+  let results = (outs AnyType:$result);
+  // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
+  let traits = [SameOperandsAndResultElementType];
+}
+
+def Neura_DivOp : Op<NeuraDialect, "div"> {
+  let summary = "Integer division operation";
+  let arguments = (ins AnyType:$lhs, AnyType:$rhs, Optional<AnyType>:$predicate);
+  let results = (outs AnyType:$result);
+  // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
+  let traits = [SameOperandsAndResultElementType];
+}
+
 // Defines a floating-point addition operation.
 def Neura_FAddOp : Op<NeuraDialect, "fadd"> {
   let summary = "Floating addition operation";
@@ -147,7 +164,7 @@ def Neura_StoreIndexedOp: Op<NeuraDialect, "store_indexed", [AttrSizedOperandSeg
 // Defines a pointer computation operation.
 def Neura_GEP : Op<NeuraDialect, "gep"> {
   let summary = "Pointer computation using offset indices";
-  let arguments = (ins AnyType:$base, Variadic<AnyInteger>:$indicesAndPredicate);
+  let arguments = (ins AnyType:$base, Variadic<AnyType>:$indicesAndPredicate);
   let results = (outs AnyType:$result);
   // let assemblyFormat = "$base `[` $indicesAndPredicate `]` `,` $predicate attr-dict";
 }
@@ -170,7 +187,7 @@ def Neura_Br : Op<NeuraDialect, "br", [Terminator]> {
 }
 
 def Neura_SelOp : Op<NeuraDialect, "sel"> {
-  let arguments = (ins AnyType:$ifTrue, AnyType:$ifFalse, I1:$cond);
+  let arguments = (ins AnyType:$ifTrue, AnyType:$ifFalse, AnyType:$cond);
   let results = (outs AnyType:$result);
   // let assemblyFormat = "$ifTrue `,` $ifFalse `,` $cond attr-dict `:` type($ifTrue)";
 }

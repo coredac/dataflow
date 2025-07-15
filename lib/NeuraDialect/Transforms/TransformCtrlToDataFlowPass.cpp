@@ -13,8 +13,8 @@
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/MapVector.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
@@ -139,6 +139,7 @@ void assertLiveOutValuesDominatedByBlockArgs(func::FuncOp &func) {
     if (&block == &func.getBody().front())
       continue;
 
+    llvm::errs() << "[ctrl2data] Checking block: " << block << "\n";
     DenseSet<Value> live_out_values;
     for (Operation &op : block) {
       for (Value result : op.getResults()) {
@@ -155,14 +156,15 @@ void assertLiveOutValuesDominatedByBlockArgs(func::FuncOp &func) {
     if (live_out_values.empty())
       continue;
 
-    DenseSet<Value> dominated_by_block_args;
+    DenseSet<Value> dominated_values;
 
-    for (BlockArgument arg : block.getArguments()) {
-      dominated_by_block_args.insert(arg);
-    }
-
-    if (block.getNumArguments() == 0 && !live_out_values.empty()) {
-      assert(false && "Block without arguments has live-out values");
+    for (Operation &op : block) {
+      for (Value operand : op.getOperands()) {
+        if (!operand.getDefiningOp() ||
+            operand.getDefiningOp()->getBlock() != &block) {
+          dominated_values.insert(operand);
+        }
+      }
     }
 
     bool changed = true;
@@ -170,12 +172,12 @@ void assertLiveOutValuesDominatedByBlockArgs(func::FuncOp &func) {
       changed = false;
       for (Operation &op : block) {
         for (Value result : op.getResults()) {
-          if (dominated_by_block_args.count(result))
+          if (dominated_values.count(result))
             continue;
 
           for (Value operand : op.getOperands()) {
-            if (dominated_by_block_args.count(operand)) {
-              dominated_by_block_args.insert(result);
+            if (dominated_values.count(operand)) {
+              dominated_values.insert(result);
               changed = true;
               break;
             }
@@ -184,13 +186,16 @@ void assertLiveOutValuesDominatedByBlockArgs(func::FuncOp &func) {
       }
     }
     for (Value live_out : live_out_values) {
-      if (!dominated_by_block_args.count(live_out))
-        assert(false && "Live-out value not dominated by block arguments");
+      llvm::errs() << "[ctrl2data] Live-out value: " << live_out << "\n";
+      if (!dominated_values.count(live_out)) {
+        assert(false && "Live-out value not dominated by block arguments or "
+                        "live-in values");
+      }
     }
   }
 
-  llvm::errs()
-      << "[ctrl2data] All live-out values are dominated by block arguments.\n";
+  llvm::errs() << "[ctrl2data] All live-out values are dominated by block "
+                  "arguments or live-in values.\n";
 }
 
 // Builds control flow info for the given function.
@@ -300,10 +305,11 @@ Value getPrecessedCondition(Value condition, bool is_not_condition,
   return not_condition;
 }
 
-void createReserveAndPhiOps(func::FuncOp &func, ControlFlowInfo &ctrl_info,
-                            llvm::MapVector<BlockArgument, Value> &arg_to_reserve,
-                            llvm::MapVector<BlockArgument, Value> &arg_to_phi_result,
-                            OpBuilder &builder) {
+void createReserveAndPhiOps(
+    func::FuncOp &func, ControlFlowInfo &ctrl_info,
+    llvm::MapVector<BlockArgument, Value> &arg_to_reserve,
+    llvm::MapVector<BlockArgument, Value> &arg_to_phi_result,
+    OpBuilder &builder) {
   DominanceInfo dom_info(func);
 
   // ================================================
@@ -328,6 +334,9 @@ void createReserveAndPhiOps(func::FuncOp &func, ControlFlowInfo &ctrl_info,
   llvm::MapVector<Value, Value> condition_cache;
 
   llvm::MapVector<BlockArgument, SmallVector<Value>> arg_to_phi_operands;
+
+  // Tracks the mapping of live-out values.
+  llvm::MapVector<Value, Value> value_to_predicated_value;
 
   for (auto &edge : ctrl_info.all_edges) {
     Block *target = edge->target;
@@ -368,108 +377,7 @@ void createReserveAndPhiOps(func::FuncOp &func, ControlFlowInfo &ctrl_info,
   }
 
   // ================================================
-  // Step 2: Creates reserve and ctrl_mov operations for needed blockarguments.
-  // ================================================
-  // Handles Type 1 & 2 edges.
-  for (auto &backward_pair : backward_value_edges) {
-    BlockArgument arg = backward_pair.first;
-    auto &edges = backward_pair.second;
-    Block *block = arg.getOwner();
-    builder.setInsertionPointToStart(block);
-    neura::ReserveOp reserve_op =
-        builder.create<neura::ReserveOp>(arg.getLoc(), arg.getType());
-    arg_to_reserve[arg] = reserve_op.getResult();
-    arg_to_phi_operands[arg].push_back(reserve_op.getResult());
-
-    // Creates ctrl_mov operations for reserved values.
-    for (ControlFlowInfo::Edge *edge : edges) {
-      Value val = edge->passed_values[arg.getArgNumber()];
-      builder.setInsertionPoint(edge->source->getTerminator());
-
-      Value predicated_val = val;
-      if (edge->condition) {
-        Value processed_condition = getPrecessedCondition(
-            edge->condition, edge->is_not_condition, condition_cache, builder);
-        predicated_val = builder.create<neura::GrantPredicateOp>(
-            edge->condition.getLoc(), val.getType(), predicated_val,
-            processed_condition);
-      }
-
-      // Creates ctrl_mov operation.
-      builder.create<neura::CtrlMovOp>(val.getLoc(), predicated_val,
-                                       reserve_op);
-    }
-  }
-
-  // ================================================
-  // Step 3: Prepares for creating phi operations.
-  // ================================================
-  // Handles Type 3 & 4 edges.
-
-  for (auto &forward_pair : forward_value_edges) {
-    BlockArgument arg = forward_pair.first;
-    auto &edges = forward_pair.second;
-
-    for (ControlFlowInfo::Edge *edge : edges) {
-      Value val = edge->passed_values[arg.getArgNumber()];
-
-      Value predicated_val = val;
-      if (edge->condition) {
-        builder.setInsertionPoint(edge->source->getTerminator());
-        Value processed_condition = getPrecessedCondition(
-            edge->condition, edge->is_not_condition, condition_cache, builder);
-
-        predicated_val = builder.create<neura::GrantPredicateOp>(
-            edge->condition.getLoc(), predicated_val.getType(), predicated_val,
-            processed_condition);
-      }
-
-      arg_to_phi_operands[arg].push_back(predicated_val);
-    }
-  }
-
-  // ================================================
-  // Step 4: Creates phi operations for each block argument.
-  // ================================================
-  for (auto &arg_to_phi_pair : arg_to_phi_operands) {
-    BlockArgument arg = arg_to_phi_pair.first;
-    auto &phi_operands = arg_to_phi_pair.second;
-
-    if (phi_operands.size() <= 1) {
-      // No need to create a phi operation if there's only one operand.
-
-      if (phi_operands.size() == 1) {
-        arg_to_phi_result[arg] = phi_operands[0];
-        arg.replaceAllUsesWith(phi_operands[0]);
-      }
-      continue;
-    }
-
-    // Handles the blcockargument with/without reserve seperately (different
-    // insertion points).
-    if (arg_to_reserve.count(arg)) {
-      Value reserve_value = arg_to_reserve[arg];
-      builder.setInsertionPointAfter(reserve_value.getDefiningOp());
-
-      // Creates phi operation for reserved values.
-      auto phi = builder.create<neura::PhiOp>(arg.getLoc(), arg.getType(),
-                                              phi_operands);
-      arg_to_phi_result[arg] = phi;
-    } else {
-      Block *placement = arg.getParentBlock();
-
-      builder.setInsertionPointToStart(placement);
-
-      // Creates phi operation for block argument without reserve.
-      auto phi = builder.create<neura::PhiOp>(arg.getLoc(), arg.getType(),
-                                              phi_operands);
-      arg.replaceAllUsesWith(phi);
-      arg_to_phi_result[arg] = phi;
-    }
-  }
-
-  // ================================================
-  // Step 5: Handles Forward cond_br edges without values.
+  // Step 2: Handles Forward cond_br edges without values.
   // ================================================
   // Handles Type 5 edges.
   for (auto &condition_pair : block_conditional_edges) {
@@ -538,6 +446,8 @@ void createReserveAndPhiOps(func::FuncOp &func, ControlFlowInfo &ctrl_info,
             live_in_value.getLoc(), live_in_value.getType(), live_in_value,
             conditions[0]);
 
+        value_to_predicated_value[live_in_value] = predicated_value;
+
         // Replace uses of the live-in value within this block only.
         for (OpOperand &use :
              llvm::make_early_inc_range(live_in_value.getUses())) {
@@ -547,6 +457,118 @@ void createReserveAndPhiOps(func::FuncOp &func, ControlFlowInfo &ctrl_info,
           }
         }
       }
+    }
+  }
+
+  // Updates the passed values in edges with predicated values.
+  for (auto &edge_ptr : ctrl_info.all_edges) {
+    ControlFlowInfo::Edge *edge = edge_ptr.get();
+    for (size_t i = 0; i < edge->passed_values.size(); ++i) {
+      Value val = edge->passed_values[i];
+      if (value_to_predicated_value.count(val)) {
+        edge->passed_values[i] = value_to_predicated_value[val];
+      }
+    }
+  }
+
+  // ================================================
+  // Step 3: Creates reserve and ctrl_mov operations for needed blockarguments.
+  // ================================================
+  // Handles Type 1 & 2 edges.
+  for (auto &backward_pair : backward_value_edges) {
+    BlockArgument arg = backward_pair.first;
+    auto &edges = backward_pair.second;
+    Block *block = arg.getOwner();
+    builder.setInsertionPointToStart(block);
+    neura::ReserveOp reserve_op =
+        builder.create<neura::ReserveOp>(arg.getLoc(), arg.getType());
+    arg_to_reserve[arg] = reserve_op.getResult();
+    arg_to_phi_operands[arg].push_back(reserve_op.getResult());
+
+    // Creates ctrl_mov operations for reserved values.
+    for (ControlFlowInfo::Edge *edge : edges) {
+      Value val = edge->passed_values[arg.getArgNumber()];
+      builder.setInsertionPoint(edge->source->getTerminator());
+
+      Value predicated_val = val;
+      if (edge->condition) {
+        Value processed_condition = getPrecessedCondition(
+            edge->condition, edge->is_not_condition, condition_cache, builder);
+        predicated_val = builder.create<neura::GrantPredicateOp>(
+            edge->condition.getLoc(), val.getType(), predicated_val,
+            processed_condition);
+      }
+
+      // Creates ctrl_mov operation.
+      builder.create<neura::CtrlMovOp>(val.getLoc(), predicated_val,
+                                       reserve_op);
+    }
+  }
+
+  // ================================================
+  // Step 4: Prepares for creating phi operations.
+  // ================================================
+  // Handles Type 3 & 4 edges.
+
+  for (auto &forward_pair : forward_value_edges) {
+    BlockArgument arg = forward_pair.first;
+    auto &edges = forward_pair.second;
+
+    for (ControlFlowInfo::Edge *edge : edges) {
+      Value val = edge->passed_values[arg.getArgNumber()];
+
+      Value predicated_val = val;
+      if (edge->condition) {
+        builder.setInsertionPoint(edge->source->getTerminator());
+        Value processed_condition = getPrecessedCondition(
+            edge->condition, edge->is_not_condition, condition_cache, builder);
+
+        predicated_val = builder.create<neura::GrantPredicateOp>(
+            edge->condition.getLoc(), predicated_val.getType(), predicated_val,
+            processed_condition);
+      }
+
+      arg_to_phi_operands[arg].push_back(predicated_val);
+    }
+  }
+
+  // ================================================
+  // Step 5: Creates phi operations for each block argument.
+  // ================================================
+  for (auto &arg_to_phi_pair : arg_to_phi_operands) {
+    BlockArgument arg = arg_to_phi_pair.first;
+    auto &phi_operands = arg_to_phi_pair.second;
+
+    if (phi_operands.size() <= 1) {
+      // No need to create a phi operation if there's only one operand.
+
+      if (phi_operands.size() == 1) {
+        arg_to_phi_result[arg] = phi_operands[0];
+        arg.replaceAllUsesWith(phi_operands[0]);
+      }
+      continue;
+    }
+
+    // Handles the blcockargument with/without reserve seperately (different
+    // insertion points).
+    if (arg_to_reserve.count(arg)) {
+      Value reserve_value = arg_to_reserve[arg];
+      builder.setInsertionPointAfter(reserve_value.getDefiningOp());
+
+      // Creates phi operation for reserved values.
+      auto phi = builder.create<neura::PhiOp>(arg.getLoc(), arg.getType(),
+                                              phi_operands);
+      arg_to_phi_result[arg] = phi;
+    } else {
+      Block *placement = arg.getParentBlock();
+
+      builder.setInsertionPointToStart(placement);
+
+      // Creates phi operation for block argument without reserve.
+      auto phi = builder.create<neura::PhiOp>(arg.getLoc(), arg.getType(),
+                                              phi_operands);
+      arg.replaceAllUsesWith(phi);
+      arg_to_phi_result[arg] = phi;
     }
   }
 }
