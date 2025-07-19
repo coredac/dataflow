@@ -308,7 +308,7 @@ struct ArithIndexCastToNeuraCast
     StringRef cast_string;
 
     // The isa<IntegerType> check is generic and handles any integer bit
-    // width. (e.g., i32, i64).
+    // width (e.g., i32, i64).
     if (in_type.isIndex() && isa<IntegerType>(result_type)) {
       cast_string = "index_to_int";
     } else if (isa<IntegerType>(in_type) && result_type.isIndex()) {

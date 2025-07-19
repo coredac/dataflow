@@ -369,3 +369,35 @@ def Neura_GrantAlwaysOp : Op<NeuraDialect, "grant_always"> {
 
   // let assemblyFormat = "$value attr-dict `:` type($value) `->` type($result)";
 }
+
+// ----------------------------------------------------
+// Defines fused control flow operations.
+
+def Neura_LoopControllerOp : Op<NeuraDialect, "loop_controller">{
+  let summary = "Generates loop indicies and valid predicates.";
+  let description = [{
+    Manages a single level of loop execution based on cycle counting.
+    Each loop_controller outputs a current index value and a valid predicate.
+    
+    The loop_controller uses dynamic loop bounds (start, end, step),
+    allowing for variable-length loops and runtime-determined bounds.
+    
+    The execution is conditioned on the parent_valid input, creating an
+    efficient hierarchical structure for nested loops.
+  }];
+
+  let arguments = (ins
+    AnyType:$parent_valid,  // Valid predicate from the parent loop
+    AnyType:$start,         // Start index of the loop
+    AnyType:$end,           // End index of the loop
+    AnyType:$step           // Step size for the loop
+  );
+
+  let results = (outs
+    AnyType:$index,         // Current loop index
+    AnyType:$valid          // Valid predicate for the current index
+  );
+
+  let assemblyFormat =
+    "$parent_valid `(` $start `,` $end `,` $step `)` attr-dict `:` type($parent_valid) `,` type($start) `,` type($end) `,` type($step) `->` type($index) `,` type($valid)";
+}

@@ -315,7 +315,7 @@ void createReserveAndPhiOps(
   // ================================================
   // Step 1: Categorizes edges into six types.
   // ================================================
-  // Type 1: Backward cond_br edges with values.
+  // Type 1: Backward cond_br edges with arguments.
   // Type 2: Backward br edges with values.
   // Type 3: Forward cond_br edges with values.
   // Type 4: Forward br edges with values.
@@ -441,7 +441,7 @@ void createReserveAndPhiOps(
           builder.setInsertionPointToStart(target);
         }
 
-        // Creates predicated version of the live-in value
+        // Creates predicated version of the live-in value.
         Value predicated_value = builder.create<neura::GrantPredicateOp>(
             live_in_value.getLoc(), live_in_value.getType(), live_in_value,
             conditions[0]);
