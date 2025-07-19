@@ -75,7 +75,7 @@ struct LlvmFSubToNeuraFSub : public OpRewritePattern<mlir::LLVM::FSubOp> {
       return failure();
     }
 
-    // Optional predicate: default to 'none'
+    // Optional predicate: default to 'none'.
     rewriter.replaceOpWithNewOp<neura::FSubOp>(op, result_type, lhs, rhs,
                                                Value());
     return success();
@@ -178,7 +178,7 @@ struct LlvmGEPToNeuraGEP : public OpRewritePattern<mlir::LLVM::GEPOp> {
       if (auto val = gepIndex.dyn_cast<Value>()) {
         indexValues.push_back(val);
       } else if (auto intAttr = gepIndex.dyn_cast<IntegerAttr>()) {
-        // Create constant operation state manually
+        // Creates constant operation state manually.
         OperationState state(op.getLoc(),
                              neura::ConstantOp::getOperationName());
         state.addAttribute("value", intAttr);
@@ -202,7 +202,7 @@ struct LlvmLoadToNeuraLoad : public OpRewritePattern<mlir::LLVM::LoadOp> {
 
   LogicalResult matchAndRewrite(mlir::LLVM::LoadOp op,
                                 PatternRewriter &rewriter) const override {
-    Value ptr = op.getAddr(); // getPointer() is deprecated
+    Value ptr = op.getAddr(); // getPointer() is deprecated.
     Type resultType = op.getResult().getType();
     rewriter.replaceOpWithNewOp<neura::LoadOp>(op, resultType, ptr, Value());
     return success();
@@ -225,15 +225,15 @@ struct LlvmCondBrToNeuraCondBr : public OpRewritePattern<LLVM::CondBrOp> {
   using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(LLVM::CondBrOp op,
                                 PatternRewriter &rewriter) const override {
-    // Get the source operation's successors (basic blocks)
+    // Gets the source operation's successors (basic blocks).
     Block *trueDest = op.getTrueDest();
     Block *falseDest = op.getFalseDest();
 
-    // Get the operands for each destination
+    // Gets the operands for each destination.
     ValueRange trueOperands = op.getTrueDestOperands();
     ValueRange falseOperands = op.getFalseDestOperands();
 
-    // Create the new operation with proper successors
+    // Creates the new operation with proper successors.
     auto newOp = rewriter.create<neura::CondBr>(
         op.getLoc(),       // Location
         op.getCondition(), // Condition
@@ -244,7 +244,7 @@ struct LlvmCondBrToNeuraCondBr : public OpRewritePattern<LLVM::CondBrOp> {
         falseDest          // False destination block
     );
 
-    // Replace the old op with the new one
+    // Replaces the old op with the new one.
     rewriter.replaceOp(op, newOp->getResults());
 
     return success();
@@ -256,11 +256,11 @@ struct LlvmBrToNeuraBr : public OpRewritePattern<LLVM::BrOp> {
 
   LogicalResult matchAndRewrite(mlir::LLVM::BrOp op,
                                 PatternRewriter &rewriter) const override {
-    // Get the destination block and its operands
+    // Gets the destination block and its operands.
     Block *dest = op.getDest();
     ValueRange destOperands = op.getDestOperands();
 
-    // Create the new Neura_Br operation
+    // Creates the new Neura_Br operation.
     rewriter.replaceOpWithNewOp<neura::Br>(op, destOperands, dest);
 
     return success();
@@ -294,13 +294,13 @@ struct LlvmConstantToNeuraConstant : public OpRewritePattern<LLVM::ConstantOp> {
                                 PatternRewriter &rewriter) const override {
     auto attr = op.getValue();
 
-    // Create operation state manually
+    // Creates operation state manually
     OperationState state(op.getLoc(), neura::ConstantOp::getOperationName());
     state.addAttribute("value", attr);
     state.addAttribute("predicate", rewriter.getBoolAttr(true));
     state.addTypes(op.getType());
 
-    // Create the operation and replace
+    // Creates the operation and replace
     Operation *newOp = rewriter.create(state);
     rewriter.replaceOp(op, newOp->getResults());
     return success();
