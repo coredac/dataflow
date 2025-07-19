@@ -147,7 +147,7 @@ def Neura_StoreIndexedOp: Op<NeuraDialect, "store_indexed", [AttrSizedOperandSeg
 // Defines a pointer computation operation.
 def Neura_GEP : Op<NeuraDialect, "gep"> {
   let summary = "Pointer computation using offset indices";
-  let arguments = (ins AnyType:$base, Variadic<AnyInteger>:$indicesAndPredicate);
+  let arguments = (ins AnyType:$base, Variadic<AnyType>:$indicesAndPredicate);
   let results = (outs AnyType:$result);
   // let assemblyFormat = "$base `[` $indicesAndPredicate `]` `,` $predicate attr-dict";
 }
