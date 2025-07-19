@@ -71,7 +71,7 @@ struct LeveragePredicatedValuePass
 private:
   // Gets operations in topological order.
   void getOperationsInTopologicalOrder(func::FuncOp func, 
-                                     SmallVector<Operation*> &ordered) {
+                                       SmallVector<Operation*> &ordered) {
     DenseSet<Operation*> visited;
     func.walk<WalkOrder::PreOrder>([&](Operation *op) {
       // Uses standard DFS to build topological order.
