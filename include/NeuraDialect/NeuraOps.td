@@ -32,6 +32,23 @@ def Neura_SubOp : Op<NeuraDialect, "sub"> {
   let traits = [SameOperandsAndResultElementType];
 }
 
+def Neura_MulOp : Op<NeuraDialect, "mul"> {
+  let summary = "Integer multiplication operation";
+  let opName = "mul";
+  let arguments = (ins AnyType:$lhs, AnyType:$rhs, Optional<AnyType>:$predicate);
+  let results = (outs AnyType:$result);
+  // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
+  let traits = [SameOperandsAndResultElementType];
+}
+
+def Neura_DivOp : Op<NeuraDialect, "div"> {
+  let summary = "Integer division operation";
+  let arguments = (ins AnyType:$lhs, AnyType:$rhs, Optional<AnyType>:$predicate);
+  let results = (outs AnyType:$result);
+  // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
+  let traits = [SameOperandsAndResultElementType];
+}
+
 // Defines a floating-point addition operation.
 def Neura_FAddOp : Op<NeuraDialect, "fadd"> {
   let summary = "Floating addition operation";
@@ -147,7 +164,7 @@ def Neura_StoreIndexedOp: Op<NeuraDialect, "store_indexed", [AttrSizedOperandSeg
 // Defines a pointer computation operation.
 def Neura_GEP : Op<NeuraDialect, "gep"> {
   let summary = "Pointer computation using offset indices";
-  let arguments = (ins AnyType:$base, Variadic<AnyInteger>:$indicesAndPredicate);
+  let arguments = (ins AnyType:$base, Variadic<AnyType>:$indicesAndPredicate);
   let results = (outs AnyType:$result);
   // let assemblyFormat = "$base `[` $indicesAndPredicate `]` `,` $predicate attr-dict";
 }
@@ -170,7 +187,7 @@ def Neura_Br : Op<NeuraDialect, "br", [Terminator]> {
 }
 
 def Neura_SelOp : Op<NeuraDialect, "sel"> {
-  let arguments = (ins AnyType:$ifTrue, AnyType:$ifFalse, I1:$cond);
+  let arguments = (ins AnyType:$ifTrue, AnyType:$ifFalse, AnyType:$cond);
   let results = (outs AnyType:$result);
   // let assemblyFormat = "$ifTrue `,` $ifFalse `,` $cond attr-dict `:` type($ifTrue)";
 }
@@ -351,4 +368,36 @@ def Neura_GrantAlwaysOp : Op<NeuraDialect, "grant_always"> {
   let results = (outs AnyType:$result);
 
   // let assemblyFormat = "$value attr-dict `:` type($value) `->` type($result)";
+}
+
+// ----------------------------------------------------
+// Defines fused control flow operations.
+
+def Neura_LoopControllerOp : Op<NeuraDialect, "loop_controller">{
+  let summary = "Generates loop indicies and valid predicates.";
+  let description = [{
+    Manages a single level of loop execution based on cycle counting.
+    Each loop_controller outputs a current index value and a valid predicate.
+    
+    The loop_controller uses dynamic loop bounds (start, end, step),
+    allowing for variable-length loops and runtime-determined bounds.
+    
+    The execution is conditioned on the parent_valid input, creating an
+    efficient hierarchical structure for nested loops.
+  }];
+
+  let arguments = (ins
+    AnyType:$parent_valid,  // Valid predicate from the parent loop
+    AnyType:$start,         // Start index of the loop
+    AnyType:$end,           // End index of the loop
+    AnyType:$step           // Step size for the loop
+  );
+
+  let results = (outs
+    AnyType:$index,         // Current loop index
+    AnyType:$valid          // Valid predicate for the current index
+  );
+
+  let assemblyFormat =
+    "$parent_valid `(` $start `,` $end `,` $step `)` attr-dict `:` type($parent_valid) `,` type($start) `,` type($end) `,` type($step) `->` type($index) `,` type($valid)";
 }
