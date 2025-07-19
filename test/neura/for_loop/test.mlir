@@ -4,14 +4,12 @@
 
 // TODO: Enable --insert-mov once the backward ctrl flow mov is supported.
 // Lowers to neura.
-// TODO: Make `--leverage-predicated-value` work. For now, a basic block
-// in the target function is referred by a branch operation from the main
-// function, leading to type violation. Need a proper design for this.
+// TODO: Make `--leverage-predicated-value` work. Segmentation fault for now.
 // https://github.com/coredac/dataflow/issues/84.
 // RUN: mlir-neura-opt \
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
-// RUN:   --leverage-predicated-value \
+// RN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \
 // RUN:   --fuse-patterns \
 // RN:   --insert-mov \
