@@ -67,4 +67,12 @@ def GenerateCode : Pass<"generate-code", "ModuleOp"> {
   let constructor = "neura::createGenerateCodePass()";
 }
 
+def FuseControlFlow: Pass<"fuse-control-flow", "ModuleOp">{
+  let summary = "Fuses control flow operations in the Neura dialect";
+  let description = [{
+    This pass fuses control flow operations.
+  }];
+  let constructor = "neura::createFuseControlFlowPass()";
+}
+
 #endif // NEURA_PASSES_TD
