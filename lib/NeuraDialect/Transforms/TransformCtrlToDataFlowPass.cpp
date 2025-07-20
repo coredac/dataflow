@@ -4,6 +4,7 @@
 #include "NeuraDialect/NeuraPasses.h"
 #include "NeuraDialect/NeuraTypes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Dominance.h"
@@ -132,12 +133,13 @@ struct ControlFlowInfo {
 
 // Checks if all the live-out values in a block are dominated by the block's
 // arguments.
-void assertLiveOutValuesDominatedByBlockArgs(func::FuncOp &func) {
+void assertLiveOutValuesDominatedByBlockArgs(Region &region) {
   llvm::errs()
       << "[ctrl2data] Asserting live-out values dominated by block arguments\n";
-  for (Block &block : func.getBlocks()) {
-    if (&block == &func.getBody().front())
+  for (Block &block : region) {
+    if (&block == &region.front()) {
       continue;
+    }
 
     llvm::errs() << "[ctrl2data] Checking block: " << block << "\n";
     DenseSet<Value> live_out_values;
@@ -199,9 +201,9 @@ void assertLiveOutValuesDominatedByBlockArgs(func::FuncOp &func) {
 }
 
 // Builds control flow info for the given function.
-void buildControlFlowInfo(func::FuncOp &func, ControlFlowInfo &ctrl_info,
+void buildControlFlowInfo(Region &region, ControlFlowInfo &ctrl_info,
                           DominanceInfo &dom_info) {
-  for (Block &block : func.getBlocks()) {
+  for (Block &block : region) {
     Operation *terminator = block.getTerminator();
 
     if (auto cond_br = dyn_cast<neura::CondBr>(terminator)) {
@@ -305,12 +307,11 @@ Value getPrecessedCondition(Value condition, bool is_not_condition,
   return not_condition;
 }
 
-void createReserveAndPhiOps(
-    func::FuncOp &func, ControlFlowInfo &ctrl_info,
-    llvm::MapVector<BlockArgument, Value> &arg_to_reserve,
-    llvm::MapVector<BlockArgument, Value> &arg_to_phi_result,
-    OpBuilder &builder) {
-  DominanceInfo dom_info(func);
+void createReserveAndPhiOps(Region &region, ControlFlowInfo &ctrl_info,
+                            llvm::MapVector<BlockArgument, Value> &arg_to_reserve,
+                            llvm::MapVector<BlockArgument, Value> &arg_to_phi_result,
+                            OpBuilder &builder) {
+  DominanceInfo dom_info(region.getParentOp());
 
   // ================================================
   // Step 1: Categorizes edges into six types.
@@ -574,18 +575,18 @@ void createReserveAndPhiOps(
 }
 
 // Transforms control flow into data flow.
-void transformControlFlowToDataFlow(func::FuncOp &func,
+void transformControlFlowToDataFlow(Region &region,
                                     ControlFlowInfo &ctrl_info,
                                     DominanceInfo &dom_info,
                                     OpBuilder &builder) {
 
   // Asserts that all live-out values are dominated by block arguments.
-  assertLiveOutValuesDominatedByBlockArgs(func);
+  assertLiveOutValuesDominatedByBlockArgs(region);
 
   // Creates reserve and phi operations for each block argument.
   llvm::MapVector<BlockArgument, Value> arg_to_reserve;
   llvm::MapVector<BlockArgument, Value> arg_to_phi_result;
-  createReserveAndPhiOps(func, ctrl_info, arg_to_reserve, arg_to_phi_result,
+  createReserveAndPhiOps(region, ctrl_info, arg_to_reserve, arg_to_phi_result,
                          builder);
 
   // Replaces blockarguments with phi results
@@ -596,9 +597,9 @@ void transformControlFlowToDataFlow(func::FuncOp &func,
   }
 
   // Flattens blocks into the entry block.
-  Block *entryBlock = &func.getBody().front();
+  Block *entryBlock = &region.front();
   SmallVector<Block *> blocks_to_flatten;
-  for (Block &block : func.getBody()) {
+  for (Block &block : region) {
     if (&block != entryBlock)
       blocks_to_flatten.push_back(&block);
   }
@@ -650,23 +651,42 @@ struct TransformCtrlToDataFlowPass
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mlir::neura::NeuraDialect>();
+    registry.insert<mlir::LLVM::LLVMDialect>();
   }
 
   void runOnOperation() override {
     ModuleOp module = getOperation();
-    module.walk([&](func::FuncOp func) {
-      OpBuilder builder(func.getContext());
-      GrantPredicateInEntryBlock(&func.getBody().front(), builder);
+    module.walk([&](Operation *op) {
+      Region *region = nullptr;
+      DominanceInfo domInfo;
+      OpBuilder builder(op->getContext());
 
-      DominanceInfo dom_info(func);
-
-      // Step 1: Analyzes the control flow and creates control flow info
-      // struct.
-      ControlFlowInfo ctrl_info;
-      buildControlFlowInfo(func, ctrl_info, dom_info);
-
-      // Step 2: Transforms control flow into data flow.
-      transformControlFlowToDataFlow(func, ctrl_info, dom_info, builder);
+      if (auto func = dyn_cast<func::FuncOp>(op)) {
+        auto accel_attr = func->getAttrOfType<StringAttr>("accelerator");
+        if (!accel_attr || accel_attr.getValue() != "neura") {
+          return;
+        }
+        region = &func.getBody();
+        domInfo = DominanceInfo(func);
+        GrantPredicateInEntryBlock(&region->front(), builder);
+        assertLiveOutValuesDominatedByBlockArgs(*region);
+      } else if (auto llvmFunc = dyn_cast<LLVM::LLVMFuncOp>(op)) {
+        if (llvmFunc.isDeclaration()) return;
+        auto accel_attr = llvmFunc->getAttrOfType<StringAttr>("accelerator");
+        if (!accel_attr || accel_attr.getValue() != "neura") {
+          return;
+        }
+        region = &llvmFunc.getBody();
+        domInfo = DominanceInfo(llvmFunc);
+        GrantPredicateInEntryBlock(&region->front(), builder);
+        assertLiveOutValuesDominatedByBlockArgs(*region);
+        // Skips SSA live-out dominance assert.
+      } else {
+        return;
+      }
+      ControlFlowInfo ctrlInfo;
+      buildControlFlowInfo(*region, ctrlInfo, domInfo);
+      transformControlFlowToDataFlow(*region, ctrlInfo, domInfo, builder);
     });
   }
 };

@@ -34,8 +34,9 @@ struct GenerateCodePass
 
     for (auto func : module.getOps<func::FuncOp>()) {
       auto accel_attr = func->getAttrOfType<StringAttr>("accelerator");
-      if (!accel_attr || accel_attr.getValue() != "neura")
+      if (!accel_attr || accel_attr.getValue() != "neura") {
         continue;
+      }
 
       llvm::json::Object func_obj;
       func_obj["name"] = func.getName().str();
