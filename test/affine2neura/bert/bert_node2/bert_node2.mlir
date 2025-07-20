@@ -28,14 +28,14 @@ module attributes {} {
 }
 
 // CHECK: func.func @_Z10bert_node2PA128_KiPA768_KfPA128_A768_f(%arg0: memref<?x128xi32>, %arg1: memref<?x768xf32>, %arg2: memref<?x128x768xf32>) attributes {accelerator = "neura"} {
-// CHECK-NEXT:  %0 = "neura.constant"() <{value = 768 : index}> : () -> index
-// CHECK-NEXT:  %1 = "neura.constant"() <{value = 1 : index}> : () -> index
-// CHECK-NEXT:  %2 = "neura.constant"() <{value = 128 : index}> : () -> index
-// CHECK-NEXT:  %3 = "neura.constant"() <{value = false}> : () -> i1
-// CHECK-NEXT:  %4 = "neura.constant"() <{value = 30521 : i32}> : () -> i32
-// CHECK-NEXT:  %5 = "neura.constant"() <{value = 0 : i32}> : () -> i32
-// CHECK-NEXT:  %6 = "neura.constant"() <{value = 30522 : i32}> : () -> i32
-// CHECK-NEXT:  %7 = "neura.constant"() <{value = 0 : index}> : () -> index
+// CHECK-NEXT:  %0 = "neura.constant"() <{predicate = true, value = 768 : index}> : () -> index
+// CHECK-NEXT:  %1 = "neura.constant"() <{predicate = true, value = 1 : index}> : () -> index
+// CHECK-NEXT:  %2 = "neura.constant"() <{predicate = true, value = 128 : index}> : () -> index
+// CHECK-NEXT:  %3 = "neura.constant"() <{predicate = true, value = false}> : () -> i1
+// CHECK-NEXT:  %4 = "neura.constant"() <{predicate = true, value = 30521 : i32}> : () -> i32
+// CHECK-NEXT:  %5 = "neura.constant"() <{predicate = true, value = 0 : i32}> : () -> i32
+// CHECK-NEXT:  %6 = "neura.constant"() <{predicate = true, value = 30522 : i32}> : () -> i32
+// CHECK-NEXT:  %7 = "neura.constant"() <{predicate = true, value = 0 : index}> : () -> index
 // CHECK-NEXT:  %8 = "neura.cast"(%7) <{cast_type = "index_to_int"}> : (index) -> i64
 // CHECK-NEXT:  neura.br %8 : i64 to ^bb1
 // CHECK-NEXT: ^bb1(%9: i64):  // 2 preds: ^bb0, ^bb9

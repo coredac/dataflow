@@ -19,10 +19,10 @@ module attributes {} {
   }
 }
 // CHECK: func.func @_Z11bert_node28PA128_A768_KfPA768_S0_PA128_A768_f(%arg0: memref<?x128x768xf32>, %arg1: memref<?x768x768xf32>, %arg2: memref<?x128x768xf32>) attributes {accelerator = "neura"} {
-// CHECK-NEXT: %0 = "neura.constant"() <{value = 768 : index}> : () -> index
-// CHECK-NEXT: %1 = "neura.constant"() <{value = 1 : index}> : () -> index
-// CHECK-NEXT: %2 = "neura.constant"() <{value = 128 : index}> : () -> index
-// CHECK-NEXT: %3 = "neura.constant"() <{value = 0 : index}> : () -> index
+// CHECK-NEXT: %0 = "neura.constant"() <{predicate = true, value = 768 : index}> : () -> index
+// CHECK-NEXT: %1 = "neura.constant"() <{predicate = true, value = 1 : index}> : () -> index
+// CHECK-NEXT: %2 = "neura.constant"() <{predicate = true, value = 128 : index}> : () -> index
+// CHECK-NEXT: %3 = "neura.constant"() <{predicate = true, value = 0 : index}> : () -> index
 // CHECK-NEXT: %4 = "neura.cast"(%3) <{cast_type = "index_to_int"}> : (index) -> i64
 // CHECK-NEXT: neura.br %4 : i64 to ^bb1
 // CHECK-NEXT: ^bb1(%5: i64):  // 2 preds: ^bb0, ^bb8
@@ -66,13 +66,13 @@ module attributes {} {
 
 
 // CTRL2DATA: func.func @_Z11bert_node28PA128_A768_KfPA768_S0_PA128_A768_f(%arg0: memref<?x128x768xf32>, %arg1: memref<?x768x768xf32>, %arg2: memref<?x128x768xf32>) attributes {accelerator = "neura"} {
-// CTRL2DATA-NEXT: %0 = "neura.constant"() <{value = 768 : index}> : () -> !neura.data<index, i1>
+// CTRL2DATA-NEXT: %0 = "neura.constant"() <{predicate = true, value = 768 : index}> : () -> !neura.data<index, i1>
 // CTRL2DATA-NEXT: %1 = "neura.grant_always"(%0) : (!neura.data<index, i1>) -> !neura.data<index, i1>
-// CTRL2DATA-NEXT: %2 = "neura.constant"() <{value = 1 : index}> : () -> !neura.data<index, i1>
+// CTRL2DATA-NEXT: %2 = "neura.constant"() <{predicate = true, value = 1 : index}> : () -> !neura.data<index, i1>
 // CTRL2DATA-NEXT: %3 = "neura.grant_always"(%2) : (!neura.data<index, i1>) -> !neura.data<index, i1>
-// CTRL2DATA-NEXT: %4 = "neura.constant"() <{value = 128 : index}> : () -> !neura.data<index, i1>
+// CTRL2DATA-NEXT: %4 = "neura.constant"() <{predicate = true, value = 128 : index}> : () -> !neura.data<index, i1>
 // CTRL2DATA-NEXT: %5 = "neura.grant_always"(%4) : (!neura.data<index, i1>) -> !neura.data<index, i1>
-// CTRL2DATA-NEXT: %6 = "neura.constant"() <{value = 0 : index}> : () -> !neura.data<index, i1>
+// CTRL2DATA-NEXT: %6 = "neura.constant"() <{predicate = true, value = 0 : index}> : () -> !neura.data<index, i1>
 // CTRL2DATA-NEXT: %7 = "neura.grant_always"(%6) : (!neura.data<index, i1>) -> !neura.data<index, i1>
 // CTRL2DATA-NEXT: %8 = "neura.cast"(%6) <{cast_type = "index_to_int"}> : (!neura.data<index, i1>) -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT: %9 = "neura.grant_once"(%8) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
