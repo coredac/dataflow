@@ -1,6 +1,6 @@
 // RUN: mlir-opt %s --lower-affine --convert-scf-to-cf --convert-cf-to-llvm -o %t-llvm.mlir
 // RUN: mlir-neura-opt %t-llvm.mlir --assign-accelerator --lower-arith-to-neura --lower-memref-to-neura --lower-builtin-to-neura --lower-llvm-to-neura | FileCheck %s
-// RUN: mlir-neura-opt %t-llvm.mlir --assign-accelerator --lower-arith-to-neura --lower-memref-to-neura --lower-builtin-to-neura --lower-llvm-to-neura --neura-canonicalize --leverage-predicated-value --transform-ctrl-to-data-flow | FileCheck %s -check-prefix=CTRL2DATA
+// RUN: mlir-neura-opt %t-llvm.mlir --assign-accelerator --lower-arith-to-neura --lower-memref-to-neura --lower-builtin-to-neura --lower-llvm-to-neura --leverage-predicated-value --transform-ctrl-to-data-flow | FileCheck %s -check-prefix=CTRL2DATA
 
 module attributes {} {
   func.func @_Z10bert_node1PA1_A1_A1_A1_A128_bPA1_A128_S1_(%arg0: memref<?x1x1x1x1x128xi8>, %arg1: memref<?x1x128x1x1x128xi8>) attributes {llvm.linkage = #llvm.linkage<external>} {
@@ -15,9 +15,9 @@ module attributes {} {
 }
 
 // CHECK: func.func @_Z10bert_node1PA1_A1_A1_A1_A128_bPA1_A128_S1_(%arg0: memref<?x1x1x1x1x128xi8>, %arg1: memref<?x1x128x1x1x128xi8>) attributes {accelerator = "neura", llvm.linkage = #llvm.linkage<external>} {
-// CHECK-NEXT:     %0 = "neura.constant"() <{value = 1 : index}> : () -> index
-// CHECK-NEXT:     %1 = "neura.constant"() <{value = 128 : index}> : () -> index
-// CHECK-NEXT:     %2 = "neura.constant"() <{value = 0 : index}> : () -> index
+// CHECK-NEXT:     %0 = "neura.constant"() <{predicate = true, value = 1 : index}> : () -> index
+// CHECK-NEXT:     %1 = "neura.constant"() <{predicate = true, value = 128 : index}> : () -> index
+// CHECK-NEXT:     %2 = "neura.constant"() <{predicate = true, value = 0 : index}> : () -> index
 // CHECK-NEXT:     %3 = "neura.cast"(%2) <{cast_type = "index_to_int"}> : (index) -> i64
 // CHECK-NEXT:     neura.br %3 : i64 to ^bb1
 // CHECK-NEXT:   ^bb1(%4: i64):  // 2 preds: ^bb0, ^bb5
@@ -46,11 +46,11 @@ module attributes {} {
 // CHECK-NEXT:   }
 
 // CTRL2DATA: func.func @_Z10bert_node1PA1_A1_A1_A1_A128_bPA1_A128_S1_(%arg0: memref<?x1x1x1x1x128xi8>, %arg1: memref<?x1x128x1x1x128xi8>) attributes {accelerator = "neura", llvm.linkage = #llvm.linkage<external>} {
-// CTRL2DATA-NEXT:     %0 = "neura.constant"() <{value = 1 : index}> : () -> !neura.data<index, i1>
+// CTRL2DATA-NEXT:     %0 = "neura.constant"() <{predicate = true, value = 1 : index}> : () -> !neura.data<index, i1>
 // CTRL2DATA-NEXT:     %1 = "neura.grant_always"(%0) : (!neura.data<index, i1>) -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %2 = "neura.constant"() <{value = 128 : index}> : () -> !neura.data<index, i1>
+// CTRL2DATA-NEXT:     %2 = "neura.constant"() <{predicate = true, value = 128 : index}> : () -> !neura.data<index, i1>
 // CTRL2DATA-NEXT:     %3 = "neura.grant_always"(%2) : (!neura.data<index, i1>) -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %4 = "neura.constant"() <{value = 0 : index}> : () -> !neura.data<index, i1>
+// CTRL2DATA-NEXT:     %4 = "neura.constant"() <{predicate = true, value = 0 : index}> : () -> !neura.data<index, i1>
 // CTRL2DATA-NEXT:     %5 = "neura.grant_always"(%4) : (!neura.data<index, i1>) -> !neura.data<index, i1>
 // CTRL2DATA-NEXT:     %6 = "neura.cast"(%4) <{cast_type = "index_to_int"}> : (!neura.data<index, i1>) -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %7 = "neura.grant_once"(%6) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
