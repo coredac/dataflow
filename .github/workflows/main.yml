@@ -43,7 +43,7 @@ jobs:
         git checkout 6146a88
         mkdir build && cd build
         cmake -G Ninja ../llvm \
-          -DLLVM_ENABLE_PROJECTS="mlir" \
+          -DLLVM_ENABLE_PROJECTS="mlir;clang" \
           -DLLVM_BUILD_EXAMPLES=OFF \
           -DLLVM_TARGETS_TO_BUILD="Native" \
           -DCMAKE_BUILD_TYPE=Release \
@@ -59,7 +59,7 @@ jobs:
           -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
         cmake --build . --target check-mlir
-        
+        cmake --build . --target check-clang
     # setup mlir-cgra
     - name: setup dataflow tool-chain
       working-directory: ${{github.workspace}}
