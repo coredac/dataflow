@@ -22,7 +22,7 @@ func.func @test_phi_ctrlflow() -> f32 {
 
 ^merge:
   %phi = "neura.phi"(%init, %v) : (f32, f32) -> f32
-  // CHECK: [neura-interpreter] Output: 0.000000
+  // CHECK: [neura-interpreter]  → Output: 0.000000
   return %phi : f32
 }
 
@@ -52,7 +52,7 @@ func.func @test_loop_phi() -> f32 {
   "neura.br"() [^loop_head] {operandSegmentSizes = array<i32: 0>} : () -> ()
 
 ^loop_exit:
-  // CHECK: [neura-interpreter] Output: 3.000000
+  // CHECK: [neura-interpreter]  → Output: 3.000000
   return %i : f32
 }
 
@@ -80,7 +80,7 @@ func.func @test_phi_multi_preds() -> i32 {
 
 ^merge:
   %val = "neura.phi"(%c0, %c1, %c2) : (i32, i32, i32) -> i32
-  // CHECK: [neura-interpreter] Output: 1.000000
+  // CHECK: [neura-interpreter]  → Output: 1.000000
   return %val : i32
 }
 
@@ -133,6 +133,6 @@ func.func @test_small_nested_loops() -> f32 {
   "neura.br"() [^outer_head] {operandSegmentSizes = array<i32: 0>} : () -> ()
 
 ^outer_exit:
-  // CHECK: [neura-interpreter] Output: 6.000000
+  // CHECK: [neura-interpreter]  → Output: 6.000000
   return %outer_sum : f32
 }

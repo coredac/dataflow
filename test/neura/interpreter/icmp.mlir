@@ -5,15 +5,7 @@
 func.func @test_icmp_eq_true() -> i1 {
   %a = arith.constant 42 : i32
   %eq = "neura.icmp"(%a, %a) {cmpType = "eq"} : (i32, i32) -> i1
-  // CHECK: [neura-interpreter] Executing neura.icmp:
-  // CHECK-NEXT:   LHS: value = 4.200000e+01, predicate = 1
-  // CHECK-NEXT:   RHS: value = 4.200000e+01, predicate = 1
-  // CHECK-NEXT:   Comparison type: eq
-  // CHECK-NEXT:   Signed values: LHS = 42, RHS = 42
-  // CHECK-NEXT:   Unsigned values: LHS = 42, RHS = 42
-  // CHECK-NEXT:   Comparison result: true
-  // CHECK-NEXT:   Final result: value = 1.000000e+00, predicate = true
-  // CHECK-NEXT: [neura-interpreter] Output: 1.000000
+  // CHECK: [neura-interpreter]  → Output: 1.000000
   return %eq : i1
 }
 
@@ -22,15 +14,7 @@ func.func @test_icmp_eq_false() -> i1 {
   %a = arith.constant 42 : i32
   %b = arith.constant 43 : i32
   %eq = "neura.icmp"(%a, %b) {cmpType = "eq"} : (i32, i32) -> i1
-  // CHECK: [neura-interpreter] Executing neura.icmp:
-  // CHECK-NEXT:   LHS: value = 4.200000e+01, predicate = 1
-  // CHECK-NEXT:   RHS: value = 4.300000e+01, predicate = 1
-  // CHECK-NEXT:   Comparison type: eq
-  // CHECK-NEXT:   Signed values: LHS = 42, RHS = 43
-  // CHECK-NEXT:   Unsigned values: LHS = 42, RHS = 43
-  // CHECK-NEXT:   Comparison result: false
-  // CHECK-NEXT:   Final result: value = 0.000000e+00, predicate = true
-  // CHECK-NEXT: [neura-interpreter] Output: 0.000000
+  // CHECK: [neura-interpreter]  → Output: 0.000000
   return %eq : i1
 }
 
@@ -40,15 +24,7 @@ func.func @test_icmp_ne_true() -> i1 {
   %a = arith.constant 42 : i32
   %b = arith.constant 43 : i32
   %ne = "neura.icmp"(%a, %b) {cmpType = "ne"} : (i32, i32) -> i1
-  // CHECK: [neura-interpreter] Executing neura.icmp:
-  // CHECK-NEXT:   LHS: value = 4.200000e+01, predicate = 1
-  // CHECK-NEXT:   RHS: value = 4.300000e+01, predicate = 1
-  // CHECK-NEXT:   Comparison type: ne
-  // CHECK-NEXT:   Signed values: LHS = 42, RHS = 43
-  // CHECK-NEXT:   Unsigned values: LHS = 42, RHS = 43
-  // CHECK-NEXT:   Comparison result: true
-  // CHECK-NEXT:   Final result: value = 1.000000e+00, predicate = true
-  // CHECK-NEXT: [neura-interpreter] Output: 1.000000
+  // CHECK: [neura-interpreter]  → Output: 1.000000
   return %ne : i1
 }
 
@@ -56,15 +32,7 @@ func.func @test_icmp_ne_true() -> i1 {
 func.func @test_icmp_ne_false() -> i1 {
   %a = arith.constant 42 : i32
   %ne = "neura.icmp"(%a, %a) {cmpType = "ne"} : (i32, i32) -> i1
-  // CHECK: [neura-interpreter] Executing neura.icmp:
-  // CHECK-NEXT:   LHS: value = 4.200000e+01, predicate = 1
-  // CHECK-NEXT:   RHS: value = 4.200000e+01, predicate = 1
-  // CHECK-NEXT:   Comparison type: ne
-  // CHECK-NEXT:   Signed values: LHS = 42, RHS = 42
-  // CHECK-NEXT:   Unsigned values: LHS = 42, RHS = 42
-  // CHECK-NEXT:   Comparison result: false
-  // CHECK-NEXT:   Final result: value = 0.000000e+00, predicate = true
-  // CHECK-NEXT: [neura-interpreter] Output: 0.000000
+  // CHECK: [neura-interpreter]  → Output: 0.000000
   return %ne : i1
 }
 
@@ -74,15 +42,7 @@ func.func @test_icmp_slt_true() -> i1 {
   %a = arith.constant 42 : i32
   %b = arith.constant 43 : i32
   %slt = "neura.icmp"(%a, %b) {cmpType = "slt"} : (i32, i32) -> i1
-  // CHECK: [neura-interpreter] Executing neura.icmp:
-  // CHECK-NEXT:   LHS: value = 4.200000e+01, predicate = 1
-  // CHECK-NEXT:   RHS: value = 4.300000e+01, predicate = 1
-  // CHECK-NEXT:   Comparison type: slt
-  // CHECK-NEXT:   Signed values: LHS = 42, RHS = 43
-  // CHECK-NEXT:   Unsigned values: LHS = 42, RHS = 43
-  // CHECK-NEXT:   Comparison result: true
-  // CHECK-NEXT:   Final result: value = 1.000000e+00, predicate = true
-  // CHECK-NEXT: [neura-interpreter] Output: 1.000000
+  // CHECK: [neura-interpreter]  → Output: 1.000000
   return %slt : i1
 }
 
@@ -91,15 +51,7 @@ func.func @test_icmp_slt_false() -> i1 {
   %a = arith.constant 43 : i32
   %b = arith.constant 42 : i32
   %slt = "neura.icmp"(%a, %b) {cmpType = "slt"} : (i32, i32) -> i1
-  // CHECK: [neura-interpreter] Executing neura.icmp:
-  // CHECK-NEXT:   LHS: value = 4.300000e+01, predicate = 1
-  // CHECK-NEXT:   RHS: value = 4.200000e+01, predicate = 1
-  // CHECK-NEXT:   Comparison type: slt
-  // CHECK-NEXT:   Signed values: LHS = 43, RHS = 42
-  // CHECK-NEXT:   Unsigned values: LHS = 43, RHS = 42
-  // CHECK-NEXT:   Comparison result: false
-  // CHECK-NEXT:   Final result: value = 0.000000e+00, predicate = true
-  // CHECK-NEXT: [neura-interpreter] Output: 0.000000
+  // CHECK: [neura-interpreter]  → Output: 0.000000
   return %slt : i1
 }
 
@@ -109,15 +61,7 @@ func.func @test_icmp_sle_true() -> i1 {
   %a = arith.constant 42 : i32
   %b = arith.constant 43 : i32
   %sle = "neura.icmp"(%a, %b) {cmpType = "sle"} : (i32, i32) -> i1
-  // CHECK: [neura-interpreter] Executing neura.icmp:
-  // CHECK-NEXT:   LHS: value = 4.200000e+01, predicate = 1
-  // CHECK-NEXT:   RHS: value = 4.300000e+01, predicate = 1
-  // CHECK-NEXT:   Comparison type: sle
-  // CHECK-NEXT:   Signed values: LHS = 42, RHS = 43
-  // CHECK-NEXT:   Unsigned values: LHS = 42, RHS = 43
-  // CHECK-NEXT:   Comparison result: true
-  // CHECK-NEXT:   Final result: value = 1.000000e+00, predicate = true
-  // CHECK-NEXT: [neura-interpreter] Output: 1.000000
+  // CHECK: [neura-interpreter]  → Output: 1.000000
   return %sle : i1
 }
 
@@ -126,15 +70,7 @@ func.func @test_icmp_sle_false() -> i1 {
   %a = arith.constant 43 : i32
   %b = arith.constant 42 : i32
   %sle = "neura.icmp"(%a, %b) {cmpType = "sle"} : (i32, i32) -> i1
-  // CHECK: [neura-interpreter] Executing neura.icmp:
-  // CHECK-NEXT:   LHS: value = 4.300000e+01, predicate = 1
-  // CHECK-NEXT:   RHS: value = 4.200000e+01, predicate = 1
-  // CHECK-NEXT:   Comparison type: sle
-  // CHECK-NEXT:   Signed values: LHS = 43, RHS = 42
-  // CHECK-NEXT:   Unsigned values: LHS = 43, RHS = 42
-  // CHECK-NEXT:   Comparison result: false
-  // CHECK-NEXT:   Final result: value = 0.000000e+00, predicate = true
-  // CHECK-NEXT: [neura-interpreter] Output: 0.000000
+  // CHECK: [neura-interpreter]  → Output: 0.000000
   return %sle : i1
 }
 
@@ -144,15 +80,7 @@ func.func @test_icmp_sgt_true() -> i1 {
   %a = arith.constant 43 : i32
   %b = arith.constant 42 : i32
   %sgt = "neura.icmp"(%a, %b) {cmpType = "sgt"} : (i32, i32) -> i1
-  // CHECK: [neura-interpreter] Executing neura.icmp:
-  // CHECK-NEXT:   LHS: value = 4.300000e+01, predicate = 1
-  // CHECK-NEXT:   RHS: value = 4.200000e+01, predicate = 1
-  // CHECK-NEXT:   Comparison type: sgt
-  // CHECK-NEXT:   Signed values: LHS = 43, RHS = 42
-  // CHECK-NEXT:   Unsigned values: LHS = 43, RHS = 42
-  // CHECK-NEXT:   Comparison result: true
-  // CHECK-NEXT:   Final result: value = 1.000000e+00, predicate = true
-  // CHECK-NEXT: [neura-interpreter] Output: 1.000000
+  // CHECK: [neura-interpreter]  → Output: 1.000000
   return %sgt : i1
 }
 
@@ -161,15 +89,7 @@ func.func @test_icmp_sgt_false() -> i1 {
   %a = arith.constant 42 : i32
   %b = arith.constant 43 : i32
   %sgt = "neura.icmp"(%a, %b) {cmpType = "sgt"} : (i32, i32) -> i1
-  // CHECK: [neura-interpreter] Executing neura.icmp:
-  // CHECK-NEXT:   LHS: value = 4.200000e+01, predicate = 1
-  // CHECK-NEXT:   RHS: value = 4.300000e+01, predicate = 1
-  // CHECK-NEXT:   Comparison type: sgt
-  // CHECK-NEXT:   Signed values: LHS = 42, RHS = 43
-  // CHECK-NEXT:   Unsigned values: LHS = 42, RHS = 43
-  // CHECK-NEXT:   Comparison result: false
-  // CHECK-NEXT:   Final result: value = 0.000000e+00, predicate = true
-  // CHECK-NEXT: [neura-interpreter] Output: 0.000000
+  // CHECK: [neura-interpreter]  → Output: 0.000000
   return %sgt : i1
 }
 
@@ -179,15 +99,7 @@ func.func @test_icmp_sge_true() -> i1 {
   %a = arith.constant 43 : i32
   %b = arith.constant 42 : i32
   %sge = "neura.icmp"(%a, %b) {cmpType = "sge"} : (i32, i32) -> i1
-  // CHECK: [neura-interpreter] Executing neura.icmp:
-  // CHECK-NEXT:   LHS: value = 4.300000e+01, predicate = 1
-  // CHECK-NEXT:   RHS: value = 4.200000e+01, predicate = 1
-  // CHECK-NEXT:   Comparison type: sge
-  // CHECK-NEXT:   Signed values: LHS = 43, RHS = 42
-  // CHECK-NEXT:   Unsigned values: LHS = 43, RHS = 42
-  // CHECK-NEXT:   Comparison result: true
-  // CHECK-NEXT:   Final result: value = 1.000000e+00, predicate = true
-  // CHECK-NEXT: [neura-interpreter] Output: 1.000000
+  // CHECK: [neura-interpreter]  → Output: 1.000000
   return %sge : i1
 }
 
@@ -196,15 +108,7 @@ func.func @test_icmp_sge_false() -> i1 {
   %a = arith.constant 42 : i32
   %b = arith.constant 43 : i32
   %sge = "neura.icmp"(%a, %b) {cmpType = "sge"} : (i32, i32) -> i1
-  // CHECK: [neura-interpreter] Executing neura.icmp:
-  // CHECK-NEXT:   LHS: value = 4.200000e+01, predicate = 1
-  // CHECK-NEXT:   RHS: value = 4.300000e+01, predicate = 1
-  // CHECK-NEXT:   Comparison type: sge
-  // CHECK-NEXT:   Signed values: LHS = 42, RHS = 43
-  // CHECK-NEXT:   Unsigned values: LHS = 42, RHS = 43
-  // CHECK-NEXT:   Comparison result: false
-  // CHECK-NEXT:   Final result: value = 0.000000e+00, predicate = true
-  // CHECK-NEXT: [neura-interpreter] Output: 0.000000
+  // CHECK: [neura-interpreter]  → Output: 0.000000
   return %sge : i1
 }
 
@@ -214,15 +118,7 @@ func.func @test_icmp_ult_true() -> i1 {
   %a = arith.constant 42 : i32
   %b = arith.constant 43 : i32
   %ult = "neura.icmp"(%a, %b) {cmpType = "ult"} : (i32, i32) -> i1
-  // CHECK: [neura-interpreter] Executing neura.icmp:
-  // CHECK-NEXT:   LHS: value = 4.200000e+01, predicate = 1
-  // CHECK-NEXT:   RHS: value = 4.300000e+01, predicate = 1
-  // CHECK-NEXT:   Comparison type: ult
-  // CHECK-NEXT:   Signed values: LHS = 42, RHS = 43
-  // CHECK-NEXT:   Unsigned values: LHS = 42, RHS = 43
-  // CHECK-NEXT:   Comparison result: true
-  // CHECK-NEXT:   Final result: value = 1.000000e+00, predicate = true
-  // CHECK-NEXT: [neura-interpreter] Output: 1.000000
+  // CHECK: [neura-interpreter]  → Output: 1.000000
   return %ult : i1
 }
 
@@ -231,15 +127,7 @@ func.func @test_icmp_ult_false() -> i1 {
   %a = arith.constant -1 : i32  // Unsigned: 4294967295
   %b = arith.constant 42 : i32
   %ult = "neura.icmp"(%a, %b) {cmpType = "ult"} : (i32, i32) -> i1
-  // CHECK: [neura-interpreter] Executing neura.icmp:
-  // CHECK-NEXT:   LHS: value = -1.000000e+00, predicate = 1
-  // CHECK-NEXT:   RHS: value = 4.200000e+01, predicate = 1
-  // CHECK-NEXT:   Comparison type: ult
-  // CHECK-NEXT:   Signed values: LHS = -1, RHS = 42
-  // CHECK-NEXT:   Unsigned values: LHS = 18446744073709551615, RHS = 42
-  // CHECK-NEXT:   Comparison result: false
-  // CHECK-NEXT:   Final result: value = 0.000000e+00, predicate = true
-  // CHECK-NEXT: [neura-interpreter] Output: 0.000000
+  // CHECK: [neura-interpreter]  → Output: 0.000000
   return %ult : i1
 }
 
@@ -249,15 +137,7 @@ func.func @test_icmp_ule_true() -> i1 {
   %a = arith.constant 42 : i32
   %b = arith.constant 43 : i32
   %ule = "neura.icmp"(%a, %b) {cmpType = "ule"} : (i32, i32) -> i1
-  // CHECK: [neura-interpreter] Executing neura.icmp:
-  // CHECK-NEXT:   LHS: value = 4.200000e+01, predicate = 1
-  // CHECK-NEXT:   RHS: value = 4.300000e+01, predicate = 1
-  // CHECK-NEXT:   Comparison type: ule
-  // CHECK-NEXT:   Signed values: LHS = 42, RHS = 43
-  // CHECK-NEXT:   Unsigned values: LHS = 42, RHS = 43
-  // CHECK-NEXT:   Comparison result: true
-  // CHECK-NEXT:   Final result: value = 1.000000e+00, predicate = true
-  // CHECK-NEXT: [neura-interpreter] Output: 1.000000
+  // CHECK: [neura-interpreter]  → Output: 1.000000
   return %ule : i1
 }
 
@@ -266,15 +146,7 @@ func.func @test_icmp_ule_false() -> i1 {
   %a = arith.constant -1 : i32  // Unsigned: 4294967295
   %b = arith.constant 42 : i32
   %ule = "neura.icmp"(%a, %b) {cmpType = "ule"} : (i32, i32) -> i1
-  // CHECK: [neura-interpreter] Executing neura.icmp:
-  // CHECK-NEXT:   LHS: value = -1.000000e+00, predicate = 1
-  // CHECK-NEXT:   RHS: value = 4.200000e+01, predicate = 1
-  // CHECK-NEXT:   Comparison type: ule
-  // CHECK-NEXT:   Signed values: LHS = -1, RHS = 42
-  // CHECK-NEXT:   Unsigned values: LHS = 18446744073709551615, RHS = 42
-  // CHECK-NEXT:   Comparison result: false
-  // CHECK-NEXT:   Final result: value = 0.000000e+00, predicate = true
-  // CHECK-NEXT: [neura-interpreter] Output: 0.000000
+  // CHECK: [neura-interpreter]  → Output: 0.000000
   return %ule : i1
 }
 
@@ -284,15 +156,7 @@ func.func @test_icmp_ugt_true() -> i1 {
   %a = arith.constant -1 : i32  // Unsigned: 4294967295
   %b = arith.constant 42 : i32
   %ugt = "neura.icmp"(%a, %b) {cmpType = "ugt"} : (i32, i32) -> i1
-  // CHECK: [neura-interpreter] Executing neura.icmp:
-  // CHECK-NEXT:   LHS: value = -1.000000e+00, predicate = 1
-  // CHECK-NEXT:   RHS: value = 4.200000e+01, predicate = 1
-  // CHECK-NEXT:   Comparison type: ugt
-  // CHECK-NEXT:   Signed values: LHS = -1, RHS = 42
-  // CHECK-NEXT:   Unsigned values: LHS = 18446744073709551615, RHS = 42
-  // CHECK-NEXT:   Comparison result: true
-  // CHECK-NEXT:   Final result: value = 1.000000e+00, predicate = true
-  // CHECK-NEXT: [neura-interpreter] Output: 1.000000
+  // CHECK: [neura-interpreter]  → Output: 1.000000
   return %ugt : i1
 }
 
@@ -301,15 +165,7 @@ func.func @test_icmp_ugt_false() -> i1 {
   %a = arith.constant 42 : i32
   %b = arith.constant -1 : i32  // Unsigned: 4294967295
   %ugt = "neura.icmp"(%a, %b) {cmpType = "ugt"} : (i32, i32) -> i1
-  // CHECK: [neura-interpreter] Executing neura.icmp:
-  // CHECK-NEXT:   LHS: value = 4.200000e+01, predicate = 1
-  // CHECK-NEXT:   RHS: value = -1.000000e+00, predicate = 1
-  // CHECK-NEXT:   Comparison type: ugt
-  // CHECK-NEXT:   Signed values: LHS = 42, RHS = -1
-  // CHECK-NEXT:   Unsigned values: LHS = 42, RHS = 18446744073709551615
-  // CHECK-NEXT:   Comparison result: false
-  // CHECK-NEXT:   Final result: value = 0.000000e+00, predicate = true
-  // CHECK-NEXT: [neura-interpreter] Output: 0.000000
+  // CHECK: [neura-interpreter]  → Output: 0.000000
   return %ugt : i1
 }
 
@@ -319,15 +175,7 @@ func.func @test_icmp_uge_true() -> i1 {
   %a = arith.constant -1 : i32  // Unsigned: 4294967295
   %b = arith.constant 42 : i32
   %uge = "neura.icmp"(%a, %b) {cmpType = "uge"} : (i32, i32) -> i1
-  // CHECK: [neura-interpreter] Executing neura.icmp:
-  // CHECK-NEXT:   LHS: value = -1.000000e+00, predicate = 1
-  // CHECK-NEXT:   RHS: value = 4.200000e+01, predicate = 1
-  // CHECK-NEXT:   Comparison type: uge
-  // CHECK-NEXT:   Signed values: LHS = -1, RHS = 42
-  // CHECK-NEXT:   Unsigned values: LHS = 18446744073709551615, RHS = 42
-  // CHECK-NEXT:   Comparison result: true
-  // CHECK-NEXT:   Final result: value = 1.000000e+00, predicate = true
-  // CHECK-NEXT: [neura-interpreter] Output: 1.000000
+  // CHECK: [neura-interpreter]  → Output: 1.000000
   return %uge : i1
 }
 
@@ -336,14 +184,6 @@ func.func @test_icmp_uge_false() -> i1 {
   %a = arith.constant 42 : i32
   %b = arith.constant -1 : i32  // Unsigned: 4294967295
   %uge = "neura.icmp"(%a, %b) {cmpType = "uge"} : (i32, i32) -> i1
-  // CHECK: [neura-interpreter] Executing neura.icmp:
-  // CHECK-NEXT:   LHS: value = 4.200000e+01, predicate = 1
-  // CHECK-NEXT:   RHS: value = -1.000000e+00, predicate = 1
-  // CHECK-NEXT:   Comparison type: uge
-  // CHECK-NEXT:   Signed values: LHS = 42, RHS = -1
-  // CHECK-NEXT:   Unsigned values: LHS = 42, RHS = 18446744073709551615
-  // CHECK-NEXT:   Comparison result: false
-  // CHECK-NEXT:   Final result: value = 0.000000e+00, predicate = true
-  // CHECK-NEXT: [neura-interpreter] Output: 0.000000
+  // CHECK: [neura-interpreter]  → Output: 0.000000
   return %uge : i1
 }

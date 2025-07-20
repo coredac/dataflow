@@ -1,7 +1,6 @@
 // NeuraOps.td - Custom operation definitions.
 
 include "NeuraDialect/NeuraDialect.td"
-include "mlir/IR/BuiltinTypes.td"
 
 // ----------------------------------------------------
 // Defines basic scalar operations.
