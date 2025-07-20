@@ -5,6 +5,7 @@
 #include "mlir/Pass/Pass.h"
 #include "llvm/Support/JSON.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/FileSystem.h"
 #include <map>
 #include <vector>
 #include <string>
@@ -304,6 +305,13 @@ struct GenerateCodePass
           inst_obj["dst_direction"] = "Local";
           inst_obj["dst_tile"] = "(" + std::to_string(x) + "," + std::to_string(y) + ")";
         }
+        
+        // Special handling for return operations
+        if (opcode == "return") {
+          // Return operations don't have destination direction
+          inst_obj.erase("dst_direction");
+          inst_obj.erase("dst_tile");
+        }
                   
                   // Add instruction to corresponding PE
                   pe_instructions[std::make_pair(x, y)].push_back(std::move(inst_obj));
@@ -419,19 +427,25 @@ struct GenerateCodePass
     llvm::json::Object root;
     root["functions"] = std::move(functions_array);
 
+    // Create Generated_Code directory if it doesn't exist
+    if (std::error_code ec = llvm::sys::fs::create_directories("Generated_Code")) {
+        getOperation()->emitError("Failed to create 'Generated_Code' directory: " + ec.message());
+        return signalPassFailure();
+    }
+    
     std::error_code ec;
-    llvm::raw_fd_ostream json_out("generated-instructions.json", ec);
+    llvm::raw_fd_ostream json_out("Generated_Code/generated-instructions.json", ec);
     if (ec) {
-        getOperation()->emitError("Failed to open 'generated-instructions.json' for writing: " + ec.message());
+        getOperation()->emitError("Failed to open 'Generated_Code/generated-instructions.json' for writing: " + ec.message());
         return signalPassFailure();
     }
     json_out << llvm::formatv("{0:2}", llvm::json::Value(std::move(root))) << "\n";
     
     // ASM output
     std::error_code asm_ec;
-    llvm::raw_fd_ostream asm_out("generated-instructions.asm", asm_ec);
+    llvm::raw_fd_ostream asm_out("Generated_Code/generated-instructions.asm", asm_ec);
     if (asm_ec) {
-        getOperation()->emitError("Failed to open 'generated-instructions.asm' for writing: " + asm_ec.message());
+        getOperation()->emitError("Failed to open 'Generated_Code/generated-instructions.asm' for writing: " + asm_ec.message());
         return signalPassFailure();
     }
     
@@ -632,7 +646,34 @@ struct GenerateCodePass
             std::transform(upper_opcode.begin(), upper_opcode.end(), upper_opcode.begin(), ::toupper);
             
             // Handle different operation types
-            if (upper_opcode == "CONSTANT") {
+            if (upper_opcode == "RETURN") {
+              // For return operations, output without destination direction
+              asm_out << "            " << upper_opcode;
+              
+              // Handle operands (input directions)
+              for (Value operand : op->getOperands()) {
+                asm_out << ", [";
+                if (auto defining_op = operand.getDefiningOp()) {
+                  // Use source location mapping to find the original source
+                  auto src_it = asm_op_to_source_tile.find(defining_op);
+                  if (src_it != asm_op_to_source_tile.end()) {
+                    int src_x = src_it->second.first;
+                    int src_y = src_it->second.second;
+                    std::string direction = calculateDirection(src_x, src_y, x, y).str();
+                    asm_out << direction << ", R";
+                  } else {
+                    asm_out << "Local, R";
+                  }
+                } else {
+                  asm_out << "Local, R";
+                }
+                asm_out << "]";
+              }
+              
+              // Return operations don't have destination direction
+              asm_out << "\n";
+              asm_out << "            NOP\n";
+            } else if (upper_opcode == "CONSTANT") {
               // For constants, output the value
               if (auto value_attr = op->getAttr("value")) {
                 if (auto int_attr = mlir::dyn_cast<IntegerAttr>(value_attr)) {
