@@ -34,7 +34,7 @@ module {
     %cst = arith.constant 2.0 : f32
     %0 = arith.subf %arg0, %cst : f32
     // CHECK: Golden output: [[OUTPUT:[0-9]+\.[0-9]+]]
-    // CHECK: [neura-interpreter] Output: [[OUTPUT]]
+    // CHECK: [neura-interpreter]  → Output: [[OUTPUT]]
     return %0 : f32
   }
 }

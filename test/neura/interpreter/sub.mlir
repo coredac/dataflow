@@ -6,8 +6,7 @@ func.func @test_sub_positive() -> i32 {
   %b = arith.constant 50 : i32
   %res = "neura.sub"(%a, %b) : (i32, i32) -> i32
 
-  // CHECK: [neura-interpreter] Executing neura.sub:
-  // CHECK: Result: value = 1.500000e+02
+  // CHECK: [neura-interpreter]  → Output: 150.000000
   return %res : i32
 }
 
@@ -17,8 +16,7 @@ func.func @test_sub_negative() -> i32 {
   %b = arith.constant 200 : i32
   %res = "neura.sub"(%a, %b) : (i32, i32) -> i32
 
-  // CHECK: [neura-interpreter] Executing neura.sub:
-  // CHECK: Result: value = -1.500000e+02
+  // CHECK: [neura-interpreter]  → Output: -150.000000
   return %res : i32
 }
 
@@ -29,8 +27,7 @@ func.func @test_sub_with_predicate_true() -> i32 {
   %pred = arith.constant 1 : i32  
   %res = "neura.sub"(%a, %b, %pred) : (i32, i32, i32) -> i32
 
-  // CHECK: [neura-interpreter] Executing neura.sub:
-  // CHECK: Result: value = 2.000000e+02
+  // CHECK: [neura-interpreter]  → Output: 200.000000
   return %res : i32
 }
 
@@ -41,7 +38,6 @@ func.func @test_sub_with_predicate_false() -> i32 {
   %pred = arith.constant 0 : i32  
   %res = "neura.sub"(%a, %b, %pred) : (i32, i32, i32) -> i32
 
-  // CHECK: [neura-interpreter] Executing neura.sub:
-  // CHECK: Result: value = 3.000000e+02, predicate = 0
+  // CHECK: [neura-interpreter]  → Output: 0.000000
   return %res : i32
 }

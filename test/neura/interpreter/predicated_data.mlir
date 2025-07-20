@@ -6,6 +6,6 @@ module {
     %cst = "neura.constant"() <{value = 2.0 : f32, predicate = false}> : () -> !neura.data<f32, i1>
     %res = "neura.fadd"(%arg0, %cst) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
     return %res : !neura.data<f32, i1>
-    // CHECK: [neura-interpreter] Output: 0.000000
+    // CHECK: [neura-interpreter]  → Output: 0.000000
   }
 }
