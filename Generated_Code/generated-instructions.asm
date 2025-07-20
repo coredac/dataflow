@@ -2,7 +2,8 @@ PE(0,2):
 {
     Entry [West, R] => Once {
         {
-            RETURN, [West, R] -> [Local, R]
+            RETURN, [West, R]
+            NOP
         }
     }
 }

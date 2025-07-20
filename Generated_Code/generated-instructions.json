@@ -95,8 +95,6 @@
               "time_step": 1
             },
             {
-              "dst_direction": "Local",
-              "dst_tile": "(0,2)",
               "opcode": "return",
               "operands": [
                 "neura.data_mov"
