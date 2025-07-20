@@ -39,14 +39,34 @@
           "id": 2,
           "instructions": [
             {
-              "direction": "Local",
+              "direction": "N",
+              "dst_tile": "(1,2)",
+              "opcode": "data_mov",
+              "operands": [
+                "arith.constant"
+              ],
+              "src_tile": "(1,1)",
+              "time_step": 0
+            },
+            {
+              "direction": "W",
+              "dst_tile": "(1,2)",
+              "opcode": "data_mov",
+              "operands": [
+                "arith.constant"
+              ],
+              "src_tile": "(2,2)",
+              "time_step": 0
+            },
+            {
+              "direction": "N",
               "dst_tile": "(1,2)",
               "opcode": "fadd",
               "operands": [
                 "neura.data_mov",
                 "neura.data_mov"
               ],
-              "src_tile": "(1,2)",
+              "src_tile": "(1,1)",
               "time_step": 1
             }
           ],
@@ -57,13 +77,23 @@
           "id": 3,
           "instructions": [
             {
-              "direction": "Local",
+              "direction": "W",
+              "dst_tile": "(0,2)",
+              "opcode": "data_mov",
+              "operands": [
+                "neura.fadd"
+              ],
+              "src_tile": "(1,2)",
+              "time_step": 1
+            },
+            {
+              "direction": "W",
               "dst_tile": "(0,2)",
               "opcode": "return",
               "operands": [
                 "neura.data_mov"
               ],
-              "src_tile": "(0,2)",
+              "src_tile": "(1,2)",
               "time_step": 2
             }
           ],
