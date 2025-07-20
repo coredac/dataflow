@@ -12,19 +12,13 @@ Tile::Tile(int id, int x, int y) {
   this->y = y;
 }
 
-int Tile::getId() const {
-  return id;
-}
+int Tile::getId() const { return id; }
 
-int Tile::getX() const {
-  return x;
-}
+int Tile::getX() const { return x; }
 
-int Tile::getY() const {
-  return y;
-}
+int Tile::getY() const { return y; }
 
-void Tile::linkDstTile(Link* link, Tile* tile) {
+void Tile::linkDstTile(Link *link, Tile *tile) {
   assert(tile && "Cannot link to a null tile");
   dst_tiles.insert(tile);
   out_links.insert(link);
@@ -32,39 +26,23 @@ void Tile::linkDstTile(Link* link, Tile* tile) {
   tile->in_links.insert(link);
 }
 
-const std::set<Tile*>& Tile::getDstTiles() const {
-  return dst_tiles;
-}
+const std::set<Tile *> &Tile::getDstTiles() const { return dst_tiles; }
 
-const std::set<Tile*>& Tile::getSrcTiles() const {
-  return src_tiles;
-}
+const std::set<Tile *> &Tile::getSrcTiles() const { return src_tiles; }
 
-const std::set<Link*>& Tile::getOutLinks() const {
-  return out_links;
-}
+const std::set<Link *> &Tile::getOutLinks() const { return out_links; }
 
-const std::set<Link*>& Tile::getInLinks() const {
-  return in_links;
-}
+const std::set<Link *> &Tile::getInLinks() const { return in_links; }
 
-Link::Link(int id) {
-  this->id = id;
-}
+Link::Link(int id) { this->id = id; }
 
-int Link::getId() const {
-  return id;
-}
+int Link::getId() const { return id; }
 
-Tile* Link::getSrcTile() const {
-  return src_tile;
-}
+Tile *Link::getSrcTile() const { return src_tile; }
 
-Tile* Link::getDstTile() const {
-  return dst_tile;
-}
+Tile *Link::getDstTile() const { return dst_tile; }
 
-void Link::connect(Tile* src, Tile* dst) {
+void Link::connect(Tile *src, Tile *dst) {
   assert(src && dst && "Cannot connect null tiles");
   src_tile = src;
   dst_tile = dst;
@@ -91,7 +69,7 @@ Architecture::Architecture(int width, int height) {
   int link_id = 0;
   for (int i = 0; i < width; ++i) {
     for (int j = 0; j < height; ++j) {
-      Tile* tile = getTile(i, j);
+      Tile *tile = getTile(i, j);
       if (i > 0) {
         auto link_towards_left = std::make_unique<Link>(link_id++);
         link_towards_left->connect(tile, getTile(i - 1, j));
@@ -101,7 +79,7 @@ Architecture::Architecture(int width, int height) {
         auto link_towards_right = std::make_unique<Link>(link_id++);
         link_towards_right->connect(tile, getTile(i + 1, j));
         link_storage.push_back(std::move(link_towards_right));
-    }
+      }
       if (j > 0) {
         auto link_towards_down = std::make_unique<Link>(link_id++);
         link_towards_down->connect(tile, getTile(i, j - 1));
@@ -116,20 +94,20 @@ Architecture::Architecture(int width, int height) {
   }
 }
 
-Tile* Architecture::getTile(int id) {
+Tile *Architecture::getTile(int id) {
   auto it = id_to_tile.find(id);
   assert(it != id_to_tile.end() && "Tile with given ID not found");
   return it->second;
 }
 
-Tile* Architecture::getTile(int x, int y) {
+Tile *Architecture::getTile(int x, int y) {
   auto it = coord_to_tile.find({x, y});
   assert(it != coord_to_tile.end() && "Tile with given coordinates not found");
   return it->second;
 }
 
-std::vector<Tile*> Architecture::getAllTiles() const {
-  std::vector<Tile*> result;
+std::vector<Tile *> Architecture::getAllTiles() const {
+  std::vector<Tile *> result;
   for (auto &tile : tile_storage)
     result.push_back(tile.get());
   return result;
@@ -139,8 +117,8 @@ int Architecture::getNumTiles() const {
   return static_cast<int>(id_to_tile.size());
 }
 
-std::vector<Link*> Architecture::getAllLinks() const {
-  std::vector<Link*> all_links;
+std::vector<Link *> Architecture::getAllLinks() const {
+  std::vector<Link *> all_links;
   for (const auto &link : link_storage) {
     all_links.push_back(link.get());
   }
