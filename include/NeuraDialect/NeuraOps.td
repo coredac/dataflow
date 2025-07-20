@@ -110,11 +110,11 @@ def Neura_ICmpOp : Op<NeuraDialect, "icmp"> {
 def Neura_FCmpOp : Op<NeuraDialect, "fcmp"> {
   let summary = "Floating-point compare operation";
   let opName = "fcmp";
-  let arguments = (ins AnyFloat:$lhs,
-                   AnyFloat:$rhs,
+  let arguments = (ins AnyType:$lhs,
+                   AnyType:$rhs,
                    Optional<AnyType>:$predicate,
                    StrAttr:$cmpType);
-  let results = (outs I1:$result);
+  let results = (outs AnyType:$result);
   // let assemblyFormat = "$lhs `,` $rhs `,` $cmpType attr-dict `:` type($result)";
   // let traits = [SameOperandsAndResultElementType];
 }
@@ -239,16 +239,16 @@ def Neura_VFMulOp : Op<NeuraDialect, "vfmul"> {
 
 def Neura_FAddFAddOp : Op<NeuraDialect, "fadd_fadd"> {
   let summary = "Fused fadd(fadd(a, b), c)";
-  let arguments = (ins AnyFloat:$a, AnyFloat:$b, AnyFloat:$c, Optional<AnyType>:$predicate);
-  let results = (outs AnyFloat:$result);
+  let arguments = (ins AnyType:$a, AnyType:$b, AnyType:$c, Optional<AnyType>:$predicate);
+  let results = (outs AnyType:$result);
   // let assemblyFormat = "$a `,` $b `,` $c `,` $predicate attr-dict `:` type($result)";
   let traits = [SameOperandsAndResultElementType];
 }
 
 def Neura_FMulFAddOp : Op<NeuraDialect, "fmul_fadd"> {
   let summary = "Fused fadd(fmul(a, b), c)";
-  let arguments = (ins AnyFloat:$a, AnyFloat:$b, AnyFloat:$c, Optional<AnyType>:$predicate);
-  let results = (outs AnyFloat:$result);
+  let arguments = (ins AnyType:$a, AnyType:$b, AnyType:$c, Optional<AnyType>:$predicate);
+  let results = (outs AnyType:$result);
   // let assemblyFormat = "$a `,` $b `,` $c `,` $predicate attr-dict `:` type($result)";
   let traits = [SameOperandsAndResultElementType];
 }
