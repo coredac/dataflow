@@ -141,7 +141,6 @@ void assertLiveOutValuesDominatedByBlockArgs(Region &region) {
       continue;
     }
 
-    llvm::errs() << "[ctrl2data] Checking block: " << block << "\n";
     DenseSet<Value> live_out_values;
     for (Operation &op : block) {
       for (Value result : op.getResults()) {
@@ -160,13 +159,12 @@ void assertLiveOutValuesDominatedByBlockArgs(Region &region) {
 
     DenseSet<Value> dominated_values;
 
-    for (Operation &op : block) {
-      for (Value operand : op.getOperands()) {
-        if (!operand.getDefiningOp() ||
-            operand.getDefiningOp()->getBlock() != &block) {
-          dominated_values.insert(operand);
-        }
-      }
+    if (block.getNumArguments() == 0 && !live_out_values.empty()) {
+      assert(false && "Block without arguments has live-out values");
+    }
+
+    for (BlockArgument arg : block.getArguments()) {
+      dominated_values.insert(arg);
     }
 
     bool changed = true;
