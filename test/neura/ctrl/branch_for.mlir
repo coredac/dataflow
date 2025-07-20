@@ -21,26 +21,26 @@
 // RUN:   --insert-data-mov \
 // RUN:   | FileCheck %s -check-prefix=MOV
 
-// RU: mlir-neura-opt %s \
-// RU:   --assign-accelerator \
-// RU:   --lower-llvm-to-neura \
-// RU:   --neura-canonicalize \
-// RU:   --leverage-predicated-value \
-// RU:   --transform-ctrl-to-data-flow \
-// RU:   --insert-data-mov \
-// RU:   --map-to-accelerator="mapping-strategy=heuristic" \
-// RU:   | FileCheck %s -check-prefix=MAPPING
+// RUN: mlir-neura-opt %s \
+// RUN:   --assign-accelerator \
+// RUN:   --lower-llvm-to-neura \
+// RUN:   --neura-canonicalize \
+// RUN:   --leverage-predicated-value \
+// RUN:   --transform-ctrl-to-data-flow \
+// RUN:   --insert-data-mov \
+// RUN:   --map-to-accelerator="mapping-strategy=heuristic" \
+// RUN:   | FileCheck %s -check-prefix=MAPPING
 
-// RU: mlir-neura-opt %s \
-// RU:   --assign-accelerator \
-// RU:   --lower-llvm-to-neura \
-// RU:   --neura-canonicalize \
-// RU:   --leverage-predicated-value \
-// RU:   --transform-ctrl-to-data-flow \
-// RU:   --insert-data-mov \
-// RU:   --map-to-accelerator="mapping-strategy=heuristic" \
-// RU:   --generate-code
-// RU: FileCheck %s --input-file=generated-instructions.json -check-prefix=INST
+// RUN: mlir-neura-opt %s \
+// RUN:   --assign-accelerator \
+// RUN:   --lower-llvm-to-neura \
+// RUN:   --neura-canonicalize \
+// RUN:   --leverage-predicated-value \
+// RUN:   --transform-ctrl-to-data-flow \
+// RUN:   --insert-data-mov \
+// RUN:   --map-to-accelerator="mapping-strategy=heuristic" \
+// RUN:   --generate-code
+// RUN: FileCheck %s --input-file=generated-instructions.json -check-prefix=INST
 
 func.func @loop_test() -> f32 {
   %n = llvm.mlir.constant(10 : i64) : i64

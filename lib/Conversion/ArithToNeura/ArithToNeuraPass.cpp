@@ -39,7 +39,7 @@ struct ArithConstantToNeuraConstant
     Attribute value = op.getValue();
     // Optional predicate parameter can be null.
     rewriter.replaceOpWithNewOp<neura::ConstantOp>(op, result_type, value,
-                                                   nullptr);
+                                                   rewriter.getBoolAttr(true));
     return success();
   }
 };
