@@ -11,6 +11,7 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/raw_ostream.h"
 #include <string>
 
 using namespace mlir;
@@ -19,42 +20,6 @@ using namespace mlir;
 #include "NeuraDialect/NeuraPasses.h.inc"
 
 namespace {
-// Returns blocks in a region in topological order
-SmallVector<Block *> getBlocksInTopologicalOrder(Region &region) {
-  if (region.empty())
-    return {};
-
-  SmallVector<Block *> ordered_blocks;
-
-  DenseSet<Block *> visited;
-
-  std::function<void(Block *)> dfs = [&](Block *block) {
-    visited.insert(block);
-
-    Operation *terminator = block->getTerminator();
-    if (terminator) {
-      for (unsigned i = 0; i < terminator->getNumSuccessors(); ++i) {
-        Block *succ = terminator->getSuccessor(i);
-        if (!visited.count(succ)) {
-          dfs(succ);
-        }
-      }
-    }
-    ordered_blocks.push_back(block);
-  };
-
-  dfs(&region.front());
-
-  for (Block &block : region) {
-    if (!visited.count(&block)) {
-      dfs(&block);
-    }
-  }
-
-  std::reverse(ordered_blocks.begin(), ordered_blocks.end());
-  return ordered_blocks;
-}
-
 LogicalResult promoteFunctionArgsToConstants(Region &region) {
   if (region.empty()) {
     return success();
@@ -85,10 +50,7 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
     return success();
   }
 
-  SmallVector<Block *> sorted_blocks = getBlocksInTopologicalOrder(region);
-
-  for (Block *block_ptr : sorted_blocks) {
-    Block &block = *block_ptr;
+  for (Block &block : region.getBlocks()) {
     // Skips the entry block.
     if (&block == &region.front())
       continue;
