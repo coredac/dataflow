@@ -24,6 +24,16 @@
 
 using namespace mlir;
 
+static bool verbose = false;
+
+inline void setVerboseMode(bool v) {
+  verbose = v;
+}
+
+inline bool isVerboseMode() {
+  return verbose;
+}
+
 class Memory {
 public:
     Memory(size_t size) : mem(size, 0) {
@@ -165,9 +175,9 @@ struct PredicatedData {
   bool isReserve;
 };
 
-bool handleArithConstantOp(mlir::arith::ConstantOp op, llvm::DenseMap<Value, PredicatedData>& valueMap, bool verbose) {
+bool handleArithConstantOp(mlir::arith::ConstantOp op, llvm::DenseMap<Value, PredicatedData>& valueMap) {
   auto attr = op.getValue();
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing arith.constant:\n";
   }
 
@@ -175,26 +185,26 @@ bool handleArithConstantOp(mlir::arith::ConstantOp op, llvm::DenseMap<Value, Pre
       
   if (auto floatAttr = llvm::dyn_cast<mlir::FloatAttr>(attr)) {
     val.value = floatAttr.getValueAsDouble();
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  └─ Parsed float constant : " 
                    << llvm::format("%.6f", val.value) << "\n";
     }
   } else if (auto intAttr = llvm::dyn_cast<mlir::IntegerAttr>(attr)) {
     if(intAttr.getType().isInteger(1)) {
       val.value = intAttr.getInt() != 0 ? 1.0f : 0.0f; 
-      if (verbose) {
+      if (isVerboseMode()) {
         llvm::outs() << "[neura-interpreter]  └─ Parsed boolean constant : " 
                      << (val.value ? "true" : "false") << "\n";
       }
     } else {
       val.value = static_cast<float>(intAttr.getInt());
-      if (verbose) {
+      if (isVerboseMode()) {
         llvm::outs() << "[neura-interpreter]  └─ Parsed integer constant : " 
                      << llvm::format("%.6f", val.value) << "\n";
       }
     }
   } else {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ Unsupported constant type in arith.constant\n";
     }
     return false;
@@ -205,10 +215,10 @@ bool handleArithConstantOp(mlir::arith::ConstantOp op, llvm::DenseMap<Value, Pre
   return true;
 }
 
-bool handleNeuraConstantOp(neura::ConstantOp op, llvm::DenseMap<Value, PredicatedData>& valueMap, bool verbose) {
+bool handleNeuraConstantOp(neura::ConstantOp op, llvm::DenseMap<Value, PredicatedData>& valueMap) {
   auto attr = op.getValue();
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.constant:\n";
   }
   
@@ -238,7 +248,7 @@ bool handleNeuraConstantOp(neura::ConstantOp op, llvm::DenseMap<Value, Predicate
     valueMap[op.getResult()] = val;
   } else if (auto denseAttr = llvm::dyn_cast<mlir::DenseElementsAttr>(attr)) {
     if (!denseAttr.getElementType().isF32()) {
-      if (verbose) {
+      if (isVerboseMode()) {
         llvm::errs() << "[neura-interpreter]  └─ Unsupported vector element type in neura.constant\n";
       }
       return false;
@@ -261,11 +271,11 @@ bool handleNeuraConstantOp(neura::ConstantOp op, llvm::DenseMap<Value, Predicate
     assert(valueMap.count(op.getResult()) == 0 && "Duplicate constant result?");
     valueMap[op.getResult()] = val;
     
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  └─ Parsed vector constant of size: " << vectorSize << "\n";
     }
   } else {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ Unsupported constant type in neura.constant\n";
     }
     return false;
@@ -273,13 +283,13 @@ bool handleNeuraConstantOp(neura::ConstantOp op, llvm::DenseMap<Value, Predicate
   return true;
 }
 
-bool handleAddOp(neura::AddOp op, llvm::DenseMap<Value, PredicatedData> &valueMap, bool verbose) {
-  if (verbose) {
+bool handleAddOp(neura::AddOp op, llvm::DenseMap<Value, PredicatedData> &valueMap) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.add:\n";
   }
 
   if (op.getNumOperands() < 2) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.add expects at least two operands\n";
     }
     return false;
@@ -288,7 +298,7 @@ bool handleAddOp(neura::AddOp op, llvm::DenseMap<Value, PredicatedData> &valueMa
   auto lhs = valueMap[op.getLhs()];
   auto rhs = valueMap[op.getRhs()];
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Operands \n";
     llvm::outs() << "[neura-interpreter]  │  ├─ LHS  : value = " << lhs.value << " [pred = " << lhs.predicate << "]\n";
     llvm::outs() << "[neura-interpreter]  │  └─ RHS  : value = " << rhs.value << " [pred = " << rhs.predicate << "]\n";
@@ -301,7 +311,7 @@ bool handleAddOp(neura::AddOp op, llvm::DenseMap<Value, PredicatedData> &valueMa
   if (op.getNumOperands() > 2) {
     auto pred = valueMap[op.getOperand(2)];
     finalPredicate = finalPredicate && pred.predicate && (pred.value != 0.0f);
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
       llvm::outs() << "[neura-interpreter]  │  └─ Pred : value = " << pred.value << " [pred = " << pred.predicate << "]\n";
     }
@@ -316,20 +326,20 @@ bool handleAddOp(neura::AddOp op, llvm::DenseMap<Value, PredicatedData> &valueMa
 
   valueMap[op.getResult()] = result;
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  └─ Result  : value = " << result.value << " [pred = " << result.predicate << "]\n";
   }
 
   return true;
 }
 
-bool handleSubOp(neura::SubOp op, llvm::DenseMap<Value, PredicatedData> &valueMap, bool verbose) {
-  if (verbose) {
+bool handleSubOp(neura::SubOp op, llvm::DenseMap<Value, PredicatedData> &valueMap) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.sub:\n";
   }
 
   if (op.getNumOperands() < 2) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.sub expects at least two operands\n";
     }
     return false;
@@ -338,7 +348,7 @@ bool handleSubOp(neura::SubOp op, llvm::DenseMap<Value, PredicatedData> &valueMa
   auto lhs = valueMap[op.getOperand(0)];
   auto rhs = valueMap[op.getOperand(1)];
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Operands \n";
     llvm::outs() << "[neura-interpreter]  │  ├─ LHS  : value = " << lhs.value << " [pred = " << lhs.predicate << "]\n";
     llvm::outs() << "[neura-interpreter]  │  └─ RHS  : value = " << rhs.value << " [pred = " << rhs.predicate << "]\n";
@@ -349,7 +359,7 @@ bool handleSubOp(neura::SubOp op, llvm::DenseMap<Value, PredicatedData> &valueMa
   if (op.getNumOperands() > 2) {
     auto pred = valueMap[op.getOperand(2)];
     finalPredicate = finalPredicate && pred.predicate && (pred.value != 0.0f);
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
       llvm::outs() << "[neura-interpreter]  │  └─ Pred : value = " << pred.value << " [pred = " << pred.predicate << "]\n";
     }
@@ -364,7 +374,7 @@ bool handleSubOp(neura::SubOp op, llvm::DenseMap<Value, PredicatedData> &valueMa
   result.predicate = finalPredicate;
   result.isVector = false;
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  └─ Result  : value = " << result.value << " [pred = " << result.predicate << "]\n";
   } 
 
@@ -372,13 +382,13 @@ bool handleSubOp(neura::SubOp op, llvm::DenseMap<Value, PredicatedData> &valueMa
   return true;
 }
 
-bool handleFAddOp(neura::FAddOp op, llvm::DenseMap<Value, PredicatedData> &valueMap, bool verbose) {
-  if (verbose) {
+bool handleFAddOp(neura::FAddOp op, llvm::DenseMap<Value, PredicatedData> &valueMap) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.fadd:\n";
   }
 
   if (op.getNumOperands() < 2) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.fadd expects at least two operands\n";
     }
     return false;
@@ -388,7 +398,7 @@ bool handleFAddOp(neura::FAddOp op, llvm::DenseMap<Value, PredicatedData> &value
   auto rhs = valueMap[op.getRhs()];
   bool finalPredicate = lhs.predicate && rhs.predicate;
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Operands \n";
     llvm::outs() << "[neura-interpreter]  │  ├─ LHS  : value = " << lhs.value << " [pred = " << lhs.predicate << "]\n";
     llvm::outs() << "[neura-interpreter]  │  └─ RHS  : value = " << rhs.value << " [pred = " << rhs.predicate << "]\n";
@@ -397,7 +407,7 @@ bool handleFAddOp(neura::FAddOp op, llvm::DenseMap<Value, PredicatedData> &value
   if (op.getNumOperands() > 2) {
     auto pred = valueMap[op.getOperand(2)];
     finalPredicate = finalPredicate && pred.predicate && (pred.value != 0.0f);
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
       llvm::outs() << "[neura-interpreter]  │  └─ Pred : value = " << pred.value << " [pred = " << pred.predicate << "]\n";
     }
@@ -408,7 +418,7 @@ bool handleFAddOp(neura::FAddOp op, llvm::DenseMap<Value, PredicatedData> &value
   result.predicate = finalPredicate;
   result.isVector = false;
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  └─ Result  : value = " << result.value << " [pred = " << result.predicate << "]\n"; 
   }
 
@@ -416,13 +426,13 @@ bool handleFAddOp(neura::FAddOp op, llvm::DenseMap<Value, PredicatedData> &value
   return true;
 }
 
-bool handleFSubOp(neura::FSubOp op, llvm::DenseMap<Value, PredicatedData> &valueMap, bool verbose) {
-  if (verbose) {
+bool handleFSubOp(neura::FSubOp op, llvm::DenseMap<Value, PredicatedData> &valueMap) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.fsub:\n";
   }
 
   if (op.getNumOperands() < 2) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.fsub expects at least two operands\n";
     }
     return false;
@@ -432,7 +442,7 @@ bool handleFSubOp(neura::FSubOp op, llvm::DenseMap<Value, PredicatedData> &value
   auto rhs = valueMap[op.getRhs()];
   bool finalPredicate = lhs.predicate && rhs.predicate;
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Operands \n";
     llvm::outs() << "[neura-interpreter]  │  ├─ LHS  : value = " << lhs.value << " [pred = " << lhs.predicate << "]\n";
     llvm::outs() << "[neura-interpreter]  │  └─ RHS  : value = " << rhs.value << " [pred = " << rhs.predicate << "]\n";
@@ -441,7 +451,7 @@ bool handleFSubOp(neura::FSubOp op, llvm::DenseMap<Value, PredicatedData> &value
   if (op.getNumOperands() > 2) {
     auto pred = valueMap[op.getOperand(2)];
     finalPredicate = finalPredicate && pred.predicate && (pred.value != 0.0f);
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
       llvm::outs() << "[neura-interpreter]  │  └─ Pred : value = " << pred.value << " [pred = " << pred.predicate << "]\n";
     }
@@ -452,7 +462,7 @@ bool handleFSubOp(neura::FSubOp op, llvm::DenseMap<Value, PredicatedData> &value
   result.predicate = finalPredicate;
   result.isVector = false;
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  └─ Result  : value = " << result.value << " [pred = " << result.predicate << "]\n"; 
   }
 
@@ -460,13 +470,13 @@ bool handleFSubOp(neura::FSubOp op, llvm::DenseMap<Value, PredicatedData> &value
   return true;
 }
 
-bool handleFMulOp(neura::FMulOp op, llvm::DenseMap<Value, PredicatedData> &valueMap, bool verbose) {
-  if (verbose) {
+bool handleFMulOp(neura::FMulOp op, llvm::DenseMap<Value, PredicatedData> &valueMap) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.fmul:\n";
   }
 
   if (op.getNumOperands() < 2) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.fmul expects at least two operands\n";
     }
     return false;
@@ -475,7 +485,7 @@ bool handleFMulOp(neura::FMulOp op, llvm::DenseMap<Value, PredicatedData> &value
   auto lhs = valueMap[op.getOperand(0)];
   auto rhs = valueMap[op.getOperand(1)];
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Operands \n";
     llvm::outs() << "[neura-interpreter]  │  ├─ LHS  : value = " << lhs.value << " [pred = " << lhs.predicate << "]\n";
     llvm::outs() << "[neura-interpreter]  │  └─ RHS  : value = " << rhs.value << " [pred = " << rhs.predicate << "]\n";
@@ -486,7 +496,7 @@ bool handleFMulOp(neura::FMulOp op, llvm::DenseMap<Value, PredicatedData> &value
   if (op.getNumOperands() > 2) {
     auto pred = valueMap[op.getOperand(2)];
     finalPredicate = finalPredicate && pred.predicate && (pred.value != 0.0f);
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
       llvm::outs() << "[neura-interpreter]  │  └─ Pred : value = " << pred.value << " [pred = " << pred.predicate << "]\n";
     }
@@ -501,7 +511,7 @@ bool handleFMulOp(neura::FMulOp op, llvm::DenseMap<Value, PredicatedData> &value
   result.predicate = finalPredicate;
   result.isVector = false;
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  └─ Result  : value = " << result.value << " [pred = " << result.predicate << "]\n";
   }
 
@@ -509,13 +519,13 @@ bool handleFMulOp(neura::FMulOp op, llvm::DenseMap<Value, PredicatedData> &value
   return true;
 }
 
-bool handleFDivOp(neura::FDivOp op, llvm::DenseMap<Value, PredicatedData> &valueMap, bool verbose) {
-  if (verbose) {
+bool handleFDivOp(neura::FDivOp op, llvm::DenseMap<Value, PredicatedData> &valueMap) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.fdiv:\n";
   }
   
   if (op.getNumOperands() < 2) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.fdiv expects at least two operands\n";
     }
     return false;
@@ -524,7 +534,7 @@ bool handleFDivOp(neura::FDivOp op, llvm::DenseMap<Value, PredicatedData> &value
   auto lhs = valueMap[op.getOperand(0)];
   auto rhs = valueMap[op.getOperand(1)];
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Operands \n";
     llvm::outs() << "[neura-interpreter]  │  ├─ LHS  : value = " << lhs.value << " [pred = " << lhs.predicate << "]\n";
     llvm::outs() << "[neura-interpreter]  │  └─ RHS  : value = " << rhs.value << " [pred = " << rhs.predicate << "]\n";
@@ -535,7 +545,7 @@ bool handleFDivOp(neura::FDivOp op, llvm::DenseMap<Value, PredicatedData> &value
   if (op.getNumOperands() > 2) {
     auto pred = valueMap[op.getOperand(2)];
     finalPredicate = finalPredicate && pred.predicate && (pred.value != 0.0f);
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
       llvm::outs() << "[neura-interpreter]  │  └─ Pred : value = " << pred.value << " [pred = " << pred.predicate << "]\n";
     }
@@ -546,7 +556,7 @@ bool handleFDivOp(neura::FDivOp op, llvm::DenseMap<Value, PredicatedData> &value
 
   if (rhsFloat == 0.0f) {
     resultFloat = std::numeric_limits<float>::quiet_NaN();
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Warning: Division by zero, result is NaN\n";
     }
   } else {
@@ -559,7 +569,7 @@ bool handleFDivOp(neura::FDivOp op, llvm::DenseMap<Value, PredicatedData> &value
   result.predicate = finalPredicate;
   result.isVector = false;
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  └─ Result  : value = " << result.value << " [pred = " << result.predicate << "]\n";
   }
 
@@ -567,13 +577,13 @@ bool handleFDivOp(neura::FDivOp op, llvm::DenseMap<Value, PredicatedData> &value
   return true;
 }
 
-bool handleVFMulOp(neura::VFMulOp op, llvm::DenseMap<Value, PredicatedData> &valueMap, bool verbose) {
-  if (verbose) {
+bool handleVFMulOp(neura::VFMulOp op, llvm::DenseMap<Value, PredicatedData> &valueMap) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.vfmul:\n";
   }
 
   if (op.getNumOperands() < 2) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.vfmul expects at least two operands\n";
     }
     return false;
@@ -583,7 +593,7 @@ bool handleVFMulOp(neura::VFMulOp op, llvm::DenseMap<Value, PredicatedData> &val
   auto rhs = valueMap[op.getRhs()];
 
   if (!lhs.isVector || !rhs.isVector) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.vfmul requires both operands to be vectors\n";
     }
     return false;
@@ -599,7 +609,7 @@ bool handleVFMulOp(neura::VFMulOp op, llvm::DenseMap<Value, PredicatedData> &val
     llvm::outs() << "]";
   };
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Operands \n";
     llvm::outs() << "[neura-interpreter]  │  ├─ LHS  : vector size = " << lhs.vectorData.size() << ", ";
     printVector(lhs.vectorData);
@@ -610,7 +620,7 @@ bool handleVFMulOp(neura::VFMulOp op, llvm::DenseMap<Value, PredicatedData> &val
   }
 
   if (lhs.vectorData.size() != rhs.vectorData.size()) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ Vector size mismatch in neura.vfmul\n";
     }
     return false;
@@ -621,13 +631,13 @@ bool handleVFMulOp(neura::VFMulOp op, llvm::DenseMap<Value, PredicatedData> &val
   if (op.getNumOperands() > 2) {
     auto pred = valueMap[op.getOperand(2)];
     if (pred.isVector) {
-      if (verbose) {
+      if (isVerboseMode()) {
         llvm::errs() << "[neura-interpreter]  └─ Predicate operand must be a scalar in neura.vfmul\n";
       }
       return false;
     }
     finalPredicate = finalPredicate && (pred.value != 0.0f);
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
       llvm::outs() << "[neura-interpreter]  │  └─ Pred : value = " << pred.value << " [pred = " << pred.predicate << "]\n";
     }
@@ -642,7 +652,7 @@ bool handleVFMulOp(neura::VFMulOp op, llvm::DenseMap<Value, PredicatedData> &val
     result.vectorData[i] = lhs.vectorData[i] * rhs.vectorData[i];
   }
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  └─ Result  : " << "vector size = " << result.vectorData.size() << ", ";
     printVector(result.vectorData); 
     llvm::outs() << ", [pred = " << result.predicate << "]\n";
@@ -652,13 +662,13 @@ bool handleVFMulOp(neura::VFMulOp op, llvm::DenseMap<Value, PredicatedData> &val
   return true;
 }
 
-bool handleFAddFAddOp(neura::FAddFAddOp op, llvm::DenseMap<Value, PredicatedData> &valueMap, bool verbose) {
-  if (verbose) {
+bool handleFAddFAddOp(neura::FAddFAddOp op, llvm::DenseMap<Value, PredicatedData> &valueMap) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.fadd_fadd:\n";
   }
 
   if (op.getNumOperands() < 3) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.fadd_fadd expects at least three operands\n";
     }
     return false;
@@ -668,7 +678,7 @@ bool handleFAddFAddOp(neura::FAddFAddOp op, llvm::DenseMap<Value, PredicatedData
   auto b = valueMap[op.getB()];
   auto c = valueMap[op.getC()];
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Operands \n";
     llvm::outs() << "[neura-interpreter]  │  ├─ Operand A : value = " << a.value << ", [pred = " << a.predicate << "]\n";
     llvm::outs() << "[neura-interpreter]  │  ├─ Operand B : value = " << b.value << ", [pred = " << b.predicate << "]\n";
@@ -680,7 +690,7 @@ bool handleFAddFAddOp(neura::FAddFAddOp op, llvm::DenseMap<Value, PredicatedData
   if (op.getNumOperands() > 3) {
     auto predOperand = valueMap[op.getOperand(3)];
     finalPredicate = finalPredicate && predOperand.predicate && (predOperand.value != 0.0f);
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
       llvm::outs() << "[neura-interpreter]  │  └─ Pred      : value = " << predOperand.value 
                    << " [pred = " << predOperand.predicate << "]\n";
@@ -689,7 +699,7 @@ bool handleFAddFAddOp(neura::FAddFAddOp op, llvm::DenseMap<Value, PredicatedData
 
   float resultValue = (a.value + b.value) + c.value;
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Calculation  : (" << a.value << " + " << b.value << ") + " << c.value 
                  << " = " << resultValue << "\n";
   } 
@@ -699,7 +709,7 @@ bool handleFAddFAddOp(neura::FAddFAddOp op, llvm::DenseMap<Value, PredicatedData
   result.predicate = finalPredicate;
   result.isVector = false;
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  └─ Result       : value = " << resultValue 
                  << ", [pred = " << finalPredicate << "]\n";
   }
@@ -708,12 +718,12 @@ bool handleFAddFAddOp(neura::FAddFAddOp op, llvm::DenseMap<Value, PredicatedData
   return true;
 }
 
-bool handleFMulFAddOp(neura::FMulFAddOp op, llvm::DenseMap<Value, PredicatedData> &valueMap, bool verbose) {
-  if (verbose) {
+bool handleFMulFAddOp(neura::FMulFAddOp op, llvm::DenseMap<Value, PredicatedData> &valueMap) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.fmul_fadd:\n";
   }
   if (op.getNumOperands() < 3) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.fmul_fadd expects at least three operands\n";
     }
     return false;
@@ -723,7 +733,7 @@ bool handleFMulFAddOp(neura::FMulFAddOp op, llvm::DenseMap<Value, PredicatedData
   auto b = valueMap[op.getB()];
   auto c = valueMap[op.getC()];
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Operands \n";
     llvm::outs() << "[neura-interpreter]  │  ├─ Operand A : value = " << a.value << ", [pred = " << a.predicate << "]\n";
     llvm::outs() << "[neura-interpreter]  │  ├─ Operand B : value = " << b.value << ", [pred = " << b.predicate << "]\n";
@@ -735,7 +745,7 @@ bool handleFMulFAddOp(neura::FMulFAddOp op, llvm::DenseMap<Value, PredicatedData
   if (op.getNumOperands() > 3) {
     auto predOperand = valueMap[op.getOperand(3)];
     finalPredicate = finalPredicate && predOperand.predicate && (predOperand.value != 0.0f);
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
       llvm::outs() << "[neura-interpreter]  │  └─ Pred      : value = " << predOperand.value 
                    << ", [pred = " << predOperand.predicate << "]\n";
@@ -746,7 +756,7 @@ bool handleFMulFAddOp(neura::FMulFAddOp op, llvm::DenseMap<Value, PredicatedData
   float mulResult = a.value * b.value;
   resultValue = mulResult + c.value;
   
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Calculation  : (" << a.value << " * " << b.value << ") + " << c.value 
                  << " = " << mulResult << " + " << c.value << " = " << resultValue << "\n";
   }
@@ -756,7 +766,7 @@ bool handleFMulFAddOp(neura::FMulFAddOp op, llvm::DenseMap<Value, PredicatedData
   result.predicate = finalPredicate;
   result.isVector = false;
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  └─ Result       : value = " << resultValue 
                  << ", [pred = " << finalPredicate << "]\n";
   }
@@ -765,11 +775,11 @@ bool handleFMulFAddOp(neura::FMulFAddOp op, llvm::DenseMap<Value, PredicatedData
   return true;
 }
 
-bool handleFuncReturnOp(func::ReturnOp op, llvm::DenseMap<Value, PredicatedData> &valueMap, bool verbose) {
-  if (verbose) {
+bool handleFuncReturnOp(func::ReturnOp op, llvm::DenseMap<Value, PredicatedData> &valueMap) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing func.return:\n";
   }
-  if (!op && verbose) {
+  if (!op && isVerboseMode()) {
     llvm::errs() << "[neura-interpreter]  └─ Expected func.return but got something else\n";
     return false;
   }
@@ -797,12 +807,12 @@ bool handleFuncReturnOp(func::ReturnOp op, llvm::DenseMap<Value, PredicatedData>
   return true;
 }
 
-bool handleFCmpOp(neura::FCmpOp op, llvm::DenseMap<Value, PredicatedData> &valueMap, bool verbose) {
-  if (verbose) {
+bool handleFCmpOp(neura::FCmpOp op, llvm::DenseMap<Value, PredicatedData> &valueMap) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.fcmp:\n";
   }
   if (op.getNumOperands() < 2) {
-    if (verbose) {  
+    if (isVerboseMode()) {  
       llvm::errs() << "[neura-interpreter]  └─ neura.fcmp expects at least two operands\n";
     }
     return false;
@@ -811,7 +821,7 @@ bool handleFCmpOp(neura::FCmpOp op, llvm::DenseMap<Value, PredicatedData> &value
   auto lhs = valueMap[op.getLhs()];
   auto rhs = valueMap[op.getRhs()];
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Operands \n";
     llvm::outs() << "[neura-interpreter]  │  ├─ LHS               : value = " 
                << lhs.value << ", [pred = " << lhs.predicate << "]\n";
@@ -823,7 +833,7 @@ bool handleFCmpOp(neura::FCmpOp op, llvm::DenseMap<Value, PredicatedData> &value
   if (op.getNumOperands() > 2) {
     auto predData = valueMap[op.getPredicate()];
     pred = predData.predicate && (predData.value != 0.0f);
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
       llvm::outs() << "[neura-interpreter]  │  └─ Pred           : value = " << predData.value 
                  << ", [pred = " << predData.predicate << "]\n";
@@ -846,7 +856,7 @@ bool handleFCmpOp(neura::FCmpOp op, llvm::DenseMap<Value, PredicatedData> &value
   } else if (cmpType == "gt") {
     fcmpResult = (lhs.value > rhs.value);
   } else {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ Unsupported comparison type: " << cmpType << "\n";
     }
     return false;
@@ -860,7 +870,7 @@ bool handleFCmpOp(neura::FCmpOp op, llvm::DenseMap<Value, PredicatedData> &value
   result.predicate = finalPredicate;
   result.isVector = false;
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Evaluation\n";
     llvm::outs() << "[neura-interpreter]  │  ├─ Comparison type   : " << op.getCmpType() << "\n";  
     llvm::outs() << "[neura-interpreter]  │  └─ Comparison result : " 
@@ -873,12 +883,12 @@ bool handleFCmpOp(neura::FCmpOp op, llvm::DenseMap<Value, PredicatedData> &value
   return true;
 }
 
-bool handleICmpOp(neura::ICmpOp op, llvm::DenseMap<Value, PredicatedData> &valueMap, bool verbose) {
-  if (verbose) {
+bool handleICmpOp(neura::ICmpOp op, llvm::DenseMap<Value, PredicatedData> &valueMap) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.icmp:\n";
   }
   if (op.getNumOperands() < 2) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.icmp expects at least two operands\n";
     }
     return false;
@@ -887,7 +897,7 @@ bool handleICmpOp(neura::ICmpOp op, llvm::DenseMap<Value, PredicatedData> &value
   auto lhs = valueMap[op.getLhs()];
   auto rhs = valueMap[op.getRhs()];
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Operands \n";
     llvm::outs() << "[neura-interpreter]  │  ├─ LHS               : value = " << lhs.value 
                  << ", [pred = " << lhs.predicate << "]\n";
@@ -899,7 +909,7 @@ bool handleICmpOp(neura::ICmpOp op, llvm::DenseMap<Value, PredicatedData> &value
   if (op.getNumOperands() > 2) {
     auto predData = valueMap[op.getPredicate()];
     pred = predData.predicate && (predData.value != 0.0f);
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
       llvm::outs() << "[neura-interpreter]  │  └─ Pred           : value = " << predData.value 
                  << ", [pred = " << predData.predicate << "]\n";
@@ -918,7 +928,7 @@ bool handleICmpOp(neura::ICmpOp op, llvm::DenseMap<Value, PredicatedData> &value
   uint64_t u_lhs = signed_to_unsigned(s_lhs);
   uint64_t u_rhs = signed_to_unsigned(s_rhs);
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Evaluation\n";
     llvm::outs() << "[neura-interpreter]  │  ├─ Signed values     : LHS = " << s_lhs 
                  << ", RHS = " << s_rhs << "\n";
@@ -940,7 +950,7 @@ bool handleICmpOp(neura::ICmpOp op, llvm::DenseMap<Value, PredicatedData> &value
     else if (cmp_type == "sgt") icmp_result = (s_lhs > s_rhs);
     else if (cmp_type == "sge") icmp_result = (s_lhs >= s_rhs);
     else {
-      if (verbose) {
+      if (isVerboseMode()) {
         llvm::errs() << "[neura-interpreter]  └─ Unsupported signed comparison type: " << cmp_type << "\n";
       }
         return false;
@@ -951,13 +961,13 @@ bool handleICmpOp(neura::ICmpOp op, llvm::DenseMap<Value, PredicatedData> &value
     else if (cmp_type == "ugt") icmp_result = (u_lhs > u_rhs);
     else if (cmp_type == "uge") icmp_result = (u_lhs >= u_rhs);
     else {
-      if (verbose) {
+      if (isVerboseMode()) {
         llvm::errs() << "[neura-interpreter]  └─ Unsupported unsigned comparison type: " << cmp_type << "\n";
       }
       return false;
     }
   } else {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ Unsupported comparison type: " << cmp_type << "\n";
     }
     return false;
@@ -971,7 +981,7 @@ bool handleICmpOp(neura::ICmpOp op, llvm::DenseMap<Value, PredicatedData> &value
   result.predicate = finalPredicate;
   result.isVector = false;
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  │  └─ Comparison result : " << (icmp_result ? "true" : "false") << "\n";
     llvm::outs() << "[neura-interpreter]  └─ Result               : value = " << resultValue 
                  << ", [pred = " << finalPredicate << "]\n";
@@ -982,13 +992,13 @@ bool handleICmpOp(neura::ICmpOp op, llvm::DenseMap<Value, PredicatedData> &value
   return true;
 }
 
-bool handleOrOp(neura::OrOp op, llvm::DenseMap<Value, PredicatedData> &valueMap, bool verbose) {
-  if (verbose) {
+bool handleOrOp(neura::OrOp op, llvm::DenseMap<Value, PredicatedData> &valueMap) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.or:\n";
   }
 
   if (op.getNumOperands() < 2) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.or expects at least two operands\n";
     }
     return false;
@@ -998,13 +1008,13 @@ bool handleOrOp(neura::OrOp op, llvm::DenseMap<Value, PredicatedData> &valueMap,
   auto rhs = valueMap[op.getOperand(1)];
 
   if (lhs.isVector || rhs.isVector) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.or requires scalar operands\n";
     }
     return false;
   }
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Operands \n";
     llvm::outs() << "[neura-interpreter]  │  ├─ LHS        : value = " << lhs.value << ", [pred = " << lhs.predicate << "]\n";
     llvm::outs() << "[neura-interpreter]  │  └─ RHS        : value = " << rhs.value << ", [pred = " << rhs.predicate << "]\n";
@@ -1023,7 +1033,7 @@ bool handleOrOp(neura::OrOp op, llvm::DenseMap<Value, PredicatedData> &valueMap,
                  << ", [pred = " << pred.predicate << "]\n";
   }
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Evaluation\n";
     llvm::outs() << "[neura-interpreter]  │  └─ Bitwise OR : " << lhsInt;
     if (lhsInt == -1) llvm::outs() << " (0xFFFFFFFFFFFFFFFF)";
@@ -1039,7 +1049,7 @@ bool handleOrOp(neura::OrOp op, llvm::DenseMap<Value, PredicatedData> &valueMap,
   result.predicate = finalPredicate;
   result.isVector = false;
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  └─ Result     : value = " << result.value 
                  << ", [pred = " << finalPredicate << "]\n";
   }
@@ -1048,7 +1058,7 @@ bool handleOrOp(neura::OrOp op, llvm::DenseMap<Value, PredicatedData> &valueMap,
   return true;
 }
 
-bool handleNotOp(neura::NotOp op, llvm::DenseMap<Value, PredicatedData> &valueMap, bool verbose) {
+bool handleNotOp(neura::NotOp op, llvm::DenseMap<Value, PredicatedData> &valueMap) {
   // if (op.getNumOperands() != 1) {
   //   llvm::errs() << "[neura-interpreter] neura.not expects exactly one operand\n";
   //   return false;
@@ -1056,7 +1066,7 @@ bool handleNotOp(neura::NotOp op, llvm::DenseMap<Value, PredicatedData> &valueMa
 
   auto input = valueMap[op.getOperand()];
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.not:\n";
     llvm::outs() << "[neura-interpreter]  ├─ Operand\n";
     llvm::outs() << "[neura-interpreter]  │  └─ Input       : value = " << input.value 
@@ -1066,7 +1076,7 @@ bool handleNotOp(neura::NotOp op, llvm::DenseMap<Value, PredicatedData> &valueMa
   int64_t inputInt = static_cast<int64_t>(std::round(input.value));
   int64_t resultInt = ~inputInt;
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Evaluation\n";
     llvm::outs() << "[neura-interpreter]] │  └─ Bitwise NOT : ~" << inputInt;
     if (inputInt == -1) llvm::outs() << " (0xFFFFFFFFFFFFFFFF)";
@@ -1081,7 +1091,7 @@ bool handleNotOp(neura::NotOp op, llvm::DenseMap<Value, PredicatedData> &valueMa
   result.predicate = input.predicate;
   result.isVector = false;
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  └─ Result         : value = " << result.value 
                  << ", [pred = " << result.predicate << "]\n";
   }
@@ -1090,13 +1100,13 @@ bool handleNotOp(neura::NotOp op, llvm::DenseMap<Value, PredicatedData> &valueMa
   return true;
 }
 
-bool handleSelOp(neura::SelOp op, llvm::DenseMap<Value, PredicatedData> &valueMap, bool verbose) {
-  if (verbose) {
+bool handleSelOp(neura::SelOp op, llvm::DenseMap<Value, PredicatedData> &valueMap) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.sel:\n";
   }
 
   if (op.getNumOperands() != 3) {  
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.sel expects exactly 3 operands (cond, ifTrue, ifFalse)\n";
     }
     return false;
@@ -1107,7 +1117,7 @@ bool handleSelOp(neura::SelOp op, llvm::DenseMap<Value, PredicatedData> &valueMa
   auto ifFalse = valueMap[op.getIfFalse()];
   bool condValue = (cond.value != 0.0f) && cond.predicate;
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Operands \n";
     llvm::outs() << "[neura-interpreter]  │  ├─ Condition : value = " << cond.value 
                  << ", [pred = " << cond.predicate << "]\n";
@@ -1122,20 +1132,20 @@ bool handleSelOp(neura::SelOp op, llvm::DenseMap<Value, PredicatedData> &valueMa
   if (condValue) {
     result.value = ifTrue.value;
     result.predicate = ifTrue.predicate && cond.predicate;  
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  │  └─ Condition is true, selecting 'ifTrue' branch\n";
     }
   } else {
     result.value = ifFalse.value;
     result.predicate = ifFalse.predicate && cond.predicate; 
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  │  └─ Condition is false, selecting 'ifFalse' branch\n";
     }
   }
 
   result.isVector = ifTrue.isVector && ifFalse.isVector; 
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  └─ Result      : value = " << result.value 
                  << ", predicate = " << result.predicate << "\n";
   }
@@ -1144,12 +1154,12 @@ bool handleSelOp(neura::SelOp op, llvm::DenseMap<Value, PredicatedData> &valueMa
   return true;
 }
 
-bool handleCastOp(neura::CastOp op, llvm::DenseMap<Value, PredicatedData> &valueMap, bool verbose) {
-  if (verbose) {
+bool handleCastOp(neura::CastOp op, llvm::DenseMap<Value, PredicatedData> &valueMap) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.cast:\n";
   }
   if (op.getNumOperands() < 1 || op.getNumOperands() > 2) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.cast expects 1 or 2 operands\n";
     }
     return false;
@@ -1158,7 +1168,7 @@ bool handleCastOp(neura::CastOp op, llvm::DenseMap<Value, PredicatedData> &value
   auto input = valueMap[op.getOperand(0)];
   std::string castType = op.getCastType().str();
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Operand\n";
     llvm::outs() << "[neura-interpreter]  │  └─ Input  : value = " 
                  << input.value << ", [pred = " << input.predicate << "]\n";
@@ -1168,13 +1178,13 @@ bool handleCastOp(neura::CastOp op, llvm::DenseMap<Value, PredicatedData> &value
   if (op.getOperation()->getNumOperands() > 1) {
     auto predOperand = valueMap[op.getOperand(1)];
     finalPredicate = finalPredicate && predOperand.predicate && (predOperand.value != 0.0f);
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n"; 
       llvm::outs() << "[neura-interpreter]  │  └─ Pred      : value = " << predOperand.value 
                    << ", [pred = " << predOperand.predicate << "]\n";
     }
   }
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Cast type : " << castType << "\n";
   } 
 
@@ -1183,34 +1193,34 @@ bool handleCastOp(neura::CastOp op, llvm::DenseMap<Value, PredicatedData> &value
 
     if (castType == "f2i") {
       if (!inputType.isF32()) {
-        if (verbose) {
+        if (isVerboseMode()) {
           llvm::errs() << "[neura-interpreter]  └─ Cast type 'f2i' requires f32 input\n";
         }
         return false;
       }
       int64_t intValue = static_cast<int64_t>(std::round(input.value));
       resultValue = static_cast<float>(intValue);
-      if (verbose) {
+      if (isVerboseMode()) {
         llvm::outs() << "[neura-interpreter]  │  └─ Converting float to integer " 
         << input.value << " -> " << intValue << "\n";
       }
 
     } else if (castType == "i2f") {
       if (!inputType.isInteger()) {
-        if (verbose) {
+        if (isVerboseMode()) {
           llvm::errs() << "[neura-interpreter]  └─ Cast type 'i2f' requires integer input\n";
         }
         return false;
       }
       int64_t intValue = static_cast<int64_t>(input.value);
       resultValue = static_cast<float>(intValue);
-      if (verbose) {
+      if (isVerboseMode()) {
         llvm::outs() << "[neura-interpreter]  │  └─ Converting integer to float " 
                      << intValue << " -> " << resultValue << "\n";
       }
     } else if (castType == "bool2i" || castType == "bool2f") {
       if (!inputType.isInteger(1)) {
-        if (verbose) {
+        if (isVerboseMode()) {
           llvm::errs() << "[neura-interpreter]  └─ Cast type '" << castType 
                        << "' requires i1 (boolean) input\n";
         }
@@ -1218,13 +1228,13 @@ bool handleCastOp(neura::CastOp op, llvm::DenseMap<Value, PredicatedData> &value
       }
       bool boolValue = (input.value != 0.0f);
       resultValue = boolValue ? 1.0f : 0.0f;
-      if (verbose) {
+      if (isVerboseMode()) {
         llvm::outs() << "[neura-interpreter]  │  └─ Converting boolean to number " 
                      << (boolValue ? "true" : "false") << " -> " << resultValue << "\n";
       }
     } else if (castType == "i2bool" || castType == "f2bool") {
       if (!inputType.isInteger() && !inputType.isF32()) {
-        if (verbose) {
+        if (isVerboseMode()) {
           llvm::errs() << "[neura-interpreter]  └─ Cast type '" << castType 
                        << "' requires integer or f32 input\n";
         }
@@ -1232,12 +1242,12 @@ bool handleCastOp(neura::CastOp op, llvm::DenseMap<Value, PredicatedData> &value
       }
       bool boolValue = (input.value != 0.0f);
       resultValue = boolValue ? 1.0f : 0.0f;
-      if (verbose) {
+      if (isVerboseMode()) {
         llvm::outs() << "[neura-interpreter]  │  └─ Converting number to boolean " 
                     << input.value << " -> " << (boolValue ? "true" : "false") << " (stored as " << resultValue << ")\n";
       }
     } else {
-      if (verbose) {
+      if (isVerboseMode()) {
         llvm::errs() << "[neura-interpreter]  └─ Unsupported cast type: " << castType << "\n";
       }
       return false;
@@ -1248,7 +1258,7 @@ bool handleCastOp(neura::CastOp op, llvm::DenseMap<Value, PredicatedData> &value
   result.predicate = finalPredicate;
   result.isVector = input.isVector;
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  └─ Result    : value = " << resultValue 
                  << ", [pred = " << finalPredicate << "]\n";
   }
@@ -1257,13 +1267,13 @@ bool handleCastOp(neura::CastOp op, llvm::DenseMap<Value, PredicatedData> &value
   return true;
 }
 
-bool handleLoadOp(neura::LoadOp op, llvm::DenseMap<Value, PredicatedData> &valueMap, Memory &mem, bool verbose) {
-  if (verbose) {
+bool handleLoadOp(neura::LoadOp op, llvm::DenseMap<Value, PredicatedData> &valueMap, Memory &mem) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.load:\n";
   }
 
   if (op.getNumOperands() < 1 || op.getNumOperands() > 2) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.load expects 1 or 2 operands (address, [predicate])\n";
     }
     return false;
@@ -1272,7 +1282,7 @@ bool handleLoadOp(neura::LoadOp op, llvm::DenseMap<Value, PredicatedData> &value
   auto addrVal = valueMap[op.getOperand(0)];
   bool finalPredicate = addrVal.predicate;
 
-  // if(verbose) {
+  // if(isVerboseMode()) {
   //   llvm::outs() << "[neura-interpreter]  ├─ Operand\n";
   //   llvm::outs() << "[neura-interpreter]  │  └─ Address   : value = " << addrVal.value 
   //                << ", [pred = " << addrVal.predicate << "]\n";
@@ -1281,7 +1291,7 @@ bool handleLoadOp(neura::LoadOp op, llvm::DenseMap<Value, PredicatedData> &value
   if (op.getNumOperands() > 1) {
     auto predVal = valueMap[op.getOperand(1)];
     finalPredicate = finalPredicate && predVal.predicate && (predVal.value != 0.0f);
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n"; 
       llvm::outs() << "[neura-interpreter]  │  └─ Pred      : value = " << predVal.value 
                    << ", [pred = " << predVal.predicate << "]\n";
@@ -1300,19 +1310,19 @@ bool handleLoadOp(neura::LoadOp op, llvm::DenseMap<Value, PredicatedData> &value
     } else if (resultType.isInteger(1)) {
       val = static_cast<float>(mem.load<bool>(addr));
     } else {
-      if (verbose) {
+      if (isVerboseMode()) {
         llvm::errs() << "[neura-interpreter]  └─ Unsupported load type\n";
       }
       return false;
     }
   } else {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  └─ Load skipped due to [pred = 0]\n";
     }
     val = 0.0f; // Default value when load is skipped
   }
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  └─ Load [addr = " << addr << "] => val = "
                  << val << ", [pred = " << finalPredicate << "]\n";
   }
@@ -1321,13 +1331,13 @@ bool handleLoadOp(neura::LoadOp op, llvm::DenseMap<Value, PredicatedData> &value
   return true;
 }
 
-bool handleStoreOp(neura::StoreOp op, llvm::DenseMap<Value, PredicatedData> &valueMap, Memory &mem, bool verbose) {
-  if (verbose) {
+bool handleStoreOp(neura::StoreOp op, llvm::DenseMap<Value, PredicatedData> &valueMap, Memory &mem) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.store:\n";
   }
 
   if (op.getNumOperands() < 2) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.store expects at least two operands (value, address)\n";
     }
     return false;
@@ -1340,7 +1350,7 @@ bool handleStoreOp(neura::StoreOp op, llvm::DenseMap<Value, PredicatedData> &val
   if (op.getNumOperands() > 2) {
     auto predVal = valueMap[op.getOperand(2)];
     finalPredicate = finalPredicate && predVal.predicate && (predVal.value != 0.0f);
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n"; 
       llvm::outs() << "[neura-interpreter]  │  └─ Pred      : value = " << predVal.value 
                    << ", [pred = " << predVal.predicate << "]\n";
@@ -1358,18 +1368,18 @@ bool handleStoreOp(neura::StoreOp op, llvm::DenseMap<Value, PredicatedData> &val
     } else if (valType.isInteger(1)) {
     mem.store<bool>(addr, (valData.value != 0.0f));
     } else {
-      if (verbose) {
+      if (isVerboseMode()) {
         llvm::errs() << "[neura-interpreter]  └─ Unsupported store type\n";
       }
       return false;
     }
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  └─ Store [addr = " << addr 
                    << "] => val = " << valData.value 
                    << ", [pred = 1" << "]\n";
     }
   } else {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  └─ Store skipped due to [pred = 0]\n";
     }
   }
@@ -1377,13 +1387,13 @@ bool handleStoreOp(neura::StoreOp op, llvm::DenseMap<Value, PredicatedData> &val
   return true;
 }
 
-bool handleGEPOp(neura::GEP op, llvm::DenseMap<Value, PredicatedData> &valueMap, bool verbose) {
-  if (verbose) {
+bool handleGEPOp(neura::GEP op, llvm::DenseMap<Value, PredicatedData> &valueMap) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.gep:\n";
   }
 
   if (op.getOperation()->getNumOperands() < 1) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.gep expects at least 1 operand (base address)\n";
     }
     return false;
@@ -1393,7 +1403,7 @@ bool handleGEPOp(neura::GEP op, llvm::DenseMap<Value, PredicatedData> &valueMap,
   size_t baseAddr = static_cast<size_t>(baseVal.value);
   bool finalPredicate = baseVal.predicate;
 
-  if(verbose) {
+  if(isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Base address: value = " << baseAddr << ", [pred = " << baseVal.predicate << "]\n";
   }
 
@@ -1411,7 +1421,7 @@ bool handleGEPOp(neura::GEP op, llvm::DenseMap<Value, PredicatedData> &valueMap,
 
   auto stridesAttr = op->getAttrOfType<mlir::ArrayAttr>("strides");
   if (!stridesAttr) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.gep requires 'strides' attribute\n";
     }
     return false;
@@ -1421,7 +1431,7 @@ bool handleGEPOp(neura::GEP op, llvm::DenseMap<Value, PredicatedData> &valueMap,
   for (auto s : stridesAttr) {
     auto intAttr = mlir::dyn_cast<mlir::IntegerAttr>(s);
     if (!intAttr) {
-      if (verbose) {
+      if (isVerboseMode()) {
         llvm::errs() << "[neura-interpreter]  └─ Invalid type in 'strides' attribute (expected integer)\n";
       }  
       return false;
@@ -1430,7 +1440,7 @@ bool handleGEPOp(neura::GEP op, llvm::DenseMap<Value, PredicatedData> &valueMap,
   }
 
   if (indexCount != strides.size()) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ GEP index count (" << indexCount 
                    << ") mismatch with strides size (" << strides.size() << ")\n";
     }
@@ -1441,7 +1451,7 @@ bool handleGEPOp(neura::GEP op, llvm::DenseMap<Value, PredicatedData> &valueMap,
   for (unsigned i = 0; i < indexCount; ++i) {
     auto idxVal = valueMap[op.getOperand(i + 1)]; 
     if (!idxVal.predicate) {
-      if (verbose) {
+      if (isVerboseMode()) {
         llvm::errs() << "[neura-interpreter]  └─ GEP index " << i << " has false predicate\n";
       }
       return false;
@@ -1449,7 +1459,7 @@ bool handleGEPOp(neura::GEP op, llvm::DenseMap<Value, PredicatedData> &valueMap,
 
     size_t idx = static_cast<size_t>(idxVal.value);
     offset += idx * strides[i];
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Index " << i << ": value = " << idx << ", stride = " << strides[i] 
                    << ", cumulative offset = " << offset << "\n";
     }
@@ -1458,7 +1468,7 @@ bool handleGEPOp(neura::GEP op, llvm::DenseMap<Value, PredicatedData> &valueMap,
   if (hasPredicate) {
     auto predVal = valueMap[op.getOperand(numOperands - 1)];
     finalPredicate = finalPredicate && predVal.predicate && (predVal.value != 0.0f);
-    if (verbose) {
+    if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  └─ Predicate operand: value = " << predVal.value 
                  << ", [pred = " << predVal.predicate << "]\n";
     }
@@ -1471,7 +1481,7 @@ bool handleGEPOp(neura::GEP op, llvm::DenseMap<Value, PredicatedData> &valueMap,
   result.predicate = finalPredicate;
   result.isVector = false; 
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  └─ Final GEP result: base = " << baseAddr << ", total offset = " << offset 
                  << ", final address = " << finalAddr 
                  << ", [pred = " << finalPredicate << "]\n";    
@@ -1483,14 +1493,14 @@ bool handleGEPOp(neura::GEP op, llvm::DenseMap<Value, PredicatedData> &valueMap,
 
 bool handleLoadIndexedOp(neura::LoadIndexedOp op,
                          llvm::DenseMap<Value, PredicatedData> &valueMap,
-                         Memory &mem, bool verbose) {
-  if (verbose) {
+                         Memory &mem) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  └─ Executing neura.load_indexed:\n";
   }
 
   auto baseVal = valueMap[op.getBase()];
   if (baseVal.isVector) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ Vector base not supported in load_indexed\n";
     }
     return false;
@@ -1502,7 +1512,7 @@ bool handleLoadIndexedOp(neura::LoadIndexedOp op,
   for (Value idx : op.getIndices()) {
     auto idxVal = valueMap[idx];
     if (idxVal.isVector) {
-      if (verbose) {
+      if (isVerboseMode()) {
         llvm::errs() << "[neura-interpreter]  └─ Vector index not supported in load_indexed\n";
       }
       return false;
@@ -1515,7 +1525,7 @@ bool handleLoadIndexedOp(neura::LoadIndexedOp op,
     Value predOperand = op.getPredicate();
     auto predVal = valueMap[predOperand];
     if (predVal.isVector) {
-      if (verbose) {
+      if (isVerboseMode()) {
         llvm::errs() << "[neura-interpreter]  └─ Vector predicate not supported\n";
       }
       return false;
@@ -1535,14 +1545,14 @@ bool handleLoadIndexedOp(neura::LoadIndexedOp op,
     } else if (resultType.isInteger(1)) {
       val = static_cast<float>(mem.load<bool>(addr));
     } else {
-      if (verbose) {
+      if (isVerboseMode()) {
         llvm::errs() << "[neura-interpreter]  └─ Unsupported result type\n";
       }
       return false;
     }
   }
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  └─ LoadIndexed [addr = " << addr << "] => val = "
                  << val << ", [pred = " << finalPredicate << "]\n";
   }
@@ -1553,14 +1563,14 @@ bool handleLoadIndexedOp(neura::LoadIndexedOp op,
 
 bool handleStoreIndexedOp(neura::StoreIndexedOp op,
                           llvm::DenseMap<Value, PredicatedData> &valueMap,
-                          Memory &mem, bool verbose) {
-  if (verbose) {
+                          Memory &mem) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.store_indexed:\n";
   }
 
   auto valToStore = valueMap[op.getValue()];
   if (valToStore.isVector) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ Vector value not supported in store_indexed\n";
     }
     return false;
@@ -1570,7 +1580,7 @@ bool handleStoreIndexedOp(neura::StoreIndexedOp op,
 
   auto baseVal = valueMap[op.getBase()];
   if (baseVal.isVector) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ Vector base not supported in store_indexed\n";
     }
     return false;
@@ -1582,7 +1592,7 @@ bool handleStoreIndexedOp(neura::StoreIndexedOp op,
   for (Value idx : op.getIndices()) {
     auto idxVal = valueMap[idx];
     if (idxVal.isVector) {
-      if (verbose) {
+      if (isVerboseMode()) {
         llvm::errs() << "[neura-interpreter]  └─ Vector index not supported in store_indexed\n";
       }
       return false;
@@ -1595,7 +1605,7 @@ bool handleStoreIndexedOp(neura::StoreIndexedOp op,
       Value predOperand = op.getPredicate();
       auto predVal = valueMap[predOperand];
       if (predVal.isVector) {
-        if (verbose) {
+        if (isVerboseMode()) {
           llvm::errs() << "[neura-interpreter]  └─ Vector predicate not supported\n";
         }
         return false;
@@ -1614,14 +1624,14 @@ bool handleStoreIndexedOp(neura::StoreIndexedOp op,
     } else if (valType.isInteger(1)) {
       mem.store<bool>(addr, value != 0.0f);
     } else {
-      if (verbose) {
+      if (isVerboseMode()) {
         llvm::errs() << "[neura-interpreter]  └─ Unsupported value type in store_indexed\n";
       }
       return false;
     }
   }
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  └─ StoreIndexed [addr = " << addr << "] <= val = "
                  << value << ", [pred = " << finalPredicate << "]\n";
   }
@@ -1630,14 +1640,14 @@ bool handleStoreIndexedOp(neura::StoreIndexedOp op,
 }
 
 bool handleBrOp(neura::Br op, llvm::DenseMap<Value, PredicatedData> &valueMap, 
-                Block *&currentBlock, Block *&lastVisitedBlock, bool verbose) {
-  if (verbose) {
+                Block *&currentBlock, Block *&lastVisitedBlock) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.br:\n";
   }
 
   Block *destBlock = op.getDest();
   if (!destBlock) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.br: Target block is null\n";
     }
     return false;
@@ -1646,7 +1656,7 @@ bool handleBrOp(neura::Br op, llvm::DenseMap<Value, PredicatedData> &valueMap,
   auto currentSuccsRange = currentBlock->getSuccessors();
   std::vector<Block *> succBlocks(currentSuccsRange.begin(), currentSuccsRange.end());
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Block Information\n";
     llvm::outs() << "[neura-interpreter]  │  ├─ Current block    : Block@" << currentBlock << "\n";
     llvm::outs() << "[neura-interpreter]  │  ├─ Successor blocks : \n";
@@ -1671,7 +1681,7 @@ bool handleBrOp(neura::Br op, llvm::DenseMap<Value, PredicatedData> &valueMap,
   const auto &destParams = destBlock->getArguments();
 
   if (args.size() != destParams.size()) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.br: Argument count mismatch (passed " 
                  << args.size() << ", target expects " << destParams.size() << ")\n";
     }
@@ -1684,7 +1694,7 @@ bool handleBrOp(neura::Br op, llvm::DenseMap<Value, PredicatedData> &valueMap,
     Value srcArg = args[i];
     
     if (!valueMap.count(srcArg)) {
-      if (verbose) {
+      if (isVerboseMode()) {
         llvm::errs() << "[neura-interpreter]  └─ neura.br: Argument " << i 
                      << " (source value) not found in value map\n";
       }
@@ -1692,10 +1702,10 @@ bool handleBrOp(neura::Br op, llvm::DenseMap<Value, PredicatedData> &valueMap,
     }
     
     valueMap[destParam] = valueMap[srcArg];
-    if (verbose && i < destParams.size() - 1) {
+    if (isVerboseMode() && i < destParams.size() - 1) {
       llvm::outs() << "[neura-interpreter]  │  ├─ Param[" << i << "]: value = " 
                    << valueMap[srcArg].value << "\n";
-    } else if (verbose && i == destParams.size() - 1) {
+    } else if (isVerboseMode() && i == destParams.size() - 1) {
       llvm::outs() << "[neura-interpreter]  │  └─ Param[" << i << "]: value = " 
                    << valueMap[srcArg].value << "\n";
     }
@@ -1703,7 +1713,7 @@ bool handleBrOp(neura::Br op, llvm::DenseMap<Value, PredicatedData> &valueMap,
 
   lastVisitedBlock = currentBlock;
   currentBlock = destBlock;
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  └─ Control Transfer\n";
     llvm::outs() << "[neura-interpreter]     └─ Jump successfully to Block@ " << destBlock << "\n";
   }
@@ -1711,13 +1721,13 @@ bool handleBrOp(neura::Br op, llvm::DenseMap<Value, PredicatedData> &valueMap,
 }
 
 bool handleCondBrOp(neura::CondBr op, llvm::DenseMap<Value, PredicatedData> &valueMap, 
-                    Block *&currentBlock, Block *&lastVisitedBlock, bool verbose) {
-  if (verbose) {
+                    Block *&currentBlock, Block *&lastVisitedBlock) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.cond_br:\n";
   }
 
   if (op.getNumOperands() < 1 || op.getNumOperands() > 2) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.cond_br expects 1 or 2 operands (condition + optional predicate)\n";
     }
     return false;
@@ -1725,7 +1735,7 @@ bool handleCondBrOp(neura::CondBr op, llvm::DenseMap<Value, PredicatedData> &val
 
   auto condValue = op.getCondition();
   if (!valueMap.count(condValue)) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ cond_br: condition value not found in valueMap! (SSA name missing)\n";
     }
     return false;
@@ -1733,13 +1743,13 @@ bool handleCondBrOp(neura::CondBr op, llvm::DenseMap<Value, PredicatedData> &val
   auto condData = valueMap[op.getCondition()];
 
   if (!op.getCondition().getType().isInteger(1)) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.cond_br: condition must be of type i1 (boolean)\n";
     }
     return false;
   }
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Operand\n";
     llvm::outs() << "[neura-interpreter]  │  └─ Condition     : value = " << condData.value 
                << ", [pred = " << condData.predicate << "]\n";
@@ -1749,7 +1759,7 @@ bool handleCondBrOp(neura::CondBr op, llvm::DenseMap<Value, PredicatedData> &val
   if (op.getNumOperands() > 1) {
     auto predData = valueMap[op.getPredicate()];
     finalPredicate = finalPredicate && predData.predicate && (predData.value != 0.0f);
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
       llvm::outs() << "[neura-interpreter]  │  └─ Pred : value = " << predData.value
                    << " [pred = " << predData.predicate << "]\n";
@@ -1761,7 +1771,7 @@ bool handleCondBrOp(neura::CondBr op, llvm::DenseMap<Value, PredicatedData> &val
   auto currentSuccsRange = currentBlock->getSuccessors();
   std::vector<Block *> succBlocks(currentSuccsRange.begin(), currentSuccsRange.end());
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Block Information\n";
     llvm::outs() << "[neura-interpreter]  │  └─ Current block : Block@" << currentBlock << "\n";
     llvm::outs() << "[neura-interpreter]  ├─ Branch Targets\n";
@@ -1790,7 +1800,7 @@ bool handleCondBrOp(neura::CondBr op, llvm::DenseMap<Value, PredicatedData> &val
   //   blockIndex++;
   // }
   
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Evaluation\n";
     llvm::outs() << "[neura-interpreter]  │  └─ Condition is " << (condData.value != 0.0f ? "true" : "false")
                  << " → selecting '" << (isTrueBranch ? "true" : "false") << "' branch\n";
@@ -1798,7 +1808,7 @@ bool handleCondBrOp(neura::CondBr op, llvm::DenseMap<Value, PredicatedData> &val
   
 
   if (branchArgs.size() != targetParams.size()) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.cond_br: argument count mismatch for " 
                    << (isTrueBranch ? "true" : "false") << " branch (expected " 
                    << targetParams.size() << ", got " << branchArgs.size() << ")\n";
@@ -1806,7 +1816,7 @@ bool handleCondBrOp(neura::CondBr op, llvm::DenseMap<Value, PredicatedData> &val
     return false;
   }
 
-  if (verbose) {
+  if (isVerboseMode()) {
     if (!branchArgs.empty()) {
       llvm::outs() << "[neura-interpreter]  ├─ Pass Arguments\n";
     }
@@ -1827,7 +1837,7 @@ bool handleCondBrOp(neura::CondBr op, llvm::DenseMap<Value, PredicatedData> &val
   lastVisitedBlock = currentBlock;
   currentBlock = targetBlock;
   
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  └─ Control Transfer\n";
     llvm::outs() << "[neura-interpreter]     └─ Jump successfully to Block@" << targetBlock << "\n";
   }
@@ -1836,8 +1846,8 @@ bool handleCondBrOp(neura::CondBr op, llvm::DenseMap<Value, PredicatedData> &val
 }
 
 bool handlePhiOp(neura::PhiOp op, llvm::DenseMap<Value, PredicatedData> &valueMap, 
-                 Block *currentBlock, Block *lastVisitedBlock, bool verbose) {
-  if (verbose) {
+                 Block *currentBlock, Block *lastVisitedBlock) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.phi:\n";
   }
 
@@ -1846,7 +1856,7 @@ bool handlePhiOp(neura::PhiOp op, llvm::DenseMap<Value, PredicatedData> &valueMa
   size_t predCount = predecessors.size(); 
 
   if (predCount == 0) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.phi: Current block has no predecessors\n";
     }
     return false;
@@ -1863,7 +1873,7 @@ bool handlePhiOp(neura::PhiOp op, llvm::DenseMap<Value, PredicatedData> &valueMa
   }
 
   if (!found) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.phi: Last visited block not found in predecessors\n";
     }
     return false;
@@ -1873,7 +1883,7 @@ bool handlePhiOp(neura::PhiOp op, llvm::DenseMap<Value, PredicatedData> &valueMa
   size_t inputCount = inputs.size();
 
   if (inputCount != predCount) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.phi: Input count (" << inputCount 
                    << ") != predecessor count (" << predCount << ")\n";
     }
@@ -1881,7 +1891,7 @@ bool handlePhiOp(neura::PhiOp op, llvm::DenseMap<Value, PredicatedData> &valueMa
   }
 
   if (predIndex >= inputCount) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.phi: Invalid predecessor index (" << predIndex << ")\n";
     }
     return false;
@@ -1889,7 +1899,7 @@ bool handlePhiOp(neura::PhiOp op, llvm::DenseMap<Value, PredicatedData> &valueMa
 
   Value inputVal = inputs[predIndex];
   if (!valueMap.count(inputVal)) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.phi: Input value not found in value map\n";
     }
     return false;
@@ -1898,7 +1908,7 @@ bool handlePhiOp(neura::PhiOp op, llvm::DenseMap<Value, PredicatedData> &valueMa
   PredicatedData inputData = valueMap[inputVal];
   valueMap[op.getResult()] = inputData;
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Predecessor blocks (" << predCount << ")\n";
     for (size_t i = 0; i < predCount; ++i) {
       if(i < predCount - 1) {
@@ -1919,8 +1929,8 @@ bool handlePhiOp(neura::PhiOp op, llvm::DenseMap<Value, PredicatedData> &valueMa
   return true;
 }
 
-bool handleReserveOp(neura::ReserveOp op, llvm::DenseMap<Value, PredicatedData> &valueMap, bool verbose) {
-  if (verbose) {
+bool handleReserveOp(neura::ReserveOp op, llvm::DenseMap<Value, PredicatedData> &valueMap) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.reserve:\n";
   }
 
@@ -1932,7 +1942,7 @@ bool handleReserveOp(neura::ReserveOp op, llvm::DenseMap<Value, PredicatedData> 
   Value result = op.getResult();
   valueMap[result] = placeholder;
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  └─ Created placeholder  : " << result << "\n";
     llvm::outs() << "[neura-interpreter]     ├─ Initial value     : 0.0f\n";
     llvm::outs() << "[neura-interpreter]     ├─ Initial predicate : false\n";
@@ -1943,8 +1953,8 @@ bool handleReserveOp(neura::ReserveOp op, llvm::DenseMap<Value, PredicatedData> 
   return true;
 }
 
-bool handleCtrlMovOp(neura::CtrlMovOp op, llvm::DenseMap<Value, PredicatedData> &valueMap, bool verbose) {
-  if (verbose) {
+bool handleCtrlMovOp(neura::CtrlMovOp op, llvm::DenseMap<Value, PredicatedData> &valueMap) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.ctrl_mov:\n";
   }
 
@@ -1952,14 +1962,14 @@ bool handleCtrlMovOp(neura::CtrlMovOp op, llvm::DenseMap<Value, PredicatedData> 
   Value target = op.getTarget();
 
   if (!valueMap.count(source)) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.ctrl_mov: Source value not found in value map\n";
     }
     return false;
   }
 
   if (!valueMap.count(target) || !valueMap[target].isReserve) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.ctrl_mov: Target is not a reserve placeholder\n";
     }
     return false;
@@ -1969,14 +1979,14 @@ bool handleCtrlMovOp(neura::CtrlMovOp op, llvm::DenseMap<Value, PredicatedData> 
   auto &targetData = valueMap[target];
 
   if (source.getType() != target.getType()) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.ctrl_mov: Type mismatch (source ="
                    << source.getType() << ", target =" << target.getType() << ")\n";
     }
     return false;
   }
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Source: " << source <<"\n";
     llvm::outs() << "[neura-interpreter]  │  └─ value = "  << sourceData.value 
                  << ", [pred = " << sourceData.predicate << "]\n";
@@ -1992,7 +2002,7 @@ bool handleCtrlMovOp(neura::CtrlMovOp op, llvm::DenseMap<Value, PredicatedData> 
     targetData.vectorData = sourceData.vectorData;
   }
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  └─ Updated target placeholder\n";
     llvm::outs() << "[neura-interpreter]     └─ value = "  << targetData.value 
                  << ", [pred = " << targetData.predicate << "]\n";
@@ -2001,8 +2011,8 @@ bool handleCtrlMovOp(neura::CtrlMovOp op, llvm::DenseMap<Value, PredicatedData> 
   return true;
 }
 
-bool handleNeuraReturnOp(neura::ReturnOp op, llvm::DenseMap<Value, PredicatedData> &valueMap, bool verbose) {
-  if (verbose) {
+bool handleNeuraReturnOp(neura::ReturnOp op, llvm::DenseMap<Value, PredicatedData> &valueMap) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.return:\n";
   }
 
@@ -2015,61 +2025,61 @@ bool handleNeuraReturnOp(neura::ReturnOp op, llvm::DenseMap<Value, PredicatedDat
     returnValues.push_back(valueMap[val]);
   }
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  └─ Return values:";
   }
 
   if (returnValues.empty()) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::outs() << " void\n";
     }
   } else {
     llvm::outs() << "\n";
     for (size_t i = 0; i < returnValues.size(); ++i) {
       const auto &data = returnValues[i];
-      if (verbose) {
+      if (isVerboseMode()) {
         llvm::outs() << "    [" << i << "]: ";
       }
       
       if (data.isVector) {
-        if (verbose) {
+        if (isVerboseMode()) {
             llvm::outs() << "vector=[";
         }
 
-        for (size_t j = 0; j < data.vectorData.size() && verbose; ++j) {
+        for (size_t j = 0; j < data.vectorData.size() && isVerboseMode(); ++j) {
           float val = data.predicate ? data.vectorData[j] : 0.0f;
           llvm::outs() << llvm::format("%.6f", val);
           if (j != data.vectorData.size() - 1) llvm::outs() << ", ";
         }
-        if (verbose) {
+        if (isVerboseMode()) {
           llvm::outs() << "]";
         }
       } else {
         float val = data.predicate ? data.value : 0.0f;
-        if (verbose) {
+        if (isVerboseMode()) {
           llvm::outs() << llvm::format("%.6f", val);
         }
       }
-      if (verbose) {
+      if (isVerboseMode()) {
         llvm::outs() << ", [pred = " << data.predicate << "]\n";
       }
     }
   }
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  └─ Execution terminated successfully\n";
   }
   
   return true;
 }
 
-bool handleGrantPredicateOp(neura::GrantPredicateOp op, llvm::DenseMap<Value, PredicatedData> &valueMap, bool verbose) {
-  if (verbose) {
+bool handleGrantPredicateOp(neura::GrantPredicateOp op, llvm::DenseMap<Value, PredicatedData> &valueMap) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.grant_predicate:\n";
   }
 
   if (op.getOperation()->getNumOperands() != 2) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.grant_predicate expects exactly 2 operands (value, new_predicate)\n";
     } 
     return false;
@@ -2078,7 +2088,7 @@ bool handleGrantPredicateOp(neura::GrantPredicateOp op, llvm::DenseMap<Value, Pr
   auto source = valueMap[op.getValue()];
   auto newPred = valueMap[op.getPredicate()];
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Operand\n";
     llvm::outs() << "[neura-interpreter]  │  ├─ Source: value = " << source.value 
                  << ", [pred = " << source.predicate << "]\n";
@@ -2092,7 +2102,7 @@ bool handleGrantPredicateOp(neura::GrantPredicateOp op, llvm::DenseMap<Value, Pr
   result.predicate = resultPredicate;
   result.isVector = source.isVector; 
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  └─ Result: value = " << result.value 
                  << ", [pred = " << resultPredicate << "]\n";
   }
@@ -2101,13 +2111,13 @@ bool handleGrantPredicateOp(neura::GrantPredicateOp op, llvm::DenseMap<Value, Pr
   return true;
 }
 
-bool handleGrantOnceOp(neura::GrantOnceOp op, llvm::DenseMap<Value, PredicatedData> &valueMap, bool verbose) {
-  if(verbose) {
+bool handleGrantOnceOp(neura::GrantOnceOp op, llvm::DenseMap<Value, PredicatedData> &valueMap) {
+  if(isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  Executing neura.grant_once:\n";
   }
 
   if (op.getOperation()->getNumOperands() != 1) {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ neura.grant_once expects exactly 1 operand (value)\n";
     }
     return false;
@@ -2115,7 +2125,7 @@ bool handleGrantOnceOp(neura::GrantOnceOp op, llvm::DenseMap<Value, PredicatedDa
 
   auto source = valueMap[op.getValue()];
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Operand\n";
     llvm::outs() << "[neura-interpreter]  │  └─ Source value: " << source.value << ", [pred = " << source.predicate << "]\n";
   }
@@ -2127,11 +2137,11 @@ bool handleGrantOnceOp(neura::GrantOnceOp op, llvm::DenseMap<Value, PredicatedDa
   bool resultPredicate = !hasGranted;
   if (!hasGranted) {
     granted[op.getValue()] = true; 
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ First access - granting predicate\n";
     }
   } else {
-    if (verbose) {
+    if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Subsequent access - denying predicate\n";
     }
   } 
@@ -2140,7 +2150,7 @@ bool handleGrantOnceOp(neura::GrantOnceOp op, llvm::DenseMap<Value, PredicatedDa
   result.predicate = resultPredicate;
   result.isVector = source.isVector; 
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  └─ Result: value = " << result.value 
                  << ", [pred = " << resultPredicate << "]\n";
   }
@@ -2149,13 +2159,13 @@ bool handleGrantOnceOp(neura::GrantOnceOp op, llvm::DenseMap<Value, PredicatedDa
   return true;
 }
 
-bool handleGrantAlwaysOp(neura::GrantAlwaysOp op, llvm::DenseMap<Value, PredicatedData> &valueMap, bool verbose) {
-  if (verbose) {
+bool handleGrantAlwaysOp(neura::GrantAlwaysOp op, llvm::DenseMap<Value, PredicatedData> &valueMap) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.grant_always:\n";
   }
 
   if (op.getOperation()->getNumOperands() != 1) {
-    if (verbose) {  
+    if (isVerboseMode()) {  
       llvm::errs() << "[neura-interpreter]  └─ neura.grant_always expects exactly 1 operand (value)\n";
     }
     return false;
@@ -2167,7 +2177,7 @@ bool handleGrantAlwaysOp(neura::GrantAlwaysOp op, llvm::DenseMap<Value, Predicat
   result.predicate = resultPredicate;
   result.isVector = source.isVector;
 
-  if (verbose) {
+  if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Operand\n";
     llvm::outs() << "[neura-interpreter]  │  └─ Source value: " << source.value << ", [pred = " << source.predicate << "]\n";
     llvm::outs() << "[neura-interpreter]  ├─ Granting predicate unconditionally\n";
@@ -2181,11 +2191,10 @@ bool handleGrantAlwaysOp(neura::GrantAlwaysOp op, llvm::DenseMap<Value, Predicat
 }
 
 int main(int argc, char **argv) {
-  bool verbose = false;
 
   for (int i = 0; i < argc; ++i) {
     if (std::string(argv[i]) == "--verbose") {
-      verbose = true;
+      setVerboseMode(true);
     }
   }
 
@@ -2238,105 +2247,105 @@ int main(int argc, char **argv) {
 
       Operation &op = *std::next(operations.begin(), opIndex);
       if (auto constOp = dyn_cast<mlir::arith::ConstantOp>(op)) {
-        if(!handleArithConstantOp(constOp, valueMap, verbose)) return 1;
+        if(!handleArithConstantOp(constOp, valueMap)) return 1;
         ++opIndex;
       } else if (auto constOp = dyn_cast<neura::ConstantOp>(op)) {
-        if(!handleNeuraConstantOp(constOp, valueMap, verbose)) return 1;
+        if(!handleNeuraConstantOp(constOp, valueMap)) return 1;
         ++opIndex;
       } else if (auto movOp = dyn_cast<neura::DataMovOp>(op)) {
         valueMap[movOp.getResult()] = valueMap[movOp.getOperand()];
         ++opIndex;
       } else if (auto addOp = dyn_cast<neura::AddOp>(op)) {
-        if(!handleAddOp(addOp, valueMap, verbose)) return 1;
+        if(!handleAddOp(addOp, valueMap)) return 1;
         ++opIndex;
       } else if (auto subOp = dyn_cast<neura::SubOp>(op)) {
-        if(!handleSubOp(subOp, valueMap, verbose)) return 1;
+        if(!handleSubOp(subOp, valueMap)) return 1;
         ++opIndex;
       } else if (auto faddOp = dyn_cast<neura::FAddOp>(op)) {
-        if(!handleFAddOp(faddOp, valueMap, verbose)) return 1;
+        if(!handleFAddOp(faddOp, valueMap)) return 1;
         ++opIndex;
       } else if (auto fsubOp = dyn_cast<neura::FSubOp>(op)) {
-        if(!handleFSubOp(fsubOp, valueMap, verbose)) return 1;
+        if(!handleFSubOp(fsubOp, valueMap)) return 1;
         ++opIndex;
       } else if (auto fmulOp = dyn_cast<neura::FMulOp>(op)) {
-        if(!handleFMulOp(fmulOp, valueMap, verbose)) return 1;
+        if(!handleFMulOp(fmulOp, valueMap)) return 1;
         ++opIndex;
       } else if (auto fdivOp = dyn_cast<neura::FDivOp>(op)) {
-        if(!handleFDivOp(fdivOp, valueMap, verbose)) return 1;
+        if(!handleFDivOp(fdivOp, valueMap)) return 1;
         ++opIndex;
       } else if (auto vfmulOp = dyn_cast<neura::VFMulOp>(op)) {
-        if(!handleVFMulOp(vfmulOp, valueMap, verbose)) return 1;
+        if(!handleVFMulOp(vfmulOp, valueMap)) return 1;
         opIndex++;
       } else if (auto faddFaddOp = dyn_cast<neura::FAddFAddOp>(op)) {
-        if(!handleFAddFAddOp(faddFaddOp, valueMap, verbose)) return 1;
+        if(!handleFAddFAddOp(faddFaddOp, valueMap)) return 1;
         ++opIndex;
       } else if (auto fmulFaddOp = dyn_cast<neura::FMulFAddOp>(op)) {
-        if(!handleFMulFAddOp(fmulFaddOp, valueMap, verbose)) return 1;
+        if(!handleFMulFAddOp(fmulFaddOp, valueMap)) return 1;
         ++opIndex;
       } else if (auto retOp = dyn_cast<func::ReturnOp>(op)) {
-        if(!handleFuncReturnOp(retOp, valueMap, verbose)) return 1;
+        if(!handleFuncReturnOp(retOp, valueMap)) return 1;
         isTerminated = true;
         ++opIndex;
       } else if (auto fcmpOp = dyn_cast<neura::FCmpOp>(op)) {
-        if(!handleFCmpOp(fcmpOp, valueMap, verbose)) return 1;
+        if(!handleFCmpOp(fcmpOp, valueMap)) return 1;
         ++opIndex;
       } else if (auto icmpOp = dyn_cast<neura::ICmpOp>(op)) {
-        if(!handleICmpOp(icmpOp, valueMap, verbose)) return 1;
+        if(!handleICmpOp(icmpOp, valueMap)) return 1;
         ++opIndex;
       } else if (auto orOp = dyn_cast<neura::OrOp>(op)) {
-        if(!handleOrOp(orOp, valueMap, verbose)) return 1;
+        if(!handleOrOp(orOp, valueMap)) return 1;
         ++opIndex;
       } else if (auto notOp = dyn_cast<neura::NotOp>(op)) {
-        if(!handleNotOp(notOp, valueMap, verbose)) return 1;
+        if(!handleNotOp(notOp, valueMap)) return 1;
         ++opIndex;
       } else if (auto selOp = dyn_cast<neura::SelOp>(op)) {
-        if(!handleSelOp(selOp, valueMap, verbose)) return 1;
+        if(!handleSelOp(selOp, valueMap)) return 1;
         ++opIndex;
       } else if (auto castOp = dyn_cast<neura::CastOp>(op)) {
-        if(!handleCastOp(castOp, valueMap, verbose)) return 1;
+        if(!handleCastOp(castOp, valueMap)) return 1;
         ++opIndex;
       } else if (auto loadOp = dyn_cast<neura::LoadOp>(op)) {
-        if(!handleLoadOp(loadOp, valueMap, mem, verbose)) return 1;
+        if(!handleLoadOp(loadOp, valueMap, mem)) return 1;
         ++opIndex;
       } else if (auto storeOp = dyn_cast<neura::StoreOp>(op)) {
-        if(!handleStoreOp(storeOp, valueMap, mem, verbose)) return 1;
+        if(!handleStoreOp(storeOp, valueMap, mem)) return 1;
         ++opIndex;
       } else if (auto gepOp = dyn_cast<neura::GEP>(op)) {
-        if(!handleGEPOp(gepOp, valueMap, verbose)) return 1;
+        if(!handleGEPOp(gepOp, valueMap)) return 1;
         ++opIndex;
       } else if (auto loadIndexOp = dyn_cast<neura::LoadIndexedOp>(op)) {
-        if(!handleLoadIndexedOp(loadIndexOp, valueMap, mem, verbose)) return 1;
+        if(!handleLoadIndexedOp(loadIndexOp, valueMap, mem)) return 1;
         ++opIndex;
       } else if (auto storeIndexOp = dyn_cast<neura::StoreIndexedOp>(op)) {
-        if(!handleStoreIndexedOp(storeIndexOp, valueMap, mem, verbose)) return 1;
+        if(!handleStoreIndexedOp(storeIndexOp, valueMap, mem)) return 1;
         ++opIndex;
       } else if (auto brOp = dyn_cast<neura::Br>(op)) {
-        if(!handleBrOp(brOp, valueMap, currentBlock, lastVisitedBlock, verbose)) return 1;
+        if(!handleBrOp(brOp, valueMap, currentBlock, lastVisitedBlock)) return 1;
         opIndex = 0;
       } else if (auto condBrOp = dyn_cast<neura::CondBr>(op)) {
-        if(!handleCondBrOp(condBrOp, valueMap, currentBlock, lastVisitedBlock, verbose)) return 1;
+        if(!handleCondBrOp(condBrOp, valueMap, currentBlock, lastVisitedBlock)) return 1;
         opIndex = 0;
       } else if (auto phiOp = dyn_cast<neura::PhiOp>(op)) {
-        if(!handlePhiOp(phiOp, valueMap, currentBlock, lastVisitedBlock, verbose)) return 1;
+        if(!handlePhiOp(phiOp, valueMap, currentBlock, lastVisitedBlock)) return 1;
         ++opIndex;
       } else if (auto reserveOp = dyn_cast<neura::ReserveOp>(op)) {
-        if(!handleReserveOp(reserveOp, valueMap, verbose)) return 1;
+        if(!handleReserveOp(reserveOp, valueMap)) return 1;
         ++opIndex;
       } else if (auto ctrlMovOp = dyn_cast<neura::CtrlMovOp>(op)) {
-        if(!handleCtrlMovOp(ctrlMovOp, valueMap, verbose)) return 1;
+        if(!handleCtrlMovOp(ctrlMovOp, valueMap)) return 1;
         ++opIndex;
       } else if (auto returnOp = dyn_cast<neura::ReturnOp>(op)) {
-        if(!handleNeuraReturnOp(returnOp, valueMap, verbose)) return 1;
+        if(!handleNeuraReturnOp(returnOp, valueMap)) return 1;
         isTerminated = true;
         ++opIndex;
       } else if (auto grantPredOp = dyn_cast<neura::GrantPredicateOp>(op)) {
-        if(!handleGrantPredicateOp(grantPredOp, valueMap, verbose)) return 1;
+        if(!handleGrantPredicateOp(grantPredOp, valueMap)) return 1;
         ++opIndex;
       } else if (auto grantOnceOp = dyn_cast<neura::GrantOnceOp>(op)) {
-        if(!handleGrantOnceOp(grantOnceOp, valueMap, verbose)) return 1;
+        if(!handleGrantOnceOp(grantOnceOp, valueMap)) return 1;
         ++opIndex;
       } else if (auto grantAlwaysOp = dyn_cast<neura::GrantAlwaysOp>(op)) {
-        if(!handleGrantAlwaysOp(grantAlwaysOp, valueMap, verbose)) return 1;
+        if(!handleGrantAlwaysOp(grantAlwaysOp, valueMap)) return 1;
         ++opIndex;
       } else {
         llvm::errs() << "[neura-interpreter]  Unhandled op: ";
