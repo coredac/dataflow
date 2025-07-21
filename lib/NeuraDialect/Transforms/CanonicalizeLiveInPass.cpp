@@ -2,6 +2,7 @@
 #include "NeuraDialect/NeuraOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/IR/Block.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Region.h"
@@ -18,26 +19,62 @@ using namespace mlir;
 #include "NeuraDialect/NeuraPasses.h.inc"
 
 namespace {
+// Returns blocks in a region in topological order
+SmallVector<Block *> getBlocksInTopologicalOrder(Region &region) {
+  if (region.empty())
+    return {};
+
+  SmallVector<Block *> ordered_blocks;
+
+  DenseSet<Block *> visited;
+
+  std::function<void(Block *)> dfs = [&](Block *block) {
+    visited.insert(block);
+
+    Operation *terminator = block->getTerminator();
+    if (terminator) {
+      for (unsigned i = 0; i < terminator->getNumSuccessors(); ++i) {
+        Block *succ = terminator->getSuccessor(i);
+        if (!visited.count(succ)) {
+          dfs(succ);
+        }
+      }
+    }
+    ordered_blocks.push_back(block);
+  };
+
+  dfs(&region.front());
+
+  for (Block &block : region) {
+    if (!visited.count(&block)) {
+      dfs(&block);
+    }
+  }
+
+  std::reverse(ordered_blocks.begin(), ordered_blocks.end());
+  return ordered_blocks;
+}
+
 LogicalResult promoteFunctionArgsToConstants(Region &region) {
   if (region.empty()) {
     return success();
   }
 
-  Block &entryBlock = region.front();
-  OpBuilder builder(&entryBlock, entryBlock.begin());
+  Block &entry_block = region.front();
+  OpBuilder builder(&entry_block, entry_block.begin());
 
   // Collects all function arguments.
-  SmallVector<BlockArgument, 4> args(entryBlock.getArguments().begin(),
-                                     entryBlock.getArguments().end());
+  SmallVector<BlockArgument, 4> args(entry_block.getArguments().begin(),
+                                     entry_block.getArguments().end());
 
   // Creates a constant operation for each function argument.
   for (auto [idx, arg] : llvm::enumerate(args)) {
     // For constant operation, the default predicate is true.
-    auto constOp = builder.create<neura::ConstantOp>(
+    auto const_op = builder.create<neura::ConstantOp>(
         arg.getLoc(), arg.getType(),
         builder.getStringAttr("\%arg" + std::to_string(idx)),
         builder.getBoolAttr(true));
-    arg.replaceAllUsesWith(constOp.getResult());
+    arg.replaceAllUsesWith(const_op.getResult());
   }
 
   return success();
@@ -48,7 +85,10 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
     return success();
   }
 
-  for (Block &block : region.getBlocks()) {
+  SmallVector<Block *> sorted_blocks = getBlocksInTopologicalOrder(region);
+
+  for (Block *block_ptr : sorted_blocks) {
+    Block &block = *block_ptr;
     // Skips the entry block.
     if (&block == &region.front())
       continue;
@@ -62,8 +102,8 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
         // If the operand is not a block argument and is defined outside the
         // current block, it is a live-in value.
         if (!dyn_cast<BlockArgument>(operand)) {
-          Operation *defOp = operand.getDefiningOp();
-          if (defOp && defOp->getBlock() != &block) {
+          Operation *def_op = operand.getDefiningOp();
+          if (def_op && def_op->getBlock() != &block) {
             live_ins.insert(operand);
           }
         } else if (dyn_cast<BlockArgument>(operand).getOwner() != &block) {
@@ -78,7 +118,7 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
       continue;
 
     // Adds new block arguments for each live-in value.
-    unsigned originalNumArgs = block.getNumArguments();
+    unsigned original_num_args = block.getNumArguments();
     for (Value value : live_ins) {
       block.addArgument(value.getType(), value.getLoc());
     }
@@ -86,7 +126,7 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
     // Creates a mapping from live-in values to the new block arguments.
     DenseMap<Value, Value> value_to_arg;
     for (unsigned i = 0; i < live_ins.size(); ++i) {
-      value_to_arg[live_ins[i]] = block.getArgument(originalNumArgs + i);
+      value_to_arg[live_ins[i]] = block.getArgument(original_num_args + i);
     }
 
     // Updates all operations in the block to use the new block arguments
@@ -115,7 +155,7 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
             new_operands.push_back(operand);
           }
 
-          // Adds live-in values as new operands
+          // Adds live-in values as new operands.
           for (Value live_in : live_ins) {
             new_operands.push_back(live_in);
           }
@@ -199,12 +239,12 @@ struct CanonicalizeLiveInPass
           return;
         }
         region = &func_op.getBody();
-      } else if (auto llvmFunc = dyn_cast<LLVM::LLVMFuncOp>(op)) {
-        auto accel_attr = llvmFunc->getAttrOfType<StringAttr>("accelerator");
+      } else if (auto llvm_func = dyn_cast<LLVM::LLVMFuncOp>(op)) {
+        auto accel_attr = llvm_func->getAttrOfType<StringAttr>("accelerator");
         if (!accel_attr || accel_attr.getValue() != "neura") {
           return;
         }
-        region = &llvmFunc.getBody();
+        region = &llvm_func.getBody();
       } else {
         return;
       }

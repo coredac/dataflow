@@ -13,7 +13,7 @@ Build LLVM & Neura
  $ mkdir build && cd build
  # May need install ccache and lld.
  $ cmake -G Ninja ../llvm \
-     -DLLVM_ENABLE_PROJECTS="mlir" \
+     -DLLVM_ENABLE_PROJECTS="mlir;clang" \
      -DLLVM_BUILD_EXAMPLES=OFF \
      -DLLVM_TARGETS_TO_BUILD="Native" \
      -DCMAKE_BUILD_TYPE=Release \
@@ -28,6 +28,7 @@ Build LLVM & Neura
      -DCMAKE_C_COMPILER_LAUNCHER=ccache \
      -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
  $ cmake --build . --target check-mlir
+ $ cmake --build . --target check-clang
 ```
 
  - Build Neura:
