@@ -175,13 +175,13 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
   return success();
 }
 
-struct NeuraCanonicalizePass
-    : public PassWrapper<NeuraCanonicalizePass, OperationPass<ModuleOp>> {
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(NeuraCanonicalizePass)
+struct CanonicalizeLiveInPass
+    : public PassWrapper<CanonicalizeLiveInPass, OperationPass<ModuleOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(CanonicalizeLiveInPass)
 
-  StringRef getArgument() const override { return "neura-canonicalize"; }
+  StringRef getArgument() const override { return "canonicalize-live-in"; }
   StringRef getDescription() const override {
-    return "Canonicalizes operations in the Neura dialect";
+    return "Canonicalizes live-in values/operations in each basic block.";
   }
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mlir::neura::NeuraDialect>();
@@ -228,7 +228,7 @@ struct NeuraCanonicalizePass
 } // namespace
 
 namespace mlir::neura {
-std::unique_ptr<Pass> createNeuraCanonicalizePass() {
-  return std::make_unique<NeuraCanonicalizePass>();
+std::unique_ptr<Pass> createCanonicalizeLiveInPass() {
+  return std::make_unique<CanonicalizeLiveInPass>();
 }
 } // namespace mlir::neura

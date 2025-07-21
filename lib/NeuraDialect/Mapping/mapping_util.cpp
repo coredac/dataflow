@@ -376,7 +376,6 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
 
 Operation *mlir::neura::getMaterializedProducer(Value operand) {
   Operation *producer = operand.getDefiningOp();
-  llvm::errs() << "Operand: " << operand << ", producer: " << *producer << "\n";
   assert(isa<neura::DataMovOp>(producer) &&
          "Expected operand to be defined by a DataMovOp");
   // Finds the actual producer.

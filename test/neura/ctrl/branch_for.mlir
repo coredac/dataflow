@@ -7,7 +7,14 @@
 // RUN: mlir-neura-opt %s \
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
-// RUN:   --neura-canonicalize \
+// RUN:   --canonicalize-live-in \
+// RUN:   --leverage-predicated-value \
+// RUN:   | FileCheck %s -check-prefix=CANONICALIZE
+
+// RUN: mlir-neura-opt %s \
+// RUN:   --assign-accelerator \
+// RUN:   --lower-llvm-to-neura \
+// RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \
 // RUN:   | FileCheck %s -check-prefix=CTRL2DATA
@@ -15,7 +22,7 @@
 // RUN: mlir-neura-opt %s \
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
-// RUN:   --neura-canonicalize \
+// RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \
 // RUN:   --insert-data-mov \
@@ -24,7 +31,7 @@
 // RUN: mlir-neura-opt %s \
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
-// RUN:   --neura-canonicalize \
+// RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \
 // RUN:   --insert-data-mov \
@@ -34,7 +41,7 @@
 // RUN: mlir-neura-opt %s \
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
-// RUN:   --neura-canonicalize \
+// RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \
 // RUN:   --insert-data-mov \
@@ -77,7 +84,23 @@ func.func @loop_test() -> f32 {
 // CHECK-NEXT:   "neura.return"(%10) : (!neura.data<f32, i1>) -> ()
 // CHECK-NEXT: }
 
-// CTRL2DATA:   func.func @loop_test() -> f32 attributes {accelerator = "neura"} {
+// CANONICALIZE:       func.func @loop_test() -> f32 attributes {accelerator = "neura"} {
+// CANONICALIZE-NEXT:     %0 = "neura.constant"() <{predicate = true, value = 10 : i64}> : () -> !neura.data<i64, i1>
+// CANONICALIZE-NEXT:     %1 = "neura.constant"() <{predicate = true, value = 0 : i64}> : () -> !neura.data<i64, i1>
+// CANONICALIZE-NEXT:     %2 = "neura.constant"() <{predicate = true, value = 1 : i64}> : () -> !neura.data<i64, i1>
+// CANONICALIZE-NEXT:     %3 = "neura.constant"() <{predicate = true, value = 3.000000e+00 : f32}> : () -> !neura.data<f32, i1>
+// CANONICALIZE-NEXT:     %4 = "neura.constant"() <{predicate = true, value = 0.000000e+00 : f32}> : () -> !neura.data<f32, i1>
+// CANONICALIZE-NEXT:     neura.br %1, %4, %3, %2, %0 : !neura.data<i64, i1>, !neura.data<f32, i1>, !neura.data<f32, i1>, !neura.data<i64, i1>, !neura.data<i64, i1> to ^bb1
+// CANONICALIZE-NEXT:   ^bb1(%5: !neura.data<i64, i1>, %6: !neura.data<f32, i1>, %7: !neura.data<f32, i1>, %8: !neura.data<i64, i1>, %9: !neura.data<i64, i1>):  // 2 preds: ^bb0, ^bb1
+// CANONICALIZE-NEXT:     %10 = "neura.fadd"(%6, %7) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// CANONICALIZE-NEXT:     %11 = "neura.add"(%5, %8) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
+// CANONICALIZE-NEXT:     %12 = "neura.icmp"(%11, %9) <{cmpType = "slt"}> : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i1, i1>
+// CANONICALIZE-NEXT:     neura.cond_br %12 : !neura.data<i1, i1> then %11, %10, %3, %2, %0 : !neura.data<i64, i1>, !neura.data<f32, i1>, !neura.data<f32, i1>, !neura.data<i64, i1>, !neura.data<i64, i1> to ^bb1 else %10 : !neura.data<f32, i1> to ^bb2
+// CANONICALIZE-NEXT:   ^bb2(%13: !neura.data<f32, i1>):  // pred: ^bb1
+// CANONICALIZE-NEXT:     "neura.return"(%13) : (!neura.data<f32, i1>) -> ()
+// CANONICALIZE-NEXT:   }
+
+// CTRL2DATA:       func.func @loop_test() -> f32 attributes {accelerator = "neura"} {
 // CTRL2DATA-NEXT:     %0 = "neura.constant"() <{predicate = true, value = 10 : i64}> : () -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %1 = "neura.grant_always"(%0) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %2 = "neura.grant_once"(%0) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
@@ -119,8 +142,8 @@ func.func @loop_test() -> f32 {
 // CTRL2DATA-NEXT:     "neura.return"(%32) : (!neura.data<f32, i1>) -> ()
 // CTRL2DATA-NEXT:   }
 
-// MOV:      func.func @loop_test() -> f32 attributes {accelerator = "neura"} {
-// MOV-NEXT: %0 = "neura.constant"() <{predicate = true, value = 10 : i64}> : () -> !neura.data<i64, i1>
+// MOV:       func.func @loop_test() -> f32 attributes {accelerator = "neura"} {
+// MOV-NEXT:     %0 = "neura.constant"() <{predicate = true, value = 10 : i64}> : () -> !neura.data<i64, i1>
 // MOV-NEXT:     %1 = "neura.data_mov"(%0) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
 // MOV-NEXT:     %2 = "neura.grant_always"(%1) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
 // MOV-NEXT:     %3 = "neura.data_mov"(%0) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
@@ -194,7 +217,7 @@ func.func @loop_test() -> f32 {
 // MOV-NEXT:     "neura.return"(%65) : (!neura.data<f32, i1>) -> ()
 // MOV-NEXT:   }
 
-// MAPPING: func.func @loop_test() -> f32 attributes {CompiledII = 6 : i32, RecMII = 4 : i32, ResMII = 2 : i32, accelerator = "neura"} {
+// MAPPING:       func.func @loop_test() -> f32 attributes {CompiledII = 6 : i32, RecMII = 4 : i32, ResMII = 2 : i32, accelerator = "neura"} {
 // MAPPING-NEXT:     %0 = "neura.constant"() <{predicate = true, value = 10 : i64}> {mapping_locs = [{id = 5 : i32, resource = "tile", time_step = 0 : i32, x = 1 : i32, y = 1 : i32}]} : () -> !neura.data<i64, i1>
 // MAPPING-NEXT:     %1 = "neura.data_mov"(%0) {mapping_locs = []} : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
 // MAPPING-NEXT:     %2 = "neura.grant_always"(%1) {mapping_locs = [{id = 5 : i32, resource = "tile", time_step = 1 : i32, x = 1 : i32, y = 1 : i32}]} : (!neura.data<i64, i1>) -> !neura.data<i64, i1>

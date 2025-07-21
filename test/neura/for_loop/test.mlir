@@ -7,14 +7,14 @@
 // RUN: mlir-neura-opt %t-kernel.mlir\
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
-// RUN:   --neura-canonicalize \
+// RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
 // RUN:  | FileCheck %s
 
 // RUN: mlir-neura-opt %t-kernel.mlir\
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
-// RUN:   --neura-canonicalize \
+// RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \
 // RUN:   --fuse-patterns \
@@ -23,7 +23,7 @@
 // RUN: mlir-neura-opt %t-kernel.mlir\
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
-// RUN:   --neura-canonicalize \
+// RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \
 // RUN:   --fuse-patterns \
