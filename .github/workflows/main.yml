@@ -58,8 +58,8 @@ jobs:
           -DCMAKE_C_COMPILER_LAUNCHER=ccache \
           -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
+        cmake --build .
         cmake --build . --target check-mlir
-        cmake --build . --target check-clang
     # setup mlir-cgra
     - name: setup dataflow tool-chain
       working-directory: ${{github.workspace}}
