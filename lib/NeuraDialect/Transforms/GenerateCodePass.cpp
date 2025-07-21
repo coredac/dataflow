@@ -21,20 +21,22 @@ using namespace mlir::neura;
 
 namespace {
 
-// calculate direction of data movement
+// Calculates direction of data movement from receiver's perspective.
+// This function calculates the direction FROM which the receiver gets data.
+// For example: if data moves from (1,1) to (1,2), then PE(1,2) receives from South.
 llvm::StringRef calculateDirection(int src_x, int src_y, int dst_x, int dst_y) {
   int dx = dst_x - src_x;
   int dy = dst_y - src_y;
   
   if (dx == 0 && dy == 0) return "Local";
-  if (dx == 0 && dy > 0) return "North";
-  if (dx == 0 && dy < 0) return "South";
-  if (dx > 0 && dy == 0) return "East";
-  if (dx < 0 && dy == 0) return "West";
-  if (dx > 0 && dy > 0) return "NorthEast";
-  if (dx > 0 && dy < 0) return "SouthEast";
-  if (dx < 0 && dy > 0) return "NorthWest";
-  if (dx < 0 && dy < 0) return "SouthWest";
+  if (dx == 0 && dy > 0) return "South";  // data moves up, receiver gets from South
+  if (dx == 0 && dy < 0) return "North";  // data moves down, receiver gets from North
+  if (dx > 0 && dy == 0) return "West";   // data moves right, receiver gets from West
+  if (dx < 0 && dy == 0) return "East";   // data moves left, receiver gets from East
+  if (dx > 0 && dy > 0) return "SouthWest";
+  if (dx > 0 && dy < 0) return "NorthWest";
+  if (dx < 0 && dy > 0) return "SouthEast";
+  if (dx < 0 && dy < 0) return "NorthEast";
   
   return "Unknown";
 }
@@ -72,33 +74,33 @@ struct GenerateCodePass
       if (auto resMII_attr = func->getAttrOfType<IntegerAttr>("ResMII"))
         func_obj["ResMII"] = resMII_attr.getInt();
 
-      // map of instructions organized by PE
-      std::map<std::pair<int, int>, llvm::json::Array> pe_instructions;
+      // Maps instructions organized by tile.
+      std::map<std::pair<int, int>, llvm::json::Array> tile_instructions;
       
-      // map of operation to its mapping location, for calculating data movement direction
+      // Maps operation to its mapping location, for calculating data movement direction.
       std::map<Operation*, std::pair<int, int>> op_to_tile;
       
-      // map of operation to its final tile location (after data movement)
+      // Maps operation to its final tile location (after data movement).
       std::map<Operation*, std::pair<int, int>> op_to_final_tile;
       
-      // map of operation to its original source location (for data flow tracking)
+      // Maps operation to its original source location (for data flow tracking).
       std::map<Operation*, std::pair<int, int>> op_to_source_tile;
       
-      // map of link ID to source and destination tiles
+      // Maps link ID to source and destination tiles.
       std::map<int, std::pair<std::pair<int, int>, std::pair<int, int>>> link_to_tiles;
       
-      // map of PE coordinates to ID
-      std::map<std::pair<int, int>, int> pe_coord_to_id;
-      int pe_id_counter = 0;
+      // Maps tile coordinates to ID.
+      std::map<std::pair<int, int>, int> tile_coord_to_id;
+      int tile_id_counter = 0;
 
-      // first pass: collect all operation tile locations and assign PE ID
+      // First pass: collects all operation tile locations and assigns tile ID.
       func.walk([&](Operation *op) {
         if (isa<func::ReturnOp>(op))
           return;
 
         auto attr_array = op->getAttrOfType<ArrayAttr>("mapping_locs");
         if (!attr_array || attr_array.size() == 0) {
-          // skip if no mapping information
+          // Skips if no mapping information.
           return;
         }
         for (Attribute attr : attr_array) {
@@ -107,15 +109,15 @@ struct GenerateCodePass
             auto id_attr = mlir::dyn_cast<IntegerAttr>(loc.get("id"));
             
             if (resource_attr && resource_attr.getValue() == "tile") {
-              auto xAttr = loc.getAs<IntegerAttr>("x");
-              auto yAttr = loc.getAs<IntegerAttr>("y");
+              auto x_attr = loc.getAs<IntegerAttr>("x");
+              auto y_attr = loc.getAs<IntegerAttr>("y");
               
               int x, y;
-              if (xAttr && yAttr) {
-                x = xAttr.getInt();
-                y = yAttr.getInt();
+              if (x_attr && y_attr) {
+                x = x_attr.getInt();
+                y = y_attr.getInt();
               } else {
-                // if no x, y coordinates, use tile ID as coordinates
+                // If no x, y coordinates, uses tile ID as coordinates.
                 x = id_attr ? id_attr.getInt() : 0;
                 y = 0;
               }
@@ -124,16 +126,16 @@ struct GenerateCodePass
               op_to_final_tile[op] = std::make_pair(x, y);
               op_to_source_tile[op] = std::make_pair(x, y);
               
-              // assign ID to new PE coordinates
+              // Assigns ID to new tile coordinates.
               auto coord = std::make_pair(x, y);
-              if (pe_coord_to_id.find(coord) == pe_coord_to_id.end()) {
-                pe_coord_to_id[coord] = pe_id_counter++;
+              if (tile_coord_to_id.find(coord) == tile_coord_to_id.end()) {
+                tile_coord_to_id[coord] = tile_id_counter++;
               }
-              break; // only process the first tile mapping
-            } else if (resource_attr && resource_attr.getValue() == "link" && id_attr) {
-              int link_id = id_attr.getInt();
-              // For link operations, we need to find the destination tile
-              // Look for operations that use this operation's result
+              break; // Only processes the first tile mapping.
+                          } else if (resource_attr && resource_attr.getValue() == "link" && id_attr) {
+                int link_id = id_attr.getInt();
+                // For link operations, we need to find the destination tile.
+                // Looks for operations that use this operation's result.
               for (Value result : op->getResults()) {
                 for (auto user : result.getUsers()) {
                   auto user_attr_array = user->getAttrOfType<ArrayAttr>("mapping_locs");
@@ -142,13 +144,13 @@ struct GenerateCodePass
                       if (auto user_loc = mlir::dyn_cast<DictionaryAttr>(user_attr)) {
                         auto user_resource_attr = mlir::dyn_cast<StringAttr>(user_loc.get("resource"));
                         if (user_resource_attr && user_resource_attr.getValue() == "tile") {
-                          auto user_xAttr = user_loc.getAs<IntegerAttr>("x");
-                          auto user_yAttr = user_loc.getAs<IntegerAttr>("y");
-                          if (user_xAttr && user_yAttr) {
-                            int dst_x = user_xAttr.getInt();
-                            int dst_y = user_yAttr.getInt();
+                          auto user_x_attr = user_loc.getAs<IntegerAttr>("x");
+                          auto user_y_attr = user_loc.getAs<IntegerAttr>("y");
+                          if (user_x_attr && user_y_attr) {
+                            int dst_x = user_x_attr.getInt();
+                            int dst_y = user_y_attr.getInt();
                             op_to_final_tile[op] = std::make_pair(dst_x, dst_y);
-                            // Set source location for link operation from its operand
+                            // Sets source location for link operation from its operand.
                             for (Value operand : op->getOperands()) {
                               if (auto defining_op = operand.getDefiningOp()) {
                                 auto src_it = op_to_source_tile.find(defining_op);
@@ -166,19 +168,19 @@ struct GenerateCodePass
                   }
                 }
               }
-              // If no destination found, use source location as fallback
+              // If no destination found, uses source location as fallback.
               if (op_to_final_tile.find(op) == op_to_final_tile.end()) {
                 for (Value operand : op->getOperands()) {
                   if (auto defining_op = operand.getDefiningOp()) {
                     auto it = op_to_final_tile.find(defining_op);
                     if (it != op_to_final_tile.end()) {
                       op_to_final_tile[op] = it->second;
-                      // Set source location for link operation
-                      auto src_it = op_to_source_tile.find(defining_op);
-                      if (src_it != op_to_source_tile.end()) {
-                        op_to_source_tile[op] = src_it->second;
-                      }
-                      break;
+                                        // Sets source location for link operation.
+                  auto src_it = op_to_source_tile.find(defining_op);
+                  if (src_it != op_to_source_tile.end()) {
+                    op_to_source_tile[op] = src_it->second;
+                  }
+                  break;
                     }
                   }
                 }
@@ -189,17 +191,17 @@ struct GenerateCodePass
         }
       });
 
-      // second pass: generate instructions and calculate direction
+      // Second pass: generates instructions and calculates direction.
       func.walk([&](Operation *op) {
         if (isa<func::ReturnOp>(op))
           return;
 
         auto attr_array = op->getAttrOfType<ArrayAttr>("mapping_locs");
         if (!attr_array || attr_array.size() == 0) {
-          // skip if no mapping information
+          // Skips if no mapping information.
           return;
         }
-        // extract operation code
+        // Extracts operation code.
         llvm::StringRef fullOpName = op->getName().getStringRef();
         llvm::StringRef opcode = fullOpName;
         size_t dotPos = fullOpName.find_last_of('.');
@@ -207,16 +209,16 @@ struct GenerateCodePass
           opcode = fullOpName.substr(dotPos + 1);
         }
 
-        // create instruction object
+        // Creates instruction object.
         llvm::json::Object inst_obj;
         inst_obj["opcode"] = opcode.str();
         inst_obj["time_step"] = -1;
 
-        // handle constant value
+        // Handles constant value.
         if (opcode == "constant") {
-          // Try to get the constant value from the operation
+          // Tries to get the constant value from the operation.
           if (op->getNumOperands() == 0 && op->getNumResults() == 1) {
-            // For arith.constant, the value is stored as an attribute
+            // For arith.constant, the value is stored as an attribute.
             if (auto value_attr = op->getAttr("value")) {
               if (auto int_attr = mlir::dyn_cast<IntegerAttr>(value_attr)) {
                 inst_obj["constant_value"] = std::to_string(int_attr.getInt());
@@ -227,18 +229,18 @@ struct GenerateCodePass
           }
         }
 
-        // handle operands
+        // Handles operands.
         llvm::json::Array operands_array;
         for (Value operand : op->getOperands()) {
           if (auto defining_op = operand.getDefiningOp()) {
             operands_array.push_back(defining_op->getName().getStringRef().str());
           } else {
             operands_array.push_back("block_arg");
-          }
+        } 
         }
         inst_obj["operands"] = std::move(operands_array);
 
-        // handle mapping locations
+        // Handles mapping locations.
         auto mapping_attr_array = op->getAttrOfType<ArrayAttr>("mapping_locs");
         if (mapping_attr_array) {
           bool processed = false;
@@ -249,41 +251,57 @@ struct GenerateCodePass
               auto timestep_attr = mlir::dyn_cast<IntegerAttr>(loc.get("time_step"));
               
               if (resource_attr && resource_attr.getValue() == "tile") {
-                auto xAttr = loc.getAs<IntegerAttr>("x");
-                auto yAttr = loc.getAs<IntegerAttr>("y");
+                auto x_attr = loc.getAs<IntegerAttr>("x");
+                auto y_attr = loc.getAs<IntegerAttr>("y");
                 
-                if (xAttr && yAttr) {
-                  int x = xAttr.getInt();
-                  int y = yAttr.getInt();
+                if (x_attr && y_attr) {
+                  int x = x_attr.getInt();
+                  int y = y_attr.getInt();
                   int time_step = timestep_attr ? timestep_attr.getInt() : -1;
                   
                   inst_obj["time_step"] = time_step;
                   inst_obj["dst_tile"] = "(" + std::to_string(x) + "," + std::to_string(y) + ")";
                   
-                          // calculate data movement directions
+                          // Calculates data movement directions based on tile coordinates.
         bool found_src = false;
         for (Value operand : op->getOperands()) {
           if (auto defining_op = operand.getDefiningOp()) {
-            // Use source location mapping to find the original source
-            auto src_it = op_to_source_tile.find(defining_op);
-            if (src_it != op_to_source_tile.end()) {
-              int src_x = src_it->second.first;
-              int src_y = src_it->second.second;
-              inst_obj["src_direction"] = calculateDirection(src_x, src_y, x, y).str();
-              inst_obj["src_tile"] = "(" + std::to_string(src_x) + "," + std::to_string(src_y) + ")";
-              found_src = true;
-              break;
+            // Finds the source tile by looking at the defining operation's tile mapping.
+            std::pair<int, int> src_coord = std::make_pair(x, y); // Defaults to current location.
+            
+            auto def_attr_array = defining_op->getAttrOfType<ArrayAttr>("mapping_locs");
+            if (def_attr_array) {
+              for (Attribute attr : def_attr_array) {
+                if (auto loc = mlir::dyn_cast<DictionaryAttr>(attr)) {
+                  auto resource_attr = mlir::dyn_cast<StringAttr>(loc.get("resource"));
+                  if (resource_attr && resource_attr.getValue() == "tile") {
+                    auto x_attr = loc.getAs<IntegerAttr>("x");
+                    auto y_attr = loc.getAs<IntegerAttr>("y");
+                    if (x_attr && y_attr) {
+                      src_coord = std::make_pair(x_attr.getInt(), y_attr.getInt());
+                      break;
+                    }
+                  }
+                }
+              }
             }
+            
+            // Calculates the direction FROM source TO current tile (this is the direction the current tile receives data from).
+            // For example: if data moves from (1,1) to (1,2), then Tile(1,2) receives from South.
+            inst_obj["src_direction"] = calculateDirection(src_coord.first, src_coord.second, x, y).str();
+            inst_obj["src_tile"] = "(" + std::to_string(src_coord.first) + "," + std::to_string(src_coord.second) + ")";
+            found_src = true;
+            break;
           }
         }
-        
-        // if no source tile is found, set to Local
+
+        // If no source tile is found, sets to Local.
         if (!found_src) {
           inst_obj["src_direction"] = "Local";
           inst_obj["src_tile"] = "(" + std::to_string(x) + "," + std::to_string(y) + ")";
         }
         
-        // calculate destination direction by looking at users of this operation
+        // Calculates destination direction by looking at users of this operation.
         bool found_dst = false;
         for (Value result : op->getResults()) {
           for (auto user : result.getUsers()) {
@@ -313,8 +331,8 @@ struct GenerateCodePass
           inst_obj.erase("dst_tile");
         }
                   
-                  // Add instruction to corresponding PE
-                  pe_instructions[std::make_pair(x, y)].push_back(std::move(inst_obj));
+                  // Add instruction to corresponding tile
+                  tile_instructions[std::make_pair(x, y)].push_back(std::move(inst_obj));
                   processed = true;
                   break; // only process the first tile mapping
                 }
@@ -354,9 +372,9 @@ struct GenerateCodePass
                         inst_obj["src_tile"] = "(" + std::to_string(src_x) + "," + std::to_string(src_y) + ")";
                         found_src = true;
                         break;
-                      }
-                    }
-                  }
+            }
+          }
+        }
                   
                   if (!found_src) {
                     inst_obj["src_direction"] = "Local";
@@ -385,8 +403,8 @@ struct GenerateCodePass
                     inst_obj["dst_tile"] = "(" + std::to_string(dst_tile.first) + "," + std::to_string(dst_tile.second) + ")";
                   }
                   
-                  // Add instruction to corresponding PE
-                  pe_instructions[dst_tile].push_back(std::move(inst_obj));
+                  // Add instruction to corresponding tile
+                  tile_instructions[dst_tile].push_back(std::move(inst_obj));
                   processed = true;
                 }
               }
@@ -396,29 +414,30 @@ struct GenerateCodePass
       });
 
       // organize instructions by PE and generate JSON
-      llvm::json::Object pe_instructions_obj;
-      for (auto& pe_pair : pe_instructions) {
-        int x = pe_pair.first.first;
-        int y = pe_pair.first.second;
-        auto& instructions = pe_pair.second;
+      // Organizes instructions by tile and generates JSON.
+      llvm::json::Object tile_instructions_obj;
+      for (std::pair<const std::pair<int, int>, llvm::json::Array>& tile_pair : tile_instructions) {
+        int x = tile_pair.first.first;
+        int y = tile_pair.first.second;
+        llvm::json::Array& instructions = tile_pair.second;
         
-        // get PE ID
+        // Gets tile ID.
         auto coord = std::make_pair(x, y);
-        int pe_id = pe_coord_to_id[coord];
+        int tile_id = tile_coord_to_id[coord];
         
-        llvm::json::Object pe_obj;
-        pe_obj["id"] = pe_id;
-        pe_obj["x"] = x;
-        pe_obj["y"] = y;
-        // add instructions at the end, to ensure order
-        pe_obj["instructions"] = std::move(instructions);
+        llvm::json::Object tile_obj;
+        tile_obj["id"] = tile_id;
+        tile_obj["x"] = x;
+        tile_obj["y"] = y;
+        // Adds instructions at the end, to ensure order.
+        tile_obj["instructions"] = std::move(instructions);
         
-        // use "PE(id)" as key
-        std::string pe_key = "PE(" + std::to_string(pe_id) + ")";
-        pe_instructions_obj[pe_key] = std::move(pe_obj);
+        // Uses "Tile(id)" as key.
+        std::string tile_key = "Tile(" + std::to_string(tile_id) + ")";
+        tile_instructions_obj[tile_key] = std::move(tile_obj);
       }
-      
-      func_obj["pe_instructions"] = std::move(pe_instructions_obj);
+
+      func_obj["tile_instructions"] = std::move(tile_instructions_obj);
       functions_array.push_back(std::move(func_obj));
     }
 
@@ -427,25 +446,25 @@ struct GenerateCodePass
     llvm::json::Object root;
     root["functions"] = std::move(functions_array);
 
-    // Create Generated_Code directory if it doesn't exist
-    if (std::error_code ec = llvm::sys::fs::create_directories("Generated_Code")) {
-        getOperation()->emitError("Failed to create 'Generated_Code' directory: " + ec.message());
+    // Create test/codegenerate directory if it doesn't exist.
+    if (std::error_code ec = llvm::sys::fs::create_directories("test/codegenerate")) {
+        getOperation()->emitError("Failed to create 'test/codegenerate' directory: " + ec.message());
         return signalPassFailure();
     }
     
     std::error_code ec;
-    llvm::raw_fd_ostream json_out("Generated_Code/generated-instructions.json", ec);
+    llvm::raw_fd_ostream json_out("test/codegenerate/generated-instructions.json", ec);
     if (ec) {
-        getOperation()->emitError("Failed to open 'Generated_Code/generated-instructions.json' for writing: " + ec.message());
+        getOperation()->emitError("Failed to open 'test/codegenerate/generated-instructions.json' for writing: " + ec.message());
         return signalPassFailure();
     }
     json_out << llvm::formatv("{0:2}", llvm::json::Value(std::move(root))) << "\n";
     
-    // ASM output
+    // ASM output.
     std::error_code asm_ec;
-    llvm::raw_fd_ostream asm_out("Generated_Code/generated-instructions.asm", asm_ec);
+    llvm::raw_fd_ostream asm_out("test/codegenerate/generated-instructions.asm", asm_ec);
     if (asm_ec) {
-        getOperation()->emitError("Failed to open 'Generated_Code/generated-instructions.asm' for writing: " + asm_ec.message());
+        getOperation()->emitError("Failed to open 'test/codegenerate/generated-instructions.asm' for writing: " + asm_ec.message());
         return signalPassFailure();
     }
     
@@ -473,13 +492,13 @@ struct GenerateCodePass
             auto id_attr = mlir::dyn_cast<IntegerAttr>(loc.get("id"));
             
             if (resource_attr && resource_attr.getValue() == "tile") {
-              auto xAttr = loc.getAs<IntegerAttr>("x");
-              auto yAttr = loc.getAs<IntegerAttr>("y");
+              auto x_attr = loc.getAs<IntegerAttr>("x");
+              auto y_attr = loc.getAs<IntegerAttr>("y");
               
               int x, y;
-              if (xAttr && yAttr) {
-                x = xAttr.getInt();
-                y = yAttr.getInt();
+              if (x_attr && y_attr) {
+                x = x_attr.getInt();
+                y = y_attr.getInt();
               } else {
                 x = id_attr ? id_attr.getInt() : 0;
                 y = 0;
@@ -499,11 +518,11 @@ struct GenerateCodePass
                       if (auto user_loc = mlir::dyn_cast<DictionaryAttr>(user_attr)) {
                         auto user_resource_attr = mlir::dyn_cast<StringAttr>(user_loc.get("resource"));
                         if (user_resource_attr && user_resource_attr.getValue() == "tile") {
-                          auto user_xAttr = user_loc.getAs<IntegerAttr>("x");
-                          auto user_yAttr = user_loc.getAs<IntegerAttr>("y");
-                          if (user_xAttr && user_yAttr) {
-                            int dst_x = user_xAttr.getInt();
-                            int dst_y = user_yAttr.getInt();
+                          auto user_x_attr = user_loc.getAs<IntegerAttr>("x");
+                          auto user_y_attr = user_loc.getAs<IntegerAttr>("y");
+                          if (user_x_attr && user_y_attr) {
+                            int dst_x = user_x_attr.getInt();
+                            int dst_y = user_y_attr.getInt();
                             asm_op_to_final_tile[op] = std::make_pair(dst_x, dst_y);
                             // Set source location for link operation from its operand
                             for (Value operand : op->getOperands()) {
@@ -559,12 +578,12 @@ struct GenerateCodePass
             auto timestep_attr = mlir::dyn_cast<IntegerAttr>(loc.get("time_step"));
             
             if (resource_attr && resource_attr.getValue() == "tile") {
-              auto xAttr = loc.getAs<IntegerAttr>("x");
-              auto yAttr = loc.getAs<IntegerAttr>("y");
+              auto x_attr = loc.getAs<IntegerAttr>("x");
+              auto y_attr = loc.getAs<IntegerAttr>("y");
               
-              if (xAttr && yAttr && timestep_attr) {
-                int x = xAttr.getInt();
-                int y = yAttr.getInt();
+              if (x_attr && y_attr && timestep_attr) {
+                int x = x_attr.getInt();
+                int y = y_attr.getInt();
                 int time_step = timestep_attr.getInt();
                 pe_time_ops[std::make_pair(x, y)][time_step].push_back(op);
                 break;
@@ -575,40 +594,118 @@ struct GenerateCodePass
       });
       
       // Generate ASM for each PE
-      for (auto& pe_pair : pe_time_ops) {
+      for (std::pair<const std::pair<int, int>, std::map<int, std::vector<Operation*>>>& pe_pair : pe_time_ops) {
         int x = pe_pair.first.first;
         int y = pe_pair.first.second;
-        auto& time_ops = pe_pair.second;
+        std::map<int, std::vector<Operation*>>& time_ops = pe_pair.second;
         
         asm_out << "PE(" << x << "," << y << "):\n";
         asm_out << "{\n";
         
-        // Generate Entry conditions based on input directions
+        // Generate Entry conditions based on input directions.
         std::set<std::string> input_directions;
-        for (auto& time_pair : time_ops) {
+        for (std::pair<const int, std::vector<Operation*>>& time_pair : time_ops) {
           for (Operation* op : time_pair.second) {
-            // Find source directions for this operation
+            // Find source directions for this operation.
             for (Value operand : op->getOperands()) {
               if (auto defining_op = operand.getDefiningOp()) {
-                // Use source location mapping to find the original source
-                auto src_it = asm_op_to_source_tile.find(defining_op);
-                if (src_it != asm_op_to_source_tile.end()) {
-                  int src_x = src_it->second.first;
-                  int src_y = src_it->second.second;
-                  std::string direction = calculateDirection(src_x, src_y, x, y).str();
-                  if (direction != "Local") {
-                    input_directions.insert(direction);
+                // Find the source tile by looking at the defining operation's tile mapping.
+                std::pair<int, int> src_coord = std::make_pair(x, y); // Default to current location.
+                
+                auto def_attr_array = defining_op->getAttrOfType<ArrayAttr>("mapping_locs");
+                if (def_attr_array) {
+                  for (Attribute attr : def_attr_array) {
+                    if (auto loc = mlir::dyn_cast<DictionaryAttr>(attr)) {
+                      auto resource_attr = mlir::dyn_cast<StringAttr>(loc.get("resource"));
+                      if (resource_attr && resource_attr.getValue() == "tile") {
+                        auto x_attr = loc.getAs<IntegerAttr>("x");
+                        auto y_attr = loc.getAs<IntegerAttr>("y");
+                        if (x_attr && y_attr) {
+                          src_coord = std::make_pair(x_attr.getInt(), y_attr.getInt());
+                          break;
+                        }
+                      }
+                    }
                   }
+                }
+                
+                std::string direction = calculateDirection(src_coord.first, src_coord.second, x, y).str();
+                if (direction != "Local") {
+                  input_directions.insert(direction);
                 }
               }
             }
           }
         }
         
+        // Also check for link operations that target this tile.
+        func.walk([&](Operation *op) {
+          if (isa<func::ReturnOp>(op))
+            return;
+
+          auto attr_array = op->getAttrOfType<ArrayAttr>("mapping_locs");
+          if (!attr_array || attr_array.size() == 0) {
+            return;
+          }
+          
+          for (Attribute attr : attr_array) {
+            if (auto loc = mlir::dyn_cast<DictionaryAttr>(attr)) {
+              auto resource_attr = mlir::dyn_cast<StringAttr>(loc.get("resource"));
+              if (resource_attr && resource_attr.getValue() == "link") {
+                // Check if this link operation targets the current tile.
+                for (Value result : op->getResults()) {
+                  for (auto user : result.getUsers()) {
+                    auto user_attr_array = user->getAttrOfType<ArrayAttr>("mapping_locs");
+                    if (user_attr_array) {
+                      for (Attribute user_attr : user_attr_array) {
+                        if (auto user_loc = mlir::dyn_cast<DictionaryAttr>(user_attr)) {
+                          auto user_resource_attr = mlir::dyn_cast<StringAttr>(user_loc.get("resource"));
+                          if (user_resource_attr && user_resource_attr.getValue() == "tile") {
+                            auto user_x_attr = user_loc.getAs<IntegerAttr>("x");
+                            auto user_y_attr = user_loc.getAs<IntegerAttr>("y");
+                            if (user_x_attr && user_y_attr && user_x_attr.getInt() == x && user_y_attr.getInt() == y) {
+                              // This link operation targets the current tile, find its source.
+                              for (Value operand : op->getOperands()) {
+                                if (auto defining_op = operand.getDefiningOp()) {
+                                  auto def_attr_array = defining_op->getAttrOfType<ArrayAttr>("mapping_locs");
+                                  if (def_attr_array) {
+                                    for (Attribute def_attr : def_attr_array) {
+                                      if (auto def_loc = mlir::dyn_cast<DictionaryAttr>(def_attr)) {
+                                        auto def_resource_attr = mlir::dyn_cast<StringAttr>(def_loc.get("resource"));
+                                        if (def_resource_attr && def_resource_attr.getValue() == "tile") {
+                                          auto def_x_attr = def_loc.getAs<IntegerAttr>("x");
+                                          auto def_y_attr = def_loc.getAs<IntegerAttr>("y");
+                                          if (def_x_attr && def_y_attr) {
+                                            int src_x = def_x_attr.getInt();
+                                            int src_y = def_y_attr.getInt();
+                                            std::string direction = calculateDirection(src_x, src_y, x, y).str();
+                                            if (direction != "Local") {
+                                              input_directions.insert(direction);
+                                            }
+                                            break;
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        });
+        
         // Write Entry line
         asm_out << "    Entry ";
         bool first = true;
-        for (const auto& dir : input_directions) {
+        for (const std::string& dir : input_directions) {
           if (!first) asm_out << ", ";
           asm_out << "[" << dir << ", R]";
           first = false;
@@ -626,9 +723,9 @@ struct GenerateCodePass
         }
         
         // Generate operations for each time step
-        for (auto& time_pair : time_ops) {
+        for (std::pair<const int, std::vector<Operation*>>& time_pair : time_ops) {
           int time_step = time_pair.first;
-          auto& ops = time_pair.second;
+          std::vector<Operation*>& ops = time_pair.second;
           
           for (Operation* op : ops) {
             asm_out << "        {\n";
@@ -654,16 +751,28 @@ struct GenerateCodePass
               for (Value operand : op->getOperands()) {
                 asm_out << ", [";
                 if (auto defining_op = operand.getDefiningOp()) {
-                  // Use source location mapping to find the original source
-                  auto src_it = asm_op_to_source_tile.find(defining_op);
-                  if (src_it != asm_op_to_source_tile.end()) {
-                    int src_x = src_it->second.first;
-                    int src_y = src_it->second.second;
-                    std::string direction = calculateDirection(src_x, src_y, x, y).str();
-                    asm_out << direction << ", R";
-                  } else {
-                    asm_out << "Local, R";
+                  // Find the source PE by looking at the defining operation's tile mapping
+                  std::pair<int, int> src_coord = std::make_pair(x, y); // default to current location
+                  
+                  auto def_attr_array = defining_op->getAttrOfType<ArrayAttr>("mapping_locs");
+                  if (def_attr_array) {
+                    for (Attribute attr : def_attr_array) {
+                      if (auto loc = mlir::dyn_cast<DictionaryAttr>(attr)) {
+                        auto resource_attr = mlir::dyn_cast<StringAttr>(loc.get("resource"));
+                        if (resource_attr && resource_attr.getValue() == "tile") {
+                          auto x_attr = loc.getAs<IntegerAttr>("x");
+                          auto y_attr = loc.getAs<IntegerAttr>("y");
+                          if (x_attr && y_attr) {
+                            src_coord = std::make_pair(x_attr.getInt(), y_attr.getInt());
+                            break;
+                          }
+                        }
+                      }
+                    }
                   }
+                  
+                  std::string direction = calculateDirection(src_coord.first, src_coord.second, x, y).str();
+                  asm_out << direction << ", R";
                 } else {
                   asm_out << "Local, R";
                 }
