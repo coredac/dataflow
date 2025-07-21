@@ -11,7 +11,7 @@ add_mlir_library(
     MapToAcceleratorPass.cpp
     GenerateCodePass.cpp
     FuseControlFlowPass.cpp
-    NeuraCanonicalizePass.cpp
+    CanonicalizeLiveInPass.cpp
 
     DEPENDS
     MLIRNeuraTransformsIncGen

@@ -1,14 +1,14 @@
 // RUN: mlir-neura-opt %s \
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
-// RUN:   --neura-canonicalize \
+// RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
 // RUN:   | FileCheck %s
 
 // RUN: mlir-neura-opt %s \
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
-// RUN:   --neura-canonicalize \
+// RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \
 // RUN:   | FileCheck %s -check-prefix=CTRL2DATA

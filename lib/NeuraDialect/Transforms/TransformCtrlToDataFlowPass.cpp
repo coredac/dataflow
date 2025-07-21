@@ -668,8 +668,9 @@ struct TransformCtrlToDataFlowPass
         GrantPredicateInEntryBlock(&region->front(), builder);
         assertLiveOutValuesDominatedByBlockArgs(*region);
       } else if (auto llvmFunc = dyn_cast<LLVM::LLVMFuncOp>(op)) {
-        if (llvmFunc.isDeclaration())
+        if (llvmFunc.isDeclaration()) {
           return;
+        }
         auto accel_attr = llvmFunc->getAttrOfType<StringAttr>("accelerator");
         if (!accel_attr || accel_attr.getValue() != "neura") {
           return;
