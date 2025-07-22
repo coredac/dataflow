@@ -95,9 +95,6 @@ struct GenerateCodePass
 
       // First pass: collects all operation tile locations and assigns tile ID.
       func.walk([&](Operation *op) {
-        if (isa<func::ReturnOp>(op))
-          return;
-
         auto attr_array = op->getAttrOfType<ArrayAttr>("mapping_locs");
         if (!attr_array || attr_array.size() == 0) {
           // Skips if no mapping information.
@@ -197,9 +194,6 @@ struct GenerateCodePass
 
       // Second pass: generates instructions and calculates direction.
       func.walk([&](Operation *op) {
-        if (isa<func::ReturnOp>(op))
-          return;
-
         auto attr_array = op->getAttrOfType<ArrayAttr>("mapping_locs");
         if (!attr_array || attr_array.size() == 0) {
           // Skips if no mapping information.
@@ -494,9 +488,6 @@ struct GenerateCodePass
       std::map<Operation*, std::pair<int, int>> asm_op_to_source_tile;
       
       func.walk([&](Operation *op) {
-        if (isa<func::ReturnOp>(op))
-          return;
-
         auto attr_array = op->getAttrOfType<ArrayAttr>("mapping_locs");
         if (!attr_array || attr_array.size() == 0) {
           return;
@@ -585,9 +576,6 @@ struct GenerateCodePass
       std::map<std::pair<int, int>, std::map<int, std::vector<Operation*>>> pe_time_ops;
       
       func.walk([&](Operation *op) {
-        if (isa<func::ReturnOp>(op))
-          return;
-
         auto attr_array = op->getAttrOfType<ArrayAttr>("mapping_locs");
         if (!attr_array || attr_array.size() == 0) {
           return;
@@ -662,9 +650,6 @@ struct GenerateCodePass
         
         // Also check for link operations that target this tile.
         func.walk([&](Operation *op) {
-          if (isa<func::ReturnOp>(op))
-            return;
-
           auto attr_array = op->getAttrOfType<ArrayAttr>("mapping_locs");
           if (!attr_array || attr_array.size() == 0) {
             return;
