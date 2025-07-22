@@ -1,5 +1,6 @@
 // RUN: mlir-opt %s --lower-affine --convert-scf-to-cf --convert-cf-to-llvm -o %t-llvm.mlir
 // RUN: mlir-neura-opt %t-llvm.mlir --assign-accelerator --lower-arith-to-neura --lower-memref-to-neura --lower-builtin-to-neura --lower-llvm-to-neura | FileCheck %s
+// RUN: mlir-neura-opt %t-llvm.mlir --assign-accelerator --lower-arith-to-neura --lower-memref-to-neura --lower-builtin-to-neura --lower-llvm-to-neura --canonicalize-cast | FileCheck %s --check-prefix=CAST
 // RUN: mlir-neura-opt %t-llvm.mlir --assign-accelerator --lower-arith-to-neura --lower-memref-to-neura --lower-builtin-to-neura --lower-llvm-to-neura --leverage-predicated-value --transform-ctrl-to-data-flow | FileCheck %s -check-prefix=CTRL2DATA
 
 module attributes {} {
@@ -49,6 +50,32 @@ module attributes {} {
 // CHECK-NEXT: ^bb6:  // pred: ^bb1
 // CHECK-NEXT:   "neura.return"(%6) : (i32) -> ()
 // CHECK-NEXT: }
+
+// CAST:     func.func @_Z27perfect_nested_reduction_2dPA128_i(%arg0: memref<?x128xi32>) -> i32 attributes {accelerator = "neura", llvm.linkage = #llvm.linkage<external>} {
+// CAST-NEXT:     %0 = "neura.constant"() <{predicate = true, value = 1 : i64}> : () -> i64
+// CAST-NEXT:     %1 = "neura.constant"() <{predicate = true, value = 128 : i64}> : () -> i64
+// CAST-NEXT:     %2 = "neura.constant"() <{predicate = true, value = 0 : i32}> : () -> i32
+// CAST-NEXT:     %3 = "neura.constant"() <{predicate = true, value = 0 : i64}> : () -> i64
+// CAST-NEXT:     neura.br %3, %2 : i64, i32 to ^bb1
+// CAST-NEXT:   ^bb1(%4: i64, %5: i32):  // 2 preds: ^bb0, ^bb5
+// CAST-NEXT:     %6 = "neura.icmp"(%4, %1) <{cmpType = "slt"}> : (i64, i64) -> i1
+// CAST-NEXT:     neura.cond_br %6 : i1 then to ^bb2 else to ^bb6
+// CAST-NEXT:   ^bb2:  // pred: ^bb1
+// CAST-NEXT:     neura.br %3, %5 : i64, i32 to ^bb3
+// CAST-NEXT:   ^bb3(%7: i64, %8: i32):  // 2 preds: ^bb2, ^bb4
+// CAST-NEXT:     %9 = "neura.icmp"(%7, %1) <{cmpType = "slt"}> : (i64, i64) -> i1
+// CAST-NEXT:     neura.cond_br %9 : i1 then to ^bb4 else to ^bb5
+// CAST-NEXT:   ^bb4:  // pred: ^bb3
+// CAST-NEXT:     %10 = neura.load_indexed %arg0[%4, %7 : i64, i64] memref<?x128xi32> : i32
+// CAST-NEXT:     %11 = "neura.add"(%8, %10) : (i32, i32) -> i32
+// CAST-NEXT:     %12 = "neura.add"(%7, %0) : (i64, i64) -> i64
+// CAST-NEXT:     neura.br %12, %11 : i64, i32 to ^bb3
+// CAST-NEXT:   ^bb5:  // pred: ^bb3
+// CAST-NEXT:     %13 = "neura.add"(%4, %0) : (i64, i64) -> i64
+// CAST-NEXT:     neura.br %13, %8 : i64, i32 to ^bb1
+// CAST-NEXT:   ^bb6:  // pred: ^bb1
+// CAST-NEXT:     "neura.return"(%5) : (i32) -> ()
+// CAST-NEXT:   }
 
 // CTRL2DATA: func.func @_Z27perfect_nested_reduction_2dPA128_i(%arg0: memref<?x128xi32>) -> i32 attributes {accelerator = "neura", llvm.linkage = #llvm.linkage<external>} {
 // CTRL2DATA-NEXT:     %0 = "neura.constant"() <{predicate = true, value = 1 : index}> : () -> !neura.data<index, i1>

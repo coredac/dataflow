@@ -1,5 +1,6 @@
 // RUN: mlir-opt %s --lower-affine --convert-scf-to-cf --convert-cf-to-llvm -o %t-llvm.mlir
 // RUN: mlir-neura-opt %t-llvm.mlir --assign-accelerator --lower-arith-to-neura --lower-memref-to-neura --lower-builtin-to-neura --lower-llvm-to-neura | FileCheck %s
+// RUN: mlir-neura-opt %t-llvm.mlir --assign-accelerator --lower-arith-to-neura --lower-memref-to-neura --lower-builtin-to-neura --lower-llvm-to-neura --canonicalize-cast | FileCheck %s --check-prefix=CAST
 // RUN: mlir-neura-opt %t-llvm.mlir --assign-accelerator --lower-arith-to-neura --lower-memref-to-neura --lower-builtin-to-neura --lower-llvm-to-neura --leverage-predicated-value --transform-ctrl-to-data-flow | FileCheck %s -check-prefix=CTRL2DATA
 
 module attributes {} {
@@ -35,6 +36,23 @@ module attributes {} {
 // CHECK-NEXT:     "neura.return"(%6) : (i32) -> ()
 // CHECK-NEXT:   }
 
+// CAST:     func.func @_Z10simpleloopv() -> i32 attributes {accelerator = "neura", llvm.linkage = #llvm.linkage<external>} {
+// CAST-NEXT:     %0 = "neura.constant"() <{predicate = true, value = 1 : i64}> : () -> i64
+// CAST-NEXT:     %1 = "neura.constant"() <{predicate = true, value = 128 : i64}> : () -> i64
+// CAST-NEXT:     %2 = "neura.constant"() <{predicate = true, value = 0 : i32}> : () -> i32
+// CAST-NEXT:     %3 = "neura.constant"() <{predicate = true, value = 0 : i64}> : () -> i64
+// CAST-NEXT:     neura.br %3, %2 : i64, i32 to ^bb1
+// CAST-NEXT:   ^bb1(%4: i64, %5: i32):  // 2 preds: ^bb0, ^bb2
+// CAST-NEXT:     %6 = "neura.icmp"(%4, %1) <{cmpType = "slt"}> : (i64, i64) -> i1
+// CAST-NEXT:     neura.cond_br %6 : i1 then to ^bb2 else to ^bb3
+// CAST-NEXT:   ^bb2:  // pred: ^bb1
+// CAST-NEXT:     %7 = "neura.cast"(%4) <{cast_type = "i64_to_i32"}> : (i64) -> i32
+// CAST-NEXT:     %8 = "neura.add"(%5, %7) : (i32, i32) -> i32
+// CAST-NEXT:     %9 = "neura.add"(%4, %0) : (i64, i64) -> i64
+// CAST-NEXT:     neura.br %9, %8 : i64, i32 to ^bb1
+// CAST-NEXT:   ^bb3:  // pred: ^bb1
+// CAST-NEXT:     "neura.return"(%5) : (i32) -> ()
+// CAST-NEXT:   }
 
 // CTRL2DATA: func.func @_Z10simpleloopv() -> i32 attributes {accelerator = "neura", llvm.linkage = #llvm.linkage<external>} {
 // CTRL2DATA-NEXT:     %0 = "neura.constant"() <{predicate = true, value = 1 : index}> : () -> !neura.data<index, i1>
