@@ -1,8 +1,8 @@
+#include "NeuraDialect/NeuraOps.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "mlir/IR/PatternMatch.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "NeuraDialect/NeuraOps.h"
 
 using namespace mlir;
 
@@ -96,11 +96,14 @@ struct FuseFMulFAddPattern : public OpRewritePattern<neura::FAddOp> {
   }
 };
 
-struct FusePatternsPass : public PassWrapper<FusePatternsPass, OperationPass<ModuleOp>> {
+struct FusePatternsPass
+    : public PassWrapper<FusePatternsPass, OperationPass<ModuleOp>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(FusePatternsPass)
 
   StringRef getArgument() const override { return "fuse-patterns"; }
-  StringRef getDescription() const override { return "Apply Neura fusion patterns."; }
+  StringRef getDescription() const override {
+    return "Apply Neura fusion patterns.";
+  }
 
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
@@ -131,4 +134,3 @@ std::unique_ptr<Pass> createFusePatternsPass() {
   return std::make_unique<FusePatternsPass>();
 }
 } // namespace mlir::neura
-

@@ -75,4 +75,15 @@ def FuseControlFlow: Pass<"fuse-control-flow", "ModuleOp">{
   let constructor = "neura::createFuseControlFlowPass()";
 }
 
+def CanonicalizeLiveIn : Pass<"canonicalize-live-in", "ModuleOp"> {
+  let summary = "Canonicalizes live-in values/operations in each basic block.";
+  let description = [{
+    This pass applies canonicalization transformations to Neura dialect operations.
+    The canonicalization includes:
+    1. Converting all live-in values of each basic block to block arguments.
+    2. Promoting function arguments to neura constant operations.
+  }];
+  let constructor = "neura::createCanonicalizeLiveInPass()";
+}
+
 #endif // NEURA_PASSES_TD

@@ -48,6 +48,7 @@ set(FILECHECK ${LLVM_TOOLS_BINARY_DIR}/FileCheck)
 set(MLIR_OPT ${LLVM_TOOLS_BINARY_DIR}/mlir-opt)
 set(MLIR_TRANSLATE ${LLVM_TOOLS_BINARY_DIR}/mlir-translate)
 set(LLC ${LLVM_TOOLS_BINARY_DIR}/llc)
+set(CLANG ${LLVM_TOOLS_BINARY_DIR}/clang)
 
 # Configures lit.cfg from lit.cfg.in
 configure_file(

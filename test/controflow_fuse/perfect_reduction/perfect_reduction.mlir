@@ -19,10 +19,10 @@ module attributes {} {
 
 
 // CHECK: func.func @_Z27perfect_nested_reduction_2dPA128_i(%arg0: memref<?x128xi32>) -> i32 attributes {accelerator = "neura", llvm.linkage = #llvm.linkage<external>} {
-// CHECK-NEXT:   %0 = "neura.constant"() <{value = 1 : index}> : () -> index
-// CHECK-NEXT:   %1 = "neura.constant"() <{value = 128 : index}> : () -> index
-// CHECK-NEXT:   %2 = "neura.constant"() <{value = 0 : i32}> : () -> i32
-// CHECK-NEXT:   %3 = "neura.constant"() <{value = 0 : index}> : () -> index
+// CHECK-NEXT:   %0 = "neura.constant"() <{predicate = true, value = 1 : index}> : () -> index
+// CHECK-NEXT:   %1 = "neura.constant"() <{predicate = true, value = 128 : index}> : () -> index
+// CHECK-NEXT:   %2 = "neura.constant"() <{predicate = true, value = 0 : i32}> : () -> i32
+// CHECK-NEXT:   %3 = "neura.constant"() <{predicate = true, value = 0 : index}> : () -> index
 // CHECK-NEXT:   %4 = "neura.cast"(%3) <{cast_type = "index_to_int"}> : (index) -> i64
 // CHECK-NEXT:   neura.br %4, %2 : i64, i32 to ^bb1
 // CHECK-NEXT: ^bb1(%5: i64, %6: i32):  // 2 preds: ^bb0, ^bb5
@@ -51,13 +51,13 @@ module attributes {} {
 // CHECK-NEXT: }
 
 // CTRL2DATA: func.func @_Z27perfect_nested_reduction_2dPA128_i(%arg0: memref<?x128xi32>) -> i32 attributes {accelerator = "neura", llvm.linkage = #llvm.linkage<external>} {
-// CTRL2DATA-NEXT:     %0 = "neura.constant"() <{value = 1 : index}> : () -> !neura.data<index, i1>
+// CTRL2DATA-NEXT:     %0 = "neura.constant"() <{predicate = true, value = 1 : index}> : () -> !neura.data<index, i1>
 // CTRL2DATA-NEXT:     %1 = "neura.grant_always"(%0) : (!neura.data<index, i1>) -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %2 = "neura.constant"() <{value = 128 : index}> : () -> !neura.data<index, i1>
+// CTRL2DATA-NEXT:     %2 = "neura.constant"() <{predicate = true, value = 128 : index}> : () -> !neura.data<index, i1>
 // CTRL2DATA-NEXT:     %3 = "neura.grant_always"(%2) : (!neura.data<index, i1>) -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %4 = "neura.constant"() <{value = 0 : i32}> : () -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %4 = "neura.constant"() <{predicate = true, value = 0 : i32}> : () -> !neura.data<i32, i1>
 // CTRL2DATA-NEXT:     %5 = "neura.grant_once"(%4) : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %6 = "neura.constant"() <{value = 0 : index}> : () -> !neura.data<index, i1>
+// CTRL2DATA-NEXT:     %6 = "neura.constant"() <{predicate = true, value = 0 : index}> : () -> !neura.data<index, i1>
 // CTRL2DATA-NEXT:     %7 = "neura.grant_always"(%6) : (!neura.data<index, i1>) -> !neura.data<index, i1>
 // CTRL2DATA-NEXT:     %8 = "neura.cast"(%6) <{cast_type = "index_to_int"}> : (!neura.data<index, i1>) -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %9 = "neura.grant_once"(%8) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>

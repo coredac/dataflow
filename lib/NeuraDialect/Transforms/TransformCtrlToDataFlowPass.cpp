@@ -141,7 +141,6 @@ void assertLiveOutValuesDominatedByBlockArgs(Region &region) {
       continue;
     }
 
-    llvm::errs() << "[ctrl2data] Checking block: " << block << "\n";
     DenseSet<Value> live_out_values;
     for (Operation &op : block) {
       for (Value result : op.getResults()) {
@@ -160,13 +159,12 @@ void assertLiveOutValuesDominatedByBlockArgs(Region &region) {
 
     DenseSet<Value> dominated_values;
 
-    for (Operation &op : block) {
-      for (Value operand : op.getOperands()) {
-        if (!operand.getDefiningOp() ||
-            operand.getDefiningOp()->getBlock() != &block) {
-          dominated_values.insert(operand);
-        }
-      }
+    if (block.getNumArguments() == 0 && !live_out_values.empty()) {
+      assert(false && "Block without arguments has live-out values");
+    }
+
+    for (BlockArgument arg : block.getArguments()) {
+      dominated_values.insert(arg);
     }
 
     bool changed = true;
@@ -188,7 +186,6 @@ void assertLiveOutValuesDominatedByBlockArgs(Region &region) {
       }
     }
     for (Value live_out : live_out_values) {
-      llvm::errs() << "[ctrl2data] Live-out value: " << live_out << "\n";
       if (!dominated_values.count(live_out)) {
         assert(false && "Live-out value not dominated by block arguments or "
                         "live-in values");
@@ -307,10 +304,11 @@ Value getPrecessedCondition(Value condition, bool is_not_condition,
   return not_condition;
 }
 
-void createReserveAndPhiOps(Region &region, ControlFlowInfo &ctrl_info,
-                            llvm::MapVector<BlockArgument, Value> &arg_to_reserve,
-                            llvm::MapVector<BlockArgument, Value> &arg_to_phi_result,
-                            OpBuilder &builder) {
+void createReserveAndPhiOps(
+    Region &region, ControlFlowInfo &ctrl_info,
+    llvm::MapVector<BlockArgument, Value> &arg_to_reserve,
+    llvm::MapVector<BlockArgument, Value> &arg_to_phi_result,
+    OpBuilder &builder) {
   DominanceInfo dom_info(region.getParentOp());
 
   // ================================================
@@ -575,8 +573,7 @@ void createReserveAndPhiOps(Region &region, ControlFlowInfo &ctrl_info,
 }
 
 // Transforms control flow into data flow.
-void transformControlFlowToDataFlow(Region &region,
-                                    ControlFlowInfo &ctrl_info,
+void transformControlFlowToDataFlow(Region &region, ControlFlowInfo &ctrl_info,
                                     DominanceInfo &dom_info,
                                     OpBuilder &builder) {
 
@@ -671,7 +668,9 @@ struct TransformCtrlToDataFlowPass
         GrantPredicateInEntryBlock(&region->front(), builder);
         assertLiveOutValuesDominatedByBlockArgs(*region);
       } else if (auto llvmFunc = dyn_cast<LLVM::LLVMFuncOp>(op)) {
-        if (llvmFunc.isDeclaration()) return;
+        if (llvmFunc.isDeclaration()) {
+          return;
+        }
         auto accel_attr = llvmFunc->getAttrOfType<StringAttr>("accelerator");
         if (!accel_attr || accel_attr.getValue() != "neura") {
           return;
@@ -680,7 +679,6 @@ struct TransformCtrlToDataFlowPass
         domInfo = DominanceInfo(llvmFunc);
         GrantPredicateInEntryBlock(&region->front(), builder);
         assertLiveOutValuesDominatedByBlockArgs(*region);
-        // Skips SSA live-out dominance assert.
       } else {
         return;
       }
