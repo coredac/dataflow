@@ -86,4 +86,15 @@ def CanonicalizeLiveIn : Pass<"canonicalize-live-in", "ModuleOp"> {
   let constructor = "neura::createCanonicalizeLiveInPass()";
 }
 
+def CanonicalizeCast : Pass<"canonicalize-cast", "ModuleOp"> {
+  let summary = "Canonicalizes cast operations in the Neura dialect";
+  let description = [{
+    This pass applies canonicalization transformations to neura::cast operations.
+    The canonicalization includes:
+    1. Removing redundant casts.
+    2. Converting index (i64) types to i64 (index).
+  }];
+  let constructor = "neura::createCanonicalizeCastPass()";
+}
+
 #endif // NEURA_PASSES_TD
