@@ -1,6 +1,6 @@
 PE(0,2):
 {
-    Entry [West, R] => Once {
+    Entry [East, R] => Once {
         {
             RETURN, [Local, R]
             NOP
@@ -19,9 +19,9 @@ PE(1,1):
 
 PE(1,2):
 {
-    Entry [North, R], [West, R] => Once {
+    Entry [East, R], [South, R] => Once {
         {
-            FADD, [North, R], [West, R] -> [West, R]
+            FADD, [South, R], [East, R] -> [West, R]
         }
     }
 }
