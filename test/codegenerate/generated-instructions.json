@@ -49,7 +49,7 @@
               "operands": [
                 "arith.constant"
               ],
-              "src_direction": "North",
+              "src_direction": "South",
               "src_tile": "(1,1)",
               "time_step": 0
             },
@@ -60,7 +60,7 @@
               "operands": [
                 "arith.constant"
               ],
-              "src_direction": "West",
+              "src_direction": "East",
               "src_tile": "(2,2)",
               "time_step": 0
             },
@@ -90,7 +90,7 @@
               "operands": [
                 "neura.fadd"
               ],
-              "src_direction": "West",
+              "src_direction": "East",
               "src_tile": "(1,2)",
               "time_step": 1
             },
