@@ -21,23 +21,20 @@ using namespace mlir::neura;
 
 namespace {
 
-// Calculates direction of data movement from receiver's perspective.
-// This function calculates the direction FROM which the receiver gets data.
-// For example: if data moves from (1,1) to (1,2), then PE(1,2) receives from South.
-llvm::StringRef calculateDirection(int src_x, int src_y, int dst_x, int dst_y) {
+// Calculates direction of data movement from sender's perspective.
+// For example: if data moves from (1,1) to (1,2), then PE(1,1) sends to North.
+llvm::StringRef calculateSendDirection(int src_x, int src_y, int dst_x, int dst_y) {
   int dx = dst_x - src_x;
   int dy = dst_y - src_y;
-  
   if (dx == 0 && dy == 0) return "Local";
-  if (dx == 0 && dy > 0) return "South";  // data moves up, receiver gets from South
-  if (dx == 0 && dy < 0) return "North";  // data moves down, receiver gets from North
-  if (dx > 0 && dy == 0) return "West";   // data moves right, receiver gets from West
-  if (dx < 0 && dy == 0) return "East";   // data moves left, receiver gets from East
-  if (dx > 0 && dy > 0) return "SouthWest";
-  if (dx > 0 && dy < 0) return "NorthWest";
-  if (dx < 0 && dy > 0) return "SouthEast";
-  if (dx < 0 && dy < 0) return "NorthEast";
-  
+  if (dx == 0 && dy > 0) return "North";
+  if (dx == 0 && dy < 0) return "South";
+  if (dx > 0 && dy == 0) return "East";
+  if (dx < 0 && dy == 0) return "West";
+  if (dx > 0 && dy > 0) return "NorthEast";
+  if (dx > 0 && dy < 0) return "SouthEast";
+  if (dx < 0 && dy > 0) return "NorthWest";
+  if (dx < 0 && dy < 0) return "SouthWest";
   return "Unknown";
 }
 
@@ -292,7 +289,7 @@ struct GenerateCodePass
             
             // Calculates the direction FROM source TO current tile (this is the direction the current tile receives data from).
             // For example: if data moves from (1,1) to (1,2), then Tile(1,2) receives from South.
-            inst_obj["src_direction"] = calculateDirection(src_coord.first, src_coord.second, x, y).str();
+            inst_obj["src_direction"] = calculateSendDirection(src_coord.first, src_coord.second, x, y).str();
             inst_obj["src_tile"] = "(" + std::to_string(src_coord.first) + "," + std::to_string(src_coord.second) + ")";
             found_src = true;
             break;
@@ -315,7 +312,7 @@ struct GenerateCodePass
             if (user_it != op_to_final_tile.end()) {
               int dst_x = user_it->second.first;
               int dst_y = user_it->second.second;
-              inst_obj["dst_direction"] = calculateDirection(x, y, dst_x, dst_y).str();
+              inst_obj["dst_direction"] = calculateSendDirection(x, y, dst_x, dst_y).str();
               inst_obj["dst_tile"] = "(" + std::to_string(dst_x) + "," + std::to_string(dst_y) + ")";
               found_dst = true;
               break;
@@ -378,7 +375,7 @@ struct GenerateCodePass
                       if (it != op_to_final_tile.end()) {
                         int src_x = it->second.first;
                         int src_y = it->second.second;
-                        inst_obj["src_direction"] = calculateDirection(src_x, src_y, dst_tile.first, dst_tile.second).str();
+                        inst_obj["src_direction"] = calculateSendDirection(src_x, src_y, dst_tile.first, dst_tile.second).str();
                         inst_obj["src_tile"] = "(" + std::to_string(src_x) + "," + std::to_string(src_y) + ")";
                         found_src = true;
                         break;
@@ -402,7 +399,7 @@ struct GenerateCodePass
                         if (user_it != op_to_final_tile.end()) {
                           int dst_x = user_it->second.first;
                           int dst_y = user_it->second.second;
-                          inst_obj["dst_direction"] = calculateDirection(dst_tile.first, dst_tile.second, dst_x, dst_y).str();
+                          inst_obj["dst_direction"] = calculateSendDirection(dst_tile.first, dst_tile.second, dst_x, dst_y).str();
                           inst_obj["dst_tile"] = "(" + std::to_string(dst_x) + "," + std::to_string(dst_y) + ")";
                           found_dst = true;
                           break;
@@ -650,7 +647,7 @@ struct GenerateCodePass
                   }
                 }
                 
-                std::string direction = calculateDirection(src_coord.first, src_coord.second, x, y).str();
+                std::string direction = calculateSendDirection(src_coord.first, src_coord.second, x, y).str();
                 if (direction != "Local") {
                   input_directions.insert(direction);
                 }
@@ -699,7 +696,7 @@ struct GenerateCodePass
                                         if (def_x_attr && def_y_attr) {
                                           int src_x = def_x_attr.getInt();
                                           int src_y = def_y_attr.getInt();
-                                          std::string direction = calculateDirection(src_x, src_y, x, y).str();
+                                          std::string direction = calculateSendDirection(src_x, src_y, x, y).str();
                                           if (direction != "Local") {
                                             input_directions.insert(direction);
                                           }
@@ -792,7 +789,7 @@ struct GenerateCodePass
                     }
                   }
                   
-                  std::string direction = calculateDirection(src_coord.first, src_coord.second, x, y).str();
+                  std::string direction = calculateSendDirection(src_coord.first, src_coord.second, x, y).str();
                   asm_out << direction << ", R";
                 } else {
                   asm_out << "Local, R";
@@ -823,7 +820,7 @@ struct GenerateCodePass
                   if (user_it != asm_op_to_final_tile.end()) {
                     int dst_x = user_it->second.first;
                     int dst_y = user_it->second.second;
-                    std::string dst_direction = calculateDirection(x, y, dst_x, dst_y).str();
+                    std::string dst_direction = calculateSendDirection(x, y, dst_x, dst_y).str();
                     asm_out << dst_direction << ", R]\n";
                     found_dst = true;
                     break;
@@ -847,7 +844,7 @@ struct GenerateCodePass
                   if (src_it != asm_op_to_source_tile.end()) {
                     int src_x = src_it->second.first;
                     int src_y = src_it->second.second;
-                    std::string direction = calculateDirection(src_x, src_y, x, y).str();
+                    std::string direction = calculateSendDirection(src_x, src_y, x, y).str();
                     asm_out << direction << ", R";
                   } else {
                     asm_out << "Local, R";
@@ -869,7 +866,7 @@ struct GenerateCodePass
                   if (user_it != asm_op_to_final_tile.end()) {
                     int dst_x = user_it->second.first;
                     int dst_y = user_it->second.second;
-                    std::string dst_direction = calculateDirection(x, y, dst_x, dst_y).str();
+                    std::string dst_direction = calculateSendDirection(x, y, dst_x, dst_y).str();
                     asm_out << dst_direction << ", R";
                     found_dst = true;
                     break;
