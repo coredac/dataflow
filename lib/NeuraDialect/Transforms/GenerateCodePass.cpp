@@ -467,18 +467,18 @@ struct GenerateCodePass
     // }
     
     std::error_code ec;
-    llvm::raw_fd_ostream json_out("generated-code.json", ec);
+    llvm::raw_fd_ostream json_out("generated-instructions.json", ec);
     if (ec) {
-        getOperation()->emitError("Failed to open 'generated-code.json' for writing: " + ec.message());
+        getOperation()->emitError("Failed to open 'generated-instructions.json' for writing: " + ec.message());
         return signalPassFailure();
     }
     json_out << llvm::formatv("{0:2}", llvm::json::Value(std::move(root))) << "\n";
     
     // ASM output.
     std::error_code asm_ec;
-    llvm::raw_fd_ostream asm_out("generated-code.asm", asm_ec);
+    llvm::raw_fd_ostream asm_out("generated-instructions.asm", asm_ec);
     if (asm_ec) {
-        getOperation()->emitError("Failed to open 'generated-code.asm' for writing: " + asm_ec.message());
+        getOperation()->emitError("Failed to open 'generated-instructions.asm' for writing: " + asm_ec.message());
         return signalPassFailure();
     }
     

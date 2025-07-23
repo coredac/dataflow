@@ -6,8 +6,8 @@
 // RUN:   --insert-data-mov \
 // RUN:   --map-to-accelerator="mapping-strategy=heuristic" \
 // RUN:   --generate-code
-// RU: FileCheck %s --input-file=generated-code.json --check-prefix=CHECK
-// RU: FileCheck %s --input-file=generated-code.asm --check-prefix=ASM
+// RU: FileCheck %s --input-file=generated-instructions.json --check-prefix=CHECK
+// RU: FileCheck %s --input-file=generated-instructions.asm --check-prefix=ASM
 
 // CHECK-DAG: "opcode": "constant"
 // CHECK-DAG: "opcode": "data_mov"
