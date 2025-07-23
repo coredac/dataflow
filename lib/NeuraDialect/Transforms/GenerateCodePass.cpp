@@ -97,42 +97,36 @@ struct GenerateCodePass
       func.walk([&](Operation *op) {
         auto attr_array = op->getAttrOfType<ArrayAttr>("mapping_locs");
         if (!attr_array || attr_array.size() == 0) {
-          // Skips if no mapping information.
           return;
         }
+        bool found = false;
         for (mlir::Attribute attr : attr_array) {
           if (auto loc = mlir::dyn_cast<DictionaryAttr>(attr)) {
             auto resource_attr = mlir::dyn_cast<StringAttr>(loc.get("resource"));
             auto id_attr = mlir::dyn_cast<IntegerAttr>(loc.get("id"));
-            
-            if (resource_attr && resource_attr.getValue() == "tile") {
+            if (!resource_attr) continue;
+            if (resource_attr.getValue() == "tile") {
               auto x_attr = loc.getAs<IntegerAttr>("x");
               auto y_attr = loc.getAs<IntegerAttr>("y");
-              
               int x, y;
               if (x_attr && y_attr) {
                 x = x_attr.getInt();
                 y = y_attr.getInt();
               } else {
-                // If no x, y coordinates, uses tile ID as coordinates.
                 x = id_attr ? id_attr.getInt() : 0;
                 y = 0;
               }
-              
               op_to_tile[op] = std::make_pair(x, y);
               op_to_final_tile[op] = std::make_pair(x, y);
               op_to_source_tile[op] = std::make_pair(x, y);
-              
-              // Assigns ID to new tile coordinates.
               auto coord = std::make_pair(x, y);
               if (tile_coord_to_id.find(coord) == tile_coord_to_id.end()) {
                 tile_coord_to_id[coord] = tile_id_counter++;
               }
-              break; // Only processes the first tile mapping.
-                          } else if (resource_attr && resource_attr.getValue() == "link" && id_attr) {
-                int link_id = id_attr.getInt();
-                // For link operations, we need to find the destination tile.
-                // Looks for operations that use this operation's result.
+              found = true;
+              break;
+            } else if (resource_attr.getValue() == "link" && id_attr) {
+              int link_id = id_attr.getInt();
               for (mlir::Value result : op->getResults()) {
                 if (!result) continue;
                 for (mlir::Operation *user : result.getUsers()) {
@@ -149,7 +143,6 @@ struct GenerateCodePass
                             int dst_x = user_x_attr.getInt();
                             int dst_y = user_y_attr.getInt();
                             op_to_final_tile[op] = std::make_pair(dst_x, dst_y);
-                            // Sets source location for link operation from its operand.
                             for (mlir::Value operand : op->getOperands()) {
                               if (!operand) continue;
                               if (auto defining_op = operand.getDefiningOp()) {
@@ -160,6 +153,7 @@ struct GenerateCodePass
                                 }
                               }
                             }
+                            found = true;
                             goto link_found;
                           }
                         }
@@ -168,7 +162,6 @@ struct GenerateCodePass
                   }
                 }
               }
-              // If no destination found, uses source location as fallback.
               if (op_to_final_tile.find(op) == op_to_final_tile.end()) {
                 for (mlir::Value operand : op->getOperands()) {
                   if (!operand) continue;
@@ -176,12 +169,12 @@ struct GenerateCodePass
                     auto it = op_to_final_tile.find(defining_op);
                     if (it != op_to_final_tile.end()) {
                       op_to_final_tile[op] = it->second;
-                                        // Sets source location for link operation.
-                  auto src_it = op_to_source_tile.find(defining_op);
-                  if (src_it != op_to_source_tile.end()) {
-                    op_to_source_tile[op] = src_it->second;
-                  }
-                  break;
+                      auto src_it = op_to_source_tile.find(defining_op);
+                      if (src_it != op_to_source_tile.end()) {
+                        op_to_source_tile[op] = src_it->second;
+                      }
+                      found = true;
+                      break;
                     }
                   }
                 }
@@ -190,15 +183,27 @@ struct GenerateCodePass
             }
           }
         }
+        if (!found) return;
       });
 
       // Second pass: generates instructions and calculates direction.
       func.walk([&](Operation *op) {
         auto attr_array = op->getAttrOfType<ArrayAttr>("mapping_locs");
         if (!attr_array || attr_array.size() == 0) {
-          // Skips if no mapping information.
           return;
         }
+        bool found = false;
+        for (mlir::Attribute attr : attr_array) {
+          if (auto loc = mlir::dyn_cast<DictionaryAttr>(attr)) {
+            auto resource_attr = mlir::dyn_cast<StringAttr>(loc.get("resource"));
+            if (!resource_attr) continue;
+            if (resource_attr.getValue() == "tile" || resource_attr.getValue() == "link") {
+              found = true;
+              break;
+            }
+          }
+        }
+        if (!found) return;
         // Extracts operation code.
         llvm::StringRef fullOpName = op->getName().getStringRef();
         llvm::StringRef opcode = fullOpName;
@@ -456,24 +461,24 @@ struct GenerateCodePass
     root["functions"] = std::move(functions_array);
 
     // Create test/codegenerate directory if it doesn't exist.
-    if (std::error_code ec = llvm::sys::fs::create_directories("test/codegenerate")) {
-        getOperation()->emitError("Failed to create 'test/codegenerate' directory: " + ec.message());
-        return signalPassFailure();
-    }
+    // if (std::error_code ec = llvm::sys::fs::create_directories("test/codegenerate")) {
+    //     getOperation()->emitError("Failed to create 'test/codegenerate' directory: " + ec.message());
+    //     return signalPassFailure();
+    // }
     
     std::error_code ec;
-    llvm::raw_fd_ostream json_out("test/codegenerate/generated-instructions.json", ec);
+    llvm::raw_fd_ostream json_out("generated-code.json", ec);
     if (ec) {
-        getOperation()->emitError("Failed to open 'test/codegenerate/generated-instructions.json' for writing: " + ec.message());
+        getOperation()->emitError("Failed to open 'generated-code.json' for writing: " + ec.message());
         return signalPassFailure();
     }
     json_out << llvm::formatv("{0:2}", llvm::json::Value(std::move(root))) << "\n";
     
     // ASM output.
     std::error_code asm_ec;
-    llvm::raw_fd_ostream asm_out("test/codegenerate/generated-instructions.asm", asm_ec);
+    llvm::raw_fd_ostream asm_out("generated-code.asm", asm_ec);
     if (asm_ec) {
-        getOperation()->emitError("Failed to open 'test/codegenerate/generated-instructions.asm' for writing: " + asm_ec.message());
+        getOperation()->emitError("Failed to open 'generated-code.asm' for writing: " + asm_ec.message());
         return signalPassFailure();
     }
     
@@ -492,6 +497,7 @@ struct GenerateCodePass
         if (!attr_array || attr_array.size() == 0) {
           return;
         }
+        bool found = false;
         for (mlir::Attribute attr : attr_array) {
           if (auto loc = mlir::dyn_cast<DictionaryAttr>(attr)) {
             auto resource_attr = mlir::dyn_cast<StringAttr>(loc.get("resource"));
@@ -512,6 +518,7 @@ struct GenerateCodePass
               
               asm_op_to_final_tile[op] = std::make_pair(x, y);
               asm_op_to_source_tile[op] = std::make_pair(x, y);
+              found = true;
               break;
             } else if (resource_attr && resource_attr.getValue() == "link" && id_attr) {
               // For link operations, we need to find the destination tile
@@ -545,6 +552,7 @@ struct GenerateCodePass
                                 }
                               }
                             }
+                            found = true;
                             goto asm_link_found;
                           }
                         }
@@ -570,6 +578,7 @@ struct GenerateCodePass
             }
           }
         }
+        if (!found) return;
       });
 
       // Group operations by PE and time step
@@ -580,7 +589,7 @@ struct GenerateCodePass
         if (!attr_array || attr_array.size() == 0) {
           return;
         }
-        
+        bool found = false;
         for (mlir::Attribute attr : attr_array) {
           if (auto loc = mlir::dyn_cast<DictionaryAttr>(attr)) {
             auto resource_attr = mlir::dyn_cast<StringAttr>(loc.get("resource"));
@@ -595,11 +604,13 @@ struct GenerateCodePass
                 int y = y_attr.getInt();
                 int time_step = timestep_attr.getInt();
                 pe_time_ops[std::make_pair(x, y)][time_step].push_back(op);
+                found = true;
                 break;
               }
             }
           }
         }
+        if (!found) return;
       });
       
       // Generate ASM for each PE
@@ -654,7 +665,7 @@ struct GenerateCodePass
           if (!attr_array || attr_array.size() == 0) {
             return;
           }
-          
+          bool found = false;
           for (mlir::Attribute attr : attr_array) {
             if (auto loc = mlir::dyn_cast<DictionaryAttr>(attr)) {
               auto resource_attr = mlir::dyn_cast<StringAttr>(loc.get("resource"));
@@ -709,6 +720,7 @@ struct GenerateCodePass
               }
             }
           }
+          if (found) return;
         });
         
         // Write Entry line
