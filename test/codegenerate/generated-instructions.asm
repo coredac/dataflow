@@ -1,6 +1,6 @@
 PE(0,2):
 {
-    Entry [East, R] => Once {
+    Entry [West, R] => Once {
         {
             RETURN, [Local, R]
             NOP
@@ -12,16 +12,16 @@ PE(1,1):
 {
     Entry [] => Once {
         {
-            CONSTANT, IMM[1.000000e+00] -> [South, R]
+            CONSTANT, IMM[1.000000e+00] -> [North, R]
         }
     }
 }
 
 PE(1,2):
 {
-    Entry [East, R], [South, R] => Once {
+    Entry [North, R], [West, R] => Once {
         {
-            FADD, [South, R], [East, R] -> [East, R]
+            FADD, [North, R], [West, R] -> [West, R]
         }
     }
 }
@@ -30,7 +30,7 @@ PE(2,2):
 {
     Entry [] => Once {
         {
-            CONSTANT, IMM[2.000000e+00] -> [East, R]
+            CONSTANT, IMM[2.000000e+00] -> [West, R]
         }
     }
 }

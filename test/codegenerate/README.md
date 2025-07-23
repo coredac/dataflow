@@ -42,6 +42,47 @@ The compilation pipeline maps the operations to a spatial architecture:
 - **PE(1,2)**: Receives data from South and East, performs FADD, sends result to West
 - **PE(0,2)**: Receives data from East, performs RETURN
 
+
+## Corresponding mapping:
+```
+      ↑ Y
+  (0,5)|         🔳
+  (0,4)|        .
+  (0,3)|      .
+  (0,2)|    .
+  (0,1)| 🔳
+  (0,0)+-------------→ X
+       (1,0)(2,0)(3,0)
+ ===================================================
+ cycle 0:
+  [    🔳            🔳                  🔳            🔳 ]
+
+  [    🔳            🔳       ←     (cst_0)Constant 2.0  🔳 ]
+                      ↑
+  [    🔳            (cst)Constant 1.0    🔳            🔳 ]
+
+  [    🔳            🔳                  🔳            🔳 ]
+       
+  ---------------------------------------------------
+  cycle 1:
+  [    🔳            🔳                 🔳            🔳 ]
+
+  [    🔳     ←      2(Fadd)            🔳            🔳 ]
+                      
+  [    🔳            🔳                🔳            🔳 ]
+
+  [    🔳            🔳                🔳            🔳 ]
+
+  ---------------------------------------------------
+  cycle 2:
+  [    🔳            🔳                 🔳            🔳 ]
+
+  [    3(return)     🔳                 🔳            🔳 ]
+                      
+  [    🔳            🔳                🔳            🔳 ]
+
+  [    🔳            🔳                🔳            🔳 ]
+
 ## Data Flow Directions
 
 The generated code correctly calculates data movement directions:
