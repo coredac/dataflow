@@ -6,8 +6,8 @@
 // RUN:   --insert-data-mov \
 // RUN:   --map-to-accelerator="mapping-strategy=heuristic" \
 // RUN:   --generate-code
-// RU: FileCheck %s --input-file=generated-instructions.json --check-prefix=CHECK
-// RU: FileCheck %s --input-file=generated-instructions.asm --check-prefix=ASM
+// RU: FileCheck %s --input-file=generated-code.json --check-prefix=CHECK
+// RU: FileCheck %s --input-file=generated-code.asm --check-prefix=ASM
 
 // CHECK-DAG: "opcode": "constant"
 // CHECK-DAG: "opcode": "data_mov"
@@ -25,12 +25,9 @@
 // ASM: PE(2,2):
 // ASM: CONSTANT, IMM[2.000000e+00] -> [East, R]
 
-func.func @test() -> f32 attributes {CompiledII = 1 : i32, ResMII = 1 : i32, accelerator = "neura"} {
-  %a = arith.constant {mapping_locs = [{id = 5 : i32, resource = "tile", time_step = 0 : i32, x = 1 : i32, y = 1 : i32}]} 1.000000e+00 : f32
-  %b = arith.constant {mapping_locs = [{id = 10 : i32, resource = "tile", time_step = 0 : i32, x = 2 : i32, y = 2 : i32}]} 2.000000e+00 : f32
-  %a_mov = "neura.data_mov"(%a) {mapping_locs = [{id = 16 : i32, resource = "link", time_step = 0 : i32}]} : (f32) -> f32
-  %b_mov = "neura.data_mov"(%b) {mapping_locs = [{id = 31 : i32, resource = "link", time_step = 0 : i32}]} : (f32) -> f32
-  %res = "neura.fadd"(%a_mov, %b_mov) {mapping_locs = [{id = 6 : i32, resource = "tile", time_step = 1 : i32, x = 1 : i32, y = 2 : i32}]} : (f32, f32) -> !neura.data<f32, i1>
-  %res_mov = "neura.data_mov"(%res) {mapping_locs = [{id = 17 : i32, resource = "link", time_step = 1 : i32}]} : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
-  "neura.return"(%res_mov) {mapping_locs = [{id = 2 : i32, resource = "tile", time_step = 2 : i32, x = 0 : i32, y = 2 : i32}]} : (!neura.data<f32, i1>) -> ()
+func.func @test() -> f32 {
+  %a = arith.constant 1.0 : f32
+  %b = arith.constant 2.0 : f32
+  %res = "neura.fadd" (%a, %b) : (f32, f32) -> f32
+  return %res : f32
 }
