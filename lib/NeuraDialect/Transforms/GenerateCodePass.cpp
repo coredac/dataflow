@@ -249,8 +249,7 @@ struct GenerateCodePass
           result_types_array.push_back(os.str());
         }
         inst_obj["result_types"] = std::move(result_types_array);
-        // Set opcode and time_step.
-        inst_obj["opcode"] = opcode.str();
+        // Set time_step only (remove opcode)
         inst_obj["time_step"] = -1;
 
         // Handles constant value.
