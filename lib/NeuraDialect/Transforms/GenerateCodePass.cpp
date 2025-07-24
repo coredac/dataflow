@@ -228,8 +228,29 @@ struct GenerateCodePass
 
         // Creates instruction object.
         llvm::json::Object inst_obj;
-        inst_obj["opcode"] = opcode.str();
+        // Set name, operands, result_types.
         inst_obj["name"] = fullOpName.str();
+        // operands
+        llvm::json::Array operands_array;
+        for (mlir::Value operand : op->getOperands()) {
+          if (auto defining_op = operand.getDefiningOp()) {
+            operands_array.push_back(defining_op->getName().getStringRef().str());
+          } else {
+            operands_array.push_back("block_arg");
+          }
+        }
+        inst_obj["operands"] = std::move(operands_array);
+        // result_types
+        llvm::json::Array result_types_array;
+        for (mlir::Value result : op->getResults()) {
+          std::string type_str;
+          llvm::raw_string_ostream os(type_str);
+          result.getType().print(os);
+          result_types_array.push_back(os.str());
+        }
+        inst_obj["result_types"] = std::move(result_types_array);
+        // Set opcode and time_step.
+        inst_obj["opcode"] = opcode.str();
         inst_obj["time_step"] = -1;
 
         // Handles constant value.
@@ -246,17 +267,6 @@ struct GenerateCodePass
             }
           }
         }
-
-        // Handles operands.
-        llvm::json::Array operands_array;
-        for (mlir::Value operand : op->getOperands()) {
-          if (auto defining_op = operand.getDefiningOp()) {
-            operands_array.push_back(defining_op->getName().getStringRef().str());
-          } else {
-            operands_array.push_back("block_arg");
-        } 
-        }
-        inst_obj["operands"] = std::move(operands_array);
 
         // Handles mapping locations.
         auto mapping_attr_array = op->getAttrOfType<ArrayAttr>("mapping_locs");
