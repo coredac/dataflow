@@ -3,7 +3,7 @@
     {
       "CompiledII": 1,
       "ResMII": 1,
-      "name": "test",
+      "func_name": "test",
       "tile_instructions": {
         "Tile(0)": {
           "id": 0,
@@ -12,6 +12,7 @@
               "constant_value": "1.000000",
               "dst_direction": "North",
               "dst_tile": "(1,2)",
+              "name": "arith.constant",
               "opcode": "constant",
               "operands": [],
               "src_direction": "Local",
@@ -29,6 +30,7 @@
               "constant_value": "2.000000",
               "dst_direction": "West",
               "dst_tile": "(1,2)",
+              "name": "arith.constant",
               "opcode": "constant",
               "operands": [],
               "src_direction": "Local",
@@ -45,6 +47,7 @@
             {
               "dst_direction": "Local",
               "dst_tile": "(1,2)",
+              "name": "neura.data_mov",
               "opcode": "data_mov",
               "operands": [
                 "arith.constant"
@@ -56,6 +59,7 @@
             {
               "dst_direction": "Local",
               "dst_tile": "(1,2)",
+              "name": "neura.data_mov",
               "opcode": "data_mov",
               "operands": [
                 "arith.constant"
@@ -67,6 +71,7 @@
             {
               "dst_direction": "West",
               "dst_tile": "(0,2)",
+              "name": "neura.fadd",
               "opcode": "fadd",
               "operands": [
                 "neura.data_mov",
@@ -86,6 +91,7 @@
             {
               "dst_direction": "Local",
               "dst_tile": "(0,2)",
+              "name": "neura.data_mov",
               "opcode": "data_mov",
               "operands": [
                 "neura.fadd"
@@ -95,6 +101,7 @@
               "time_step": 1
             },
             {
+              "name": "neura.return",
               "opcode": "return",
               "operands": [
                 "neura.data_mov"

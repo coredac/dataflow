@@ -79,7 +79,7 @@ struct GenerateCodePass
         continue;
 
       llvm::json::Object func_obj;
-      func_obj["name"] = func.getName().str();
+      func_obj["func_name"] = func.getName().str();
 
       if (auto ii_attr = func->getAttrOfType<IntegerAttr>("CompiledII"))
         func_obj["CompiledII"] = ii_attr.getInt();
@@ -229,6 +229,7 @@ struct GenerateCodePass
         // Creates instruction object.
         llvm::json::Object inst_obj;
         inst_obj["opcode"] = opcode.str();
+        inst_obj["name"] = fullOpName.str();
         inst_obj["time_step"] = -1;
 
         // Handles constant value.
