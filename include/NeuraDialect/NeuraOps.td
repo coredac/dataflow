@@ -387,10 +387,11 @@ def Neura_LoopControllerOp : Op<NeuraDialect, "loop_controller">{
   }];
 
   let arguments = (ins
-    AnyType:$parent_valid,  // Valid predicate from the parent loop
+    AnyType:$parentValid,  // Valid predicate from the parent loop
     AnyType:$start,         // Start index of the loop
     AnyType:$end,           // End index of the loop
-    AnyType:$step           // Step size for the loop
+    AnyType:$step,           // Step size for the loop
+    StrAttr:$iterationType // Type of the loop iteration (e.g., "increment", "decrement")
   );
 
   let results = (outs
@@ -399,5 +400,5 @@ def Neura_LoopControllerOp : Op<NeuraDialect, "loop_controller">{
   );
 
   let assemblyFormat =
-    "$parent_valid `(` $start `,` $end `,` $step `)` attr-dict `:` type($parent_valid) `,` type($start) `,` type($end) `,` type($step) `->` type($index) `,` type($valid)";
+    " `(``parent_valid` `=` $parentValid `,` `start` `=` $start `,` `end` `=` $end `,` `step` `=` $step`)` attr-dict `:` type($parentValid) `,` type($start) `,` type($end) `,` type($step) `->` type($index) `,` type($valid)";
 }
