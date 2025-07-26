@@ -15,6 +15,16 @@ using namespace mlir::neura;
 
 namespace {
 
+inline OperationKind getOperationKindFromMlirOp(Operation *op) {
+  if (isa<neura::AddOp>(op))   return IAdd;
+  if (isa<neura::MulOp>(op))   return IMul;
+  if (isa<neura::FAddOp>(op))  return FAdd;
+  if (isa<neura::FMulOp>(op))  return FMul;
+  // TODO: Complete the list here.
+  // @Jackcuii, https://github.com/coredac/dataflow/issues/82.
+  return IAdd;
+}
+
 // Traverses (backward) the operation graph starting from the given operation
 // towards reserve_value.
 void traverseAlongPath(Operation *op, Value reserve_value,
@@ -530,6 +540,19 @@ void mlir::neura::updateAward(std::map<MappingLoc, int> &locs_with_award,
 std::vector<MappingLoc>
 mlir::neura::calculateAward(Operation *op, const Architecture &architecture,
                             const MappingState &mapping_state) {
+  // Early exit if the operation is not supported by all the tiles.
+  bool op_can_be_supported = false;
+  for (Tile *tile : architecture.getAllTiles()) {
+    if (tile->canSupportOperation(getOperationKindFromMlirOp(op))) {
+      op_can_be_supported = true;
+    }
+  }
+  if (!op_can_be_supported) {
+    llvm::errs() << "[calculateAward] Operation: " << *op
+                 << " is not supported by any tile.\n";
+    return {};
+  }
+
   // A heap of locations with their associated award. Note that we use a
   // max-heap to prioritize locations with higher awards.
   std::map<MappingLoc, int> locs_with_award;
@@ -549,6 +572,11 @@ mlir::neura::calculateAward(Operation *op, const Architecture &architecture,
   llvm::errs() << "[calculateAward] Operation: " << *op
                << "; Producers: " << producers.size() << "\n";
   for (Tile *tile : architecture.getAllTiles()) {
+    if (!tile->canSupportOperation(getOperationKindFromMlirOp(op))) {
+      llvm::errs() << "[calculateAward] Tile: " << tile->getType()
+                   << " does not support operation: " << *op << "\n";
+      continue; // Skip tiles that cannot support the operation.
+    }
     int earliest_start_time_step = 0;
     for (Operation *producer : producers) {
       std::vector<MappingLoc> producer_locs =
