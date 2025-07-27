@@ -289,6 +289,28 @@ bool mlir::neura::tryRouteBackwardMove(Operation *mov_op, MappingLoc src_loc,
   return tryRouteDataMove(mov_op, src_loc, dst_loc, true, state, path_out);
 }
 
+Register *mlir::neura::getAvailableRegister(
+    const MappingState &state, Tile *tile, int start_time, int exclusive_end_time) {
+  for (Register *reg : tile->getRegisters()) {
+    if (state.isAvailableAcrossTimeInRange(reg, start_time, exclusive_end_time)) {
+      llvm::errs() << "[getAvailableRegister] Found available register: "
+                   << reg->getId() << " in register_file: " << reg->getRegisterFile()->getId()
+                   << " in register_file_cluster: "
+                   << reg->getRegisterFile()->getRegisterFileCluster()->getId()
+                   << " at tile: " << tile->getId()
+                   << " from time step: " << start_time
+                   << " to end time step: " << exclusive_end_time << "\n";
+      return reg;
+    }
+  }
+  llvm::errs() << "[getAvailableRegister] No available register found in tile: "
+               << tile->getId() << " from time step: " << start_time
+               << " to end time step: " << exclusive_end_time << "\n";
+  llvm::errs() << "[cheng] tile->getRegisters() size: "
+               << tile->getRegisters().size() << "\n";
+  return nullptr;
+}
+
 bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
                                    MappingLoc dst_loc, bool is_backward_move,
                                    const MappingState &state,
@@ -319,42 +341,57 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
 
   // BFS-style search for a path from src_tile to dst_tile.
   while (!queue.empty()) {
-    auto [current_tile, current_time, current_path] = queue.front();
+    auto [current_tile, current_step, current_path] = queue.front();
     queue.pop();
 
     if (current_tile == dst_tile) {
       // Confirms path reaches the target tile no later than deadline step.
-      if (current_time <= deadline_step) {
+      if (current_step <= deadline_step) {
         // Either arrives exactly right before the dst starts computation.
-        // So the current_time on the target tile is the same as deadline step.
-        if (current_time == deadline_step) {
+        // So the current_step on the target tile is the same as deadline step.
+        if (current_step == deadline_step) {
           path_out = current_path;
           return true;
         }
 
-        // The last link can be held from arrival_time to dst_time - 1.
-        // TODO: We actually don't need to occupy the last link if the registers
-        // within the tile can be explicitly represented.
-        // https://github.com/coredac/dataflow/issues/52.
-        bool all_free = true;
+        // // The last link can be held from arrival_time to dst_time - 1.
+        // // TODO: We actually don't need to occupy the last link if the registers
+        // // within the tile can be explicitly represented.
+        // // https://github.com/coredac/dataflow/issues/52.
+        // bool all_free = true;
         assert(!current_path.empty() &&
                "Path should not be empty when checking last link");
-        MappingLoc last_link = current_path.back();
-        std::vector<MappingLoc> last_link_occupying;
-        for (int t = current_time; t < deadline_step; ++t) {
-          MappingLoc repeated{last_link.resource, t};
-          last_link_occupying.push_back(repeated);
-          if (!state.isAvailableAcrossTime(repeated)) {
-            all_free = false;
-            break;
-          }
+        // MappingLoc last_link_loc = current_path.back();
+        Register *available_register =
+            getAvailableRegister(state, dst_tile, current_step, deadline_step);
+        if (!available_register) {
+          llvm::errs() << "[tryRouteDataMove] No available register found for "
+                       << "dst_tile: " << dst_tile->getId()
+                       << " from time step: " << current_step
+                       << " till deadline step: " << deadline_step << "\n";
+          // None of the register is available, skip this route and try others.
+          continue;
         }
-        if (all_free) {
-          path_out = current_path;
-          path_out.insert(path_out.end(), last_link_occupying.begin(),
-                          last_link_occupying.end());
-          return true;
+        llvm::errs() << "[tryRouteDataMove] Found available register: "
+                 << available_register->getId()
+                 << " in register_file: "
+                 << available_register->getRegisterFile()->getId()
+                 << " at tile: " << dst_tile->getId()
+                 << " from time step: " << current_step
+                 << " till deadline step: " << deadline_step << "\n";
+        // Register is available, so we can occupy the specific register across remaining time steps.
+        std::vector<MappingLoc> register_occupyings;
+        for (int t = current_step; t < deadline_step; ++t) {
+          MappingLoc register_loc{available_register, t};
+          register_occupyings.push_back(register_loc);
+          // Double-checks if the register is available across the time steps.
+          assert(state.isAvailableAcrossTime(register_loc));
         }
+
+        path_out = current_path;
+        path_out.insert(path_out.end(), register_occupyings.begin(),
+                        register_occupyings.end());
+        return true;
 
       } else {
         // Arrives too late, not schedulable.
@@ -363,13 +400,13 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
     }
 
     for (MappingLoc current_step_next_link :
-         state.getCurrentStepLinks({current_tile, current_time})) {
+         state.getCurrentStepLinks({current_tile, current_step})) {
       if (!state.isAvailableAcrossTime(current_step_next_link)) {
         continue;
       }
       Link *next_link = dyn_cast<Link>(current_step_next_link.resource);
       Tile *next_tile = next_link->getDstTile();
-      int next_time = current_time + 1;
+      int next_step = current_step + 1;
 
       if (!visited.insert(next_tile).second) {
         continue;
@@ -377,7 +414,7 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
 
       std::vector<MappingLoc> extended_path = current_path;
       extended_path.push_back(current_step_next_link);
-      queue.push({next_tile, next_time, std::move(extended_path)});
+      queue.push({next_tile, next_step, std::move(extended_path)});
     }
   }
 
@@ -473,7 +510,7 @@ bool mlir::neura::canReachLocInTime(const MappingLoc &src_loc,
 
   struct QueueEntry {
     MappingLoc loc;
-    int current_time;
+    int current_step;
   };
 
   std::queue<QueueEntry> queue;
@@ -483,17 +520,17 @@ bool mlir::neura::canReachLocInTime(const MappingLoc &src_loc,
   visited.insert(dyn_cast<Tile>(src_loc.resource));
 
   while (!queue.empty()) {
-    auto [current_loc, current_time] = queue.front();
+    auto [current_loc, current_step] = queue.front();
     queue.pop();
 
     // If we reach the destination tile and time step is not after dst_loc
     if (current_loc.resource == dst_loc.resource &&
-        current_time <= dst_loc.time_step &&
+        current_step <= dst_loc.time_step &&
         dst_loc.time_step <= deadline_step) {
       return true;
     }
 
-    if (current_time >= deadline_step) {
+    if (current_step >= deadline_step) {
       continue;
     }
 
@@ -504,8 +541,8 @@ bool mlir::neura::canReachLocInTime(const MappingLoc &src_loc,
         continue;
       }
 
-      int next_time = current_time + 1;
-      if (next_time > deadline_step) {
+      int next_step = current_step + 1;
+      if (next_step > deadline_step) {
         continue;
       }
 
@@ -518,9 +555,9 @@ bool mlir::neura::canReachLocInTime(const MappingLoc &src_loc,
       visited.insert(next_tile);
 
       MappingLoc next_step_loc = next_loc;
-      next_step_loc.time_step = next_time;
+      next_step_loc.time_step = next_step;
 
-      queue.push({next_step_loc, next_time});
+      queue.push({next_step_loc, next_step});
     }
   }
 

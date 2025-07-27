@@ -61,14 +61,18 @@ public:
   // it will check (tile 2, step 1), (tile 2, step 5), (tile 2, step 9), etc.
   bool isAvailableAcrossTime(const MappingLoc &loc) const;
 
+  // Checks if a hardware resource is available across a time range.
+  // This function leverages the isAvailableAcrossTime function in each
+  // time step.
+  bool isAvailableAcrossTimeInRange(BasicResource *resource,
+                                    int start_time,
+                                    int exclusive_end_time) const;
+
   // Gets the operation at a specific (tile/link, time_step) location.
   std::optional<Operation *> getOpAt(MappingLoc loc) const;
 
   // Counts the number of operations at a specific resource across time steps.
   int countOpsAtResource(BasicResource *resource) const;
-
-  // Gets all MRRG nodes.
-  const std::set<MappingLoc> &getAllLocs() const;
 
   // Gets all MRRG nodes allocated to a given op.
   const std::vector<MappingLoc> &getAllLocsOfOp(Operation *op) const;
@@ -126,7 +130,6 @@ private:
   int II;
   static constexpr int kMaxSteps = 10;
 
-  std::set<MappingLoc> all_locs;
   std::set<MappingLoc> occupied_locs;
   std::map<MappingLoc, Operation *> loc_to_op;
   std::map<Operation *, std::vector<MappingLoc>> op_to_locs;

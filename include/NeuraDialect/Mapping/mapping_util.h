@@ -84,5 +84,13 @@ bool canReachLocInTime(const std::vector<Operation *> &producers,
                        int deadline_step,
                        const MappingState &mapping_state);
 
+// Gets an available register (for the given time range) in the given tile.
+// The end_time is exclusive, meaning the register should be available
+// until end_time - 1. Returns nullptr if no available register found.
+Register *getAvailableRegister(const MappingState &mapping_state,
+                               Tile *tile,
+                               int start_time,
+                               int exclusive_end_time);
+
 } // namespace neura
 } // namespace mlir
