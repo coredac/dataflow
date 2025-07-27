@@ -6,10 +6,18 @@
 using namespace mlir;
 using namespace mlir::neura;
 
+//===----------------------------------------------------------------------===//
+// Tile
+//===----------------------------------------------------------------------===//
+
 Tile::Tile(int id, int x, int y) {
   this->id = id;
   this->x = x;
   this->y = y;
+
+  // TODO: Add function units based on architecture specs.
+  // @Jackcuii, https://github.com/coredac/dataflow/issues/82.
+  addFunctionUnit(std::make_unique<FixedPointAdder>(0));
 }
 
 int Tile::getId() const { return id; }
@@ -34,6 +42,10 @@ const std::set<Link *> &Tile::getOutLinks() const { return out_links; }
 
 const std::set<Link *> &Tile::getInLinks() const { return in_links; }
 
+//===----------------------------------------------------------------------===//
+// Link
+//===----------------------------------------------------------------------===//
+
 Link::Link(int id) { this->id = id; }
 
 int Link::getId() const { return id; }
@@ -48,6 +60,95 @@ void Link::connect(Tile *src, Tile *dst) {
   dst_tile = dst;
   src->linkDstTile(this, dst);
 }
+
+//===----------------------------------------------------------------------===//
+// FunctionUnit
+//===----------------------------------------------------------------------===//
+
+FunctionUnit::FunctionUnit(int id) { this->id = id; }
+
+int FunctionUnit::getId() const { return id; }
+
+void FunctionUnit::setTile(Tile* tile) {
+  this->tile = tile;
+}
+
+Tile *FunctionUnit::getTile() const {
+  return this->tile;
+}
+
+//===----------------------------------------------------------------------===//
+// Register
+//===----------------------------------------------------------------------===//
+
+Tile *Register::getTile() const {
+  return this->register_file ? register_file->getTile() : nullptr;
+}
+
+Register::Register(int id) { this->id = id; }
+
+int Register::getId() const { return id; }
+
+void Register::setRegisterFile(RegisterFile* register_file) {
+  this->register_file = register_file;
+}
+
+//===----------------------------------------------------------------------===//
+// Register File
+//===----------------------------------------------------------------------===//
+
+RegisterFile::RegisterFile(int id) { this->id = id; }
+
+int RegisterFile::getId() const { return id; }
+
+Tile *RegisterFile::getTile() const {
+  return this->register_file_cluster ? register_file_cluster->getTile() : nullptr;
+}
+
+void RegisterFile::setRegisterFileCluster(RegisterFileCluster* register_file_cluster) {
+  this->register_file_cluster = register_file_cluster;
+}
+
+void RegisterFile::addRegister(Register* reg) {
+  registers[reg->getId()] = reg;
+  reg->setRegisterFile(this);
+}
+
+const std::map<int, Register*>& RegisterFile::getRegisters() const {
+  return this->registers;
+}
+//===----------------------------------------------------------------------===//
+// Register File Cluster
+//===----------------------------------------------------------------------===//
+
+RegisterFileCluster* RegisterFile::getRegisterFileCluster() const {
+  return this->register_file_cluster;
+}
+
+RegisterFileCluster::RegisterFileCluster(int id) { this->id = id; }
+
+int RegisterFileCluster::getId() const { return id; }
+
+void RegisterFileCluster::setTile(Tile* tile) {
+  this->tile = tile;
+}
+
+Tile *RegisterFileCluster::getTile() const {
+  return this->tile;
+}
+
+void RegisterFileCluster::addRegisterFile(RegisterFile* register_file) {
+  register_files[register_file->getId()] = register_file;
+  register_file->setRegisterFileCluster(this);
+}
+
+const std::map<int, RegisterFile*>& RegisterFileCluster::getRegisterFiles() const {
+  return this->register_files;
+}
+
+//===----------------------------------------------------------------------===//
+// Architecture
+//===----------------------------------------------------------------------===//
 
 Architecture::Architecture(int width, int height) {
   const int num_tiles = width * height;
