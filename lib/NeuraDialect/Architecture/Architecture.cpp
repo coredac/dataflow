@@ -198,6 +198,7 @@ Architecture::Architecture(int width, int height) {
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
       const int id = y * width + x;
+      // const int id = x * width + y;
       auto tile = std::make_unique<Tile>(id, x, y);
       id_to_tile[id] = tile.get();
       coord_to_tile[{x, y}] = tile.get();
@@ -206,21 +207,24 @@ Architecture::Architecture(int width, int height) {
   }
 
   // Initializes register file cluster for each tile.
+  int reg_id = 0;
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
       // Gets the tile by coordinates.
       Tile *tile = getTile(x, y);
 
       // Creates registers as a register file.
-      Register *register_0 = new Register(0);
-      Register *register_1 = new Register(1);
+      // FIXME: We have to assign different IDs due to the hash function
+      // cannot distinguish between different register files..
+      Register *register_0 = new Register(reg_id++);
+      Register *register_1 = new Register(reg_id++);
       RegisterFile *register_file_0 = new RegisterFile(0);
       register_file_0->addRegister(register_0);
       register_file_0->addRegister(register_1);
 
       // Creates registers as a register file.
-      Register *register_2 = new Register(2);
-      Register *register_3 = new Register(3);
+      Register *register_2 = new Register(reg_id++);
+      Register *register_3 = new Register(reg_id++);
       RegisterFile *register_file_1 = new RegisterFile(1);
       register_file_1->addRegister(register_2);
       register_file_1->addRegister(register_3);
@@ -241,8 +245,8 @@ Architecture::Architecture(int width, int height) {
   // TODO: Model topology based on the architecture specs.
   // https://github.com/coredac/dataflow/issues/52.
   int link_id = 0;
-  for (int i = 0; i < width; ++i) {
-    for (int j = 0; j < height; ++j) {
+  for (int j = 0; j < height; ++j) {
+    for (int i = 0; i < width; ++i) {
       // Gets the tile by coordinates.
       Tile *tile = getTile(i, j);
 

@@ -121,8 +121,9 @@ int mlir::neura::calculateResMii(Operation *func_op,
   // Count all "compute" operations (non-terminators, non-block ops).
   func_op->walk([&](Operation *op) {
     // Skips non-materialized ops.
-    if (isa<func::FuncOp>(op) || isa<neura::ConstantOp, neura::CtrlMovOp,
-                                     neura::DataMovOp, neura::ReserveOp>(op)) {
+    if (isa<func::FuncOp>(op) || isa<neura::CtrlMovOp,
+                                     neura::DataMovOp,
+                                     neura::ReserveOp>(op)) {
       return;
     }
     ++num_ops;
@@ -303,11 +304,11 @@ Register *mlir::neura::getAvailableRegister(
       return reg;
     }
   }
-  llvm::errs() << "[getAvailableRegister] No available register found in tile: "
-               << tile->getId() << " from time step: " << start_time
-               << " to end time step: " << exclusive_end_time << "\n";
-  llvm::errs() << "[cheng] tile->getRegisters() size: "
-               << tile->getRegisters().size() << "\n";
+  // llvm::errs() << "[getAvailableRegister] No available register found in tile: "
+  //              << tile->getId() << " from time step: " << start_time
+  //              << " to end time step: " << exclusive_end_time << "\n";
+  // llvm::errs() << "[cheng] tile->getRegisters() size: "
+  //              << tile->getRegisters().size() << "\n";
   return nullptr;
 }
 
@@ -358,10 +359,46 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
         // // TODO: We actually don't need to occupy the last link if the registers
         // // within the tile can be explicitly represented.
         // // https://github.com/coredac/dataflow/issues/52.
-        // bool all_free = true;
         assert(!current_path.empty() &&
                "Path should not be empty when checking last link");
+
+        // bool all_free = true;
         // MappingLoc last_link_loc = current_path.back();
+        // // llvm::errs() << "[cheng] checking Last link loc: "
+        // //              << last_link_loc.resource->getType() << "#"
+        // //              << last_link_loc.resource->getId()
+        // //              << " @t=" << last_link_loc.time_step << "\n";
+        // std::vector<MappingLoc> last_link_occupying;
+        // for (int t = current_step; t < deadline_step; ++t) {
+        //   MappingLoc repeated{last_link_loc.resource, t};
+        //   last_link_occupying.push_back(repeated);
+        //   if (!state.isAvailableAcrossTime(repeated)) {
+        //     all_free = false;
+        //     // llvm::errs() << "[CHENG] target repeated: " << repeated.resource->getType() << "#"
+        //     //              << repeated.resource->getId() << " @t=" << repeated.time_step << "\n";
+        //     // Operation *culprit_op = state.getOpAtLocAcrossTime(repeated).value();
+        //     // llvm::errs() << "[DEBUG] who is occupying the last link: "
+        //     //              << *culprit_op << "\n";
+        //     // for (auto ll : state.getAllLocsOfOp(culprit_op)) {
+        //     //   llvm::errs() << "[DEBUG] Occupying loc: "
+        //     //                << ll.resource->getType() << "#" << ll.resource->getId()
+        //     //                << " @t=" << ll.time_step << "\n";
+        //     // }
+        //     break;
+        //   }
+        // }
+        // if (all_free) {
+        //   path_out = current_path;
+        //   path_out.insert(path_out.end(), last_link_occupying.begin(),
+        //                   last_link_occupying.end());
+        //   return true;
+        // } else {
+        //   llvm::errs() << "[tryRouteDataMove] Last link [" <<
+        //                dyn_cast<Link>(last_link_loc.resource)->getSrcTile()->getId() << ","
+        //                << dyn_cast<Link>(last_link_loc.resource)->getDstTile()->getId() << "] is not available from "
+        //                << current_step << " to " << deadline_step << "\n";
+        // }
+
         Register *available_register =
             getAvailableRegister(state, dst_tile, current_step, deadline_step);
         if (!available_register) {
@@ -372,13 +409,13 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
           // None of the register is available, skip this route and try others.
           continue;
         }
-        llvm::errs() << "[tryRouteDataMove] Found available register: "
-                 << available_register->getId()
-                 << " in register_file: "
-                 << available_register->getRegisterFile()->getId()
-                 << " at tile: " << dst_tile->getId()
-                 << " from time step: " << current_step
-                 << " till deadline step: " << deadline_step << "\n";
+        // llvm::errs() << "[tryRouteDataMove] Found available register: "
+        //          << available_register->getId()
+        //          << " in register_file: "
+        //          << available_register->getRegisterFile()->getId()
+        //          << " at tile: " << dst_tile->getId()
+        //          << " from time step: " << current_step
+        //          << " till deadline step: " << deadline_step << "\n";
         // Register is available, so we can occupy the specific register across remaining time steps.
         std::vector<MappingLoc> register_occupyings;
         for (int t = current_step; t < deadline_step; ++t) {
@@ -534,30 +571,35 @@ bool mlir::neura::canReachLocInTime(const MappingLoc &src_loc,
       continue;
     }
 
+    // // Explores all next step tiles from the current location.
+    // for (const MappingLoc &next_loc_tile :
+    //      mapping_state.getNextStepTiles(current_loc)) {
+    
     // Explores all next step tiles from the current location.
-    for (const MappingLoc &next_loc :
-         mapping_state.getNextStepTiles(current_loc)) {
-      if (!mapping_state.isAvailableAcrossTime(next_loc)) {
+    for (const MappingLoc &current_loc_out_link :
+             mapping_state.getCurrentStepLinks(current_loc)) {
+
+      // Makes sure the link is not occupied.
+      if (!mapping_state.isAvailableAcrossTime(current_loc_out_link)) {
         continue;
       }
 
+      // Skips if already miss the deadline.
       int next_step = current_step + 1;
       if (next_step > deadline_step) {
         continue;
       }
 
-      Tile *next_tile = llvm::dyn_cast<Tile>(next_loc.resource);
+      // Records the tile for further exploration.
+      Tile *next_tile = llvm::dyn_cast<Link>(current_loc_out_link.resource)->getDstTile();
       assert(next_tile && "Next location must be a Tile");
       if (visited.contains(next_tile)) {
         continue;
       }
 
       visited.insert(next_tile);
-
-      MappingLoc next_step_loc = next_loc;
-      next_step_loc.time_step = next_step;
-
-      queue.push({next_step_loc, next_step});
+      MappingLoc next_loc_tile_with_step = {next_tile, next_step};
+      queue.push({next_loc_tile_with_step, next_step});
     }
   }
 
@@ -698,6 +740,10 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
   if (mapping_state.bindOp(target_loc, op)) {
     std::vector<Operation *> routed_operands;
     std::vector<Operation *> routed_ctrl_movs;
+    llvm::errs() << "[DEBUG] Schedule op " << *op << " onto loc: "
+                 << target_loc.resource->getType() << "#"
+                 << target_loc.resource->getId()
+                 << " @t=" << target_loc.time_step << "\n";
     // Tries to route the data move operations.
     for (Value operand : op->getOperands()) {
       llvm::errs() << "Processing operand: " << operand << "\n";
@@ -714,6 +760,11 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
       std::vector<MappingLoc> route_path;
       if (tryRouteForwardMove(data_move, src_loc, target_loc, mapping_state,
                               route_path)) {
+        // for (const MappingLoc &loc : route_path) {
+        //   llvm::errs() << "[DEBUG] Route path loc: " << loc.resource->getType()
+        //                << "#" << loc.resource->getId() << " @t=" << loc.time_step
+        //                << "\n";
+        // }
         // Reserves the route for the data move operation.
         mapping_state.reserveRoute(data_move, route_path);
         routed_operands.push_back(data_move);
@@ -730,7 +781,7 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
                    << src_loc.resource->getId() << " @t=" << src_loc.time_step
                    << " to " << target_loc.resource->getType() << "#"
                    << target_loc.resource->getId()
-                   << " @t=" << target_loc.time_step << "\n";
+                   << " @t=" << target_loc.time_step << "; so unschedule op\n";
       mapping_state.unbindOp(op);
       for (Operation *routed_op : routed_operands) {
         llvm::errs() << "[DEBUG] Releasing route for routed operand: "
@@ -766,7 +817,7 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
       llvm::errs() << "[DEBUG] Failed to route ctrl_mov: " << *ctrl_mov
                    << " to " << backward_loc.resource->getType() << "#"
                    << backward_loc.resource->getId()
-                   << " @t=" << backward_loc.time_step << "\n";
+                   << " @t=" << backward_loc.time_step << "; so unschedule op\n";
       mapping_state.unbindOp(op);
       for (Operation *routed_ctrl_mov : routed_ctrl_movs) {
         llvm::errs() << "[DEBUG] Releasing route for routed ctrl_mov: "
