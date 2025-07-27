@@ -58,7 +58,7 @@ struct MapToAcceleratorPass
       mapping_strategy = std::make_unique<HeuristicMapping>(INT_MAX, INT_MAX);
     } else if (mappingStrategy_stringRef == "heuristic") {
       mapping_strategy = std::make_unique<HeuristicMapping>(
-          6, 5); // Randomly picked default values for max_loc and max_depth
+          5, 3); // Randomly picked default values for max_loc and max_depth
     } else if (mappingStrategy_stringRef.starts_with("heuristic=")) {
       // Used for custom backtrack parameters.
       // Example: "heuristic=5,3" means max_loc=5, max_depth=3
@@ -147,6 +147,9 @@ struct MapToAcceleratorPass
         llvm::outs() << "[MapToAcceleratorPass] sorted op: " << *op << "\n";
       }
       for (int ii = possibleMinII; ii <= maxII; ++ii) {
+        llvm::errs() << "[MapToAcceleratorPass] Start mapping with target II of "
+                     << ii << "\n";
+        // Creates a mapping state for the current II.
         MappingState mapping_state(architecture, ii);
         if (mapping_strategy->map(sorted_ops, architecture, mapping_state)) {
           // success

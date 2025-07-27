@@ -33,9 +33,8 @@ void MappingState::unbindOp(Operation *op) {
 bool MappingState::isAvailableAcrossTime(const MappingLoc &loc) const {
   // Checks the availability across time domain.
   for (int t = loc.time_step % II; t < II * kMaxSteps; t += II) {
-    MappingLoc checkLoc = loc;
-    checkLoc.time_step = t;
-    if (occupied_locs.find(checkLoc) != occupied_locs.end()) {
+    MappingLoc check_loc = {loc.resource, t};
+    if (occupied_locs.find(check_loc) != occupied_locs.end()) {
       return false;
     }
   }
@@ -62,6 +61,17 @@ std::optional<Operation *> MappingState::getOpAt(MappingLoc loc) const {
     return std::nullopt;
   }
   return it->second;
+}
+
+std::optional<Operation *> MappingState::getOpAtLocAcrossTime(MappingLoc loc) const {
+  for (int t = loc.time_step % II; t < II * kMaxSteps; t += II) {
+    MappingLoc check_loc = {loc.resource, t};
+    auto it = loc_to_op.find(check_loc);
+    if (it != loc_to_op.end()) {
+      return it->second;
+    }
+  }
+  return std::nullopt;
 }
 
 int MappingState::countOpsAtResource(BasicResource *resource) const {
