@@ -5,16 +5,7 @@
 using namespace mlir;
 using namespace mlir::neura;
 
-MappingState::MappingState(const Architecture &arch, int II) : II(II) {
-  // TODO: Use number of operations to determine the max steps for constructing
-  // MRRG.
-  for (Tile *tile : arch.getAllTiles()) {
-    for (int t = 0; t < II * kMaxSteps; ++t) {
-      MappingLoc loc = {tile, t};
-      all_locs.insert(loc);
-    }
-  }
-}
+MappingState::MappingState(const Architecture &arch, int II) : II(II) {}
 
 bool MappingState::bindOp(const MappingLoc &loc, Operation *op) {
   loc_to_op[loc] = op;
@@ -40,10 +31,25 @@ void MappingState::unbindOp(Operation *op) {
 }
 
 bool MappingState::isAvailableAcrossTime(const MappingLoc &loc) const {
+  // Checks the availability across time domain.
   for (int t = loc.time_step % II; t < II * kMaxSteps; t += II) {
     MappingLoc checkLoc = loc;
     checkLoc.time_step = t;
     if (occupied_locs.find(checkLoc) != occupied_locs.end()) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool MappingState::isAvailableAcrossTimeInRange(BasicResource *resource,
+                                                int start_time,
+                                                int exclusive_end_time) const {
+  // Checks the availability for each time step across time domain.
+  for (int t = start_time; t < exclusive_end_time; ++t) {
+    MappingLoc check_loc = {resource, t};
+    // Checks the availability across time domain.
+    if (!isAvailableAcrossTime(check_loc)) {
       return false;
     }
   }
@@ -68,12 +74,7 @@ int MappingState::countOpsAtResource(BasicResource *resource) const {
   return count;
 }
 
-const std::set<MappingLoc> &MappingState::getAllLocs() const {
-  return all_locs;
-}
-
-const std::vector<MappingLoc> &
-MappingState::getAllLocsOfOp(Operation *op) const {
+const std::vector<MappingLoc> &MappingState::getAllLocsOfOp(Operation *op) const {
   auto it = op_to_locs.find(op);
   if (it != op_to_locs.end()) {
     return it->second;
@@ -119,8 +120,7 @@ std::vector<MappingLoc> MappingState::getNextStepTiles(MappingLoc loc) const {
 //   return it != current_step_tiles.end() ? it->second : empty;
 // }
 
-std::vector<MappingLoc>
-MappingState::getCurrentStepLinks(MappingLoc loc) const {
+std::vector<MappingLoc> MappingState::getCurrentStepLinks(MappingLoc loc) const {
   assert((loc.resource->getKind() == ResourceKind::Tile) &&
          "Current step links can only be queried for tiles");
   std::vector<MappingLoc> current_step_links;
