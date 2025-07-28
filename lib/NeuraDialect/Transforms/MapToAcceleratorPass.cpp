@@ -52,7 +52,9 @@ struct MapToAcceleratorPass
     StringRef mappingStrategy_stringRef(mappingStrategy.getValue());
     // Creates a mapping strategy based on the provided option.
     std::unique_ptr<MappingStrategy> mapping_strategy;
-    if (mappingStrategy_stringRef == "greedy") {
+    if (mappingStrategy_stringRef == "simple") {
+      mapping_strategy = std::make_unique<HeuristicMapping>(1, 1);
+    } else if (mappingStrategy_stringRef == "greedy") {
       mapping_strategy = std::make_unique<HeuristicMapping>(INT_MAX, 1);
     } else if (mappingStrategy_stringRef == "exhaustive") {
       mapping_strategy = std::make_unique<HeuristicMapping>(INT_MAX, INT_MAX);
@@ -140,13 +142,16 @@ struct MapToAcceleratorPass
           IntegerAttr::get(IntegerType::get(func.getContext(), 32), res_mii);
       func->setAttr("ResMII", res_mii_attr);
 
-      const int minII = std::min(rec_mii, res_mii);
+      const int possibleMinII = std::max(rec_mii, res_mii);
       constexpr int maxII = 10;
       std::vector<Operation *> sorted_ops = getTopologicallySortedOps(func);
       for (Operation *op : sorted_ops) {
         llvm::outs() << "[MapToAcceleratorPass] sorted op: " << *op << "\n";
       }
-      for (int ii = minII; ii <= maxII; ++ii) {
+      for (int ii = possibleMinII; ii <= maxII; ++ii) {
+        llvm::errs() << "[MapToAcceleratorPass] Start mapping with target II of "
+                     << ii << "\n";
+        // Creates a mapping state for the current II.
         MappingState mapping_state(architecture, ii);
         if (mapping_strategy->map(sorted_ops, architecture, mapping_state)) {
           // success

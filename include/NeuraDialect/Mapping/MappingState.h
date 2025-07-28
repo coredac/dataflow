@@ -18,13 +18,19 @@ struct MappingLoc {
   int time_step;
 
   bool operator==(const MappingLoc &other) const {
-    return resource == other.resource && time_step == other.time_step;
+    return resource->getKind() == other.resource->getKind() &&
+           resource->getId() == other.resource->getId() &&
+           time_step == other.time_step;
   }
 
   bool operator<(const MappingLoc &other) const {
-    if (time_step != other.time_step)
-      return time_step < other.time_step;
-    return resource->getId() < other.resource->getId();
+    if (resource->getKind() != other.resource->getKind()) {
+      return resource->getKind() < other.resource->getKind();
+    }
+    if (resource->getId() != other.resource->getId()) {
+      return resource->getId() < other.resource->getId();
+    }
+    return time_step < other.time_step;
   }
 };
 
@@ -34,9 +40,10 @@ struct MappingLoc {
 namespace std {
 template <> struct hash<mlir::neura::MappingLoc> {
   std::size_t operator()(const mlir::neura::MappingLoc &loc) const {
-    std::size_t h1 = std::hash<mlir::neura::BasicResource *>()(loc.resource);
-    std::size_t h2 = std::hash<int>()(loc.time_step);
-    return h1 ^ (h2 << 1);
+    std::size_t h1 = std::hash<int>()(static_cast<int>(loc.resource->getKind()));
+    std::size_t h2 = std::hash<int>()(loc.resource->getId());
+    std::size_t h3 = std::hash<int>()(loc.time_step);
+    return h1 ^ (h2 << 1) ^ (h3 << 2);
   }
 };
 } // namespace std
@@ -61,14 +68,20 @@ public:
   // it will check (tile 2, step 1), (tile 2, step 5), (tile 2, step 9), etc.
   bool isAvailableAcrossTime(const MappingLoc &loc) const;
 
+  // Checks if a hardware resource is available across a time range.
+  // This function leverages the isAvailableAcrossTime function in each
+  // time step.
+  bool isAvailableAcrossTimeInRange(BasicResource *resource,
+                                    int start_time,
+                                    int exclusive_end_time) const;
+
   // Gets the operation at a specific (tile/link, time_step) location.
   std::optional<Operation *> getOpAt(MappingLoc loc) const;
 
+  std::optional<Operation *> getOpAtLocAcrossTime(MappingLoc loc) const;
+
   // Counts the number of operations at a specific resource across time steps.
   int countOpsAtResource(BasicResource *resource) const;
-
-  // Gets all MRRG nodes.
-  const std::set<MappingLoc> &getAllLocs() const;
 
   // Gets all MRRG nodes allocated to a given op.
   const std::vector<MappingLoc> &getAllLocsOfOp(Operation *op) const;
@@ -126,7 +139,6 @@ private:
   int II;
   static constexpr int kMaxSteps = 10;
 
-  std::set<MappingLoc> all_locs;
   std::set<MappingLoc> occupied_locs;
   std::map<MappingLoc, Operation *> loc_to_op;
   std::map<Operation *, std::vector<MappingLoc>> op_to_locs;
