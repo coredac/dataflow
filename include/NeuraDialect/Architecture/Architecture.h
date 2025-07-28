@@ -279,7 +279,7 @@ public:
 private:
   int id;
   std::map<int, Register*> registers;
-  RegisterFileCluster* register_file_cluster;
+  RegisterFileCluster* register_file_cluster = nullptr;
 };
 
 //===----------------------------------------------------------------------===//
