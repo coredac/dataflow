@@ -13,14 +13,20 @@ class HeuristicMapping : public MappingStrategy {
 public:
   HeuristicMapping(int max_location_to_try = 5, int max_backtrack_depth = 3)
       : max_location_to_try(max_location_to_try), max_backtrack_depth(3) {}
+
   bool map(std::vector<Operation *> &sorted_ops,
            const Architecture &architecture,
            MappingState &mapping_state) override;
+
   std::string getName() const override {
-    if (max_backtrack_depth == 1 && max_location_to_try == INT_MAX) {
+    if (max_location_to_try == 1 &&
+        max_backtrack_depth == 1) {
+      return "simple";
+    } else if (max_location_to_try == INT_MAX &&
+               max_backtrack_depth == 1) {
       return "greedy";
-    } else if (max_backtrack_depth == INT_MAX &&
-               max_location_to_try == INT_MAX) {
+    } else if (max_location_to_try == INT_MAX &&
+               max_backtrack_depth == INT_MAX) {
       return "exhaustive";
     } else {
       return "heuristic";

@@ -172,6 +172,14 @@ public:
     return true;
   }
 
+  void addRegisterFileCluster(RegisterFileCluster* register_file_cluster);
+
+  const RegisterFileCluster *getRegisterFileCluster() const;
+
+  const std::vector<RegisterFile *> getRegisterFiles() const;
+
+  const std::vector<Register *> getRegisters() const;
+
 private:
   int id;
   int x, y;
@@ -181,6 +189,7 @@ private:
   std::set<Link*> out_links;
   std::vector<std::unique_ptr<FunctionUnit>> functional_unit_storage; // Owns FUs.
   std::set<FunctionUnit*> functional_units; // Non-owning, for fast lookup.
+  RegisterFileCluster *register_file_cluster = nullptr;
 };
 
 //===----------------------------------------------------------------------===//
