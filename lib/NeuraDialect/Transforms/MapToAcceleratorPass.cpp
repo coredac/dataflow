@@ -52,7 +52,9 @@ struct MapToAcceleratorPass
     StringRef mappingStrategy_stringRef(mappingStrategy.getValue());
     // Creates a mapping strategy based on the provided option.
     std::unique_ptr<MappingStrategy> mapping_strategy;
-    if (mappingStrategy_stringRef == "greedy") {
+    if (mappingStrategy_stringRef == "simple") {
+      mapping_strategy = std::make_unique<HeuristicMapping>(1, 1);
+    } else if (mappingStrategy_stringRef == "greedy") {
       mapping_strategy = std::make_unique<HeuristicMapping>(INT_MAX, 1);
     } else if (mappingStrategy_stringRef == "exhaustive") {
       mapping_strategy = std::make_unique<HeuristicMapping>(INT_MAX, INT_MAX);
