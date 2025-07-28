@@ -244,6 +244,20 @@ void MappingState::encodeMappingState() {
                       mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
                                              loc.time_step))});
         mapping_entries.push_back(dict);
+      } else if (loc.resource->getKind() == ResourceKind::Register) {
+        kind_str = "register";
+        auto dict = mlir::DictionaryAttr::get(
+            ctx, {mlir::NamedAttribute(mlir::StringAttr::get(ctx, "resource"),
+                                       mlir::StringAttr::get(ctx, kind_str)),
+                  mlir::NamedAttribute(
+                      mlir::StringAttr::get(ctx, "id"),
+                      mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
+                                             loc.resource->getId())),
+                  mlir::NamedAttribute(
+                      mlir::StringAttr::get(ctx, "time_step"),
+                      mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
+                                             loc.time_step))});
+        mapping_entries.push_back(dict);
       } else {
         kind_str = "unknown";
         auto dict = mlir::DictionaryAttr::get(
