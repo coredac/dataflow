@@ -6,17 +6,25 @@
 namespace mlir {
 namespace neura {
 
-bool HeuristicMapping::map(std::vector<Operation *> &sorted_ops,
+bool HeuristicMapping::map(std::vector<std::pair<Operation *, int>> &sorted_ops_with_levels,
+                           std::set<Operation *> &critical_ops,
                            const Architecture &architecture,
                            MappingState &mapping_state) {
   // Start the backtracking mapping process from the first operation.
-  return mapWithBacktrack(sorted_ops, architecture, mapping_state, 0, 0);
+  return mapWithBacktrack(sorted_ops_with_levels,
+                          critical_ops,
+                          architecture,
+                          mapping_state,
+                          0,
+                          0);
 }
 
-bool HeuristicMapping::mapWithBacktrack(std::vector<Operation *> &sorted_ops,
-                                        const Architecture &architecture,
-                                        MappingState &mapping_state,
-                                        size_t op_index, int backtrack_depth) {
+bool HeuristicMapping::mapWithBacktrack(
+    std::vector<std::pair<Operation *, int>> &sorted_ops_with_levels,
+    std::set<Operation *> &critical_ops,
+    const Architecture &architecture,
+    MappingState &mapping_state,
+    size_t op_index, int backtrack_depth) {
   // Checks if the backtrack depth exceeds the maximum allowed.
   if (backtrack_depth > this->max_backtrack_depth) {
     llvm::errs() << "[BacktrackMapping] Max backtrack depth reached\n";
@@ -25,46 +33,56 @@ bool HeuristicMapping::mapWithBacktrack(std::vector<Operation *> &sorted_ops,
 
   // Success condition: all operations are mapped (The op_index is larger than
   // or equal to the number of operations).
-  if (op_index >= sorted_ops.size()) {
+  if (op_index >= sorted_ops_with_levels.size()) {
     llvm::errs() << "[BacktrackMapping] Successfully mapped all operations.\n";
     return true;
   }
 
-  // Gets current operation to map.
-  Operation *op = sorted_ops[op_index];
+  // Gets the current operation with expected ALAP level (time step) to map.
+  Operation *target_op = sorted_ops_with_levels[op_index].first;
+  int target_level = sorted_ops_with_levels[op_index].second;
 
   // Skips non-materialized operations.
-  if (isa<neura::DataMovOp, neura::CtrlMovOp, neura::ReserveOp>(op)) {
-    return mapWithBacktrack(sorted_ops, architecture, mapping_state,
-                            op_index + 1, backtrack_depth);
+  if (isa<neura::DataMovOp, neura::CtrlMovOp, neura::ReserveOp>(target_op)) {
+    // Increments the op_index to skip non-materialized operations.
+    return mapWithBacktrack(sorted_ops_with_levels,
+                            critical_ops,
+                            architecture,
+                            mapping_state,
+                            op_index + 1,
+                            backtrack_depth);
   }
 
   // Gets candidate locations sorted by award.
-  std::vector<MappingLoc> sorted_locs =
-      calculateAward(op, architecture, mapping_state);
+  std::vector<MappingLoc> loc_candidates =
+      calculateAward(target_op, critical_ops, target_level, architecture, mapping_state);
 
-  if (sorted_locs.empty()) {
-    llvm::errs() << "No locations found for op: " << *op << "\n";
+  if (loc_candidates.empty()) {
+    llvm::errs() << "No locations found for op: " << *target_op << "\n";
     return false; // No locations available for this operation.
   }
-  assert(!sorted_locs.empty() && "No locations found for the operation to map");
+  assert(!loc_candidates.empty() && "No locations found for the operation to map");
 
   // Limits the number of locations to try.
   int locations_to_try =
-      std::min(static_cast<int>(sorted_locs.size()), this->max_location_to_try);
+      std::min(static_cast<int>(loc_candidates.size()), this->max_location_to_try);
 
   // Tries each candicate location in order of decreasing award.
   for (int i = 0; i < locations_to_try; ++i) {
-    MappingLoc target_loc = sorted_locs[i];
+    MappingLoc target_loc = loc_candidates[i];
     // Creates a mapping snapshot of current state before attempting to map.
     MappingStateSnapshot mappingstate_snapshot(mapping_state);
 
     // Attempts to place and route the operation at the target location.
-    if (placeAndRoute(op, target_loc, mapping_state)) {
+    if (placeAndRoute(target_op, target_loc, mapping_state)) {
       // Successfully placed and routed current operation, tries to map the next
       // operation.
-      if (mapWithBacktrack(sorted_ops, architecture, mapping_state,
-                           op_index + 1, backtrack_depth)) {
+      if (mapWithBacktrack(sorted_ops_with_levels,
+                           critical_ops,
+                           architecture,
+                           mapping_state,
+                           op_index + 1,
+                           backtrack_depth)) {
         return true; // Successfully mapped all operations.
       }
 
@@ -72,7 +90,7 @@ bool HeuristicMapping::mapWithBacktrack(std::vector<Operation *> &sorted_ops,
       // location.
       llvm::errs() << "[BACKTRACK] Failed to map in current location, "
                    << "restoring mapping state and trying next location.\n";
-      llvm::errs() << "[BACKTRACK] Backtracking from op: " << *op << "\n";
+      llvm::errs() << "[BACKTRACK] Backtracking from op: " << *target_op << "\n";
       mappingstate_snapshot.restore(mapping_state);
       // Increments backtrack depth.
       backtrack_depth++;

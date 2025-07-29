@@ -14,7 +14,8 @@ public:
   virtual ~MappingStrategy() = default;
 
   // Applies the mapping strategy to map operations onto hardware
-  virtual bool map(std::vector<Operation *> &sorted_ops,
+  virtual bool map(std::vector<std::pair<Operation *, int>> &sorted_ops_with_alap_levels,
+                   std::set<Operation *> &critical_ops,
                    const Architecture &architecture,
                    MappingState &mapping_state) = 0;
 
