@@ -48,11 +48,6 @@ llvm::SmallVector<mlir::Operation *> getMaterializedUserOps(Operation *op);
 // to be a phi operation.
 Operation *getMaterializedBackwardUser(Operation *op);
 
-// Attempts to map a function operation to the accelerator using heuristics.
-bool tryHeuristicMapping(std::vector<Operation *> &sorted_ops,
-                         const Architecture &architecture,
-                         MappingState &mapping_state);
-
 // Attempts to route a data move operation from src_loc to dst_loc.
 bool tryRouteDataMove(Operation *mov,
                       MappingLoc src_loc,

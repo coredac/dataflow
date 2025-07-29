@@ -14,7 +14,7 @@ public:
   HeuristicMapping(int max_location_to_try = 5, int max_backtrack_depth = 3)
       : max_location_to_try(max_location_to_try), max_backtrack_depth(3) {}
 
-  bool map(std::vector<std::pair<Operation *, int>> &sorted_ops_with_alap_levels,
+  bool map(std::vector<std::pair<Operation *, int>> &sorted_ops_with_levels,
            std::set<Operation *> &critical_ops,
            const Architecture &architecture,
            MappingState &mapping_state) override;
@@ -35,7 +35,7 @@ public:
   }
 
 private:
-  bool mapWithBacktrack(std::vector<std::pair<Operation *, int>> &sorted_ops_with_alap_levels,
+  bool mapWithBacktrack(std::vector<std::pair<Operation *, int>> &sorted_ops_with_levels,
                         std::set<Operation *> &critical_ops,
                         const Architecture &architecture,
                         MappingState &mapping_state, size_t current_index,
