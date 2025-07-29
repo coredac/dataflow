@@ -109,12 +109,14 @@ struct MapToAcceleratorPass
 
       // Collects and reports recurrence cycles found in the function.
       auto recurrence_cycles = collectRecurrenceCycles(func);
+      std::set<Operation *> critical_ops;
       RecurrenceCycle *longest = nullptr;
       int rec_mii = 1;
       for (auto &cycle : recurrence_cycles) {
         llvm::outs() << "[DEBUG] Recurrence cycle (length " << cycle.length
                      << "):\n";
         for (Operation *op : cycle.operations) {
+          critical_ops.insert(op);
           llvm::outs() << "  " << *op << "\n";
         }
         if (!longest || cycle.length > longest->length) {
@@ -144,16 +146,39 @@ struct MapToAcceleratorPass
 
       const int possibleMinII = std::max(rec_mii, res_mii);
       constexpr int maxII = 10;
-      std::vector<Operation *> sorted_ops = getTopologicallySortedOps(func);
-      for (Operation *op : sorted_ops) {
-        llvm::outs() << "[MapToAcceleratorPass] sorted op: " << *op << "\n";
+      std::vector<Operation *> topologically_sorted_ops =
+          getTopologicallySortedOps(func);
+      if (topologically_sorted_ops.empty()) {
+        llvm::errs() << "[MapToAcceleratorPass] No operations to map in function "
+                     << func.getName() << "\n";
+        assert(false && "Mapping aborted due to empty op list.");
       }
+      for (Operation *op : topologically_sorted_ops) {
+        llvm::outs() << "[MapToAcceleratorPass] Topologically sorted op: "
+                     << *op << "\n";
+      }
+      std::vector<std::vector<Operation *>> level_buckets =
+          getOpsInAlapLevels(topologically_sorted_ops, critical_ops);
+      for (int level = 0; level < static_cast<int>(level_buckets.size());
+           ++level) {
+        llvm::outs() << "[MapToAcceleratorPass] ALAP Bucket Level " << level
+                     << ": " << level_buckets[level].size() << " ops\n";
+        for (Operation *op : level_buckets[level]) {
+          llvm::outs() << "  " << *op << "\n";
+        }
+      }
+      std::vector<std::pair<Operation *, int>> sorted_ops_with_alap_levels =
+          flatten_level_buckets(level_buckets);
+      for (const auto &[op, level] : sorted_ops_with_alap_levels) {
+        llvm::outs() << "[MapToAcceleratorPass] ALAP sorted op: " << *op << " (ALAP level: " << level << ")\n";
+      }
+      // assert(false);
       for (int ii = possibleMinII; ii <= maxII; ++ii) {
         llvm::errs() << "[MapToAcceleratorPass] Start mapping with target II of "
                      << ii << "\n";
         // Creates a mapping state for the current II.
         MappingState mapping_state(architecture, ii);
-        if (mapping_strategy->map(sorted_ops, architecture, mapping_state)) {
+        if (mapping_strategy->map(sorted_ops_with_alap_levels, critical_ops, architecture, mapping_state)) {
           // success
           llvm::errs() << "[MapToAcceleratorPass] Successfully mapped function "
                        << func.getName() << "' with II = " << ii << "\n";

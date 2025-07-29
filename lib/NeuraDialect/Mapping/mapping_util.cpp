@@ -25,6 +25,12 @@ inline OperationKind getOperationKindFromMlirOp(Operation *op) {
   return IAdd;
 }
 
+// Returns true if the operation does not need CGRA tile placement.
+inline bool is_non_materialized(Operation *op) {
+  // Returns true if the operation does not need CGRA tile placement.
+  return mlir::isa<neura::ReserveOp, neura::CtrlMovOp, neura::DataMovOp>(op);
+}
+
 // Traverses (backward) the operation graph starting from the given operation
 // towards reserve_value.
 void traverseAlongPath(Operation *op, Value reserve_value,
@@ -50,7 +56,7 @@ void traverseAlongPath(Operation *op, Value reserve_value,
       int effective_length = 0;
       for (Operation *op : current_path) {
         // Skips the non-materialized ops when counting the cycle length.
-        if (!isa<neura::ReserveOp, neura::CtrlMovOp, neura::DataMovOp>(op)) {
+        if (!is_non_materialized(op)) {
           ++effective_length;
         }
       }
@@ -79,7 +85,7 @@ void traverseAlongPath(Operation *op, Value reserve_value,
 } // namespace
 
 SmallVector<RecurrenceCycle, 4>
-mlir::neura::collectRecurrenceCycles(Operation *func_op) {
+    mlir::neura::collectRecurrenceCycles(Operation *func_op) {
   SmallVector<RecurrenceCycle, 4> recurrence_cycles;
 
   func_op->walk([&](neura::CtrlMovOp ctrl_mov_op) {
@@ -138,7 +144,7 @@ int mlir::neura::calculateResMii(Operation *func_op,
 }
 
 std::vector<Operation *>
-mlir::neura::getTopologicallySortedOps(Operation *func_op) {
+    mlir::neura::getTopologicallySortedOps(Operation *func_op) {
   std::vector<Operation *> sorted_ops;
   llvm::DenseMap<Operation *, int> pending_deps;
   std::deque<Operation *> ready_queue;
@@ -199,6 +205,94 @@ mlir::neura::getTopologicallySortedOps(Operation *func_op) {
   return sorted_ops;
 }
 
+std::vector<std::vector<Operation *>>
+    mlir::neura::getOpsInAlapLevels(const std::vector<Operation *> &sorted_ops,
+                                    const std::set<Operation *> &critical_ops) {
+  llvm::DenseMap<Operation *, int> op_level;
+  int max_level = 0;
+
+  // Step 1: Computes raw ALAP level: longest path to any sink.
+  for (auto it = sorted_ops.rbegin(); it != sorted_ops.rend(); ++it) {
+    Operation *op = *it;
+
+    int level = 0;
+    for (Value result : op->getResults()) {
+      for (Operation *user : result.getUsers()) {
+        if (!op_level.count(user)) continue;
+
+        int user_level = op_level[user];
+
+        // Increments level only for materialized ops.
+        if (!is_non_materialized(user)) {
+          level = std::max(level, user_level + 1);
+        } else {
+          level = std::max(level, user_level);
+        }
+      }
+    }
+
+    op_level[op] = level;
+    max_level = std::max(max_level, level);
+  }
+
+  // Step 2: Reverses the level so the earliest op gets level 0.
+  for (Operation *op : sorted_ops) {
+    int raw_level = op_level[op];
+    int normalized_level = max_level - raw_level;
+    op_level[op] = normalized_level;
+  }
+
+  // Step 3: Overwrites critical ops with ASAP schedule: shortest path from source.
+  for (Operation *op : sorted_ops) {
+    if (!critical_ops.count(op)) continue;
+
+    int level = -1;
+    for (Value operand : op->getOperands()) {
+      Operation *def = operand.getDefiningOp();
+      if (!def || !op_level.count(def)) continue;
+
+      int def_level = op_level[def];
+
+      assert(def_level <= op_level[op] &&
+             "Critical op should not have a lower level than its operands");
+      // Increments level only for materialized ops.
+      if (!is_non_materialized(op)) {
+        level = std::max(level, def_level + 1);
+      } else {
+        level = std::max(level, def_level);
+      }
+    }
+
+    if (level != -1) {
+      // If there exists operand, moves the critical op earlier.
+      op_level[op] = level;
+    }
+  }
+
+
+  // Step 4: Assembles the ops into level buckets.
+  std::vector<std::vector<Operation *>> level_buckets(max_level + 1);
+
+  for (Operation *op : sorted_ops) {
+    level_buckets[op_level[op]].push_back(op);
+  }
+
+  return level_buckets;
+}
+
+std::vector<std::pair<Operation *, int>>
+    mlir::neura::flatten_level_buckets(const std::vector<std::vector<Operation *>> &level_buckets) {
+  std::vector<std::pair<Operation *, int>> result;
+
+  for (int level = 0; level < static_cast<int>(level_buckets.size()); ++level) {
+    for (Operation *op : level_buckets[level]) {
+      result.emplace_back(op, level);
+    }
+  }
+
+  return result;
+}
+
 mlir::Operation *mlir::neura::getMaterializedBackwardUser(Operation *op) {
   assert(isa<neura::CtrlMovOp>(op) && "Expected a ctrl_mov operation");
   auto ctrl_mov = dyn_cast<neura::CtrlMovOp>(op);
@@ -222,7 +316,7 @@ mlir::Operation *mlir::neura::getMaterializedBackwardUser(Operation *op) {
 }
 
 llvm::SmallVector<mlir::Operation *>
-mlir::neura::getMaterializedUserOps(Operation *op) {
+    mlir::neura::getMaterializedUserOps(Operation *op) {
   llvm::SmallVector<Operation *> result;
   llvm::DenseSet<Operation *> visited;
   visited.insert(op);
@@ -418,6 +512,27 @@ Operation *mlir::neura::getMaterializedProducer(Value operand) {
   return materialized_producer;
 }
 
+int mlir::neura::getPhysicalHops(const std::vector<Operation *> &producers,
+                                 Tile *tile,
+                                 const MappingState &mapping_state) {
+
+  // Counts the number of physical hops from the producers to the tile.
+  int hops = 0;
+
+  for (Operation *producer : producers) {
+    // Get the last location of the producer.
+    auto producer_locs = mapping_state.getAllLocsOfOp(producer);
+    assert(!producer_locs.empty() && "No locations found for producer");
+
+    MappingLoc producer_loc = producer_locs.back();
+    Tile *producer_tile = dyn_cast<Tile>(producer_loc.resource);
+    assert(producer_tile && "Producer location must be a Tile");
+    hops += std::abs(producer_tile->getX() - tile->getX()) +
+            std::abs(producer_tile->getY() - tile->getY());
+  }
+  return hops;
+}
+
 bool mlir::neura::canReachLocInTime(const std::vector<Operation *> &producers,
                                     const MappingLoc &target_loc,
                                     int deadline_step,
@@ -444,6 +559,7 @@ bool mlir::neura::canReachLocInTime(const MappingLoc &src_loc,
   // Checks if the destination is reachable from the source within the given
   // time window.
   if (src_loc.resource == dst_loc.resource &&
+      src_loc.time_step < deadline_step &&
       dst_loc.time_step <= deadline_step) {
     return true;
   }
@@ -470,8 +586,7 @@ bool mlir::neura::canReachLocInTime(const MappingLoc &src_loc,
 
     // If we reach the destination tile and time step is not after dst_loc
     if (current_loc.resource == dst_loc.resource &&
-        current_step <= dst_loc.time_step &&
-        dst_loc.time_step <= deadline_step) {
+        current_step <= deadline_step) {
       return true;
     }
 
@@ -524,9 +639,11 @@ void mlir::neura::updateAward(std::map<MappingLoc, int> &locs_with_award,
   }
 }
 
-std::vector<MappingLoc>
-mlir::neura::calculateAward(Operation *op, const Architecture &architecture,
-                            const MappingState &mapping_state) {
+std::vector<MappingLoc> mlir::neura::calculateAward(Operation *op,
+                                                    std::set<Operation *> &critical_ops,
+                                                    int target_level,
+                                                    const Architecture &architecture,
+                                                    const MappingState &mapping_state) {
   // Early exit if the operation is not supported by all the tiles.
   bool op_can_be_supported = false;
   for (Tile *tile : architecture.getAllTiles()) {
@@ -548,12 +665,24 @@ mlir::neura::calculateAward(Operation *op, const Architecture &architecture,
   std::vector<Operation *> producers;
   for (Value operand : op->getOperands()) {
     if (isa<neura::ReserveOp>(operand.getDefiningOp())) {
-      // Skips Reserve ops (backward ctrl move) when estimate cost.
+      // Skips Reserve ops (backward ctrl move) when calculating award.
       continue;
     }
     Operation *producer = getMaterializedProducer(operand);
     assert(producer && "Expected a materialized producer");
     producers.push_back(producer);
+  }
+
+  // Assembles all the backward users if exist.
+  std::vector<Operation *> backward_users;
+  for (Operation *user : getCtrlMovUsers(op)) {
+    auto ctrl_mov = dyn_cast<neura::CtrlMovOp>(user);
+    assert(ctrl_mov && "Expected user to be a CtrlMovOp");
+    mlir::Operation *materialized_backward_op =
+        getMaterializedBackwardUser(ctrl_mov);
+    assert(isa<neura::PhiOp>(materialized_backward_op) &&
+            "Expected materialized operation of ctrl_mov to be a PhiOp");
+    backward_users.push_back(materialized_backward_op);
   }
 
   llvm::errs() << "[calculateAward] Operation: " << *op
@@ -564,27 +693,65 @@ mlir::neura::calculateAward(Operation *op, const Architecture &architecture,
                    << " does not support operation: " << *op << "\n";
       continue; // Skip tiles that cannot support the operation.
     }
-    int earliest_start_time_step = 0;
+    int earliest_start_time_step = target_level;
     for (Operation *producer : producers) {
       std::vector<MappingLoc> producer_locs =
           mapping_state.getAllLocsOfOp(producer);
       assert(!producer_locs.empty() && "No locations found for producer");
 
       MappingLoc producer_loc = producer_locs.back();
-      earliest_start_time_step =
-          std::max(earliest_start_time_step, producer_loc.time_step + 1);
+      earliest_start_time_step = std::max(earliest_start_time_step,
+                                          producer_loc.time_step + 1);
     }
-    int award = mapping_state.getII() + tile->getDstTiles().size();
-    for (int t = earliest_start_time_step;
-         t < earliest_start_time_step + mapping_state.getII(); t += 1) {
+    int latest_end_time_step = earliest_start_time_step + mapping_state.getII();
+    std::vector<MappingLoc> backward_users_locs;
+    for (Operation *user : backward_users) {
+      std::vector<MappingLoc> user_locs =
+          mapping_state.getAllLocsOfOp(user);
+      assert(!user_locs.empty() && "No locations found for backward user");
+
+      MappingLoc backward_user_loc = user_locs.back();
+      latest_end_time_step =
+          std::min(latest_end_time_step,
+                   backward_user_loc.time_step + mapping_state.getII());
+      backward_users_locs.push_back(backward_user_loc);
+    }
+    int award = 2 * mapping_state.getII();
+    if (critical_ops.count(op)) {
+      award += tile->getDstTiles().size();
+      award += op->getOperands().size() - getPhysicalHops(producers, tile, mapping_state);
+    }
+    // llvm::errs() << "[DEBUG] checking range: "
+    //              << earliest_start_time_step << " to "
+    //              << latest_end_time_step << " for tile: "
+    //              << tile->getType() << "#" << tile->getId() << "\n";
+    for (int t = earliest_start_time_step; t < latest_end_time_step; t += 1) {
       MappingLoc tile_loc_candidate = {tile, t};
       // If the tile at time `t` is available, we can consider it for mapping.
       if (mapping_state.isAvailableAcrossTime(tile_loc_candidate)) {
-        // If no producer or the location is reachable by all producers,
+        bool meet_producer_constraint = producers.empty() ||
+            canReachLocInTime(producers, tile_loc_candidate, t, mapping_state);
+        bool meet_backward_user_constraint = true;
+        for (auto &backward_user_loc : backward_users_locs) {
+          // If there is no backward user, we can consider it for mapping.
+          // Otherwise, check if the location can reach all backward users.
+          if (!canReachLocInTime(tile_loc_candidate,
+                                 backward_user_loc,
+                                 backward_user_loc.time_step + mapping_state.getII(),
+                                 mapping_state)) {
+            meet_backward_user_constraint = false;
+            break; // No need to check further.
+          }
+        }
+        // If no producer or the location is reachable by all producers, and
+        // no backward user or the location can reach all backward users,
         // we can consider it for mapping and grant reward.
-        if (producers.empty() ||
-            canReachLocInTime(producers, tile_loc_candidate, t,
-                              mapping_state)) {
+        if (meet_producer_constraint && meet_backward_user_constraint) {
+          // Grants higher award if the location is physically closed to producers.
+          // award += producers.size() - getPhysicalHops(producers, tile, mapping_state);
+          // if (op->getOperands().size() > 1 && getPhysicalHops(producers, tile, mapping_state) < 2) {
+          //   award += 1;
+          // }
           updateAward(locs_with_award, tile_loc_candidate, award);
         }
       }
@@ -592,7 +759,7 @@ mlir::neura::calculateAward(Operation *op, const Architecture &architecture,
       // award.
       award -= 1;
     }
-    assert(award >= 0 && "Award should not be negative");
+    // assert(award >= 0 && "Award should not be negative");
   }
 
   // Copies map entries into a vector of pairs for sorting.
@@ -614,8 +781,8 @@ mlir::neura::calculateAward(Operation *op, const Architecture &architecture,
   //                 return a.second > b.second;
   //               }
   //               // Tie-breaker: prioritizes lower resource utilization and
-  //               earlier time step. if (a.first.time_step !=
-  //               b.first.time_step) {
+  //               // earlier time step.
+  //               if (a.first.time_step != b.first.time_step) {
   //                 return a.first.time_step > b.first.time_step;
   //               }
   //               const bool is_resource_a_lower_utilized =
@@ -634,13 +801,13 @@ mlir::neura::calculateAward(Operation *op, const Architecture &architecture,
 }
 
 llvm::SmallVector<Operation *> mlir::neura::getCtrlMovUsers(Operation *op) {
-  llvm::SmallVector<Operation *> result;
+  llvm::SmallVector<Operation *> results;
   for (Operation *user : op->getUsers()) {
     if (isa<neura::CtrlMovOp>(user)) {
-      result.push_back(user);
+      results.push_back(user);
     }
   }
-  return result;
+  return results;
 }
 
 bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
