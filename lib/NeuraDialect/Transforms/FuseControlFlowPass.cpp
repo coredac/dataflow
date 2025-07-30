@@ -359,7 +359,12 @@ LogicalResult replaceWithLoopController(LoopInfo *loop_info,
   }
 
   // Creates the parentValid signal for loop_controller.
-  auto true_val = createConstantPredicate(rewriter, loc, true);
+  auto true_const = createConstantPredicate(rewriter, loc, true);
+  rewriter.setInsertionPointAfter(true_const.getDefiningOp());
+  auto true_val = rewriter
+                      .create<neura::GrantAlwaysOp>(loc, true_const.getType(),
+                                                    true_const, nullptr)
+                      ->getResult(0);
 
   // Prepares the values and iter type for loop_controller.
   auto index_type = loop_info->index_phi_val.getType();
