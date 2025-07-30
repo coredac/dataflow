@@ -5,6 +5,7 @@
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SetVector.h"
@@ -108,11 +109,6 @@ Value findOriginalConstant(Value val,
     return findOriginalConstant(grant_once_op.getValue(), ops_to_remove);
   }
 
-  if (auto grant_always_op = dyn_cast<neura::GrantAlwaysOp>(def_op)) {
-    ops_to_remove.insert(def_op);
-    return findOriginalConstant(grant_always_op.getValue(), ops_to_remove);
-  }
-
   // For grant_predicate, only track value inputs and ignore condition inputs.
   if (auto grant_predicate_op = dyn_cast<neura::GrantPredicateOp>(def_op)) {
     ops_to_remove.insert(def_op);
@@ -130,7 +126,7 @@ std::unique_ptr<LoopInfo> identifyLoop(Operation *index_reserve_op) {
     return nullptr;
   }
 
-  // Starts from the reserve operation.
+  // Starts from the reserve operation for loop index.
   auto loop = std::make_unique<LoopInfo>();
   loop->index_reserve_val = index_reserve_op->getResult(0);
   loop->addOpToRemove(index_reserve_op);
@@ -168,7 +164,10 @@ std::unique_ptr<LoopInfo> identifyLoop(Operation *index_reserve_op) {
     return nullptr; // No start value found.
   }
 
-  loop->start_val = findOriginalConstant(initial_value, loop->ops_to_remove);
+  assert(initial_value && initial_value.getDefiningOp() &&
+         isa<neura::GrantOnceOp>(initial_value.getDefiningOp()) &&
+         "The initial_value should be defined by a GrantOnceOp.");
+  loop->start_val = initial_value;
 
   // Identifies the phi->icmp->[not]->grant_predicate pattern.
   for (Operation *phi_user : index_phi_op->getUsers()) {
@@ -197,6 +196,46 @@ std::unique_ptr<LoopInfo> identifyLoop(Operation *index_reserve_op) {
               loop->index_grant_op = grant_predicate_op;
               loop->addOpToRemove(grant_predicate_op);
               break;
+            }
+          }
+        }
+
+        // Identifies the recurrence cycle of the end value.
+        Operation *end_val_def_op = loop->end_val.getDefiningOp();
+        if (auto end_phi_op = dyn_cast_or_null<neura::PhiOp>(end_val_def_op)) {
+          // Identifies the end value's reserve operation.
+          Value end_reserve_val = nullptr;
+          for (Value input : end_phi_op.getInputs()) {
+            if (auto reserve_op = input.getDefiningOp<neura::ReserveOp>()) {
+              end_reserve_val = input;
+              loop->addOpToRemove(reserve_op);
+              break;
+            }
+          }
+
+          if (end_reserve_val) {
+            // Identifies the end ctrl_mov operation.
+            for (Operation *user : end_reserve_val.getUsers()) {
+              if (auto ctrl_mov_op = dyn_cast<neura::CtrlMovOp>(user)) {
+                if (ctrl_mov_op.getTarget() == end_reserve_val) {
+                  loop->addOpToRemove(ctrl_mov_op);
+                  loop->addOpToRemove(end_phi_op);
+                  if (isa<neura::GrantPredicateOp>(
+                          ctrl_mov_op.getValue().getDefiningOp())) {
+                    loop->addOpToRemove(ctrl_mov_op.getValue().getDefiningOp());
+                  }
+                  // Finds the actual end value from the inputs of the
+                  // end_phi_op.
+                  for (Value input : end_phi_op.getInputs()) {
+                    if (input != end_reserve_val) {
+                      loop->end_val =
+                          findOriginalConstant(input, loop->ops_to_remove);
+                      break;
+                    }
+                  }
+                  break;
+                }
+              }
             }
           }
         }
@@ -267,18 +306,6 @@ Value createConstantPredicate(PatternRewriter &rewriter, Location loc,
                                             rewriter.getBoolAttr(true));
 }
 
-Value ensureCorrectType(PatternRewriter &rewriter, Location loc, Value value,
-                        Type target_type) {
-  if (!value || value.getType() == target_type) {
-    return value;
-  }
-  // If the types don't match, we need to cast the value.
-  // Predicate bit defaults to null.
-  // TODO: Handles cases where the cast is not trivial.
-  return rewriter.create<neura::CastOp>(
-      loc, target_type, value, rewriter.getStringAttr("unknown cast"), nullptr);
-}
-
 Operation *findDefiningOp(Value value) {
   if (!value) {
     return nullptr;
@@ -338,12 +365,29 @@ LogicalResult replaceWithLoopController(LoopInfo *loop_info,
   auto index_type = loop_info->index_phi_val.getType();
   rewriter.setInsertionPointAfter(true_val.getDefiningOp());
 
-  Value start_val =
-      ensureCorrectType(rewriter, loc, loop_info->start_val, index_type);
-  Value end_val =
-      ensureCorrectType(rewriter, loc, loop_info->end_val, index_type);
-  Value step_val =
-      ensureCorrectType(rewriter, loc, loop_info->step_val, index_type);
+  // For start value, we use the grant_once for correctness.
+  Value start_val = loop_info->start_val;
+  if (!isa<neura::GrantOnceOp>(start_val.getDefiningOp())) {
+    rewriter.setInsertionPointAfter(start_val.getDefiningOp());
+    start_val = rewriter.create<neura::GrantOnceOp>(loc, index_type, start_val,
+                                                    nullptr);
+  }
+
+  // For end value and step value, we create grant_always for correctness.
+  Value end_val = loop_info->end_val;
+  rewriter.setInsertionPointAfter(end_val.getDefiningOp());
+  end_val =
+      rewriter.create<neura::GrantAlwaysOp>(loc, index_type, end_val, nullptr);
+
+  Value step_val = loop_info->step_val;
+  rewriter.setInsertionPointAfter(end_val.getDefiningOp());
+  step_val =
+      rewriter.create<neura::GrantAlwaysOp>(loc, index_type, step_val, nullptr);
+
+  rewriter.setInsertionPointAfter(true_val.getDefiningOp());
+  // Creates the reserve operation for the loop index.
+  Value curr_idx_reserve = rewriter.create<neura::ReserveOp>(loc, index_type);
+
   StringAttr iter_type;
   if (neura::ICmpOp icmp_op =
           dyn_cast<neura::ICmpOp>(loop_info->condition_val.getDefiningOp())) {
@@ -356,12 +400,14 @@ LogicalResult replaceWithLoopController(LoopInfo *loop_info,
   }
 
   // Creates the loop_controller operation.
-  auto loop_controller = rewriter.create<neura::LoopControllerOp>(
-      loc, index_type, true_val.getType(), true_val, start_val, end_val,
-      step_val, iter_type);
+  auto loop_controller = rewriter.create<neura::LoopControlOp>(
+      loc, index_type, true_val.getType(), true_val, curr_idx_reserve,
+      iter_type, start_val, end_val, step_val);
 
-  Value new_index = loop_controller.getIndex();
+  Value new_index = loop_controller.getNextindex();
   Value new_valid = loop_controller.getValid();
+
+  rewriter.create<neura::CtrlMovOp>(loc, new_index, curr_idx_reserve);
 
   // Creates the replacement map for the loop info.
   DenseMap<Value, Value> replacement_map;
@@ -470,6 +516,10 @@ struct FuseLoopControlFlowPattern : public OpRewritePattern<func::FuncOp> {
 
   LogicalResult matchAndRewrite(func::FuncOp func_op,
                                 PatternRewriter &rewriter) const override {
+    auto accel_attr = func_op->getAttrOfType<StringAttr>("accelerator");
+    if (!accel_attr || accel_attr.getValue() != "neura") {
+      return failure();
+    }
     // Saves all the identified loops.
     std::vector<std::unique_ptr<LoopInfo>> identified_loops;
 
