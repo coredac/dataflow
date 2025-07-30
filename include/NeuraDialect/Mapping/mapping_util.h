@@ -22,6 +22,23 @@ int calculateResMii(Operation *func_op, const Architecture &architecture);
 // Returns topologically sorted operations in func_op.
 std::vector<Operation *> getTopologicallySortedOps(Operation *func_op);
 
+// Given the sorted operations, returns a vector of pairs where each pair
+// contains a vector of operations at the same ALAP (as late as possible)
+// level and the level number.
+std::vector<std::vector<Operation *>>
+    getOpsInAlapLevels(const std::vector<Operation *> &sorted_ops,
+                       const std::set<Operation *> &critical_ops);
+
+// Flattens the level buckets into a vector of pairs (operation, level).
+std::vector<std::pair<Operation *, int>>
+    flatten_level_buckets(const std::vector<std::vector<Operation *>> &level_buckets);
+
+// Gets the physical hops from the producers to the tile, which is used for estimating
+// the award of a location for placement.
+int getPhysicalHops(const std::vector<Operation *> &producers,
+                    Tile *tile,
+                    const MappingState &mapping_state);
+
 Operation* getMaterializedProducer(Value operand);
 
 // Collects the real users of an operation, excluding ctrl_mov and data_mov.
@@ -30,11 +47,6 @@ llvm::SmallVector<mlir::Operation *> getMaterializedUserOps(Operation *op);
 // Gets the last materialized backward user of an operation, which is expected
 // to be a phi operation.
 Operation *getMaterializedBackwardUser(Operation *op);
-
-// Attempts to map a function operation to the accelerator using heuristics.
-bool tryHeuristicMapping(std::vector<Operation *> &sorted_ops,
-                         const Architecture &architecture,
-                         MappingState &mapping_state);
 
 // Attempts to route a data move operation from src_loc to dst_loc.
 bool tryRouteDataMove(Operation *mov,
@@ -56,10 +68,6 @@ bool tryRouteBackwardMove(Operation *mov_op,
                            const MappingState &state,
                            std::vector<MappingLoc> &path_out);
 
-// Calculates the cost of mapping locations for a given op, the returned locations
-// are sorted based on the cost.
-std::vector<MappingLoc> calculateCost(Operation *op, const MappingState &mapping_state);
-
 // Gets the ctrl_mov users of an operation, empty vector is returned if no ctrl_mov users found.
 llvm::SmallVector<Operation *> getCtrlMovUsers(Operation *op);
 
@@ -67,7 +75,11 @@ llvm::SmallVector<Operation *> getCtrlMovUsers(Operation *op);
 // the producers to the given op.
 bool placeAndRoute(Operation *op, const MappingLoc &target_loc, MappingState &mapping_state);
 
+// Calculates the award of mapping locations for a given op, the returned locations
+// are sorted based on the award.
 std::vector<MappingLoc> calculateAward(Operation *op,
+                                       std::set<Operation *> &critical_ops,
+                                       int target_level,
                                        const Architecture &architecture,
                                        const MappingState &mapping_state);
 
