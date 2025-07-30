@@ -149,8 +149,9 @@ struct MapToAcceleratorPass
         llvm::outs() << "[MapToAcceleratorPass] sorted op: " << *op << "\n";
       }
       for (int ii = possibleMinII; ii <= maxII; ++ii) {
-        llvm::errs() << "[MapToAcceleratorPass] Start mapping with target II of "
-                     << ii << "\n";
+        llvm::errs()
+            << "[MapToAcceleratorPass] Start mapping with target II of " << ii
+            << "\n";
         // Creates a mapping state for the current II.
         MappingState mapping_state(architecture, ii);
         if (mapping_strategy->map(sorted_ops, architecture, mapping_state)) {
