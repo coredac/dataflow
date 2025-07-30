@@ -385,8 +385,6 @@ LogicalResult replaceWithLoopController(LoopInfo *loop_info,
       rewriter.create<neura::GrantAlwaysOp>(loc, index_type, step_val, nullptr);
 
   rewriter.setInsertionPointAfter(true_val.getDefiningOp());
-  // Creates the reserve operation for the loop index.
-  Value curr_idx_reserve = rewriter.create<neura::ReserveOp>(loc, index_type);
 
   StringAttr iter_type;
   if (neura::ICmpOp icmp_op =
@@ -401,13 +399,11 @@ LogicalResult replaceWithLoopController(LoopInfo *loop_info,
 
   // Creates the loop_controller operation.
   auto loop_controller = rewriter.create<neura::LoopControlOp>(
-      loc, index_type, true_val.getType(), true_val, curr_idx_reserve,
-      iter_type, start_val, end_val, step_val);
+      loc, index_type, true_val.getType(), true_val, iter_type, start_val,
+      end_val, step_val);
 
   Value new_index = loop_controller.getNextindex();
   Value new_valid = loop_controller.getValid();
-
-  rewriter.create<neura::CtrlMovOp>(loc, new_index, curr_idx_reserve);
 
   // Creates the replacement map for the loop info.
   DenseMap<Value, Value> replacement_map;
