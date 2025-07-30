@@ -341,14 +341,17 @@ def Neura_GrantPredicateOp : Op<NeuraDialect, "grant_predicate"> {
 def Neura_GrantOnceOp : Op<NeuraDialect, "grant_once"> {
   let summary = "Marks a value as valid once.";
   let description = [{
-    Grants a value a one-time predicate: the resulting value is considered valid
+    Either grants a value a one-time predicate, or creates a constant value with a one-time predicate. The resulting value is considered valid
     only during its first activation. Used to initialize recurrence cycles.
     
     Example:
       %v = neura.grant_once %init : !neura.data<f32, i1> -> !neura.data<f32, i1>
+      %c = neura.grant_once <{value = 42 : i64}> : !neura.data<i64, i1>
   }];
 
-  let arguments = (ins AnyType:$value);
+  let arguments = (ins 
+  Optional<AnyType>:$value,
+  OptionalAttr<AnyAttr>:$constant_value);
   let results = (outs AnyType:$result);
 
   // let assemblyFormat = "$value attr-dict `:` type($value) `->` type($result)";
@@ -364,7 +367,9 @@ def Neura_GrantAlwaysOp : Op<NeuraDialect, "grant_always"> {
       %v = neura.grant_always %init : !neura.data<f32, i1> -> !neura.data<f32, i1>
   }];
 
-  let arguments = (ins AnyType:$value);
+  let arguments = (ins 
+  Optional<AnyType>:$value,
+  OptionalAttr<AnyAttr>:$constant_value);
   let results = (outs AnyType:$result);
 
   // let assemblyFormat = "$value attr-dict `:` type($value) `->` type($result)";
@@ -373,32 +378,45 @@ def Neura_GrantAlwaysOp : Op<NeuraDialect, "grant_always"> {
 // ----------------------------------------------------
 // Defines fused control flow operations.
 
-def Neura_LoopControllerOp : Op<NeuraDialect, "loop_controller">{
+def Neura_LoopControlOp : Op<NeuraDialect, "loop_control">{
   let summary = "Generates loop indicies and valid predicates.";
   let description = [{
-    Manages a single level of loop execution based on cycle counting.
-    Each loop_controller outputs a current index value and a valid predicate.
+    Controls loop execution with minimal recurrence cycle length (1).
+    Takes the current index and produces the next index and validity predicate.
     
-    The loop_controller uses dynamic loop bounds (start, end, step),
-    allowing for variable-length loops and runtime-determined bounds.
+    This operation combines comparison and increment logic into a single operation,
+    enabling efficient loop execution on dataflow architectures with modulo scheduling.
     
-    The execution is conditioned on the parent_valid input, creating an
-    efficient hierarchical structure for nested loops.
+    The first iteration automatically uses the start value because the reserve operation's
+    predicate bit is initially 0, while the start value's predicate bit is 1.
+    
+    Example:
+      // Loop control that calculates next index and validity in one step
+      %next_idx, %loop_valid = neura.loop_control(
+        parent_valid = %parent_valid,
+        curr_index = %curr_idx,
+        start = %start_val,
+        end = %end_val,
+        step = %step_val
+      ) <{iteration_type = "increment"}> : !neura.data<i1, i1>, !neura.data<i64, i1>,
+                                           !neura.data<i64, i1>, !neura.data<i64, i1>, !neura.data<i64, i1>
+                                           -> !neura.data<i64, i1>, !neura.data<i1, i1>
   }];
 
   let arguments = (ins
-    AnyType:$parentValid,  // Valid predicate from the parent loop
-    AnyType:$start,         // Start index of the loop
-    AnyType:$end,           // End index of the loop
-    AnyType:$step,           // Step size for the loop
-    StrAttr:$iterationType // Type of the loop iteration (e.g., "increment", "decrement")
+    AnyType:$parentValid,  // Valid predicate from the parent loop.
+    AnyType:$currIndex,    // Current loop index.
+    StrAttr:$iterationType, // Type of the loop iteration (e.g., "increment", "decrement").
+    AnyType:$start,         // Start index of the loop (optional if startValue attr is presented).
+    AnyType:$end,           // End index of the loop (optional if endValue attr is presented).
+    AnyType:$step           // Step size for the loop (optional if stepValue attr is presented).
   );
 
   let results = (outs
-    AnyType:$index,         // Current loop index
+    AnyType:$nextindex,         // Current loop index
     AnyType:$valid          // Valid predicate for the current index
   );
 
   let assemblyFormat =
-    " `(``parent_valid` `=` $parentValid `,` `start` `=` $start `,` `end` `=` $end `,` `step` `=` $step`)` attr-dict `:` type($parentValid) `,` type($start) `,` type($end) `,` type($step) `->` type($index) `,` type($valid)";
+    " `(``parent_valid` `=` $parentValid `,` `curr_index` `=` $currIndex `,` `start` `=` $start `,` `end` `=` $end `,` `step` `=` $step`)` attr-dict `:` type($parentValid) `,` type($currIndex) `,` type($start) `,` type($end) `,` type($step) `->` type($nextindex) `,` type($valid)";
 }
