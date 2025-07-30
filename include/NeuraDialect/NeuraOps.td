@@ -394,11 +394,10 @@ def Neura_LoopControlOp : Op<NeuraDialect, "loop_control">{
       // Loop control that calculates next index and validity in one step
       %next_idx, %loop_valid = neura.loop_control(
         parent_valid = %parent_valid,
-        curr_index = %curr_idx,
         start = %start_val,
         end = %end_val,
         step = %step_val
-      ) <{iteration_type = "increment"}> : !neura.data<i1, i1>, !neura.data<i64, i1>,
+      ) <{iteration_type = "increment"}> : !neura.data<i1, i1>,
                                            !neura.data<i64, i1>, !neura.data<i64, i1>, !neura.data<i64, i1>
                                            -> !neura.data<i64, i1>, !neura.data<i1, i1>
   }];
