@@ -1,0 +1,60 @@
+--- !FileInfo:
+  filepath: "/home/jackcui/Arch/MLiR/dataflow/include/NeuraDialect/Neura.td"
+  includes: "/home/jackcui/Arch/MLiR/dataflow/include/NeuraDialect;/home/jackcui/Arch/MLiR/llvm-project/llvm/include;/home/jackcui/Arch/MLiR/llvm-project/build/include;/home/jackcui/Arch/MLiR/llvm-project/mlir/include;/home/jackcui/Arch/MLiR/llvm-project/build/tools/mlir/include;/home/jackcui/Arch/MLiR/dataflow/include;/home/jackcui/Arch/MLiR/dataflow/build/include"
+--- !FileInfo:
+  filepath: "/home/jackcui/Arch/MLiR/dataflow/include/NeuraDialect/Neura.td"
+  includes: "/home/jackcui/Arch/MLiR/dataflow/include/NeuraDialect;/home/jackcui/Arch/MLiR/llvm-project/llvm/include;/home/jackcui/Arch/MLiR/llvm-project/build/include;/home/jackcui/Arch/MLiR/llvm-project/mlir/include;/home/jackcui/Arch/MLiR/llvm-project/build/tools/mlir/include;/home/jackcui/Arch/MLiR/dataflow/include;/home/jackcui/Arch/MLiR/dataflow/build/include"
+--- !FileInfo:
+  filepath: "/home/jackcui/Arch/MLiR/dataflow/include/NeuraDialect/Neura.td"
+  includes: "/home/jackcui/Arch/MLiR/dataflow/include/NeuraDialect;/home/jackcui/Arch/MLiR/llvm-project/llvm/include;/home/jackcui/Arch/MLiR/llvm-project/build/include;/home/jackcui/Arch/MLiR/llvm-project/mlir/include;/home/jackcui/Arch/MLiR/llvm-project/build/tools/mlir/include;/home/jackcui/Arch/MLiR/dataflow/include;/home/jackcui/Arch/MLiR/dataflow/build/include"
+--- !FileInfo:
+  filepath: "/home/jackcui/Arch/MLiR/dataflow/include/NeuraDialect/Neura.td"
+  includes: "/home/jackcui/Arch/MLiR/dataflow/include/NeuraDialect;/home/jackcui/Arch/MLiR/llvm-project/llvm/include;/home/jackcui/Arch/MLiR/llvm-project/build/include;/home/jackcui/Arch/MLiR/llvm-project/mlir/include;/home/jackcui/Arch/MLiR/llvm-project/build/tools/mlir/include;/home/jackcui/Arch/MLiR/dataflow/include;/home/jackcui/Arch/MLiR/dataflow/build/include"
+--- !FileInfo:
+  filepath: "/home/jackcui/Arch/MLiR/dataflow/include/NeuraDialect/Neura.td"
+  includes: "/home/jackcui/Arch/MLiR/dataflow/include/NeuraDialect;/home/jackcui/Arch/MLiR/llvm-project/llvm/include;/home/jackcui/Arch/MLiR/llvm-project/build/include;/home/jackcui/Arch/MLiR/llvm-project/mlir/include;/home/jackcui/Arch/MLiR/llvm-project/build/tools/mlir/include;/home/jackcui/Arch/MLiR/dataflow/include;/home/jackcui/Arch/MLiR/dataflow/build/include"
+--- !FileInfo:
+  filepath: "/home/jackcui/Arch/MLiR/dataflow/include/NeuraDialect/Neura.td"
+  includes: "/home/jackcui/Arch/MLiR/dataflow/include/NeuraDialect;/home/jackcui/Arch/MLiR/llvm-project/llvm/include;/home/jackcui/Arch/MLiR/llvm-project/build/include;/home/jackcui/Arch/MLiR/llvm-project/mlir/include;/home/jackcui/Arch/MLiR/llvm-project/build/tools/mlir/include;/home/jackcui/Arch/MLiR/dataflow/include;/home/jackcui/Arch/MLiR/dataflow/build/include"
+--- !FileInfo:
+  filepath: "/home/jackcui/Arch/MLiR/dataflow/include/NeuraDialect/Neura.td"
+  includes: "/home/jackcui/Arch/MLiR/dataflow/include/NeuraDialect;/home/jackcui/Arch/MLiR/llvm-project/llvm/include;/home/jackcui/Arch/MLiR/llvm-project/build/include;/home/jackcui/Arch/MLiR/llvm-project/mlir/include;/home/jackcui/Arch/MLiR/llvm-project/build/tools/mlir/include;/home/jackcui/Arch/MLiR/dataflow/include;/home/jackcui/Arch/MLiR/dataflow/build/include"
+--- !FileInfo:
+  filepath: "/home/jackcui/Arch/MLiR/dataflow/include/NeuraDialect/Neura.td"
+  includes: "/home/jackcui/Arch/MLiR/dataflow/include/NeuraDialect;/home/jackcui/Arch/MLiR/llvm-project/llvm/include;/home/jackcui/Arch/MLiR/llvm-project/build/include;/home/jackcui/Arch/MLiR/llvm-project/mlir/include;/home/jackcui/Arch/MLiR/llvm-project/build/tools/mlir/include;/home/jackcui/Arch/MLiR/dataflow/include;/home/jackcui/Arch/MLiR/dataflow/build/include"
+--- !FileInfo:
+  filepath: "/home/jackcui/Arch/MLiR/dataflow/include/NeuraDialect/Neura.td"
+  includes: "/home/jackcui/Arch/MLiR/dataflow/include/NeuraDialect;/home/jackcui/Arch/MLiR/llvm-project/llvm/include;/home/jackcui/Arch/MLiR/llvm-project/build/include;/home/jackcui/Arch/MLiR/llvm-project/mlir/include;/home/jackcui/Arch/MLiR/llvm-project/build/tools/mlir/include;/home/jackcui/Arch/MLiR/dataflow/include;/home/jackcui/Arch/MLiR/dataflow/build/include"
+--- !FileInfo:
+  filepath: "/home/jackcui/Arch/MLiR/dataflow/include/NeuraDialect/Neura.td"
+  includes: "/home/jackcui/Arch/MLiR/dataflow/include/NeuraDialect;/home/jackcui/Arch/MLiR/llvm-project/llvm/include;/home/jackcui/Arch/MLiR/llvm-project/build/include;/home/jackcui/Arch/MLiR/llvm-project/mlir/include;/home/jackcui/Arch/MLiR/llvm-project/build/tools/mlir/include;/home/jackcui/Arch/MLiR/dataflow/include;/home/jackcui/Arch/MLiR/dataflow/build/include"
+--- !FileInfo:
+  filepath: "/home/jackcui/Arch/MLiR/dataflow/include/NeuraDialect/Neura.td"
+  includes: "/home/jackcui/Arch/MLiR/dataflow/include/NeuraDialect;/home/jackcui/Arch/MLiR/llvm-project/llvm/include;/home/jackcui/Arch/MLiR/llvm-project/build/include;/home/jackcui/Arch/MLiR/llvm-project/mlir/include;/home/jackcui/Arch/MLiR/llvm-project/build/tools/mlir/include;/home/jackcui/Arch/MLiR/dataflow/include;/home/jackcui/Arch/MLiR/dataflow/build/include"
+--- !FileInfo:
+  filepath: "/home/jackcui/Arch/MLiR/dataflow/include/NeuraDialect/Neura.td"
+  includes: "/home/jackcui/Arch/MLiR/dataflow/include/NeuraDialect;/home/jackcui/Arch/MLiR/llvm-project/llvm/include;/home/jackcui/Arch/MLiR/llvm-project/build/include;/home/jackcui/Arch/MLiR/llvm-project/mlir/include;/home/jackcui/Arch/MLiR/llvm-project/build/tools/mlir/include;/home/jackcui/Arch/MLiR/dataflow/include;/home/jackcui/Arch/MLiR/dataflow/build/include"
+--- !FileInfo:
+  filepath: "/home/jackcui/Arch/MLiR/dataflow/include/NeuraDialect/NeuraPasses.td"
+  includes: "/home/jackcui/Arch/MLiR/dataflow/include/NeuraDialect;/home/jackcui/Arch/MLiR/llvm-project/llvm/include;/home/jackcui/Arch/MLiR/llvm-project/build/include;/home/jackcui/Arch/MLiR/llvm-project/mlir/include;/home/jackcui/Arch/MLiR/llvm-project/build/tools/mlir/include;/home/jackcui/Arch/MLiR/dataflow/include;/home/jackcui/Arch/MLiR/dataflow/build/include"
+--- !FileInfo:
+  filepath: "/home/jackcui/Arch/MLiR/dataflow/include/NeuraDialect/NeuraPasses.td"
+  includes: "/home/jackcui/Arch/MLiR/dataflow/include/NeuraDialect;/home/jackcui/Arch/MLiR/llvm-project/llvm/include;/home/jackcui/Arch/MLiR/llvm-project/build/include;/home/jackcui/Arch/MLiR/llvm-project/mlir/include;/home/jackcui/Arch/MLiR/llvm-project/build/tools/mlir/include;/home/jackcui/Arch/MLiR/dataflow/include;/home/jackcui/Arch/MLiR/dataflow/build/include"
+--- !FileInfo:
+  filepath: "/home/jackcui/Arch/MLiR/dataflow/include/Conversion/ConversionPasses.td"
+  includes: "/home/jackcui/Arch/MLiR/dataflow/include/Conversion;/home/jackcui/Arch/MLiR/llvm-project/llvm/include;/home/jackcui/Arch/MLiR/llvm-project/build/include;/home/jackcui/Arch/MLiR/llvm-project/mlir/include;/home/jackcui/Arch/MLiR/llvm-project/build/tools/mlir/include;/home/jackcui/Arch/MLiR/dataflow/include;/home/jackcui/Arch/MLiR/dataflow/build/include"
+--- !FileInfo:
+  filepath: "/home/jackcui/Arch/MLiR/dataflow/include/Conversion/ConversionPasses.td"
+  includes: "/home/jackcui/Arch/MLiR/dataflow/include/Conversion;/home/jackcui/Arch/MLiR/llvm-project/llvm/include;/home/jackcui/Arch/MLiR/llvm-project/build/include;/home/jackcui/Arch/MLiR/llvm-project/mlir/include;/home/jackcui/Arch/MLiR/llvm-project/build/tools/mlir/include;/home/jackcui/Arch/MLiR/dataflow/include;/home/jackcui/Arch/MLiR/dataflow/build/include"
+--- !FileInfo:
+  filepath: "/home/jackcui/Arch/MLiR/dataflow/lib/Conversion/ArithToNeura/ArithToNeuraPatterns.td"
+  includes: "/home/jackcui/Arch/MLiR/dataflow/lib/Conversion/ArithToNeura;/home/jackcui/Arch/MLiR/llvm-project/llvm/include;/home/jackcui/Arch/MLiR/llvm-project/build/include;/home/jackcui/Arch/MLiR/llvm-project/mlir/include;/home/jackcui/Arch/MLiR/llvm-project/build/tools/mlir/include;/home/jackcui/Arch/MLiR/dataflow/include;/home/jackcui/Arch/MLiR/dataflow/build/include"
+--- !FileInfo:
+  filepath: "/home/jackcui/Arch/MLiR/dataflow/lib/Conversion/ArithToNeura/ArithToNeuraPatterns.td"
+  includes: "/home/jackcui/Arch/MLiR/dataflow/lib/Conversion/ArithToNeura;/home/jackcui/Arch/MLiR/llvm-project/llvm/include;/home/jackcui/Arch/MLiR/llvm-project/build/include;/home/jackcui/Arch/MLiR/llvm-project/mlir/include;/home/jackcui/Arch/MLiR/llvm-project/build/tools/mlir/include;/home/jackcui/Arch/MLiR/dataflow/include;/home/jackcui/Arch/MLiR/dataflow/build/include"
+--- !FileInfo:
+  filepath: "/home/jackcui/Arch/MLiR/dataflow/lib/Conversion/LlvmToNeura/LlvmToNeuraPatterns.td"
+  includes: "/home/jackcui/Arch/MLiR/dataflow/lib/Conversion/LlvmToNeura;/home/jackcui/Arch/MLiR/llvm-project/llvm/include;/home/jackcui/Arch/MLiR/llvm-project/build/include;/home/jackcui/Arch/MLiR/llvm-project/mlir/include;/home/jackcui/Arch/MLiR/llvm-project/build/tools/mlir/include;/home/jackcui/Arch/MLiR/dataflow/include;/home/jackcui/Arch/MLiR/dataflow/build/include"
+--- !FileInfo:
+  filepath: "/home/jackcui/Arch/MLiR/dataflow/lib/Conversion/LlvmToNeura/LlvmToNeuraPatterns.td"
+  includes: "/home/jackcui/Arch/MLiR/dataflow/lib/Conversion/LlvmToNeura;/home/jackcui/Arch/MLiR/llvm-project/llvm/include;/home/jackcui/Arch/MLiR/llvm-project/build/include;/home/jackcui/Arch/MLiR/llvm-project/mlir/include;/home/jackcui/Arch/MLiR/llvm-project/build/tools/mlir/include;/home/jackcui/Arch/MLiR/dataflow/include;/home/jackcui/Arch/MLiR/dataflow/build/include"

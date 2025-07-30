@@ -20,6 +20,7 @@ add_mlir_dialect_library(MLIRNeura
         MLIRIR
         MLIRSupport
         MLIRInferTypeOpInterface
+        yaml-cpp
         )
 
 add_subdirectory(Transforms)

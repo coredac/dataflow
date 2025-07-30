@@ -1,0 +1,18 @@
+{
+    "C_Cpp.default.compilerPath": "/usr/bin/clang-17",
+    "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
+    "C_Cpp.default.includePath": [
+        "${workspaceFolder}/**",
+        "/usr/include",
+        "/usr/local/include"
+    ],
+    "C_Cpp.default.defines": [
+        "__STDC_CONSTANT_MACROS",
+        "__STDC_FORMAT_MACROS",
+        "__STDC_LIMIT_MACROS"
+    ],
+    "files.associations": {
+        "*.inc": "cpp",
+        "iosfwd": "cpp"
+    }
+}

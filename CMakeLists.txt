@@ -19,8 +19,12 @@ message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 
 find_package(MLIR REQUIRED CONFIG)
 find_package(LLVM REQUIRED CONFIG)
+find_package(yaml-cpp REQUIRED)
 
 list(APPEND CMAKE_MODULE_PATH "${MLIR_CMAKE_DIR}")
+
+# Enable exceptions for yaml-cpp compatibility
+add_compile_options(-fexceptions)
 
 include_directories(${LLVM_INCLUDE_DIRS} ${MLIR_INCLUDE_DIRS})
 

@@ -14,10 +14,7 @@ Tile::Tile(int id, int x, int y) {
   this->id = id;
   this->x = x;
   this->y = y;
-
-  // TODO: Add function units based on architecture specs.
-  // @Jackcuii, https://github.com/coredac/dataflow/issues/82.
-  addFunctionUnit(std::make_unique<FixedPointAdder>(0));
+  // addFunctionUnit(std::make_unique<FixedPointAdder>(0));
 }
 
 int Tile::getId() const { return id; }
@@ -273,6 +270,43 @@ Architecture::Architecture(int width, int height) {
       }
     }
   }
+}
+
+Architecture::Architecture(const YAML::Node& config) {
+  // Extract width and height from config
+  int width = 4;  // default
+  int height = 4; // default
+  
+  if (config["architecture"] && config["architecture"]["width"] && config["architecture"]["height"]) {
+    width = config["architecture"]["width"].as<int>();
+    height = config["architecture"]["height"].as<int>();
+  }
+  
+  // Call the constructor with width and height.
+  *this = Architecture(width, height);
+
+  // Add function units based on the architecture specs.
+  int num_tiles = width * height;
+  for (int i = 0; i < num_tiles; ++i) {
+    Tile *tile = getTile(i);
+    int fu_id = 0;
+    if (config["tile_overrides"][i]) {
+      // Override the default function units.
+      for (const auto& operation : config["tile_overrides"][i]["operations"]) {
+        if (operation.as<std::string>() == "add") {
+          tile->addFunctionUnit(std::make_unique<FixedPointAdder>(++fu_id));
+          // Add more function units here if more operations are supported.
+        }
+      }
+    } else if (config["tile_defaults"]) {
+      // Add default function units.
+      for (const auto& operation : config["tile_defaults"]["operations"]) {
+        if (operation.as<std::string>() == "add") {
+          tile->addFunctionUnit(std::make_unique<FixedPointAdder>(++fu_id));
+        }
+      }
+    }
+  } 
 }
 
 Tile *Architecture::getTile(int id) {

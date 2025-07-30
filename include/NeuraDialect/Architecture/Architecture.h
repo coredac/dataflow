@@ -9,6 +9,7 @@
 #include <set>
 #include <unordered_map>
 #include <vector>
+#include <yaml-cpp/yaml.h>
 
 namespace mlir {
 namespace neura {
@@ -35,7 +36,37 @@ enum OperationKind {
   IAdd = 0,
   IMul = 1,
   FAdd = 2,
-  FMul = 3
+  FMul = 3,
+  ISub = 4,
+  FSub = 5,
+  IDiv = 6,
+  FDiv = 7,
+  FAddFAdd = 8,
+  FMulFAdd = 9,
+  VFMul = 10,
+  ICmp = 11,
+  FCmp = 12,
+  Not = 13,
+  Or = 14,
+  Sel = 15,
+  Cast = 16,
+  Phi = 17,
+  Load = 18,
+  LoadIndexed = 19,
+  Store = 20,
+  StoreIndexed = 21,
+  Br_ = 22,
+  CondBr_ = 23,
+  Return = 24,
+  LoopController = 25,
+  GrantAlways = 26,
+  GrantOnce = 27,
+  GrantPredicate = 28,
+  GEP_ = 29,
+  Constant = 30,
+  DataMov = 31,
+  CtrlMov = 32,
+  Reserve = 33
 };
 
 //===----------------------------------------------------------------------===//
@@ -324,7 +355,8 @@ struct PairHash {
 class Architecture {
 public:
   Architecture(int width, int height);
-
+  Architecture(const YAML::Node& config);
+  
   Tile* getTile(int id);
   Tile* getTile(int x, int y);
 
