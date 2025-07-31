@@ -132,10 +132,12 @@ struct MapToAcceleratorPass
           op->print(llvm::outs()), llvm::outs() << "\n";
         }
         rec_mii = longest->length;
-        IntegerAttr rec_mii_attr =
-            IntegerAttr::get(IntegerType::get(func.getContext(), 32), rec_mii);
-        func->setAttr("RecMII", rec_mii_attr);
+      } else if (!longest) {
+        rec_mii = 1; // No recurrence cycles found, set MII to 1.
       }
+      IntegerAttr rec_mii_attr =
+          IntegerAttr::get(IntegerType::get(func.getContext(), 32), rec_mii);
+      func->setAttr("RecMII", rec_mii_attr);
 
       // AcceleratorConfig config{/*numTiles=*/8}; // Example
       Architecture architecture(4, 4);
@@ -149,8 +151,9 @@ struct MapToAcceleratorPass
       std::vector<Operation *> topologically_sorted_ops =
           getTopologicallySortedOps(func);
       if (topologically_sorted_ops.empty()) {
-        llvm::errs() << "[MapToAcceleratorPass] No operations to map in function "
-                     << func.getName() << "\n";
+        llvm::errs()
+            << "[MapToAcceleratorPass] No operations to map in function "
+            << func.getName() << "\n";
         assert(false && "Mapping aborted due to empty op list.");
       }
       for (Operation *op : topologically_sorted_ops) {
@@ -170,7 +173,8 @@ struct MapToAcceleratorPass
       std::vector<std::pair<Operation *, int>> sorted_ops_with_alap_levels =
           flatten_level_buckets(level_buckets);
       for (const auto &[op, level] : sorted_ops_with_alap_levels) {
-        llvm::outs() << "[MapToAcceleratorPass] ALAP sorted op: " << *op << " (ALAP level: " << level << ")\n";
+        llvm::outs() << "[MapToAcceleratorPass] ALAP sorted op: " << *op
+                     << " (ALAP level: " << level << ")\n";
       }
       // assert(false);
       for (int ii = possibleMinII; ii <= maxII; ++ii) {
@@ -179,7 +183,8 @@ struct MapToAcceleratorPass
             << "\n";
         // Creates a mapping state for the current II.
         MappingState mapping_state(architecture, ii);
-        if (mapping_strategy->map(sorted_ops_with_alap_levels, critical_ops, architecture, mapping_state)) {
+        if (mapping_strategy->map(sorted_ops_with_alap_levels, critical_ops,
+                                  architecture, mapping_state)) {
           // success
           llvm::errs() << "[MapToAcceleratorPass] Successfully mapped function "
                        << func.getName() << "' with II = " << ii << "\n";
