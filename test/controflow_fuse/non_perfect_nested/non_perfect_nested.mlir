@@ -1,6 +1,23 @@
 // RUN: mlir-opt %s --lower-affine --convert-scf-to-cf --convert-cf-to-llvm -o %t-llvm.mlir
-// RUN: mlir-neura-opt %t-llvm.mlir --assign-accelerator --lower-arith-to-neura --lower-memref-to-neura --lower-builtin-to-neura --lower-llvm-to-neura | FileCheck %s
-// RUN: mlir-neura-opt %t-llvm.mlir --assign-accelerator --lower-arith-to-neura --lower-memref-to-neura --lower-builtin-to-neura --lower-llvm-to-neura --canonicalize-live-in --leverage-predicated-value --transform-ctrl-to-data-flow | FileCheck %s -check-prefix=CTRL2DATA
+// RUN: mlir-neura-opt %t-llvm.mlir \
+// RUN: --assign-accelerator \
+// RUN: --lower-arith-to-neura \
+// RUN: --lower-memref-to-neura \
+// RUN: --lower-builtin-to-neura \
+// RUN: --lower-llvm-to-neura \
+// RUN: | FileCheck %s
+
+// RUN: mlir-neura-opt %t-llvm.mlir \
+// RUN: --assign-accelerator \
+// RUN: --lower-arith-to-neura \
+// RUN: --lower-memref-to-neura \
+// RUN: --lower-builtin-to-neura \
+// RUN: --lower-llvm-to-neura \
+// RUN: --canonicalize-cast \
+// RUN: --canonicalize-live-in \
+// RUN: --leverage-predicated-value \
+// RUN: --transform-ctrl-to-data-flow \
+// RUN: | FileCheck %s -check-prefix=CTRL2DATA
 
 module attributes {} {
   func.func @_Z29non_perfect_extra_computationPA128_iS0_(%arg0: memref<?x128xi32>, %arg1: memref<?x128xi32>) attributes {llvm.linkage = #llvm.linkage<external>} {
@@ -122,136 +139,114 @@ module attributes {} {
 
 // CTRL2DATA:   func.func @_Z29non_perfect_extra_computationPA128_iS0_(%arg0: memref<?x128xi32>, %arg1: memref<?x128xi32>) attributes {accelerator = "neura", llvm.linkage = #llvm.linkage<external>} {
 // CTRL2DATA-NEXT:     %0 = "neura.constant"() <{predicate = true, value = "%arg0"}> : () -> !neura.data<memref<?x128xi32>, i1>
-// CTRL2DATA-NEXT:     %1 = "neura.grant_always"(%0) : (!neura.data<memref<?x128xi32>, i1>) -> !neura.data<memref<?x128xi32>, i1>
-// CTRL2DATA-NEXT:     %2 = "neura.grant_once"(%0) : (!neura.data<memref<?x128xi32>, i1>) -> !neura.data<memref<?x128xi32>, i1>
-// CTRL2DATA-NEXT:     %3 = "neura.constant"() <{predicate = true, value = "%arg1"}> : () -> !neura.data<memref<?x128xi32>, i1>
-// CTRL2DATA-NEXT:     %4 = "neura.grant_always"(%3) : (!neura.data<memref<?x128xi32>, i1>) -> !neura.data<memref<?x128xi32>, i1>
-// CTRL2DATA-NEXT:     %5 = "neura.grant_once"(%3) : (!neura.data<memref<?x128xi32>, i1>) -> !neura.data<memref<?x128xi32>, i1>
-// CTRL2DATA-NEXT:     %6 = "neura.constant"() <{predicate = true, value = 4 : index}> : () -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %7 = "neura.grant_always"(%6) : (!neura.data<index, i1>) -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %8 = "neura.grant_once"(%6) : (!neura.data<index, i1>) -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %9 = "neura.constant"() <{predicate = true, value = 3 : index}> : () -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %10 = "neura.grant_always"(%9) : (!neura.data<index, i1>) -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %11 = "neura.grant_once"(%9) : (!neura.data<index, i1>) -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %12 = "neura.constant"() <{predicate = true, value = 2 : index}> : () -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %13 = "neura.grant_always"(%12) : (!neura.data<index, i1>) -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %14 = "neura.grant_once"(%12) : (!neura.data<index, i1>) -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %15 = "neura.constant"() <{predicate = true, value = 1 : index}> : () -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %16 = "neura.grant_always"(%15) : (!neura.data<index, i1>) -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %17 = "neura.grant_once"(%15) : (!neura.data<index, i1>) -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %18 = "neura.constant"() <{predicate = true, value = 128 : index}> : () -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %19 = "neura.grant_always"(%18) : (!neura.data<index, i1>) -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %20 = "neura.grant_once"(%18) : (!neura.data<index, i1>) -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %21 = "neura.constant"() <{predicate = true, value = 100 : i32}> : () -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %22 = "neura.grant_always"(%21) : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %23 = "neura.grant_once"(%21) : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %24 = "neura.constant"() <{predicate = true, value = 3 : i32}> : () -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %25 = "neura.grant_always"(%24) : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %26 = "neura.grant_once"(%24) : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %27 = "neura.constant"() <{predicate = true, value = 2 : i32}> : () -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %28 = "neura.grant_always"(%27) : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %29 = "neura.grant_once"(%27) : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %30 = "neura.constant"() <{predicate = true, value = 1000 : i32}> : () -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %31 = "neura.grant_always"(%30) : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %32 = "neura.grant_once"(%30) : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %33 = "neura.constant"() <{predicate = true, value = -1000 : i32}> : () -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %34 = "neura.grant_always"(%33) : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %35 = "neura.grant_once"(%33) : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %36 = "neura.constant"() <{predicate = true, value = 128 : i32}> : () -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %37 = "neura.grant_always"(%36) : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %38 = "neura.grant_once"(%36) : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %39 = "neura.constant"() <{predicate = true, value = 0 : i32}> : () -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %40 = "neura.grant_always"(%39) : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %41 = "neura.grant_once"(%39) : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %42 = "neura.constant"() <{predicate = true, value = 0 : index}> : () -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %43 = "neura.grant_always"(%42) : (!neura.data<index, i1>) -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %44 = "neura.grant_once"(%42) : (!neura.data<index, i1>) -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %45 = "neura.cast"(%42) <{cast_type = "index_to_int"}> : (!neura.data<index, i1>) -> !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %46 = "neura.grant_once"(%45) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %47 = neura.reserve : !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %48 = "neura.phi"(%47, %20) : (!neura.data<index, i1>, !neura.data<index, i1>) -> !neura.data<index, i1>
+// CTRL2DATA-NEXT:     %1 = "neura.grant_once"(%0) : (!neura.data<memref<?x128xi32>, i1>) -> !neura.data<memref<?x128xi32>, i1>
+// CTRL2DATA-NEXT:     %2 = "neura.constant"() <{predicate = true, value = "%arg1"}> : () -> !neura.data<memref<?x128xi32>, i1>
+// CTRL2DATA-NEXT:     %3 = "neura.grant_once"(%2) : (!neura.data<memref<?x128xi32>, i1>) -> !neura.data<memref<?x128xi32>, i1>
+// CTRL2DATA-NEXT:     %4 = "neura.constant"() <{predicate = true, value = 4 : i64}> : () -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %5 = "neura.grant_once"(%4) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %6 = "neura.constant"() <{predicate = true, value = 3 : i64}> : () -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %7 = "neura.grant_once"(%6) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %8 = "neura.constant"() <{predicate = true, value = 2 : i64}> : () -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %9 = "neura.grant_once"(%8) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %10 = "neura.constant"() <{predicate = true, value = 1 : i64}> : () -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %11 = "neura.grant_once"(%10) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %12 = "neura.constant"() <{predicate = true, value = 128 : i64}> : () -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %13 = "neura.grant_once"(%12) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %14 = "neura.constant"() <{predicate = true, value = 100 : i32}> : () -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %15 = "neura.grant_once"(%14) : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %16 = "neura.constant"() <{predicate = true, value = 3 : i32}> : () -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %17 = "neura.grant_once"(%16) : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %18 = "neura.constant"() <{predicate = true, value = 2 : i32}> : () -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %19 = "neura.grant_once"(%18) : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %20 = "neura.constant"() <{predicate = true, value = 1000 : i32}> : () -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %21 = "neura.grant_once"(%20) : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %22 = "neura.constant"() <{predicate = true, value = -1000 : i32}> : () -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %23 = "neura.grant_once"(%22) : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %24 = "neura.constant"() <{predicate = true, value = 128 : i32}> : () -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %25 = "neura.grant_once"(%24) : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %26 = "neura.constant"() <{predicate = true, value = 0 : i32}> : () -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %27 = "neura.grant_once"(%26) : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %28 = "neura.constant"() <{predicate = true, value = 0 : i64}> : () -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %29 = "neura.grant_once"(%28) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %30 = neura.reserve : !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %31 = "neura.phi"(%30, %13) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %32 = neura.reserve : !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %33 = "neura.phi"(%32, %29) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %34 = "neura.icmp"(%33, %31) <{cmpType = "slt"}> : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i1, i1>
+// CTRL2DATA-NEXT:     %35 = "neura.not"(%34) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
+// CTRL2DATA-NEXT:     %36 = neura.grant_predicate %33, %34 : !neura.data<i64, i1>, !neura.data<i1, i1> -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %37 = neura.grant_predicate %19, %34 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %38 = neura.grant_predicate %27, %34 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %39 = neura.grant_predicate %17, %34 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %40 = neura.grant_predicate %29, %34 : !neura.data<i64, i1>, !neura.data<i1, i1> -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %41 = neura.grant_predicate %21, %34 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %42 = neura.grant_predicate %23, %34 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %43 = "neura.cast"(%36) <{cast_type = "i64_to_i32"}> : (!neura.data<i64, i1>) -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %44 = "neura.div"(%43, %37) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %45 = "neura.mul"(%37, %44) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %46 = "neura.sub"(%43, %45) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %47 = "neura.icmp"(%46, %38) <{cmpType = "eq"}> : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i1, i1>
+// CTRL2DATA-NEXT:     %48 = "neura.sel"(%37, %39, %47) : (!neura.data<i32, i1>, !neura.data<i32, i1>, !neura.data<i1, i1>) -> !neura.data<i32, i1>
 // CTRL2DATA-NEXT:     %49 = neura.reserve : !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %50 = "neura.phi"(%49, %46) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %51 = "neura.cast"(%50) <{cast_type = "int_to_index"}> : (!neura.data<i64, i1>) -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %52 = "neura.icmp"(%51, %48) <{cmpType = "slt"}> : (!neura.data<index, i1>, !neura.data<index, i1>) -> !neura.data<i1, i1>
-// CTRL2DATA-NEXT:     %53 = "neura.not"(%52) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
-// CTRL2DATA-NEXT:     %54 = neura.grant_predicate %51, %52 : !neura.data<index, i1>, !neura.data<i1, i1> -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %55 = neura.grant_predicate %29, %52 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %56 = neura.grant_predicate %41, %52 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %57 = neura.grant_predicate %26, %52 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %58 = neura.grant_predicate %44, %52 : !neura.data<index, i1>, !neura.data<i1, i1> -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %59 = neura.grant_predicate %32, %52 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %60 = neura.grant_predicate %35, %52 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %61 = "neura.cast"(%54) <{cast_type = "index_to_int"}> : (!neura.data<index, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %62 = "neura.div"(%61, %55) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %63 = "neura.mul"(%55, %62) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %64 = "neura.sub"(%61, %63) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %65 = "neura.icmp"(%64, %56) <{cmpType = "eq"}> : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i1, i1>
-// CTRL2DATA-NEXT:     %66 = "neura.sel"(%55, %57, %65) : (!neura.data<i32, i1>, !neura.data<i32, i1>, !neura.data<i1, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %67 = "neura.cast"(%58) <{cast_type = "index_to_int"}> : (!neura.data<index, i1>) -> !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %68 = neura.reserve : !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %69 = "neura.phi"(%68, %20) : (!neura.data<index, i1>, !neura.data<index, i1>) -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %70 = neura.reserve : !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %71 = "neura.phi"(%70, %56) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %72 = neura.reserve : !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %73 = "neura.phi"(%72, %60) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %74 = neura.reserve : !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %75 = "neura.phi"(%74, %59) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %76 = neura.reserve : !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %77 = "neura.phi"(%76, %67) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %78 = "neura.cast"(%77) <{cast_type = "int_to_index"}> : (!neura.data<i64, i1>) -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %79 = "neura.icmp"(%78, %69) <{cmpType = "slt"}> : (!neura.data<index, i1>, !neura.data<index, i1>) -> !neura.data<i1, i1>
-// CTRL2DATA-NEXT:     %80 = neura.grant_predicate %2, %79 : !neura.data<memref<?x128xi32>, i1>, !neura.data<i1, i1> -> !neura.data<memref<?x128xi32>, i1>
-// CTRL2DATA-NEXT:     %81 = neura.grant_predicate %51, %79 : !neura.data<index, i1>, !neura.data<i1, i1> -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %82 = neura.grant_predicate %78, %79 : !neura.data<index, i1>, !neura.data<i1, i1> -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %83 = neura.grant_predicate %66, %79 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %84 = neura.grant_predicate %5, %79 : !neura.data<memref<?x128xi32>, i1>, !neura.data<i1, i1> -> !neura.data<memref<?x128xi32>, i1>
-// CTRL2DATA-NEXT:     %85 = neura.grant_predicate %71, %79 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %86 = neura.grant_predicate %73, %79 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %87 = neura.grant_predicate %75, %79 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %88 = neura.grant_predicate %17, %79 : !neura.data<index, i1>, !neura.data<i1, i1> -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %89 = neura.grant_predicate %20, %79 : !neura.data<index, i1>, !neura.data<i1, i1> -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %90 = "neura.not"(%79) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
-// CTRL2DATA-NEXT:     %91 = neura.grant_predicate %71, %90 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %92 = neura.grant_predicate %38, %90 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %93 = neura.grant_predicate %73, %90 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %94 = neura.grant_predicate %75, %90 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %95 = neura.grant_predicate %41, %90 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %96 = neura.load_indexed %80[%81, %82 : !neura.data<index, i1>, !neura.data<index, i1>] !neura.data<memref<?x128xi32>, i1> : !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %97 = "neura.mul"(%96, %83) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     neura.store_indexed %97 to %84[%81, %82 : !neura.data<index, i1>, !neura.data<index, i1>] !neura.data<memref<?x128xi32>, i1> : !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %98 = neura.load_indexed %80[%81, %82 : !neura.data<index, i1>, !neura.data<index, i1>] !neura.data<memref<?x128xi32>, i1> : !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %99 = "neura.add"(%85, %98) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %100 = "neura.icmp"(%98, %86) <{cmpType = "sgt"}> : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i1, i1>
-// CTRL2DATA-NEXT:     %101 = "neura.sel"(%98, %86, %100) : (!neura.data<i32, i1>, !neura.data<i32, i1>, !neura.data<i1, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %102 = "neura.icmp"(%98, %87) <{cmpType = "slt"}> : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i1, i1>
-// CTRL2DATA-NEXT:     %103 = "neura.sel"(%98, %87, %102) : (!neura.data<i32, i1>, !neura.data<i32, i1>, !neura.data<i1, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %104 = "neura.add"(%82, %88) : (!neura.data<index, i1>, !neura.data<index, i1>) -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %105 = "neura.cast"(%104) <{cast_type = "index_to_int"}> : (!neura.data<index, i1>) -> !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     neura.ctrl_mov %105 -> %76 : !neura.data<i64, i1> !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     neura.ctrl_mov %103 -> %74 : !neura.data<i32, i1> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     neura.ctrl_mov %101 -> %72 : !neura.data<i32, i1> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     neura.ctrl_mov %99 -> %70 : !neura.data<i32, i1> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     neura.ctrl_mov %89 -> %68 : !neura.data<index, i1> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %106 = "neura.div"(%91, %92) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %107 = "neura.sub"(%93, %94) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %108 = "neura.icmp"(%107, %95) <{cmpType = "sgt"}> : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i1, i1>
-// CTRL2DATA-NEXT:     %109 = neura.grant_predicate %106, %108 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %110 = neura.grant_predicate %23, %108 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %111 = neura.grant_predicate %107, %108 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %112 = "neura.not"(%108) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
-// CTRL2DATA-NEXT:     %113 = neura.grant_predicate %106, %112 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %114 = "neura.mul"(%109, %110) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %115 = "neura.div"(%114, %111) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %116 = "neura.phi"(%115, %113) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     neura.store_indexed %106 to %5[%51, %44 : !neura.data<index, i1>, !neura.data<index, i1>] !neura.data<memref<?x128xi32>, i1> : !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     neura.store_indexed %73 to %5[%51, %17 : !neura.data<index, i1>, !neura.data<index, i1>] !neura.data<memref<?x128xi32>, i1> : !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     neura.store_indexed %75 to %5[%51, %14 : !neura.data<index, i1>, !neura.data<index, i1>] !neura.data<memref<?x128xi32>, i1> : !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     neura.store_indexed %116 to %5[%51, %11 : !neura.data<index, i1>, !neura.data<index, i1>] !neura.data<memref<?x128xi32>, i1> : !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     neura.store_indexed %107 to %5[%51, %8 : !neura.data<index, i1>, !neura.data<index, i1>] !neura.data<memref<?x128xi32>, i1> : !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %117 = "neura.add"(%51, %17) : (!neura.data<index, i1>, !neura.data<index, i1>) -> !neura.data<index, i1>
-// CTRL2DATA-NEXT:     %118 = "neura.cast"(%117) <{cast_type = "index_to_int"}> : (!neura.data<index, i1>) -> !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     neura.ctrl_mov %118 -> %49 : !neura.data<i64, i1> !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     neura.ctrl_mov %20 -> %47 : !neura.data<index, i1> !neura.data<index, i1>
+// CTRL2DATA-NEXT:     %50 = "neura.phi"(%49, %13) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %51 = neura.reserve : !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %52 = "neura.phi"(%51, %38) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %53 = neura.reserve : !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %54 = "neura.phi"(%53, %42) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %55 = neura.reserve : !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %56 = "neura.phi"(%55, %41) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %57 = neura.reserve : !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %58 = "neura.phi"(%57, %40) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %59 = "neura.icmp"(%58, %50) <{cmpType = "slt"}> : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i1, i1>
+// CTRL2DATA-NEXT:     %60 = neura.grant_predicate %1, %59 : !neura.data<memref<?x128xi32>, i1>, !neura.data<i1, i1> -> !neura.data<memref<?x128xi32>, i1>
+// CTRL2DATA-NEXT:     %61 = neura.grant_predicate %33, %59 : !neura.data<i64, i1>, !neura.data<i1, i1> -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %62 = neura.grant_predicate %58, %59 : !neura.data<i64, i1>, !neura.data<i1, i1> -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %63 = neura.grant_predicate %48, %59 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %64 = neura.grant_predicate %3, %59 : !neura.data<memref<?x128xi32>, i1>, !neura.data<i1, i1> -> !neura.data<memref<?x128xi32>, i1>
+// CTRL2DATA-NEXT:     %65 = neura.grant_predicate %52, %59 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %66 = neura.grant_predicate %54, %59 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %67 = neura.grant_predicate %56, %59 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %68 = neura.grant_predicate %11, %59 : !neura.data<i64, i1>, !neura.data<i1, i1> -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %69 = neura.grant_predicate %13, %59 : !neura.data<i64, i1>, !neura.data<i1, i1> -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %70 = "neura.not"(%59) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
+// CTRL2DATA-NEXT:     %71 = neura.grant_predicate %52, %70 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %72 = neura.grant_predicate %25, %70 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %73 = neura.grant_predicate %54, %70 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %74 = neura.grant_predicate %56, %70 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %75 = neura.grant_predicate %27, %70 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %76 = neura.load_indexed %60[%61, %62 : !neura.data<i64, i1>, !neura.data<i64, i1>] !neura.data<memref<?x128xi32>, i1> : !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %77 = "neura.mul"(%76, %63) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     neura.store_indexed %77 to %64[%61, %62 : !neura.data<i64, i1>, !neura.data<i64, i1>] !neura.data<memref<?x128xi32>, i1> : !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %78 = neura.load_indexed %60[%61, %62 : !neura.data<i64, i1>, !neura.data<i64, i1>] !neura.data<memref<?x128xi32>, i1> : !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %79 = "neura.add"(%65, %78) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %80 = "neura.icmp"(%78, %66) <{cmpType = "sgt"}> : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i1, i1>
+// CTRL2DATA-NEXT:     %81 = "neura.sel"(%78, %66, %80) : (!neura.data<i32, i1>, !neura.data<i32, i1>, !neura.data<i1, i1>) -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %82 = "neura.icmp"(%78, %67) <{cmpType = "slt"}> : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i1, i1>
+// CTRL2DATA-NEXT:     %83 = "neura.sel"(%78, %67, %82) : (!neura.data<i32, i1>, !neura.data<i32, i1>, !neura.data<i1, i1>) -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %84 = "neura.add"(%62, %68) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     neura.ctrl_mov %84 -> %57 : !neura.data<i64, i1> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     neura.ctrl_mov %83 -> %55 : !neura.data<i32, i1> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     neura.ctrl_mov %81 -> %53 : !neura.data<i32, i1> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     neura.ctrl_mov %79 -> %51 : !neura.data<i32, i1> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     neura.ctrl_mov %69 -> %49 : !neura.data<i64, i1> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %85 = "neura.div"(%71, %72) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %86 = "neura.sub"(%73, %74) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %87 = "neura.icmp"(%86, %75) <{cmpType = "sgt"}> : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i1, i1>
+// CTRL2DATA-NEXT:     %88 = neura.grant_predicate %85, %87 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %89 = neura.grant_predicate %15, %87 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %90 = neura.grant_predicate %86, %87 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %91 = "neura.not"(%87) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
+// CTRL2DATA-NEXT:     %92 = neura.grant_predicate %85, %91 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %93 = "neura.mul"(%88, %89) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %94 = "neura.div"(%93, %90) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %95 = "neura.phi"(%94, %92) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     neura.store_indexed %85 to %3[%33, %29 : !neura.data<i64, i1>, !neura.data<i64, i1>] !neura.data<memref<?x128xi32>, i1> : !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     neura.store_indexed %54 to %3[%33, %11 : !neura.data<i64, i1>, !neura.data<i64, i1>] !neura.data<memref<?x128xi32>, i1> : !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     neura.store_indexed %56 to %3[%33, %9 : !neura.data<i64, i1>, !neura.data<i64, i1>] !neura.data<memref<?x128xi32>, i1> : !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     neura.store_indexed %95 to %3[%33, %7 : !neura.data<i64, i1>, !neura.data<i64, i1>] !neura.data<memref<?x128xi32>, i1> : !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     neura.store_indexed %86 to %3[%33, %5 : !neura.data<i64, i1>, !neura.data<i64, i1>] !neura.data<memref<?x128xi32>, i1> : !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %96 = "neura.add"(%33, %11) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     neura.ctrl_mov %96 -> %32 : !neura.data<i64, i1> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     neura.ctrl_mov %13 -> %30 : !neura.data<i64, i1> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     "neura.return"() : () -> ()
 // CTRL2DATA-NEXT:   }

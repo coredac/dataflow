@@ -36,30 +36,34 @@ void GrantPredicateInEntryBlock(Block *entry_block, OpBuilder &builder) {
   // Step 1: Collects all live-out values first.
   for (Operation &op : *entry_block) {
     for (Value result : op.getResults()) {
-      if (!isa<neura::PredicatedValue>(result.getType()))
+      if (!isa<neura::PredicatedValue>(result.getType())) {
         continue;
+      }
 
       bool used_in_branch = false;
-      bool used_elsewhere = false;
 
       for (OpOperand &use : result.getUses()) {
         Operation *user = use.getOwner();
 
         // Case 1: Operand of a branch/cond_br → grant_once
+        // Since we add the --cononicalize-live-in pass, all the live-out values
+        // in entry block must be passed to other blocks using branch/cond_br.
         if (isa<neura::Br, neura::CondBr>(user)) {
           used_in_branch = true;
         }
 
-        // Case 2: Used directly in other blocks → grant_always
-        if (user->getBlock() != entry_block) {
-          used_elsewhere = true;
+        if (!isa<neura::Br, neura::CondBr>(user) &&
+            user->getBlock() != entry_block) {
+          assert(
+              false &&
+              "Live-out value in entry block must be used in a branch/cond_br "
+              "operation.");
         }
       }
 
-      if (used_in_branch)
+      if (used_in_branch) {
         live_out_arg_values.push_back(result);
-      if (used_elsewhere)
-        live_out_non_arg_values.push_back(result);
+      }
     }
   }
 
@@ -78,26 +82,6 @@ void GrantPredicateInEntryBlock(Block *entry_block, OpBuilder &builder) {
     for (OpOperand &use : llvm::make_early_inc_range(val.getUses())) {
       Operation *user = use.getOwner();
       if (isa<neura::Br, neura::CondBr>(user)) {
-        use.set(granted.getResult());
-      }
-    }
-  }
-
-  // Inserts grant_always.
-  for (Value val : live_out_non_arg_values) {
-    Operation *def_op = val.getDefiningOp();
-    if (!def_op)
-      continue;
-
-    builder.setInsertionPointAfter(def_op);
-    auto granted = builder.create<neura::GrantAlwaysOp>(def_op->getLoc(),
-                                                        val.getType(), val);
-
-    // Replaces direct external uses (not in entry block, not in branch ops).
-    for (OpOperand &use : llvm::make_early_inc_range(val.getUses())) {
-      Operation *user = use.getOwner();
-      if (user->getBlock() != entry_block &&
-          !isa<neura::Br, neura::CondBr>(user)) {
         use.set(granted.getResult());
       }
     }
@@ -160,7 +144,8 @@ void assertLiveOutValuesDominatedByBlockArgs(Region &region) {
     DenseSet<Value> dominated_values;
 
     if (block.getNumArguments() == 0 && !live_out_values.empty()) {
-      assert(false && "Block without arguments has live-out values");
+      assert(false && "Block without arguments has live-out values, please "
+                      "enable the --canonicalize-live-in pass.");
     }
 
     for (BlockArgument arg : block.getArguments()) {
@@ -187,8 +172,10 @@ void assertLiveOutValuesDominatedByBlockArgs(Region &region) {
     }
     for (Value live_out : live_out_values) {
       if (!dominated_values.count(live_out)) {
-        assert(false && "Live-out value not dominated by block arguments or "
-                        "live-in values");
+        assert(
+            false &&
+            "Live-out value not dominated by block arguments or "
+            "live-in values, please enable the --canonicalize-live-in pass.");
       }
     }
   }
