@@ -13,6 +13,9 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/Support/raw_ostream.h"
+#include <cstdlib>
+#include <fstream>
+#include <yaml-cpp/yaml.h>
 
 using namespace mlir;
 using namespace mlir::neura;
@@ -138,7 +141,39 @@ struct MapToAcceleratorPass
       }
 
       // AcceleratorConfig config{/*numTiles=*/8}; // Example
-      Architecture architecture(4, 4);
+      // Read architecture specification from environment variable
+      const char* arch_spec_path = std::getenv("DEFAULT_ARCH_SPEC");
+      // Read from the environment variable for now.
+      YAML::Node config;
+      bool use_default_arch = false;
+      if (arch_spec_path) {
+        try {
+          std::ifstream file(arch_spec_path);
+          if (file.is_open()) {
+            config = YAML::Load(file);
+            if (config["architecture"]) {
+              llvm::outs() << "[MapToAcceleratorPass] Loaded architecture from " 
+                          << arch_spec_path << "\n";
+            } else {
+              llvm::errs() << "[MapToAcceleratorPass] Invalid YAML format in " 
+                          << arch_spec_path << ", using default 4x4\n";
+            }
+          } else {
+            llvm::errs() << "[MapToAcceleratorPass] Could not open architecture file " 
+                        << arch_spec_path << ", using default 4x4\n";
+            use_default_arch = true;
+          }
+        } catch (const std::exception& e) {
+          llvm::errs() << "[MapToAcceleratorPass] Error parsing YAML file " 
+                      << arch_spec_path << ": " << e.what() << ", using default 4x4\n";
+        }
+      } else {
+        use_default_arch = true;
+        llvm::errs() << "[MapToAcceleratorPass] DEFAULT_ARCH_SPEC not set, using default 4x4\n";
+      }
+
+      Architecture architecture = use_default_arch ? Architecture(4, 4) : Architecture(config);
+      
       int res_mii = calculateResMii(func, architecture);
       IntegerAttr res_mii_attr =
           IntegerAttr::get(IntegerType::get(func.getContext(), 32), res_mii);

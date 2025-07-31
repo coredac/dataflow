@@ -20,8 +20,36 @@ inline OperationKind getOperationKindFromMlirOp(Operation *op) {
   if (isa<neura::MulOp>(op))   return IMul;
   if (isa<neura::FAddOp>(op))  return FAdd;
   if (isa<neura::FMulOp>(op))  return FMul;
-  // TODO: Complete the list here.
-  // @Jackcuii, https://github.com/coredac/dataflow/issues/82.
+  if (isa<neura::SubOp>(op))   return ISub;
+  if (isa<neura::FSubOp>(op))  return FSub;
+  if (isa<neura::DivOp>(op))   return IDiv;
+  if (isa<neura::FDivOp>(op))  return FDiv;
+  if (isa<neura::FAddFAddOp>(op)) return FAddFAdd;
+  if (isa<neura::FMulFAddOp>(op)) return FMulFAdd;
+  if (isa<neura::VFMulOp>(op)) return VFMul;
+  if (isa<neura::ICmpOp>(op))  return ICmp;
+  if (isa<neura::NotOp>(op))   return Not;
+  if (isa<neura::OrOp>(op))    return Or;
+  if (isa<neura::SelOp>(op))   return Sel;
+  if (isa<neura::CastOp>(op))  return Cast;
+  if (isa<neura::LoadOp>(op))  return Load;
+  if (isa<neura::LoadIndexedOp>(op)) return LoadIndexed;
+  if (isa<neura::StoreOp>(op)) return Store;
+  if (isa<neura::StoreIndexedOp>(op)) return StoreIndexed;
+  if (isa<neura::Br>(op))       return Br_;
+  if (isa<neura::CondBr>(op))   return CondBr_;
+  if (isa<neura::ReturnOp>(op)) return Return;
+  if (isa<neura::LoopControllerOp>(op)) return LoopController;
+  if (isa<neura::GrantAlwaysOp>(op)) return GrantAlways;
+  if (isa<neura::GrantOnceOp>(op)) return GrantOnce;
+  if (isa<neura::GrantPredicateOp>(op)) return GrantPredicate;
+  if (isa<neura::GEP>(op))      return GEP_;
+  if (isa<neura::ConstantOp>(op)) return Constant;
+  if (isa<neura::PhiOp>(op))    return Phi;
+  if (isa<neura::DataMovOp>(op)) return DataMov;
+  if (isa<neura::CtrlMovOp>(op)) return CtrlMov;
+  if (isa<neura::ReserveOp>(op)) return Reserve;
+  // Default fallback
   return IAdd;
 }
 
