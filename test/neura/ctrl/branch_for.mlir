@@ -25,7 +25,7 @@
 // RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \
-// RUN:   --fuse-patterns \
+// RUN:   --fold-constants \
 // RUN:   | FileCheck %s -check-prefix=FUSE
 
 // RUN: mlir-neura-opt %s \
@@ -34,7 +34,7 @@
 // RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \
-// RUN:   --fuse-patterns \
+// RUN:   --fold-constants \
 // RUN:   --insert-data-mov \
 // RUN:   | FileCheck %s -check-prefix=MOV
 
@@ -44,7 +44,7 @@
 // RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \
-// RUN:   --fuse-patterns \
+// RUN:   --fold-constants \
 // RUN:   --insert-data-mov \
 // RUN:   --map-to-accelerator="mapping-strategy=heuristic" \
 // RUN:   | FileCheck %s -check-prefix=MAPPING
@@ -55,7 +55,7 @@
 // RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \
-// RUN:   --fuse-patterns \
+// RUN:   --fold-constants \
 // RUN:   --insert-data-mov \
 // RUN:   --map-to-accelerator="mapping-strategy=heuristic" \
 // RUN:   --generate-code
