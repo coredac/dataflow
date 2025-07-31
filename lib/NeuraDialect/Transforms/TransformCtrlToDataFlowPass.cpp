@@ -144,7 +144,8 @@ void assertLiveOutValuesDominatedByBlockArgs(Region &region) {
     DenseSet<Value> dominated_values;
 
     if (block.getNumArguments() == 0 && !live_out_values.empty()) {
-      assert(false && "Block without arguments has live-out values");
+      assert(false && "Block without arguments has live-out values, please "
+                      "enable the --canonicalize-live-in pass.");
     }
 
     for (BlockArgument arg : block.getArguments()) {
@@ -171,8 +172,10 @@ void assertLiveOutValuesDominatedByBlockArgs(Region &region) {
     }
     for (Value live_out : live_out_values) {
       if (!dominated_values.count(live_out)) {
-        assert(false && "Live-out value not dominated by block arguments or "
-                        "live-in values");
+        assert(
+            false &&
+            "Live-out value not dominated by block arguments or "
+            "live-in values, please enable the --canonicalize-live-in pass.");
       }
     }
   }
