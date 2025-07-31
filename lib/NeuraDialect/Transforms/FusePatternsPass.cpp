@@ -16,6 +16,8 @@ struct FuseConstantAndGrantPattern
 
   LogicalResult matchAndRewrite(neura::ConstantOp constant_op,
                                 PatternRewriter &rewriter) const override {
+    bool made_change = false;
+
     // Checks if the constant operation is used by a grant_once or grant_always
     // operation.
     for (auto user : constant_op->getUsers()) {
@@ -28,6 +30,7 @@ struct FuseConstantAndGrantPattern
               /*value=*/nullptr, constant_op->getAttr("value"));
           // Replaces the original constant operation with the new one.
           rewriter.replaceOp(grant_once_op, new_grant_once_op);
+          made_change = true;
         } else if (neura::GrantAlwaysOp grant_always_op =
                        dyn_cast<neura::GrantAlwaysOp>(user)) {
           auto new_grant_always_op = rewriter.create<neura::GrantAlwaysOp>(
@@ -35,6 +38,7 @@ struct FuseConstantAndGrantPattern
               /*value=*/nullptr, constant_op->getAttr("value"));
           // Replaces the original constant operation with the new one.
           rewriter.replaceOp(grant_always_op, new_grant_always_op);
+          made_change = true;
         }
       }
     }
@@ -42,9 +46,10 @@ struct FuseConstantAndGrantPattern
     if (constant_op->use_empty()) {
       // If the constant operation has no users, it can be removed.
       rewriter.eraseOp(constant_op);
+      made_change = true;
     }
 
-    return success();
+    return success(made_change);
   }
 };
 
@@ -143,25 +148,49 @@ struct FusePatternsPass
   }
 
   void runOnOperation() override {
-    RewritePatternSet patterns(&getContext());
-    patterns.add<FuseFAddFAddPattern>(&getContext(), 2);
-    patterns.add<FuseFMulFAddPattern>(&getContext(), 3);
-    patterns.add<FuseConstantAndGrantPattern>(&getContext(), 1);
-    FrozenRewritePatternSet frozen(std::move(patterns));
-
     ModuleOp module_op = getOperation();
 
-    // Applies to every region inside the module (regardless of func type,
-    // e.g., mlir func or llvm func).
-    module_op.walk([&](Operation *op) {
-      if (!op->getRegions().empty()) {
-        for (Region &region : op->getRegions()) {
-          if (failed(applyPatternsGreedily(region, frozen))) {
-            signalPassFailure();
-          }
-        }
+    // Phase 1: Apply FuseConstantAndGrantPattern.
+    {
+      RewritePatternSet patterns(&getContext());
+      patterns.add<FuseConstantAndGrantPattern>(&getContext());
+      FrozenRewritePatternSet frozen(std::move(patterns));
+
+      if (failed(applyPatternsGreedily(module_op, frozen))) {
+        signalPassFailure();
       }
-    });
+    }
+
+    // Phase 2: Apply other patterns.
+    {
+      RewritePatternSet patterns(&getContext());
+      patterns.add<FuseFAddFAddPattern>(&getContext());
+      patterns.add<FuseFMulFAddPattern>(&getContext());
+      FrozenRewritePatternSet frozen(std::move(patterns));
+
+      if (failed(applyPatternsGreedily(module_op, frozen))) {
+        signalPassFailure();
+      }
+    }
+    // {
+    //   RewritePatternSet patterns(&getContext());
+    //   patterns.add<FuseFAddFAddPattern>(&getContext(), 2);
+    //   patterns.add<FuseFMulFAddPattern>(&getContext(), 3);
+    //   patterns.add<FuseConstantAndGrantPattern>(&getContext(), 1);
+    //   FrozenRewritePatternSet frozen(std::move(patterns));
+
+    //   // Applies to every region inside the module (regardless of func type,
+    //   // e.g., mlir func or llvm func).
+    //   module_op.walk([&](Operation *op) {
+    //     if (!op->getRegions().empty()) {
+    //       for (Region &region : op->getRegions()) {
+    //         if (failed(applyPatternsGreedily(region, frozen))) {
+    //           signalPassFailure();
+    //         }
+    //       }
+    //     }
+    //   });
+    // }
   }
 };
 
