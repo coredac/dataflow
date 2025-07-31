@@ -1,10 +1,5 @@
-int simpleloop() {
-  int start = 0;
-  int multiplier = 1;
-  int result = start;
-  for (int i = 0; i < 128; i++) {
-    result = result * multiplier + i;
+void simple_loop(int data[128], int output[128]) {
+  for (int i = 0; i < 128; ++i) {
+    output[i] = data[i] * 2 + 1;
   }
-
-  return result;
 }
