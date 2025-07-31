@@ -188,7 +188,7 @@ module attributes {} {
 // CTRLFUSE-NEXT:     "neura.return"() : () -> ()
 // CTRLFUSE-NEXT:   }
 
-// CTRLFUSE-MAPPING:      func.func @_Z11simple_loopPiS_(%arg0: memref<?xi32>, %arg1: memref<?xi32>) attributes {CompiledII = 4 : i32, ResMII = 2 : i32, accelerator = "neura", llvm.linkage = #llvm.linkage<external>} {
+// CTRLFUSE-MAPPING:        func.func @_Z11simple_loopPiS_(%arg0: memref<?xi32>, %arg1: memref<?xi32>) attributes {CompiledII = 4 : i32, RecMII = 1 : i32, ResMII = 2 : i32, accelerator = "neura", llvm.linkage = #llvm.linkage<external>} {
 // CTRLFUSE-MAPPING-NEXT:     %0 = "neura.constant"() <{predicate = true, value = "%arg0"}> {mapping_locs = [{id = 0 : i32, resource = "tile", time_step = 1 : i32, x = 0 : i32, y = 0 : i32}]} : () -> !neura.data<memref<?xi32>, i1>
 // CTRLFUSE-MAPPING-NEXT:     %1 = "neura.data_mov"(%0) {mapping_locs = [{id = 0 : i32, resource = "link", time_step = 1 : i32}]} : (!neura.data<memref<?xi32>, i1>) -> !neura.data<memref<?xi32>, i1>
 // CTRLFUSE-MAPPING-NEXT:     %2 = "neura.grant_once"(%1) {mapping_locs = [{id = 1 : i32, resource = "tile", time_step = 2 : i32, x = 1 : i32, y = 0 : i32}]} : (!neura.data<memref<?xi32>, i1>) -> !neura.data<memref<?xi32>, i1>
