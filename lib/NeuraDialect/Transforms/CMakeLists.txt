@@ -13,6 +13,7 @@ add_mlir_library(
     FuseControlFlowPass.cpp
     CanonicalizeLiveInPass.cpp
     CanonicalizeCastPass.cpp
+    FoldConstantsPass.cpp
 
     DEPENDS
     MLIRNeuraTransformsIncGen

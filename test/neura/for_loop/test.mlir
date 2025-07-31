@@ -17,6 +17,7 @@
 // RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \
+// RUN:   --fold-constants \
 // RUN:   --fuse-patterns \
 // RUN:  | FileCheck %s --check-prefix=CHECK-FUSED
 
@@ -26,6 +27,7 @@
 // RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \
+// RUN:   --fold-constants \
 // RUN:   --fuse-patterns \
 // RUN:   --insert-data-mov \
 // RUN:  | FileCheck %s --check-prefix=CHECK-MOV

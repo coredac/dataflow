@@ -97,4 +97,15 @@ def CanonicalizeCast : Pass<"canonicalize-cast", "ModuleOp"> {
   let constructor = "neura::createCanonicalizeCastPass()";
 }
 
+def FoldConstants : Pass<"fold-constants", "ModuleOp"> {
+  let summary = "Folds constant operations in the Neura dialect";
+  let description = [{
+    This pass applies constant folding transformations to Neura dialect operations.
+    The folding includes:
+    1. Folding constant operations.
+    2. Removing dead operations.
+  }];
+  let constructor = "neura::createFoldConstantsPass()";
+}
+
 #endif // NEURA_PASSES_TD

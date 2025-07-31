@@ -29,6 +29,7 @@ std::unique_ptr<mlir::Pass> createGenerateCodePass();
 std::unique_ptr<mlir::Pass> createFuseControlFlowPass();
 std::unique_ptr<mlir::Pass> createCanonicalizeLiveInPass();
 std::unique_ptr<mlir::Pass> createCanonicalizeCastPass();
+std::unique_ptr<mlir::Pass> createFoldConstantsPass();
 
 #define GEN_PASS_REGISTRATION
 #include "NeuraDialect/NeuraPasses.h.inc"
