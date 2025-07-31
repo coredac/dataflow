@@ -10,7 +10,6 @@ using namespace mlir;
 #include "NeuraDialect/NeuraPasses.h.inc"
 
 namespace {
-
 struct FuseFAddFAddPattern : public OpRewritePattern<neura::FAddOp> {
   using OpRewritePattern::OpRewritePattern;
 
