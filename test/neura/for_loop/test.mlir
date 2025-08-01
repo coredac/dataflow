@@ -17,8 +17,8 @@
 // RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \
-// RUN:   --fold-constants \
-// RUN:   --fuse-patterns \
+// RUN:   --fold-constant \
+// RUN:   --fuse-pattern \
 // RUN:  | FileCheck %s --check-prefix=CHECK-FUSED
 
 // RUN: mlir-neura-opt %t-kernel.mlir\
@@ -27,8 +27,8 @@
 // RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \
-// RUN:   --fold-constants \
-// RUN:   --fuse-patterns \
+// RUN:   --fold-constant \
+// RUN:   --fuse-pattern \
 // RUN:   --insert-data-mov \
 // RUN:  | FileCheck %s --check-prefix=CHECK-MOV
 
