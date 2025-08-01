@@ -14,10 +14,10 @@ def AssignAccelerator : Pass<"assign-accelerator", "ModuleOp"> {
   let constructor = "neura::createAssignAcceleratorPass()";
 }
 
-def FusePatterns : Pass<"fuse-patterns", "ModuleOp"> {
+def FusePattern : Pass<"fuse-pattern", "ModuleOp"> {
   let summary = "Fuses patterns in the Neura dialect";
   let description = [{Apply Neura fusion patterns.}];
-  let constructor = "neura::createFusePatternsPass()";
+  let constructor = "neura::createFusePatternPass()";
 }
 
 def InsertDataMov : Pass<"insert-data-mov", "ModuleOp"> {
@@ -97,7 +97,7 @@ def CanonicalizeCast : Pass<"canonicalize-cast", "ModuleOp"> {
   let constructor = "neura::createCanonicalizeCastPass()";
 }
 
-def FoldConstants : Pass<"fold-constants", "ModuleOp"> {
+def FoldConstant : Pass<"fold-constant", "ModuleOp"> {
   let summary = "Folds constant operations in the Neura dialect";
   let description = [{
     This pass applies constant folding transformations to Neura dialect operations.
@@ -105,7 +105,7 @@ def FoldConstants : Pass<"fold-constants", "ModuleOp"> {
     1. Folding constant operations.
     2. Removing dead operations.
   }];
-  let constructor = "neura::createFoldConstantsPass()";
+  let constructor = "neura::createFoldConstantPass()";
 }
 
 #endif // NEURA_PASSES_TD

@@ -42,7 +42,7 @@
 // RUN: --leverage-predicated-value \
 // RUN: --transform-ctrl-to-data-flow \
 // RUN: --fuse-control-flow \
-// RUN: --fold-constants \
+// RUN: --fold-constant \
 // RUN: | FileCheck %s -check-prefix=FUSE
 
 // RUN: mlir-neura-opt %t-llvm.mlir \
@@ -56,7 +56,7 @@
 // RUN: --leverage-predicated-value \
 // RUN: --transform-ctrl-to-data-flow \
 // RUN: --fuse-control-flow \
-// RUN: --fold-constants \
+// RUN: --fold-constant \
 // RUN: --insert-data-mov \
 // RUN: --map-to-accelerator="mapping-strategy=heuristic" | FileCheck %s -check-prefix=FUSE-MAPPING
 

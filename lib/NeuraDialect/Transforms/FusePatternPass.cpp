@@ -6,7 +6,7 @@
 
 using namespace mlir;
 
-#define GEN_PASS_DEF_FUSEPATTERNS
+#define GEN_PASS_DEF_FUSEPATTERN
 #include "NeuraDialect/NeuraPasses.h.inc"
 
 namespace {
@@ -95,11 +95,11 @@ struct FuseFMulFAddPattern : public OpRewritePattern<neura::FAddOp> {
   }
 };
 
-struct FusePatternsPass
-    : public PassWrapper<FusePatternsPass, OperationPass<ModuleOp>> {
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(FusePatternsPass)
+struct FusePatternPass
+    : public PassWrapper<FusePatternPass, OperationPass<ModuleOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(FusePatternPass)
 
-  StringRef getArgument() const override { return "fuse-patterns"; }
+  StringRef getArgument() const override { return "fuse-pattern"; }
   StringRef getDescription() const override {
     return "Apply Neura fusion patterns.";
   }
@@ -128,7 +128,7 @@ struct FusePatternsPass
 } // namespace
 
 namespace mlir::neura {
-std::unique_ptr<Pass> createFusePatternsPass() {
-  return std::make_unique<FusePatternsPass>();
+std::unique_ptr<Pass> createFusePatternPass() {
+  return std::make_unique<FusePatternPass>();
 }
 } // namespace mlir::neura

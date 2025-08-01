@@ -53,11 +53,11 @@ struct FuseConstantAndGrantPattern
   }
 };
 
-struct FoldConstantsPass
-    : public PassWrapper<FoldConstantsPass, OperationPass<ModuleOp>> {
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(FoldConstantsPass)
+struct FoldConstantPass
+    : public PassWrapper<FoldConstantPass, OperationPass<ModuleOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(FoldConstantPass)
 
-  StringRef getArgument() const override { return "fold-constants"; }
+  StringRef getArgument() const override { return "fold-constant"; }
   StringRef getDescription() const override {
     return "Fold constant operations.";
   }
@@ -85,7 +85,7 @@ struct FoldConstantsPass
 } // namespace
 
 namespace mlir::neura {
-std::unique_ptr<Pass> createFoldConstantsPass() {
-  return std::make_unique<FoldConstantsPass>();
+std::unique_ptr<Pass> createFoldConstantPass() {
+  return std::make_unique<FoldConstantPass>();
 }
 } // namespace mlir::neura
