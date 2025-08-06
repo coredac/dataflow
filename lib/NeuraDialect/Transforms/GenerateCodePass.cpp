@@ -12,6 +12,7 @@
 #include <utility>
 #include <set>
 #include <algorithm>
+#include <queue>
 
 using namespace mlir;
 using namespace mlir::neura;
@@ -551,14 +552,14 @@ struct GenerateCodePass
     // Set for constants, output the value.
     if (auto value_attr = op->getAttr("value")) {
       if (auto int_attr = mlir::dyn_cast<IntegerAttr>(value_attr)) {
-        asm_out << "            CONSTANT, IMM[" << int_attr.getInt() << "] -> [";
+        asm_out << "            CONSTANT, IMM[" << int_attr.getInt() << "] -> ";
       } else if (auto float_attr = mlir::dyn_cast<FloatAttr>(value_attr)) {
-        asm_out << "            CONSTANT, IMM[" << float_attr.getValueAsDouble() << "] -> [";
+        asm_out << "            CONSTANT, IMM[" << float_attr.getValueAsDouble() << "] -> ";
       }
     }
     
     // Set find destination direction.
-    bool found_dst = false;
+    std::set<std::string> dst_directions;
     for (mlir::Value result : op->getResults()) {
       if (!result) continue;
       for (mlir::Operation *user : result.getUsers()) {
@@ -568,15 +569,21 @@ struct GenerateCodePass
           int dst_x = user_it->second.first;
           int dst_y = user_it->second.second;
           std::string dst_direction = calculateSendDirection(x, y, dst_x, dst_y).str();
-          asm_out << dst_direction << ", R]\n";
-          found_dst = true;
-          break;
+          dst_directions.insert(dst_direction);
         }
       }
-      if (found_dst) break;
     }
-    if (!found_dst) {
-      asm_out << "Local, R]\n";
+    
+    if (dst_directions.empty()) {
+      asm_out << "[Local, R]\n";
+    } else {
+      bool first = true;
+      for (const std::string& direction : dst_directions) {
+        if (!first) asm_out << ", ";
+        asm_out << "[" << direction << ", R]";
+        first = false;
+      }
+      asm_out << "\n";
     }
   }
 
@@ -592,15 +599,142 @@ struct GenerateCodePass
     for (mlir::Value operand : op->getOperands()) {
       asm_out << ", [";
       if (auto defining_op = operand.getDefiningOp()) {
-        // Set use source location mapping to find the original source.
-        auto src_it = asm_op_to_source_tile.find(defining_op);
-        if (src_it != asm_op_to_source_tile.end()) {
-          int src_x = src_it->second.first;
-          int src_y = src_it->second.second;
-          std::string direction = calculateRecvDirection(src_x, src_y, x, y).str();
-          asm_out << direction << ", R";
+               // Set try to find source through asm_op_to_source_tile first
+                 auto src_it = asm_op_to_source_tile.find(defining_op);
+         if (src_it != asm_op_to_source_tile.end()) {
+           int src_x = src_it->second.first;
+           int src_y = src_it->second.second;
+           std::string direction = calculateRecvDirection(src_x, src_y, x, y).str();
+           asm_out << direction << ", R";
         } else {
-          asm_out << "Local, R";
+          // Set fallback: try to find source through direct tile mapping or link operations.
+          auto def_attr_array = defining_op->getAttrOfType<ArrayAttr>("mapping_locs");
+          if (def_attr_array) {
+            bool found_src = false;
+            for (mlir::Attribute attr : def_attr_array) {
+              if (auto loc = mlir::dyn_cast<DictionaryAttr>(attr)) {
+                auto resource_attr = mlir::dyn_cast<StringAttr>(loc.get("resource"));
+                if (resource_attr && resource_attr.getValue() == "tile") {
+                  auto x_attr = loc.getAs<IntegerAttr>("x");
+                  auto y_attr = loc.getAs<IntegerAttr>("y");
+                  if (x_attr && y_attr) {
+                    int src_x = x_attr.getInt();
+                    int src_y = y_attr.getInt();
+                    std::string direction = calculateRecvDirection(src_x, src_y, x, y).str();
+                    
+                    asm_out << direction << ", R";
+                    
+                    found_src = true;
+                    break;
+                  }
+                } else if (resource_attr && resource_attr.getValue() == "link") {
+                  // Set this is a link operation, try to find its source through its operands
+                  for (mlir::Value link_operand : defining_op->getOperands()) {
+                    if (!link_operand) continue;
+                    if (auto link_source_op = link_operand.getDefiningOp()) {
+                      auto link_source_attr_array = link_source_op->getAttrOfType<ArrayAttr>("mapping_locs");
+                      if (link_source_attr_array) {
+                        for (mlir::Attribute link_source_attr : link_source_attr_array) {
+                          if (auto link_source_loc = mlir::dyn_cast<DictionaryAttr>(link_source_attr)) {
+                            auto link_source_resource_attr = mlir::dyn_cast<StringAttr>(link_source_loc.get("resource"));
+                            if (link_source_resource_attr && link_source_resource_attr.getValue() == "tile") {
+                              auto link_source_x_attr = link_source_loc.getAs<IntegerAttr>("x");
+                              auto link_source_y_attr = link_source_loc.getAs<IntegerAttr>("y");
+                              if (link_source_x_attr && link_source_y_attr) {
+                                int src_x = link_source_x_attr.getInt();
+                                int src_y = link_source_y_attr.getInt();
+                                std::string direction = calculateRecvDirection(src_x, src_y, x, y).str();
+                                
+                                asm_out << direction << ", R";
+                                
+                                found_src = true;
+                                break;
+                              }
+                            }
+                          }
+                        }
+                      }
+                      if (found_src) break;
+                    }
+                  }
+                  if (found_src) break;
+                }
+              }
+            }
+                        if (!found_src) {
+              // Set additional fallback: try to find source through operands even if no mapping_locs
+              for (mlir::Value link_operand : defining_op->getOperands()) {
+                if (!link_operand) continue;
+                if (auto link_source_op = link_operand.getDefiningOp()) {
+                  auto link_source_attr_array = link_source_op->getAttrOfType<ArrayAttr>("mapping_locs");
+                  if (link_source_attr_array) {
+                    for (mlir::Attribute link_source_attr : link_source_attr_array) {
+                      if (auto link_source_loc = mlir::dyn_cast<DictionaryAttr>(link_source_attr)) {
+                        auto link_source_resource_attr = mlir::dyn_cast<StringAttr>(link_source_loc.get("resource"));
+                        if (link_source_resource_attr && link_source_resource_attr.getValue() == "tile") {
+                          auto link_source_x_attr = link_source_loc.getAs<IntegerAttr>("x");
+                          auto link_source_y_attr = link_source_loc.getAs<IntegerAttr>("y");
+                          if (link_source_x_attr && link_source_y_attr) {
+                            int src_x = link_source_x_attr.getInt();
+                            int src_y = link_source_y_attr.getInt();
+                            std::string direction = calculateRecvDirection(src_x, src_y, x, y).str();
+                            asm_out << direction << ", R";
+                            found_src = true;
+                            break;
+                          }
+                        }
+                      }
+                    }
+                  }
+                  if (found_src) break;
+                }
+              }
+            }
+            if (!found_src) {
+              // Set additional fallback: try to find source through operands even if no mapping_locs
+              for (mlir::Value link_operand : defining_op->getOperands()) {
+                if (!link_operand) continue;
+                if (auto link_source_op = link_operand.getDefiningOp()) {
+                  auto link_source_attr_array = link_source_op->getAttrOfType<ArrayAttr>("mapping_locs");
+                  if (link_source_attr_array) {
+                    for (mlir::Attribute link_source_attr : link_source_attr_array) {
+                      if (auto link_source_loc = mlir::dyn_cast<DictionaryAttr>(link_source_attr)) {
+                        auto link_source_resource_attr = mlir::dyn_cast<StringAttr>(link_source_loc.get("resource"));
+                        if (link_source_resource_attr && link_source_resource_attr.getValue() == "tile") {
+                          auto link_source_x_attr = link_source_loc.getAs<IntegerAttr>("x");
+                          auto link_source_y_attr = link_source_loc.getAs<IntegerAttr>("y");
+                          if (link_source_x_attr && link_source_y_attr) {
+                            int src_x = link_source_x_attr.getInt();
+                            int src_y = link_source_y_attr.getInt();
+                            std::string direction = calculateRecvDirection(src_x, src_y, x, y).str();
+                            asm_out << direction << ", R";
+                            found_src = true;
+                            break;
+                          }
+                        }
+                      }
+                    }
+                  }
+                  if (found_src) break;
+                }
+              }
+            }
+            if (!found_src) {
+              // Set try to find source through asm_op_to_source_tile for this operation
+              auto op_src_it = asm_op_to_source_tile.find(defining_op);
+              if (op_src_it != asm_op_to_source_tile.end()) {
+                int src_x = op_src_it->second.first;
+                int src_y = op_src_it->second.second;
+                std::string direction = calculateRecvDirection(src_x, src_y, x, y).str();
+                
+                asm_out << direction << ", R";
+                              } else {
+                  asm_out << "Local, R";
+                }
+            }
+                      } else {
+              asm_out << "Local, R";
+            }
         }
       } else {
         asm_out << "Local, R";
@@ -609,28 +743,76 @@ struct GenerateCodePass
     }
     
     // Set handle result (output direction).
-    asm_out << " -> [";
-    bool found_dst = false;
+    asm_out << " -> ";
+    std::set<std::string> dst_directions;
+    
+    // Set collect all destination directions
     for (mlir::Value result : op->getResults()) {
       if (!result) continue;
       for (mlir::Operation *user : result.getUsers()) {
         if (!user) continue;
+        
+        // Set special handling for ctrl_mov operations
+        if (user->getName().getStringRef().contains("ctrl_mov")) {
+          // Set ctrl_mov has link mapping, find its destination
+          auto ctrl_attr_array = user->getAttrOfType<ArrayAttr>("mapping_locs");
+          if (ctrl_attr_array) {
+            for (mlir::Attribute ctrl_attr : ctrl_attr_array) {
+              if (auto ctrl_loc = mlir::dyn_cast<DictionaryAttr>(ctrl_attr)) {
+                auto ctrl_resource_attr = mlir::dyn_cast<StringAttr>(ctrl_loc.get("resource"));
+                if (ctrl_resource_attr && ctrl_resource_attr.getValue() == "link") {
+                  // Set this is a link operation, find where it goes
+                  for (mlir::Value ctrl_result : user->getResults()) {
+                    if (!ctrl_result) continue;
+                    for (mlir::Operation *ctrl_user : ctrl_result.getUsers()) {
+                      if (!ctrl_user) continue;
+                      auto ctrl_user_it = asm_op_to_final_tile.find(ctrl_user);
+                      if (ctrl_user_it != asm_op_to_final_tile.end()) {
+                        int dst_x = ctrl_user_it->second.first;
+                        int dst_y = ctrl_user_it->second.second;
+                        std::string dst_direction = calculateSendDirection(x, y, dst_x, dst_y).str();
+                        dst_directions.insert(dst_direction);
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        } else {
+          // Set regular user handling
         auto user_it = asm_op_to_final_tile.find(user);
         if (user_it != asm_op_to_final_tile.end()) {
           int dst_x = user_it->second.first;
           int dst_y = user_it->second.second;
           std::string dst_direction = calculateSendDirection(x, y, dst_x, dst_y).str();
-          asm_out << dst_direction << ", R";
-          found_dst = true;
-          break;
+            dst_directions.insert(dst_direction);
+          }
         }
       }
-      if (found_dst) break;
     }
-    if (!found_dst) {
-      asm_out << "Local, R";
+    
+    // Set if no destinations found through users, try asm_op_to_final_tile
+    if (dst_directions.empty()) {
+      auto op_dst_it = asm_op_to_final_tile.find(op);
+      if (op_dst_it != asm_op_to_final_tile.end()) {
+        int dst_x = op_dst_it->second.first;
+        int dst_y = op_dst_it->second.second;
+        std::string dst_direction = calculateSendDirection(x, y, dst_x, dst_y).str();
+        dst_directions.insert(dst_direction);
+      } else {
+        dst_directions.insert("Local");
+      }
     }
-    asm_out << "]\n";
+    
+    // Set output all destination directions
+    bool first = true;
+    for (const std::string& direction : dst_directions) {
+      if (!first) asm_out << ", ";
+      asm_out << "[" << direction << ", R]";
+      first = false;
+    }
+    asm_out << "\n";
   }
 
   // Set helper function to generate ASM for a single operation.
@@ -664,98 +846,151 @@ struct GenerateCodePass
     asm_out << "        }\n";
   }
 
-  // Set helper function to rebuild ASM mappings.
+  // Set helper function to rebuild ASM mappings using thorough tracing.
   void rebuildASMMappings(mlir::func::FuncOp func,
                          std::map<Operation*, std::pair<int, int>>& asm_op_to_final_tile,
                          std::map<Operation*, std::pair<int, int>>& asm_op_to_source_tile) {
+    // Set first pass: collect all tile operations and build value-to-operation mapping
+    std::vector<std::pair<mlir::Value, mlir::Operation*>> value_source_pairs;
     func.walk([&](Operation *op) {
+      // Set collect all value-to-operation pairs
+      for (mlir::Value result : op->getResults()) {
+        value_source_pairs.push_back(std::make_pair(result, op));
+      }
+      
+      // Set collect tile operations
       auto attr_array = op->getAttrOfType<ArrayAttr>("mapping_locs");
       if (!attr_array || attr_array.size() == 0) {
         return;
       }
-      bool found = false;
       for (mlir::Attribute attr : attr_array) {
         if (auto loc = mlir::dyn_cast<DictionaryAttr>(attr)) {
           auto resource_attr = mlir::dyn_cast<StringAttr>(loc.get("resource"));
-          auto id_attr = mlir::dyn_cast<IntegerAttr>(loc.get("id"));
-          
           if (resource_attr && resource_attr.getValue() == "tile") {
             auto x_attr = loc.getAs<IntegerAttr>("x");
             auto y_attr = loc.getAs<IntegerAttr>("y");
-            
-            int x, y;
             if (x_attr && y_attr) {
-              x = x_attr.getInt();
-              y = y_attr.getInt();
-            } else {
-              x = id_attr ? id_attr.getInt() : 0;
-              y = 0;
+              int x = x_attr.getInt();
+              int y = y_attr.getInt();
+              asm_op_to_final_tile[op] = std::make_pair(x, y);
+              asm_op_to_source_tile[op] = std::make_pair(x, y);
+              break;
             }
-            
-            asm_op_to_final_tile[op] = std::make_pair(x, y);
-            asm_op_to_source_tile[op] = std::make_pair(x, y);
-            found = true;
+          }
+        }
+      }
+    });
+    
+    // Set helper function to find source tile through thorough tracing
+    std::function<std::pair<int, int>(mlir::Operation*)> findSourceTile = 
+      [&](mlir::Operation* op) -> std::pair<int, int> {
+        // Set check if this operation has a direct tile mapping
+        auto attr_array = op->getAttrOfType<ArrayAttr>("mapping_locs");
+        if (attr_array) {
+          for (mlir::Attribute attr : attr_array) {
+            if (auto loc = mlir::dyn_cast<DictionaryAttr>(attr)) {
+              auto resource_attr = mlir::dyn_cast<StringAttr>(loc.get("resource"));
+              if (resource_attr && resource_attr.getValue() == "tile") {
+                auto x_attr = loc.getAs<IntegerAttr>("x");
+                auto y_attr = loc.getAs<IntegerAttr>("y");
+            if (x_attr && y_attr) {
+                  return std::make_pair(x_attr.getInt(), y_attr.getInt());
+                }
+              }
+            }
+          }
+        }
+        
+        // Set recursively trace through operands
+        for (mlir::Value operand : op->getOperands()) {
+          if (!operand) continue;
+          for (const auto& pair : value_source_pairs) {
+            if (pair.first == operand) {
+              mlir::Operation* source_op = pair.second;
+              auto source_tile = findSourceTile(source_op);
+              if (source_tile.first != -1 && source_tile.second != -1) {
+                return source_tile;
+              }
             break;
-          } else if (resource_attr && resource_attr.getValue() == "link" && id_attr) {
-            // Set for link operations, we need to find the destination tile.
-            // Set look for operations that use this operation's result.
-            (void)id_attr.getInt(); // Suppress unused variable warning.
-            if (op->getNumResults() > 0) {
+            }
+          }
+        }
+        
+        return std::make_pair(-1, -1); // No source found
+      };
+    
+    // Set helper function to find destination tile through thorough tracing
+    std::function<std::pair<int, int>(mlir::Operation*)> findDestinationTile = 
+      [&](mlir::Operation* op) -> std::pair<int, int> {
+        // Set check if this operation has a direct tile mapping
+        auto attr_array = op->getAttrOfType<ArrayAttr>("mapping_locs");
+        if (attr_array) {
+          for (mlir::Attribute attr : attr_array) {
+            if (auto loc = mlir::dyn_cast<DictionaryAttr>(attr)) {
+              auto resource_attr = mlir::dyn_cast<StringAttr>(loc.get("resource"));
+              if (resource_attr && resource_attr.getValue() == "tile") {
+                auto x_attr = loc.getAs<IntegerAttr>("x");
+                auto y_attr = loc.getAs<IntegerAttr>("y");
+                if (x_attr && y_attr) {
+                  return std::make_pair(x_attr.getInt(), y_attr.getInt());
+                }
+              }
+            }
+          }
+        }
+        
+        // Set recursively trace through users
               for (mlir::Value result : op->getResults()) {
                 if (!result) continue;
                 for (mlir::Operation *user : result.getUsers()) {
                   if (!user) continue;
+            
+            // Set check if user has a direct tile mapping
                   auto user_attr_array = user->getAttrOfType<ArrayAttr>("mapping_locs");
-                  if (!user_attr_array) continue;
+            if (user_attr_array) {
                   for (mlir::Attribute user_attr : user_attr_array) {
-                    if (!user_attr) continue;
                     if (auto user_loc = mlir::dyn_cast<DictionaryAttr>(user_attr)) {
                       auto user_resource_attr = mlir::dyn_cast<StringAttr>(user_loc.get("resource"));
                       if (user_resource_attr && user_resource_attr.getValue() == "tile") {
                         auto user_x_attr = user_loc.getAs<IntegerAttr>("x");
                         auto user_y_attr = user_loc.getAs<IntegerAttr>("y");
                         if (user_x_attr && user_y_attr) {
-                          int dst_x = user_x_attr.getInt();
-                          int dst_y = user_y_attr.getInt();
-                          asm_op_to_final_tile[op] = std::make_pair(dst_x, dst_y);
-                          // Set set source location for link operation from its operand.
-                          for (mlir::Value operand : op->getOperands()) {
-                            if (!operand) continue;
-                            if (auto defining_op = operand.getDefiningOp()) {
-                              auto src_it = asm_op_to_source_tile.find(defining_op);
-                              if (src_it != asm_op_to_source_tile.end()) {
-                                asm_op_to_source_tile[op] = src_it->second;
-                                break;
-                              }
-                            }
-                          }
-                          found = true;
-                          goto asm_link_found;
-                        }
-                      }
+                      return std::make_pair(user_x_attr.getInt(), user_y_attr.getInt());
                     }
                   }
                 }
               }
             }
-            // Set if no destination found, use source location as fallback.
-            if (asm_op_to_final_tile.find(op) == asm_op_to_final_tile.end()) {
-              for (mlir::Value operand : op->getOperands()) {
-                if (!operand) continue;
-                if (auto defining_op = operand.getDefiningOp()) {
-                  auto it = asm_op_to_final_tile.find(defining_op);
-                  if (it != asm_op_to_final_tile.end()) {
-                    asm_op_to_final_tile[op] = it->second;
-                    break;
-                  }
-                }
-              }
+            
+            // Set if user doesn't have direct tile mapping, recursively trace
+            auto dest_tile = findDestinationTile(user);
+            if (dest_tile.first != -1 && dest_tile.second != -1) {
+              return dest_tile;
             }
-            asm_link_found:;
           }
         }
+        
+        return std::make_pair(-1, -1); // No destination found
+      };
+    
+    // Set second pass: find source tiles for all operations
+    func.walk([&](Operation *op) {
+      if (asm_op_to_source_tile.find(op) == asm_op_to_source_tile.end()) {
+        auto source_tile = findSourceTile(op);
+        if (source_tile.first != -1 && source_tile.second != -1) {
+          asm_op_to_source_tile[op] = source_tile;
+        }
       }
-      if (!found) return;
+    });
+    
+    // Set third pass: find destination tiles for all operations
+    func.walk([&](Operation *op) {
+            if (asm_op_to_final_tile.find(op) == asm_op_to_final_tile.end()) {
+        auto dest_tile = findDestinationTile(op);
+        if (dest_tile.first != -1 && dest_tile.second != -1) {
+          asm_op_to_final_tile[op] = dest_tile;
+        }
+      }
     });
   }
 
@@ -786,6 +1021,7 @@ struct GenerateCodePass
               break;
             }
           }
+          // Set link operations are not assigned to PEs, they are handled separately for data flow tracking
         }
       }
       if (!found) return;
@@ -914,18 +1150,18 @@ struct GenerateCodePass
     collectLinkInputDirections(func, x, y, input_directions);
     
     // Set write Entry line.
-    asm_out << "    Entry ";
-    bool first = true;
-    for (const std::string& dir : input_directions) {
-      if (!first) asm_out << ", ";
-      asm_out << "[" << dir << ", R]";
-      first = false;
-    }
-    if (input_directions.empty()) {
-      asm_out << "[]";
-    }
-    asm_out << " => ";
-    
+    // asm_out << "    Entry ";
+    // bool first = true;
+    // for (const std::string& dir : input_directions) {
+    //   if (!first) asm_out << ", ";
+    //   asm_out << "[" << dir << ", R]";
+    //   first = false;
+    // }
+    // if (input_directions.empty()) {
+    //   asm_out << "[]";
+    // }
+    // asm_out << " => ";
+    asm_out << "    Entry => ";
     // Set determine if it's Loop or Once based on time steps.
     if (time_ops.size() > 1) {
       asm_out << "Loop {\n";
@@ -1019,4 +1255,5 @@ std::unique_ptr<mlir::Pass> createGenerateCodePass() {
   return std::make_unique<GenerateCodePass>();
 }
 } // namespace mlir::neura
+
 
