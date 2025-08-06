@@ -4,5 +4,9 @@ build/
 *.swp
 *.swo
 
+generated-instructions.json
+
 .DS_Store
 Thumbs.db
+
+/test/lit.cfg
