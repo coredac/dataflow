@@ -8,7 +8,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 
-add_compile_options(-g)
+add_compile_options(-g -fexceptions)
 
 # set(MLIR_DIR /home/lucas/llvm-project/build/lib/cmake/mlir)
 # set(LLVM_DIR /home/lucas/llvm-project/build/lib/cmake/llvm)
@@ -19,6 +19,8 @@ message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 
 find_package(MLIR REQUIRED CONFIG)
 find_package(LLVM REQUIRED CONFIG)
+
+find_package(yaml-cpp REQUIRED)
 
 list(APPEND CMAKE_MODULE_PATH "${MLIR_CMAKE_DIR}")
 
