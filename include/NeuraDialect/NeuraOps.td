@@ -32,6 +32,23 @@ def Neura_SubOp : Op<NeuraDialect, "sub"> {
   let traits = [SameOperandsAndResultElementType];
 }
 
+def Neura_MulOp : Op<NeuraDialect, "mul"> {
+  let summary = "Integer multiplication operation";
+  let opName = "mul";
+  let arguments = (ins AnyType:$lhs, AnyType:$rhs, Optional<AnyType>:$predicate);
+  let results = (outs AnyType:$result);
+  // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
+  let traits = [SameOperandsAndResultElementType];
+}
+
+def Neura_DivOp : Op<NeuraDialect, "div"> {
+  let summary = "Integer division operation";
+  let arguments = (ins AnyType:$lhs, AnyType:$rhs, Optional<AnyType>:$predicate);
+  let results = (outs AnyType:$result);
+  // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
+  let traits = [SameOperandsAndResultElementType];
+}
+
 // Defines a floating-point addition operation.
 def Neura_FAddOp : Op<NeuraDialect, "fadd"> {
   let summary = "Floating addition operation";
@@ -39,7 +56,7 @@ def Neura_FAddOp : Op<NeuraDialect, "fadd"> {
   let arguments = (ins AnyType:$lhs, AnyType:$rhs, Optional<AnyType>:$predicate);
   let results = (outs AnyType:$result);
   // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
-  //let traits = [SameOperandsAndResultElementType];
+  // let traits = [SameOperandsAndResultElementType];
 }
 
 // Defines a floating-point substraction operation.
@@ -93,11 +110,11 @@ def Neura_ICmpOp : Op<NeuraDialect, "icmp"> {
 def Neura_FCmpOp : Op<NeuraDialect, "fcmp"> {
   let summary = "Floating-point compare operation";
   let opName = "fcmp";
-  let arguments = (ins AnyFloat:$lhs,
-                   AnyFloat:$rhs,
+  let arguments = (ins AnyType:$lhs,
+                   AnyType:$rhs,
                    Optional<AnyType>:$predicate,
                    StrAttr:$cmpType);
-  let results = (outs I1:$result);
+  let results = (outs AnyType:$result);
   // let assemblyFormat = "$lhs `,` $rhs `,` $cmpType attr-dict `:` type($result)";
   // let traits = [SameOperandsAndResultElementType];
 }
@@ -147,7 +164,7 @@ def Neura_StoreIndexedOp: Op<NeuraDialect, "store_indexed", [AttrSizedOperandSeg
 // Defines a pointer computation operation.
 def Neura_GEP : Op<NeuraDialect, "gep"> {
   let summary = "Pointer computation using offset indices";
-  let arguments = (ins AnyType:$base, Variadic<AnyInteger>:$indicesAndPredicate);
+  let arguments = (ins AnyType:$base, Variadic<AnyType>:$indicesAndPredicate);
   let results = (outs AnyType:$result);
   // let assemblyFormat = "$base `[` $indicesAndPredicate `]` `,` $predicate attr-dict";
 }
@@ -170,7 +187,7 @@ def Neura_Br : Op<NeuraDialect, "br", [Terminator]> {
 }
 
 def Neura_SelOp : Op<NeuraDialect, "sel"> {
-  let arguments = (ins AnyType:$ifTrue, AnyType:$ifFalse, I1:$cond);
+  let arguments = (ins AnyType:$ifTrue, AnyType:$ifFalse, AnyType:$cond);
   let results = (outs AnyType:$result);
   // let assemblyFormat = "$ifTrue `,` $ifFalse `,` $cond attr-dict `:` type($ifTrue)";
 }
@@ -222,16 +239,16 @@ def Neura_VFMulOp : Op<NeuraDialect, "vfmul"> {
 
 def Neura_FAddFAddOp : Op<NeuraDialect, "fadd_fadd"> {
   let summary = "Fused fadd(fadd(a, b), c)";
-  let arguments = (ins AnyFloat:$a, AnyFloat:$b, AnyFloat:$c, Optional<AnyType>:$predicate);
-  let results = (outs AnyFloat:$result);
+  let arguments = (ins AnyType:$a, AnyType:$b, AnyType:$c, Optional<AnyType>:$predicate);
+  let results = (outs AnyType:$result);
   // let assemblyFormat = "$a `,` $b `,` $c `,` $predicate attr-dict `:` type($result)";
   let traits = [SameOperandsAndResultElementType];
 }
 
 def Neura_FMulFAddOp : Op<NeuraDialect, "fmul_fadd"> {
   let summary = "Fused fadd(fmul(a, b), c)";
-  let arguments = (ins AnyFloat:$a, AnyFloat:$b, AnyFloat:$c, Optional<AnyType>:$predicate);
-  let results = (outs AnyFloat:$result);
+  let arguments = (ins AnyType:$a, AnyType:$b, AnyType:$c, Optional<AnyType>:$predicate);
+  let results = (outs AnyType:$result);
   // let assemblyFormat = "$a `,` $b `,` $c `,` $predicate attr-dict `:` type($result)";
   let traits = [SameOperandsAndResultElementType];
 }
@@ -324,14 +341,17 @@ def Neura_GrantPredicateOp : Op<NeuraDialect, "grant_predicate"> {
 def Neura_GrantOnceOp : Op<NeuraDialect, "grant_once"> {
   let summary = "Marks a value as valid once.";
   let description = [{
-    Grants a value a one-time predicate: the resulting value is considered valid
+    Either grants a value a one-time predicate, or creates a constant value with a one-time predicate. The resulting value is considered valid
     only during its first activation. Used to initialize recurrence cycles.
     
     Example:
       %v = neura.grant_once %init : !neura.data<f32, i1> -> !neura.data<f32, i1>
+      %c = neura.grant_once <{value = 42 : i64}> : !neura.data<i64, i1>
   }];
 
-  let arguments = (ins AnyType:$value);
+  let arguments = (ins 
+  Optional<AnyType>:$value,
+  OptionalAttr<AnyAttr>:$constant_value);
   let results = (outs AnyType:$result);
 
   // let assemblyFormat = "$value attr-dict `:` type($value) `->` type($result)";
@@ -347,8 +367,54 @@ def Neura_GrantAlwaysOp : Op<NeuraDialect, "grant_always"> {
       %v = neura.grant_always %init : !neura.data<f32, i1> -> !neura.data<f32, i1>
   }];
 
-  let arguments = (ins AnyType:$value);
+  let arguments = (ins 
+  Optional<AnyType>:$value,
+  OptionalAttr<AnyAttr>:$constant_value);
   let results = (outs AnyType:$result);
 
   // let assemblyFormat = "$value attr-dict `:` type($value) `->` type($result)";
+}
+
+// ----------------------------------------------------
+// Defines fused control flow operations.
+
+def Neura_LoopControlOp : Op<NeuraDialect, "loop_control">{
+  let summary = "Generates loop indicies and valid predicates.";
+  let description = [{
+    Controls loop execution with minimal recurrence cycle length (1).
+    Takes the current index and produces the next index and validity predicate.
+    
+    This operation combines comparison and increment logic into a single operation,
+    enabling efficient loop execution on dataflow architectures with modulo scheduling.
+    
+    The first iteration automatically uses the start value because the reserve operation's
+    predicate bit is initially 0, while the start value's predicate bit is 1.
+    
+    Example:
+      // Loop control that calculates next index and validity in one step
+      %next_idx, %loop_valid = neura.loop_control(
+        parent_valid = %parent_valid,
+        start = %start_val,
+        end = %end_val,
+        step = %step_val
+      ) <{iteration_type = "increment"}> : !neura.data<i1, i1>,
+                                           !neura.data<i64, i1>, !neura.data<i64, i1>, !neura.data<i64, i1>
+                                           -> !neura.data<i64, i1>, !neura.data<i1, i1>
+  }];
+
+  let arguments = (ins
+    AnyType:$parentValid,  // Valid predicate from the parent loop.
+    StrAttr:$iterationType, // Type of the loop iteration (e.g., "increment", "decrement").
+    AnyType:$start,         // Start index of the loop (optional if startValue attr is presented).
+    AnyType:$end,           // End index of the loop (optional if endValue attr is presented).
+    AnyType:$step           // Step size for the loop (optional if stepValue attr is presented).
+  );
+
+  let results = (outs
+    AnyType:$nextindex,         // Current loop index
+    AnyType:$valid          // Valid predicate for the current index
+  );
+
+  let assemblyFormat =
+    " `(``parent_valid` `=` $parentValid `,` `start` `=` $start `,` `end` `=` $end `,` `step` `=` $step`)` attr-dict `:` type($parentValid) `,` type($start) `,` type($end) `,` type($step) `->` type($nextindex) `,` type($valid)";
 }

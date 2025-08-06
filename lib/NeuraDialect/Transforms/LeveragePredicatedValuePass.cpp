@@ -32,7 +32,11 @@ struct LeveragePredicatedValuePass
     ModuleOp module = getOperation();
     
     // Processes each function.
-    module.walk([&](func::FuncOp func) {
+    module.walk([&](FunctionOpInterface func) {
+      auto accel_attr = func->getAttrOfType<StringAttr>("accelerator");
+      if (!accel_attr || accel_attr.getValue() != "neura") {
+        return;
+      }
       // Converts block argument types to predicated values.
       func.walk([&](Block *block) {
         // skips the entry (first) block of the function.
@@ -70,8 +74,8 @@ struct LeveragePredicatedValuePass
 
 private:
   // Gets operations in topological order.
-  void getOperationsInTopologicalOrder(func::FuncOp func, 
-                                     SmallVector<Operation*> &ordered) {
+  void getOperationsInTopologicalOrder(FunctionOpInterface func, 
+                                       SmallVector<Operation*> &ordered) {
     DenseSet<Operation*> visited;
     func.walk<WalkOrder::PreOrder>([&](Operation *op) {
       // Uses standard DFS to build topological order.
