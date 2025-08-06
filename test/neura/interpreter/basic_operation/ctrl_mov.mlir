@@ -1,4 +1,4 @@
-// RUN: neura-interpreter %s | FileCheck %s
+// RUN: neura-interpreter %s --verbose | FileCheck %s
 
 func.func @test_ctrl_mov_basic() {
   %a = "neura.reserve"() : () -> (i32)

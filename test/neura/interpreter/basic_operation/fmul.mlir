@@ -1,4 +1,4 @@
-// RUN: neura-interpreter %s | FileCheck %s
+// RUN: neura-interpreter %s --verbose | FileCheck %s
 
 // ===----------------------------------------------------------------------===//
 // Test 1: Valid neura.fmul with positive constants
