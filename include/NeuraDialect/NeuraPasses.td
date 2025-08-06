@@ -14,10 +14,10 @@ def AssignAccelerator : Pass<"assign-accelerator", "ModuleOp"> {
   let constructor = "neura::createAssignAcceleratorPass()";
 }
 
-def FusePatterns : Pass<"fuse-patterns", "ModuleOp"> {
+def FusePattern : Pass<"fuse-pattern", "ModuleOp"> {
   let summary = "Fuses patterns in the Neura dialect";
   let description = [{Apply Neura fusion patterns.}];
-  let constructor = "neura::createFusePatternsPass()";
+  let constructor = "neura::createFusePatternPass()";
 }
 
 def InsertDataMov : Pass<"insert-data-mov", "ModuleOp"> {
@@ -65,6 +65,47 @@ def GenerateCode : Pass<"generate-code", "ModuleOp"> {
     The instructions can be encoded into configuration signals.
   }];
   let constructor = "neura::createGenerateCodePass()";
+}
+
+def FuseControlFlow: Pass<"fuse-control-flow", "ModuleOp">{
+  let summary = "Fuses control flow operations in the Neura dialect";
+  let description = [{
+    This pass fuses control flow operations.
+  }];
+  let constructor = "neura::createFuseControlFlowPass()";
+}
+
+def CanonicalizeLiveIn : Pass<"canonicalize-live-in", "ModuleOp"> {
+  let summary = "Canonicalizes live-in values/operations in each basic block.";
+  let description = [{
+    This pass applies canonicalization transformations to Neura dialect operations.
+    The canonicalization includes:
+    1. Converting all live-in values of each basic block to block arguments.
+    2. Promoting function arguments to neura constant operations.
+  }];
+  let constructor = "neura::createCanonicalizeLiveInPass()";
+}
+
+def CanonicalizeCast : Pass<"canonicalize-cast", "ModuleOp"> {
+  let summary = "Canonicalizes cast operations in the Neura dialect";
+  let description = [{
+    This pass applies canonicalization transformations to neura::cast operations.
+    The canonicalization includes:
+    1. Removing redundant casts.
+    2. Converting index (i64) types to i64 (index).
+  }];
+  let constructor = "neura::createCanonicalizeCastPass()";
+}
+
+def FoldConstant : Pass<"fold-constant", "ModuleOp"> {
+  let summary = "Folds constant operations in the Neura dialect";
+  let description = [{
+    This pass applies constant folding transformations to Neura dialect operations.
+    The folding includes:
+    1. Folding constant operations.
+    2. Removing dead operations.
+  }];
+  let constructor = "neura::createFoldConstantPass()";
 }
 
 #endif // NEURA_PASSES_TD

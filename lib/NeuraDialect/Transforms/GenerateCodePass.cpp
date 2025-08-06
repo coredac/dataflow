@@ -1224,8 +1224,9 @@ struct GenerateCodePass
 
     for (mlir::func::FuncOp func : module.getOps<mlir::func::FuncOp>()) {
       auto accel_attr = func->getAttrOfType<StringAttr>("accelerator");
-      if (!accel_attr || accel_attr.getValue() != "neura")
+      if (!accel_attr || accel_attr.getValue() != "neura") {
         continue;
+      }
 
       processFunction(func, functions_array);
     }
