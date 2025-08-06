@@ -1,8 +1,8 @@
 #include <deque>
 
 #include "NeuraDialect/Architecture/Architecture.h"
-#include "NeuraDialect/Mapping/HeuristicMapping/HeuristicMapping.h"
 #include "NeuraDialect/Mapping/MappingState.h"
+#include "NeuraDialect/Mapping/SpatialTemporalMapping/SpatialTemporalMapping.h"
 #include "NeuraDialect/Mapping/mapping_util.h"
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraOps.h"
@@ -53,13 +53,14 @@ struct MapToAcceleratorPass
     // Creates a mapping strategy based on the provided option.
     std::unique_ptr<MappingStrategy> mapping_strategy;
     if (mappingStrategy_stringRef == "simple") {
-      mapping_strategy = std::make_unique<HeuristicMapping>(1, 1);
+      mapping_strategy = std::make_unique<SpatialTemporalMapping>(1, 1);
     } else if (mappingStrategy_stringRef == "greedy") {
-      mapping_strategy = std::make_unique<HeuristicMapping>(INT_MAX, 1);
+      mapping_strategy = std::make_unique<SpatialTemporalMapping>(INT_MAX, 1);
     } else if (mappingStrategy_stringRef == "exhaustive") {
-      mapping_strategy = std::make_unique<HeuristicMapping>(INT_MAX, INT_MAX);
+      mapping_strategy =
+          std::make_unique<SpatialTemporalMapping>(INT_MAX, INT_MAX);
     } else if (mappingStrategy_stringRef == "heuristic") {
-      mapping_strategy = std::make_unique<HeuristicMapping>(
+      mapping_strategy = std::make_unique<SpatialTemporalMapping>(
           5, 3); // Randomly picked default values for max_loc and max_depth
     } else if (mappingStrategy_stringRef.starts_with("heuristic=")) {
       // Used for custom backtrack parameters.
@@ -77,7 +78,7 @@ struct MapToAcceleratorPass
         if (!max_loc_str.getAsInteger(10, max_loc) &&
             !max_depth_str.getAsInteger(10, max_depth)) {
           mapping_strategy =
-              std::make_unique<HeuristicMapping>(max_loc, max_depth);
+              std::make_unique<SpatialTemporalMapping>(max_loc, max_depth);
           llvm::errs()
               << "[MapToAcceleratorPass] Use custom backtrack parameters: "
               << "max_location_to_try=" << max_loc
