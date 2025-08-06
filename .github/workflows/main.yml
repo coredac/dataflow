@@ -33,7 +33,11 @@ jobs:
       run: |
         sudo apt-get install ccache
         sudo apt-get install lld
- 
+    
+    # install yaml library
+    - name: install yaml library
+      run: sudo apt-get install libyaml-dev
+      
     # setup LLVM
     - name: install a specific version of LLVM
       working-directory: ${{github.workspace}}
