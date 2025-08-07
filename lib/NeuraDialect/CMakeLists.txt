@@ -7,7 +7,6 @@ add_mlir_dialect_library(MLIRNeura
         Mapping/MappingState.cpp
         Mapping/MappingStrategy.cpp
         Mapping/SpatialTemporalMapping/SpatialTemporalMapping.cpp
-        Mapping/SpatialMapping/SpatialMapping.cpp
         Architecture/Architecture.cpp
 
         ADDITIONAL_HEADER_DIRS
