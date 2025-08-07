@@ -25,4 +25,5 @@ add_mlir_library(
       MLIRTransforms
       MLIRNeura
       ${dialect_libs}
+      LLVMSupport
 )
