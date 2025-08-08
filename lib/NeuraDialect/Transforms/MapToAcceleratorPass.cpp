@@ -2,7 +2,7 @@
 #include <memory>
 
 #include "NeuraDialect/Architecture/Architecture.h"
-#include "NeuraDialect/Mapping/BacktrackMapping/BacktrackMapping.h"
+#include "NeuraDialect/Mapping/HeuristicMapping/HeuristicMapping.h"
 #include "NeuraDialect/Mapping/MappingState.h"
 #include "NeuraDialect/Mapping/mapping_util.h"
 #include "NeuraDialect/NeuraDialect.h"
@@ -43,14 +43,14 @@ struct MapToAcceleratorPass
   Option<std::string> mappingStrategy{
       *this, "mapping-strategy",
       llvm::cl::desc("Mapping strategy to use for mapping operations to the "
-                     "accelerator. Options: backtrack (default)."),
-      llvm::cl::init("backtrack")};
+                     "accelerator. Options: heuristic (default)."),
+      llvm::cl::init("heuristic")};
   Option<std::string> backtrackConfig{
       *this, "backtrack-config",
       llvm::cl::desc(
           "Backtrack configuration used for mapping operations to the "
           "accelerator. Options: simple, greedy, exhaustive, "
-          "heuristic=max_loc,max_depth (default "
+          "customized=max_loc,max_depth (default "
           "max_loc=5, max_depth=3)"),
       llvm::cl::init("heuristic")};
 
@@ -59,23 +59,23 @@ struct MapToAcceleratorPass
     std::unique_ptr<Mapping> mapping;
     StringRef mappingStrategy_stringRef(mappingStrategy.getValue());
     StringRef backtrackConfig_stringRef(backtrackConfig.getValue());
-    if (mappingStrategy_stringRef == "backtrack" ||
+    if (mappingStrategy_stringRef == "heuristic" ||
         mappingStrategy_stringRef.empty()) {
 
       if (backtrackConfig_stringRef == "simple") {
-        mapping = std::make_unique<BacktrackMapping>(1, 1);
+        mapping = std::make_unique<HeuristicMapping>(1, 1);
       } else if (backtrackConfig_stringRef == "greedy") {
-        mapping = std::make_unique<BacktrackMapping>(INT_MAX, 1);
+        mapping = std::make_unique<HeuristicMapping>(INT_MAX, 1);
       } else if (backtrackConfig_stringRef == "exhaustive") {
-        mapping = std::make_unique<BacktrackMapping>(INT_MAX, INT_MAX);
-      } else if (backtrackConfig_stringRef == "heuristic") {
-        mapping = std::make_unique<BacktrackMapping>(5, 3);
-      } else if (backtrackConfig_stringRef.starts_with("heuristic=")) {
+        mapping = std::make_unique<HeuristicMapping>(INT_MAX, INT_MAX);
+      } else if (backtrackConfig_stringRef == "customized") {
+        mapping = std::make_unique<HeuristicMapping>(5, 3);
+      } else if (backtrackConfig_stringRef.starts_with("customized=")) {
         // Used for custom backtrack parameters.
-        // Example: "heuristic=5,3" means max_loc=5, max_depth=3
-        // Extracts the parameters after "heuristic=".
+        // Example: "customized=5,3" means max_loc=5, max_depth=3
+        // Extracts the parameters after "customized=".
         StringRef paramsRef =
-            backtrackConfig_stringRef.substr(strlen("heuristic="));
+            backtrackConfig_stringRef.substr(strlen("customized="));
         size_t comma_pos = paramsRef.find(',');
 
         if (comma_pos != StringRef::npos) {
@@ -85,20 +85,20 @@ struct MapToAcceleratorPass
           int max_loc, max_depth;
           if (!max_loc_str.getAsInteger(10, max_loc) &&
               !max_depth_str.getAsInteger(10, max_depth)) {
-            mapping = std::make_unique<BacktrackMapping>(max_loc, max_depth);
+            mapping = std::make_unique<HeuristicMapping>(max_loc, max_depth);
             llvm::errs()
                 << "[MapToAcceleratorPass] Use custom backtrack parameters: "
                 << "max_location_to_try=" << max_loc
                 << ", max_backtrack_depth=" << max_depth << "\n";
           } else {
-            llvm::errs() << "[MapToAcceleratorPass] Illegal backtrack "
+            llvm::errs() << "[MapToAcceleratorPass] Illegal customized "
                             "parameters format: "
                          << backtrackConfig_stringRef << "\n";
             return;
           }
         } else {
           llvm::errs()
-              << "[MapToAcceleratorPass] Illegal backtrack parameters format: "
+              << "[MapToAcceleratorPass] Illegal customized parameters format: "
               << backtrackConfig_stringRef << "\n";
           return;
         }
