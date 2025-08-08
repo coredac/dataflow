@@ -40,7 +40,8 @@ struct MappingLoc {
 namespace std {
 template <> struct hash<mlir::neura::MappingLoc> {
   std::size_t operator()(const mlir::neura::MappingLoc &loc) const {
-    std::size_t h1 = std::hash<int>()(static_cast<int>(loc.resource->getKind()));
+    std::size_t h1 =
+        std::hash<int>()(static_cast<int>(loc.resource->getKind()));
     std::size_t h2 = std::hash<int>()(loc.resource->getId());
     std::size_t h3 = std::hash<int>()(loc.time_step);
     return h1 ^ (h2 << 1) ^ (h3 << 2);
@@ -71,8 +72,7 @@ public:
   // Checks if a hardware resource is available across a time range.
   // This function leverages the isAvailableAcrossTime function in each
   // time step.
-  bool isAvailableAcrossTimeInRange(BasicResource *resource,
-                                    int start_time,
+  bool isAvailableAcrossTimeInRange(BasicResource *resource, int start_time,
                                     int exclusive_end_time) const;
 
   // Gets the operation at a specific (tile/link, time_step) location.
@@ -130,7 +130,8 @@ public:
   void setLocToOp(const std::map<MappingLoc, Operation *> &loc_to_op) {
     this->loc_to_op = loc_to_op;
   }
-  void setOpToLocs(const std::map<Operation *, std::vector<MappingLoc>> &op_to_locs) {
+  void setOpToLocs(
+      const std::map<Operation *, std::vector<MappingLoc>> &op_to_locs) {
     this->op_to_locs = op_to_locs;
   }
 
@@ -144,6 +145,26 @@ private:
   std::map<Operation *, std::vector<MappingLoc>> op_to_locs;
 };
 
+} // namespace neura
+} // namespace mlir
+
+namespace mlir {
+namespace neura {
+class MappingStateSnapshot {
+public:
+  MappingStateSnapshot(const MappingState &mapping_state);
+
+  void restore(MappingState &mapping_state);
+
+  std::map<Operation *, std::vector<MappingLoc>> getOpToLocs() {
+    return this->op_to_locs;
+  }
+
+private:
+  std::set<MappingLoc> occupied_locs;
+  std::map<MappingLoc, Operation *> loc_to_op;
+  std::map<Operation *, std::vector<MappingLoc>> op_to_locs;
+};
 } // namespace neura
 } // namespace mlir
 
