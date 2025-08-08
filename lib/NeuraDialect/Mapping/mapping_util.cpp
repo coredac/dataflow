@@ -249,14 +249,16 @@ mlir::neura::getOpsInAlapLevels(const std::vector<Operation *> &sorted_ops,
   // Step 3: Overwrites critical ops with ASAP schedule: shortest path from
   // source.
   for (Operation *op : sorted_ops) {
-    if (!critical_ops.count(op))
+    if (!critical_ops.count(op)) {
       continue;
+    }
 
     int level = -1;
     for (Value operand : op->getOperands()) {
       Operation *def = operand.getDefiningOp();
-      if (!def || !op_level.count(def))
+      if (!def || !op_level.count(def)) {
         continue;
+      }
 
       int def_level = op_level[def];
 
