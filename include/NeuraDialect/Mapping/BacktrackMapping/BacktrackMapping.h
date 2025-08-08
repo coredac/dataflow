@@ -1,8 +1,8 @@
-#ifndef NEURA_SPATIALTEMPORAL_MAPPING_H
-#define NEURA_SPATIALTEMPORAL_MAPPING_H
+#ifndef NEURA_BACKTRACK_MAPPING_H
+#define NEURA_BACKTRACK_MAPPING_H
 
+#include "NeuraDialect/Mapping/Mapping.h"
 #include "NeuraDialect/Mapping/MappingState.h"
-#include "NeuraDialect/Mapping/MappingStrategy.h"
 #include "NeuraDialect/Mapping/mapping_util.h"
 #include <climits>
 #include <map>
@@ -10,10 +10,9 @@
 
 namespace mlir {
 namespace neura {
-class SpatialTemporalMapping : public MappingStrategy {
+class BacktrackMapping : public Mapping {
 public:
-  SpatialTemporalMapping(int max_location_to_try = 5,
-                         int max_backtrack_depth = 3)
+  BacktrackMapping(int max_location_to_try = 5, int max_backtrack_depth = 3)
       : max_location_to_try(max_location_to_try),
         max_backtrack_depth(max_backtrack_depth) {}
 
@@ -49,4 +48,4 @@ private:
 } // namespace neura
 } // namespace mlir
 
-#endif // NEURA_SPATIALTEMPORAL_MAPPING_H
+#endif // NEURA_BACKTRACK_MAPPING_H
