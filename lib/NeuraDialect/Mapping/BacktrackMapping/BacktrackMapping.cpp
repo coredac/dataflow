@@ -1,4 +1,4 @@
-#include "NeuraDialect/Mapping/SpatialTemporalMapping/SpatialTemporalMapping.h"
+#include "NeuraDialect/Mapping/BacktrackMapping/BacktrackMapping.h"
 #include "NeuraDialect/Mapping/MappingState.h"
 #include "NeuraDialect/Mapping/mapping_util.h"
 #include "NeuraDialect/NeuraOps.h"
@@ -13,7 +13,7 @@ inline bool is_non_materialized(Operation *op) {
   return mlir::isa<neura::ReserveOp, neura::CtrlMovOp, neura::DataMovOp>(op);
 }
 
-bool SpatialTemporalMapping::map(
+bool BacktrackMapping::map(
     std::vector<std::pair<Operation *, int>> &sorted_ops_with_levels,
     std::set<Operation *> &critical_ops, const Architecture &architecture,
     MappingState &mapping_state) {
@@ -22,12 +22,12 @@ bool SpatialTemporalMapping::map(
                           mapping_state);
 }
 
-bool SpatialTemporalMapping::mapWithBacktrack(
+bool BacktrackMapping::mapWithBacktrack(
     std::vector<std::pair<Operation *, int>> &sorted_ops_with_levels,
     std::set<Operation *> &critical_ops, const Architecture &architecture,
     MappingState &mapping_state) {
   llvm::outs() << "---------------------------------------------------------\n";
-  llvm::outs() << "[SpatialTemporalMapping] Starting mapping with "
+  llvm::outs() << "[BacktrackMapping] Starting mapping with "
                << sorted_ops_with_levels.size() << " operations.\n";
   llvm::outs() << "Configuration: MAX Backtrack Depth = "
                << this->max_backtrack_depth

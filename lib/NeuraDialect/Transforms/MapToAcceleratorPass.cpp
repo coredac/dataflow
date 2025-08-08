@@ -1,8 +1,9 @@
 #include <deque>
+#include <memory>
 
 #include "NeuraDialect/Architecture/Architecture.h"
+#include "NeuraDialect/Mapping/BacktrackMapping/BacktrackMapping.h"
 #include "NeuraDialect/Mapping/MappingState.h"
-#include "NeuraDialect/Mapping/SpatialTemporalMapping/SpatialTemporalMapping.h"
 #include "NeuraDialect/Mapping/mapping_util.h"
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraOps.h"
@@ -12,6 +13,7 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace mlir;
@@ -41,63 +43,69 @@ struct MapToAcceleratorPass
   Option<std::string> mappingStrategy{
       *this, "mapping-strategy",
       llvm::cl::desc("Mapping strategy to use for mapping operations to the "
-                     "accelerator. Options: greedy, exhaustive, "
-                     "heuristic=max_loc,max_depth (default "
-                     "max_loc=5, max_depth=3)"),
+                     "accelerator. Options: backtrack (default)."),
+      llvm::cl::init("backtrack")};
+  Option<std::string> backtrackConfig{
+      *this, "backtrack-config",
+      llvm::cl::desc(
+          "Backtrack configuration used for mapping operations to the "
+          "accelerator. Options: simple, greedy, exhaustive, "
+          "heuristic=max_loc,max_depth (default "
+          "max_loc=5, max_depth=3)"),
       llvm::cl::init("heuristic")};
 
   void runOnOperation() override {
     ModuleOp module = getOperation();
-
+    std::unique_ptr<Mapping> mapping;
     StringRef mappingStrategy_stringRef(mappingStrategy.getValue());
-    // Creates a mapping strategy based on the provided option.
-    std::unique_ptr<MappingStrategy> mapping_strategy;
-    if (mappingStrategy_stringRef == "simple") {
-      mapping_strategy = std::make_unique<SpatialTemporalMapping>(1, 1);
-    } else if (mappingStrategy_stringRef == "greedy") {
-      mapping_strategy = std::make_unique<SpatialTemporalMapping>(INT_MAX, 1);
-    } else if (mappingStrategy_stringRef == "exhaustive") {
-      mapping_strategy =
-          std::make_unique<SpatialTemporalMapping>(INT_MAX, INT_MAX);
-    } else if (mappingStrategy_stringRef == "heuristic") {
-      mapping_strategy = std::make_unique<SpatialTemporalMapping>(
-          5, 3); // Randomly picked default values for max_loc and max_depth
-    } else if (mappingStrategy_stringRef.starts_with("heuristic=")) {
-      // Used for custom backtrack parameters.
-      // Example: "heuristic=5,3" means max_loc=5, max_depth=3
-      // Extracts the parameters after "heuristic=".
-      StringRef paramsRef =
-          mappingStrategy_stringRef.substr(strlen("heuristic="));
-      size_t comma_pos = paramsRef.find(',');
+    StringRef backtrackConfig_stringRef(backtrackConfig.getValue());
+    if (mappingStrategy_stringRef == "backtrack" ||
+        mappingStrategy_stringRef.empty()) {
 
-      if (comma_pos != StringRef::npos) {
-        StringRef max_loc_str = paramsRef.substr(0, comma_pos);
-        StringRef max_depth_str = paramsRef.substr(comma_pos + 1);
+      if (backtrackConfig_stringRef == "simple") {
+        mapping = std::make_unique<BacktrackMapping>(1, 1);
+      } else if (backtrackConfig_stringRef == "greedy") {
+        mapping = std::make_unique<BacktrackMapping>(INT_MAX, 1);
+      } else if (backtrackConfig_stringRef == "exhaustive") {
+        mapping = std::make_unique<BacktrackMapping>(INT_MAX, INT_MAX);
+      } else if (backtrackConfig_stringRef == "heuristic") {
+        mapping = std::make_unique<BacktrackMapping>(5, 3);
+      } else if (backtrackConfig_stringRef.starts_with("heuristic=")) {
+        // Used for custom backtrack parameters.
+        // Example: "heuristic=5,3" means max_loc=5, max_depth=3
+        // Extracts the parameters after "heuristic=".
+        StringRef paramsRef =
+            backtrackConfig_stringRef.substr(strlen("heuristic="));
+        size_t comma_pos = paramsRef.find(',');
 
-        int max_loc, max_depth;
-        if (!max_loc_str.getAsInteger(10, max_loc) &&
-            !max_depth_str.getAsInteger(10, max_depth)) {
-          mapping_strategy =
-              std::make_unique<SpatialTemporalMapping>(max_loc, max_depth);
-          llvm::errs()
-              << "[MapToAcceleratorPass] Use custom backtrack parameters: "
-              << "max_location_to_try=" << max_loc
-              << ", max_backtrack_depth=" << max_depth << "\n";
+        if (comma_pos != StringRef::npos) {
+          StringRef max_loc_str = paramsRef.substr(0, comma_pos);
+          StringRef max_depth_str = paramsRef.substr(comma_pos + 1);
+
+          int max_loc, max_depth;
+          if (!max_loc_str.getAsInteger(10, max_loc) &&
+              !max_depth_str.getAsInteger(10, max_depth)) {
+            mapping = std::make_unique<BacktrackMapping>(max_loc, max_depth);
+            llvm::errs()
+                << "[MapToAcceleratorPass] Use custom backtrack parameters: "
+                << "max_location_to_try=" << max_loc
+                << ", max_backtrack_depth=" << max_depth << "\n";
+          } else {
+            llvm::errs() << "[MapToAcceleratorPass] Illegal backtrack "
+                            "parameters format: "
+                         << backtrackConfig_stringRef << "\n";
+            return;
+          }
         } else {
           llvm::errs()
               << "[MapToAcceleratorPass] Illegal backtrack parameters format: "
-              << mappingStrategy << "\n";
+              << backtrackConfig_stringRef << "\n";
           return;
         }
-      } else {
-        llvm::errs()
-            << "[MapToAcceleratorPass] Illegal backtrack parameters format: "
-            << mappingStrategy << "\n";
-        return;
       }
     } else {
       llvm::errs() << "[MapToAcceleratorPass] Unsupported mapping strategy: "
-                   << mappingStrategy << "\n";
+                   << mappingStrategy_stringRef << "\n";
       return;
     }
 
@@ -184,8 +192,8 @@ struct MapToAcceleratorPass
             << "\n";
         // Creates a mapping state for the current II.
         MappingState mapping_state(architecture, ii);
-        if (mapping_strategy->map(sorted_ops_with_alap_levels, critical_ops,
-                                  architecture, mapping_state)) {
+        if (mapping->map(sorted_ops_with_alap_levels, critical_ops,
+                         architecture, mapping_state)) {
           // success
           llvm::errs() << "[MapToAcceleratorPass] Successfully mapped function "
                        << func.getName() << "' with II = " << ii << "\n";
