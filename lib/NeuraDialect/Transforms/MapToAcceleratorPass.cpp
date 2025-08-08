@@ -56,20 +56,20 @@ struct MapToAcceleratorPass
 
   void runOnOperation() override {
     ModuleOp module = getOperation();
-    std::unique_ptr<Mapping> mapping;
+    std::unique_ptr<Mapping> mapping_strategy;
     StringRef mappingStrategy_stringRef(mappingStrategy.getValue());
     StringRef backtrackConfig_stringRef(backtrackConfig.getValue());
     if (mappingStrategy_stringRef == "heuristic" ||
         mappingStrategy_stringRef.empty()) {
 
       if (backtrackConfig_stringRef == "simple") {
-        mapping = std::make_unique<HeuristicMapping>(1, 1);
+        mapping_strategy = std::make_unique<HeuristicMapping>(1, 1);
       } else if (backtrackConfig_stringRef == "greedy") {
-        mapping = std::make_unique<HeuristicMapping>(INT_MAX, 1);
+        mapping_strategy = std::make_unique<HeuristicMapping>(INT_MAX, 1);
       } else if (backtrackConfig_stringRef == "exhaustive") {
-        mapping = std::make_unique<HeuristicMapping>(INT_MAX, INT_MAX);
+        mapping_strategy = std::make_unique<HeuristicMapping>(INT_MAX, INT_MAX);
       } else if (backtrackConfig_stringRef == "customized") {
-        mapping = std::make_unique<HeuristicMapping>(5, 3);
+        mapping_strategy = std::make_unique<HeuristicMapping>(5, 3);
       } else if (backtrackConfig_stringRef.starts_with("customized=")) {
         // Used for custom backtrack parameters.
         // Example: "customized=5,3" means max_loc=5, max_depth=3
@@ -85,7 +85,8 @@ struct MapToAcceleratorPass
           int max_loc, max_depth;
           if (!max_loc_str.getAsInteger(10, max_loc) &&
               !max_depth_str.getAsInteger(10, max_depth)) {
-            mapping = std::make_unique<HeuristicMapping>(max_loc, max_depth);
+            mapping_strategy =
+                std::make_unique<HeuristicMapping>(max_loc, max_depth);
             llvm::errs()
                 << "[MapToAcceleratorPass] Use custom backtrack parameters: "
                 << "max_location_to_try=" << max_loc
@@ -192,8 +193,8 @@ struct MapToAcceleratorPass
             << "\n";
         // Creates a mapping state for the current II.
         MappingState mapping_state(architecture, ii);
-        if (mapping->map(sorted_ops_with_alap_levels, critical_ops,
-                         architecture, mapping_state)) {
+        if (mapping_strategy->map(sorted_ops_with_alap_levels, critical_ops,
+                                  architecture, mapping_state)) {
           // success
           llvm::errs() << "[MapToAcceleratorPass] Successfully mapped function "
                        << func.getName() << "' with II = " << ii << "\n";
