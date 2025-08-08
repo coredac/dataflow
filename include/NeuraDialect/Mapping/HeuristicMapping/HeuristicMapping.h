@@ -1,5 +1,5 @@
-#ifndef NEURA_BACKTRACK_MAPPING_H
-#define NEURA_BACKTRACK_MAPPING_H
+#ifndef NEURA_HEURISTIC_MAPPING_H
+#define NEURA_HEURISTIC_MAPPING_H
 
 #include "NeuraDialect/Mapping/Mapping.h"
 #include "NeuraDialect/Mapping/MappingState.h"
@@ -10,9 +10,9 @@
 
 namespace mlir {
 namespace neura {
-class BacktrackMapping : public Mapping {
+class HeuristicMapping : public Mapping {
 public:
-  BacktrackMapping(int max_location_to_try = 5, int max_backtrack_depth = 3)
+  HeuristicMapping(int max_location_to_try = 5, int max_backtrack_depth = 3)
       : max_location_to_try(max_location_to_try),
         max_backtrack_depth(max_backtrack_depth) {}
 
@@ -30,7 +30,7 @@ public:
                max_backtrack_depth == INT_MAX) {
       return "exhaustive";
     } else {
-      return "heuristic";
+      return "customized";
     }
   }
 
@@ -48,4 +48,4 @@ private:
 } // namespace neura
 } // namespace mlir
 
-#endif // NEURA_BACKTRACK_MAPPING_H
+#endif // NEURA_HEURISTIC_MAPPING_H

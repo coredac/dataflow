@@ -46,7 +46,7 @@
 // RUN:   --transform-ctrl-to-data-flow \
 // RUN:   --fold-constant \
 // RUN:   --insert-data-mov \
-// RUN:   --map-to-accelerator="mapping-strategy=backtrack backtrack-config=simple" \
+// RUN:   --map-to-accelerator="mapping-strategy=heuristic backtrack-config=simple" \
 // RUN:   | FileCheck %s -check-prefix=MAPPING
 
 // RUN: mlir-neura-opt %s \
@@ -57,7 +57,7 @@
 // RUN:   --transform-ctrl-to-data-flow \
 // RUN:   --fold-constant \
 // RUN:   --insert-data-mov \
-// RUN:   --map-to-accelerator="mapping-strategy=backtrack backtrack-config=simple" \
+// RUN:   --map-to-accelerator="mapping-strategy=heuristic backtrack-config=simple" \
 // RUN:   --generate-code
 // RUN: FileCheck %s --input-file=generated-instructions.json -check-prefix=INST
 
