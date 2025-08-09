@@ -21,6 +21,8 @@ public:
 
   // Gets the name of this strategy
   virtual std::string getName() const = 0;
+
+private:
 };
 
 } // namespace neura
