@@ -1,4 +1,4 @@
-// RUN: neura-interpreter %s | FileCheck %s
+// RUN: neura-interpreter %s --verbose | FileCheck %s
 
 // Test basic subtraction with positive result
 func.func @test_sub_positive() -> i32 {
