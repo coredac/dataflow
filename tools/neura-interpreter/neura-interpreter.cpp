@@ -192,11 +192,37 @@ struct PredicatedData {
   std::vector<float> vector_data;     /* Vector data (valid when is_vector is true) */
   bool is_reserve;                    /* Reserve flag (may be used for memory reservation or temporary storage marking) */
   bool is_updated;                    /* Update flag (indicates whether the data has been modified) */
+
+  /**
+  * @brief Compares this PredicatedData instance with another to check if the data has been updated.
+  * 
+  * This function determines whether any part of the current PredicatedData differs from another instance. 
+  * It compares scalar values, predicate flags, vector flags, and vector contents (if applicable).
+  * This is useful in dataflow analysis to determine whether a value change should trigger downstream updates.
+  * 
+  * @param other   The PredicatedData instance to compare against.
+  * @return bool   True if any field differs, indicating an update; false if all fields are equal.
+  */
+  bool isUpdatedComparedTo(const PredicatedData& other) const;
 };
 
-static llvm::DenseMap<Value, llvm::SmallPtrSet<Operation*, 4>> value_users; /* Dependency graph tracking: Maps each value to the set of operations that depend on/use it */
-static llvm::SmallVector<Operation*, 16> work_list;                         /* List of operations to process */
-static llvm::DenseMap<Operation*, bool> in_work_list;                       /* Marks whether an operation is already in work_list */
+bool PredicatedData::isUpdatedComparedTo(const PredicatedData& other) const {
+  if (value != other.value) return true;
+  if (predicate != other.predicate) return true;
+  if (is_vector != other.is_vector) return true;
+  if (is_vector && vector_data != other.vector_data) return true;
+  return false;
+}
+
+// Define structure to hold operation handling results and control flow information
+struct OperationHandleResult {
+  bool success;         /* Indicates if the operation was processed successfully */
+  bool is_terminated;   /* Indicates if execution should terminate (e.g., after return operations) */
+  bool is_branch;       /* Indicates if the operation is a branch (requires special index handling) */
+};
+
+static llvm::SmallVector<Operation*, 16> pending_operation_queue; /* List of operations to execute in current iteration */
+static llvm::DenseMap<Operation*, bool> is_operation_enqueued;    /* Marks whether an operation is already in pending_operation_queue */
 
 static bool verbose = false;          /* Verbose logging mode switch: outputs debug information when true */
 static bool dataflow = false;         /* Dataflow analysis mode switch: enables dataflow-related analysis logic when true */
@@ -217,77 +243,29 @@ inline bool isVerboseMode() {
   return verbose;
 }
 
-/**
- * @brief Builds a dependency graph tracking value-to-user relationships within a module.
- * 
- * This function constructs a graph where each entry maps a Value to the set of Operations
- * that use it as an operand. It skips certain operation types (returns, constants, memory grants)
- * that don't contribute to data flow dependencies.
- * 
- * @param module The MLIR ModuleOp to analyze for value dependencies
- * @return void
- */
-void buildDependencyGraph(ModuleOp module) {
+// /**
+//  * @brief Adds an operation to the pending operation queue if it's not already present.
+//  * 
+//  * This function checks if the given operation is valid and not already in the pending operation queue
+//  * before adding it. It also maintains a flag to track presence in the pending operation queue for efficiency.
+//  * Verbose mode will log the addition of operations.
+//  * 
+//  * @param op The Operation to be added to the pending operation queue.
+//  * @return void
+//  */
+// void addToWorkList(Operation* op) {
+//   if (op == nullptr)
+//     return;
+//   if (is_operation_enqueued.lookup(op))
+//     return;
 
-  value_users.clear();
+//   pending_operation_queue.push_back(op);
+//   is_operation_enqueued[op] = true;
 
-  // Traverse all operations in the module
-  module.walk([&](Operation* op) {
-    if (isa<neura::ReturnOp>(op) || isa<func::ReturnOp>(op)) {
-      return;
-    }
-
-    if (isa<neura::ConstantOp>(op) ||
-        isa<neura::ReserveOp>(op) ||
-        isa<neura::GrantOnceOp>(op) ||
-        isa<neura::GrantAlwaysOp>(op) ||
-        isa<arith::ConstantOp>(op)) {
-      return;
-    }
-
-    // Record each operand's relationship with the current operation
-    for (Value operand : op->getOperands()) {
-      value_users[operand].insert(op);
-    }
-  });
-
-  if (isVerboseMode()) {
-    llvm::outs() << "[neura-interpreter]  Dependency Graph:\n";
-    for (auto& entry : value_users) {
-      llvm::outs() << "[neura-interpreter]  Value: ";
-      entry.first.print(llvm::outs());
-      llvm::outs() << " -> Users: ";
-      for (auto* user_op : entry.second) {
-        llvm::outs() << user_op->getName() << ", ";
-      }
-      llvm::outs() << "\n";
-    }
-  }
-}
-
-/**
- * @brief Adds an operation to the work list if it's not already present.
- * 
- * This function checks if the given operation is valid and not already in the work list
- * before adding it. It also maintains a flag to track presence in the work list for efficiency.
- * Verbose mode will log the addition of operations.
- * 
- * @param op The Operation to be added to the work list.
- * @return void
- */
-void addToWorkList(Operation* op) {
-  if (op == nullptr)
-    return;
-  if (in_work_list.lookup(op))
-    return;
-
-  work_list.push_back(op);
-  in_work_list[op] = true;
-
-  if (isVerboseMode()) {
-    llvm::outs() << "[neura-interpreter] work_list Added: " << op->getName() << "\n";
-  }
-}
+//   if (isVerboseMode()) {
+//     llvm::outs() << "[neura-interpreter] pending_operation_queue Added: " << op->getName() << "\n";
+//   }
+// }
 
 /**
  * @brief Handles the execution of an arithmetic constant operation (arith.constant) by parsing its value and storing it in the value map.
@@ -296,11 +274,11 @@ void addToWorkList(Operation* op) {
  * attribute, converts it to a floating-point representation (supporting floats, integers, and booleans), and stores it in the value map with a 
  * predicate set to true (since constants are always valid). Unsupported constant types result in an error.
  * 
- * @param op          The arith.constant operation to handle
- * @param value_map   Reference to the map where the parsed constant value will be stored, keyed by the operation's result value
- * @return bool       True if the constant is successfully parsed and stored; false if the constant type is unsupported
+ * @param op                             The arith.constant operation to handle
+ * @param value_to_predicated_data_map   Reference to the map where the parsed constant value will be stored, keyed by the operation's result value
+ * @return bool                          True if the constant is successfully parsed and stored; false if the constant type is unsupported
  */
-bool handleArithConstantOp(mlir::arith::ConstantOp op, llvm::DenseMap<Value, PredicatedData>& value_map) {
+bool handleArithConstantOp(mlir::arith::ConstantOp op, llvm::DenseMap<Value, PredicatedData>& value_to_predicated_data_map) {
   auto attr = op.getValue();
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing arith.constant:\n";
@@ -340,8 +318,8 @@ bool handleArithConstantOp(mlir::arith::ConstantOp op, llvm::DenseMap<Value, Pre
     return false;
   }
 
-  assert(value_map.count(op.getResult()) == 0 && "Duplicate constant result?");
-  value_map[op.getResult()] = val;
+  assert(value_to_predicated_data_map.count(op.getResult()) == 0 && "Duplicate constant result?");
+  value_to_predicated_data_map[op.getResult()] = val;
   return true;
 }
 
@@ -352,11 +330,11 @@ bool handleArithConstantOp(mlir::arith::ConstantOp op, llvm::DenseMap<Value, Pre
  * It extracts the constant value from the operation's attribute, converts it to the appropriate format, and stores it in the value map. The predicate
  * for the constant can be explicitly set via an attribute (defaulting to true if not specified). Unsupported types or vector element types result in an error.
  * 
- * @param op          The neura.constant operation to handle
- * @param value_map   Reference to the map where the parsed constant value will be stored, keyed by the operation's result value
- * @return bool       True if the constant is successfully parsed and stored; false if the constant type or vector element type is unsupported
+ * @param op                             The neura.constant operation to handle
+ * @param value_to_predicated_data_map   Reference to the map where the parsed constant value will be stored, keyed by the operation's result value
+ * @return bool                          True if the constant is successfully parsed and stored; false if the constant type or vector element type is unsupported
  */
-bool handleNeuraConstantOp(neura::ConstantOp op, llvm::DenseMap<Value, PredicatedData>& value_map) {
+bool handleNeuraConstantOp(neura::ConstantOp op, llvm::DenseMap<Value, PredicatedData>& value_to_predicated_data_map) {
   auto attr = op.getValue();
 
   if (isVerboseMode()) {
@@ -373,8 +351,8 @@ bool handleNeuraConstantOp(neura::ConstantOp op, llvm::DenseMap<Value, Predicate
       val.predicate = pred_attr.getValue();
     }
        
-    assert(value_map.count(op.getResult()) == 0 && "Duplicate constant result?");
-    value_map[op.getResult()] = val;
+    assert(value_to_predicated_data_map.count(op.getResult()) == 0 && "Duplicate constant result?");
+    value_to_predicated_data_map[op.getResult()] = val;
   }
   // Handle integer scalar constants
   else if (auto int_attr = llvm::dyn_cast<mlir::IntegerAttr>(attr)) {
@@ -387,8 +365,8 @@ bool handleNeuraConstantOp(neura::ConstantOp op, llvm::DenseMap<Value, Predicate
       val.predicate = pred_attr.getValue();
     }
     
-    assert(value_map.count(op.getResult()) == 0 && "Duplicate constant result?");       
-    value_map[op.getResult()] = val;
+    assert(value_to_predicated_data_map.count(op.getResult()) == 0 && "Duplicate constant result?");       
+    value_to_predicated_data_map[op.getResult()] = val;
   } 
   // Handle vector constants (dense element attributes)
   else if (auto dense_attr = llvm::dyn_cast<mlir::DenseElementsAttr>(attr)) {
@@ -413,8 +391,8 @@ bool handleNeuraConstantOp(neura::ConstantOp op, llvm::DenseMap<Value, Predicate
       val.predicate = pred_attr.getValue();
     }
      
-    assert(value_map.count(op.getResult()) == 0 && "Duplicate constant result?");
-    value_map[op.getResult()] = val;
+    assert(value_to_predicated_data_map.count(op.getResult()) == 0 && "Duplicate constant result?");
+    value_to_predicated_data_map[op.getResult()] = val;
     
     if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  └─ Parsed vector constant of size: " << vector_size << "\n";
@@ -438,11 +416,11 @@ bool handleNeuraConstantOp(neura::ConstantOp op, llvm::DenseMap<Value, Predicate
  * operands (including the optional predicate if present), and stores the result in the value map. The operation 
  * requires at least two operands; fewer will result in an error.
  * 
- * @param op          The neura.add operation to handle
- * @param value_map   Reference to the map where the result will be stored, keyed by the operation's result value
- * @return bool       True if the addition is successfully computed; false if there are fewer than 2 operands
+ * @param op                             The neura.add operation to handle
+ * @param value_to_predicated_data_map   Reference to the map where the result will be stored, keyed by the operation's result value
+ * @return bool                          True if the addition is successfully computed; false if there are fewer than 2 operands
  */
-bool handleAddOp(neura::AddOp op, llvm::DenseMap<Value, PredicatedData> &value_map) {
+bool handleAddOp(neura::AddOp op, llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map) {
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.add:\n";
   }
@@ -454,8 +432,8 @@ bool handleAddOp(neura::AddOp op, llvm::DenseMap<Value, PredicatedData> &value_m
     return false;
   }
 
-  auto lhs = value_map[op.getLhs()];
-  auto rhs = value_map[op.getRhs()];
+  auto lhs = value_to_predicated_data_map[op.getLhs()];
+  auto rhs = value_to_predicated_data_map[op.getRhs()];
 
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Operands \n";
@@ -468,7 +446,7 @@ bool handleAddOp(neura::AddOp op, llvm::DenseMap<Value, PredicatedData> &value_m
   bool final_predicate = lhs.predicate && rhs.predicate;
 
   if (op.getNumOperands() > 2) {
-    auto pred = value_map[op.getOperand(2)];
+    auto pred = value_to_predicated_data_map[op.getOperand(2)];
     final_predicate = final_predicate && pred.predicate && (pred.value != 0.0f);
     if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
@@ -483,7 +461,7 @@ bool handleAddOp(neura::AddOp op, llvm::DenseMap<Value, PredicatedData> &value_m
   result.predicate = final_predicate;
   result.is_vector = false;
 
-  value_map[op.getResult()] = result;
+  value_to_predicated_data_map[op.getResult()] = result;
 
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  └─ Result  : value = " << result.value << " [pred = " << result.predicate << "]\n";
@@ -500,11 +478,11 @@ bool handleAddOp(neura::AddOp op, llvm::DenseMap<Value, PredicatedData> &value_m
  * predicates of all operands (including the optional predicate if present), and stores the result in the value map.
  * The operation requires at least two operands; fewer will result in an error.
  * 
- * @param op          The neura.sub operation to handle
- * @param value_map   Reference to the map where the result will be stored, keyed by the operation's result value
- * @return bool       True if the subtraction is successfully computed; false if there are fewer than 2 operands
+ * @param op                             The neura.sub operation to handle
+ * @param value_to_predicated_data_map   Reference to the map where the result will be stored, keyed by the operation's result value
+ * @return bool                          True if the subtraction is successfully computed; false if there are fewer than 2 operands
  */
-bool handleSubOp(neura::SubOp op, llvm::DenseMap<Value, PredicatedData> &value_map) {
+bool handleSubOp(neura::SubOp op, llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map) {
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.sub:\n";
   }
@@ -516,8 +494,8 @@ bool handleSubOp(neura::SubOp op, llvm::DenseMap<Value, PredicatedData> &value_m
     return false;
   }
 
-  auto lhs = value_map[op.getOperand(0)];
-  auto rhs = value_map[op.getOperand(1)];
+  auto lhs = value_to_predicated_data_map[op.getOperand(0)];
+  auto rhs = value_to_predicated_data_map[op.getOperand(1)];
 
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Operands \n";
@@ -528,7 +506,7 @@ bool handleSubOp(neura::SubOp op, llvm::DenseMap<Value, PredicatedData> &value_m
   bool final_predicate = lhs.predicate && rhs.predicate;
 
   if (op.getNumOperands() > 2) {
-    auto pred = value_map[op.getOperand(2)];
+    auto pred = value_to_predicated_data_map[op.getOperand(2)];
     final_predicate = final_predicate && pred.predicate && (pred.value != 0.0f);
     if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
@@ -549,7 +527,7 @@ bool handleSubOp(neura::SubOp op, llvm::DenseMap<Value, PredicatedData> &value_m
     llvm::outs() << "[neura-interpreter]  └─ Result  : value = " << result.value << " [pred = " << result.predicate << "]\n";
   } 
 
-  value_map[op.getResult()] = result;
+  value_to_predicated_data_map[op.getResult()] = result;
   return true;
 }
 
@@ -561,11 +539,11 @@ bool handleSubOp(neura::SubOp op, llvm::DenseMap<Value, PredicatedData> &value_m
  * (including the optional predicate if present), and stores the result in the value map. The operation requires at least two operands;
  * fewer will result in an error.
  * 
- * @param op          The neura.fadd operation to handle
- * @param value_map   Reference to the map where the result will be stored, keyed by the operation's result value
- * @return bool       True if the floating-point addition is successfully computed; false if there are fewer than 2 operands
+ * @param op                             The neura.fadd operation to handle
+ * @param value_to_predicated_data_map   Reference to the map where the result will be stored, keyed by the operation's result value
+ * @return bool                          True if the floating-point addition is successfully computed; false if there are fewer than 2 operands
  */
-bool handleFAddOp(neura::FAddOp op, llvm::DenseMap<Value, PredicatedData> &value_map) {
+bool handleFAddOp(neura::FAddOp op, llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map) {
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.fadd:\n";
   }
@@ -577,8 +555,8 @@ bool handleFAddOp(neura::FAddOp op, llvm::DenseMap<Value, PredicatedData> &value
     return false;
   }
 
-  auto lhs = value_map[op.getLhs()];
-  auto rhs = value_map[op.getRhs()];
+  auto lhs = value_to_predicated_data_map[op.getLhs()];
+  auto rhs = value_to_predicated_data_map[op.getRhs()];
   bool final_predicate = lhs.predicate && rhs.predicate;
 
   if (isVerboseMode()) {
@@ -588,7 +566,7 @@ bool handleFAddOp(neura::FAddOp op, llvm::DenseMap<Value, PredicatedData> &value
   }
 
   if (op.getNumOperands() > 2) {
-    auto pred = value_map[op.getOperand(2)];
+    auto pred = value_to_predicated_data_map[op.getOperand(2)];
     final_predicate = final_predicate && pred.predicate && (pred.value != 0.0f);
     if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
@@ -605,7 +583,7 @@ bool handleFAddOp(neura::FAddOp op, llvm::DenseMap<Value, PredicatedData> &value
     llvm::outs() << "[neura-interpreter]  └─ Result  : value = " << result.value << " [pred = " << result.predicate << "]\n"; 
   }
 
-  value_map[op.getResult()] = result;
+  value_to_predicated_data_map[op.getResult()] = result;
   return true;
 }
 
@@ -617,11 +595,11 @@ bool handleFAddOp(neura::FAddOp op, llvm::DenseMap<Value, PredicatedData> &value
  * operands (including the optional predicate if present), and stores the result in the value map. The operation requires at least two operands;
  * fewer will result in an error.
  * 
- * @param op          The neura.fsub operation to handle
- * @param value_map   Reference to the map where the result will be stored, keyed by the operation's result value
- * @return bool       True if the floating-point subtraction is successfully computed; false if there are fewer than 2 operands
+ * @param op                             The neura.fsub operation to handle
+ * @param value_to_predicated_data_map   Reference to the map where the result will be stored, keyed by the operation's result value
+ * @return bool                          True if the floating-point subtraction is successfully computed; false if there are fewer than 2 operands
  */
-bool handleFSubOp(neura::FSubOp op, llvm::DenseMap<Value, PredicatedData> &value_map) {
+bool handleFSubOp(neura::FSubOp op, llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map) {
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.fsub:\n";
   }
@@ -633,8 +611,8 @@ bool handleFSubOp(neura::FSubOp op, llvm::DenseMap<Value, PredicatedData> &value
     return false;
   }
 
-  auto lhs = value_map[op.getLhs()];
-  auto rhs = value_map[op.getRhs()];
+  auto lhs = value_to_predicated_data_map[op.getLhs()];
+  auto rhs = value_to_predicated_data_map[op.getRhs()];
   bool final_predicate = lhs.predicate && rhs.predicate;
 
   if (isVerboseMode()) {
@@ -644,7 +622,7 @@ bool handleFSubOp(neura::FSubOp op, llvm::DenseMap<Value, PredicatedData> &value
   }
 
   if (op.getNumOperands() > 2) {
-    auto pred = value_map[op.getOperand(2)];
+    auto pred = value_to_predicated_data_map[op.getOperand(2)];
     final_predicate = final_predicate && pred.predicate && (pred.value != 0.0f);
     if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
@@ -661,7 +639,7 @@ bool handleFSubOp(neura::FSubOp op, llvm::DenseMap<Value, PredicatedData> &value
     llvm::outs() << "[neura-interpreter]  └─ Result  : value = " << result.value << " [pred = " << result.predicate << "]\n"; 
   }
 
-  value_map[op.getResult()] = result;
+  value_to_predicated_data_map[op.getResult()] = result;
   return true;
 }
 
@@ -673,11 +651,11 @@ bool handleFSubOp(neura::FSubOp op, llvm::DenseMap<Value, PredicatedData> &value
  * operands (including the optional predicate if present), and stores the result in the value map. The operation requires at least two operands;
  * fewer will result in an error.
  * 
- * @param op          The neura.fmul operation to handle
- * @param value_map   Reference to the map where the result will be stored, keyed by the operation's result value
- * @return bool       True if the floating-point multiplication is successfully computed; false if there are fewer than 2 operands
+ * @param op                             The neura.fmul operation to handle
+ * @param value_to_predicated_data_map   Reference to the map where the result will be stored, keyed by the operation's result value
+ * @return bool                          True if the floating-point multiplication is successfully computed; false if there are fewer than 2 operands
  */
-bool handleFMulOp(neura::FMulOp op, llvm::DenseMap<Value, PredicatedData> &value_map) {
+bool handleFMulOp(neura::FMulOp op, llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map) {
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.fmul:\n";
   }
@@ -689,8 +667,8 @@ bool handleFMulOp(neura::FMulOp op, llvm::DenseMap<Value, PredicatedData> &value
     return false;
   }
 
-  auto lhs = value_map[op.getOperand(0)];
-  auto rhs = value_map[op.getOperand(1)];
+  auto lhs = value_to_predicated_data_map[op.getOperand(0)];
+  auto rhs = value_to_predicated_data_map[op.getOperand(1)];
 
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Operands \n";
@@ -701,7 +679,7 @@ bool handleFMulOp(neura::FMulOp op, llvm::DenseMap<Value, PredicatedData> &value
   bool final_predicate = lhs.predicate && rhs.predicate;
 
   if (op.getNumOperands() > 2) {
-    auto pred = value_map[op.getOperand(2)];
+    auto pred = value_to_predicated_data_map[op.getOperand(2)];
     final_predicate = final_predicate && pred.predicate && (pred.value != 0.0f);
     if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
@@ -722,7 +700,7 @@ bool handleFMulOp(neura::FMulOp op, llvm::DenseMap<Value, PredicatedData> &value
     llvm::outs() << "[neura-interpreter]  └─ Result  : value = " << result.value << " [pred = " << result.predicate << "]\n";
   }
 
-  value_map[op.getResult()] = result;
+  value_to_predicated_data_map[op.getResult()] = result;
   return true;
 }
 
@@ -734,11 +712,11 @@ bool handleFMulOp(neura::FMulOp op, llvm::DenseMap<Value, PredicatedData> &value
  * combines the predicates of all operands (including the optional predicate if present), and stores the result in the value map. The operation requires
  * at least two operands; fewer will result in an error.
  * 
- * @param op          The neura.fdiv operation to handle
- * @param value_map   Reference to the map where the result will be stored, keyed by the operation's result value
- * @return bool       True if the floating-point division is successfully computed (including division by zero cases); false if there are fewer than 2 operands
+ * @param op                             The neura.fdiv operation to handle
+ * @param value_to_predicated_data_map   Reference to the map where the result will be stored, keyed by the operation's result value
+ * @return bool                          True if the floating-point division is successfully computed; false if there are fewer than 2 operands
  */
-bool handleFDivOp(neura::FDivOp op, llvm::DenseMap<Value, PredicatedData> &value_map) {
+bool handleFDivOp(neura::FDivOp op, llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map) {
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.fdiv:\n";
   }
@@ -750,8 +728,8 @@ bool handleFDivOp(neura::FDivOp op, llvm::DenseMap<Value, PredicatedData> &value
     return false;
   }
 
-  auto lhs = value_map[op.getOperand(0)];
-  auto rhs = value_map[op.getOperand(1)];
+  auto lhs = value_to_predicated_data_map[op.getOperand(0)];
+  auto rhs = value_to_predicated_data_map[op.getOperand(1)];
 
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Operands \n";
@@ -762,7 +740,7 @@ bool handleFDivOp(neura::FDivOp op, llvm::DenseMap<Value, PredicatedData> &value
   bool final_predicate = lhs.predicate && rhs.predicate;
   
   if (op.getNumOperands() > 2) {
-    auto pred = value_map[op.getOperand(2)];
+    auto pred = value_to_predicated_data_map[op.getOperand(2)];
     final_predicate = final_predicate && pred.predicate && (pred.value != 0.0f);
     if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
@@ -793,7 +771,7 @@ bool handleFDivOp(neura::FDivOp op, llvm::DenseMap<Value, PredicatedData> &value
     llvm::outs() << "[neura-interpreter]  └─ Result  : value = " << result.value << " [pred = " << result.predicate << "]\n";
   }
 
-  value_map[op.getResult()] = result;
+  value_to_predicated_data_map[op.getResult()] = result;
   return true;
 }
 
@@ -805,11 +783,11 @@ bool handleFDivOp(neura::FDivOp op, llvm::DenseMap<Value, PredicatedData> &value
  * combines the predicates of all operands (including the optional scalar predicate if present), and stores the resulting vector in the value map. 
  * Errors are returned for invalid operand types (non-vectors), size mismatches, or vector predicates.
  * 
- * @param op          The neura.vfmul operation to handle
- * @param value_map   Reference to the map where the resulting vector will be stored, keyed by the operation's result value
- * @return bool       True if the vector multiplication is successfully computed; false if there are invalid operands, size mismatches, or other errors
+ * @param op                             The neura.vfmul operation to handle
+ * @param value_to_predicated_data_map   Reference to the map where the resulting vector will be stored, keyed by the operation's result value
+ * @return bool                          True if the vector multiplication is successfully computed; false if there are invalid operands, size mismatches, or other errors
  */
-bool handleVFMulOp(neura::VFMulOp op, llvm::DenseMap<Value, PredicatedData> &value_map) {
+bool handleVFMulOp(neura::VFMulOp op, llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map) {
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.vfmul:\n";
   }
@@ -821,8 +799,8 @@ bool handleVFMulOp(neura::VFMulOp op, llvm::DenseMap<Value, PredicatedData> &val
     return false;
   }
 
-  auto lhs = value_map[op.getLhs()];
-  auto rhs = value_map[op.getRhs()];
+  auto lhs = value_to_predicated_data_map[op.getLhs()];
+  auto rhs = value_to_predicated_data_map[op.getRhs()];
 
   if (!lhs.is_vector || !rhs.is_vector) {
     if (isVerboseMode()) {
@@ -861,7 +839,7 @@ bool handleVFMulOp(neura::VFMulOp op, llvm::DenseMap<Value, PredicatedData> &val
   bool final_predicate = lhs.predicate && rhs.predicate;
 
   if (op.getNumOperands() > 2) {
-    auto pred = value_map[op.getOperand(2)];
+    auto pred = value_to_predicated_data_map[op.getOperand(2)];
     if (pred.is_vector) {
       if (isVerboseMode()) {
         llvm::errs() << "[neura-interpreter]  └─ Predicate operand must be a scalar in neura.vfmul\n";
@@ -890,7 +868,7 @@ bool handleVFMulOp(neura::VFMulOp op, llvm::DenseMap<Value, PredicatedData> &val
     llvm::outs() << ", [pred = " << result.predicate << "]\n";
   }
 
-  value_map[op.getResult()] = result;
+  value_to_predicated_data_map[op.getResult()] = result;
   return true;
 }
 
@@ -902,11 +880,11 @@ bool handleVFMulOp(neura::VFMulOp op, llvm::DenseMap<Value, PredicatedData> &val
  * (including the optional predicate if present), and stores the result in the value map. The operation requires at least three operands;
  * fewer will result in an error.
  * 
- * @param op          The neura.fadd_fadd operation to handle
- * @param value_map   Reference to the map where the result will be stored, keyed by the operation's result value
- * @return bool       True if the chained floating-point addition is successfully computed; false if there are fewer than 3 operands
+ * @param op                             The neura.fadd_fadd operation to handle
+ * @param value_to_predicated_data_map   Reference to the map where the result will be stored, keyed by the operation's result value
+ * @return bool                          True if the chained floating-point addition is successfully computed; false if there are fewer than 3 operands
  */
-bool handleFAddFAddOp(neura::FAddFAddOp op, llvm::DenseMap<Value, PredicatedData> &value_map) {
+bool handleFAddFAddOp(neura::FAddFAddOp op, llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map) {
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.fadd_fadd:\n";
   }
@@ -918,9 +896,9 @@ bool handleFAddFAddOp(neura::FAddFAddOp op, llvm::DenseMap<Value, PredicatedData
     return false;
   }
 
-  auto a = value_map[op.getA()];
-  auto b = value_map[op.getB()];
-  auto c = value_map[op.getC()];
+  auto a = value_to_predicated_data_map[op.getA()];
+  auto b = value_to_predicated_data_map[op.getB()];
+  auto c = value_to_predicated_data_map[op.getC()];
 
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Operands \n";
@@ -932,7 +910,7 @@ bool handleFAddFAddOp(neura::FAddFAddOp op, llvm::DenseMap<Value, PredicatedData
   bool final_predicate = a.predicate && b.predicate && c.predicate;
 
   if (op.getNumOperands() > 3) {
-    auto pred_operand = value_map[op.getOperand(3)];
+    auto pred_operand = value_to_predicated_data_map[op.getOperand(3)];
     final_predicate = final_predicate && pred_operand.predicate && (pred_operand.value != 0.0f);
     if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
@@ -959,7 +937,7 @@ bool handleFAddFAddOp(neura::FAddFAddOp op, llvm::DenseMap<Value, PredicatedData
                  << ", [pred = " << final_predicate << "]\n";
   }
 
-  value_map[op.getResult()] = result;
+  value_to_predicated_data_map[op.getResult()] = result;
   return true;
 }
 
@@ -971,11 +949,11 @@ bool handleFAddFAddOp(neura::FAddFAddOp op, llvm::DenseMap<Value, PredicatedData
  * operands (including the optional predicate if present), and stores the result in the value map. The operation requires at
  * least three operands; fewer will result in an error.
  * 
- * @param op          The neura.fmul_fadd operation to handle
- * @param value_map   Reference to the map where the result will be stored, keyed by the operation's result value
- * @return bool       True if the fused multiply-add is successfully computed; false if there are fewer than 3 operands
+ * @param op                             The neura.fmul_fadd operation to handle
+ * @param value_to_predicated_data_map   Reference to the map where the result will be stored, keyed by the operation's result value
+ * @return bool                          True if the fused multiply-add is successfully computed; false if there are fewer than 3 operands
  */
-bool handleFMulFAddOp(neura::FMulFAddOp op, llvm::DenseMap<Value, PredicatedData> &value_map) {
+bool handleFMulFAddOp(neura::FMulFAddOp op, llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map) {
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.fmul_fadd:\n";
   }
@@ -986,9 +964,9 @@ bool handleFMulFAddOp(neura::FMulFAddOp op, llvm::DenseMap<Value, PredicatedData
     return false;
   }
 
-  auto a = value_map[op.getA()];
-  auto b = value_map[op.getB()];
-  auto c = value_map[op.getC()];
+  auto a = value_to_predicated_data_map[op.getA()];
+  auto b = value_to_predicated_data_map[op.getB()];
+  auto c = value_to_predicated_data_map[op.getC()];
 
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Operands \n";
@@ -1000,7 +978,7 @@ bool handleFMulFAddOp(neura::FMulFAddOp op, llvm::DenseMap<Value, PredicatedData
   bool final_predicate = a.predicate && b.predicate && c.predicate;
 
   if (op.getNumOperands() > 3) {
-    auto pred_operand = value_map[op.getOperand(3)];
+    auto pred_operand = value_to_predicated_data_map[op.getOperand(3)];
     final_predicate = final_predicate && pred_operand.predicate && (pred_operand.value != 0.0f);
     if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
@@ -1028,7 +1006,7 @@ bool handleFMulFAddOp(neura::FMulFAddOp op, llvm::DenseMap<Value, PredicatedData
                  << ", [pred = " << final_predicate << "]\n";
   }
 
-  value_map[op.getResult()] = result;
+  value_to_predicated_data_map[op.getResult()] = result;
   return true;
 }
 
@@ -1040,11 +1018,11 @@ bool handleFMulFAddOp(neura::FMulFAddOp op, llvm::DenseMap<Value, PredicatedData
  * scalar or a vector. For vector values, it formats elements as a comma-separated list. If no return value is present 
  * (void return), it indicates a void output.
  * 
- * @param op          The func.return operation to handle
- * @param value_map   Reference to the map storing predicated data for values (used to retrieve the return value)
- * @return bool       True if the return operation is processed successfully; false only if the operation is invalid (nullptr)
+ * @param op                             The func.return operation to handle
+ * @param value_to_predicated_data_map   Reference to the map storing predicated data for values (used to retrieve the return value)
+ * @return bool                          True if the return operation is processed successfully; false only if the operation is invalid (nullptr)
  */
-bool handleFuncReturnOp(func::ReturnOp op, llvm::DenseMap<Value, PredicatedData> &value_map) {
+bool handleFuncReturnOp(func::ReturnOp op, llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map) {
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing func.return:\n";
   }
@@ -1058,7 +1036,7 @@ bool handleFuncReturnOp(func::ReturnOp op, llvm::DenseMap<Value, PredicatedData>
     return true;
   }
 
-  auto result = value_map[op.getOperand(0)];
+  auto result = value_to_predicated_data_map[op.getOperand(0)];
   // Print vector return value if the result is a vector
   if (result.is_vector) {
     llvm::outs() << "[neura-interpreter]  → Output: ["; 
@@ -1084,11 +1062,11 @@ bool handleFuncReturnOp(func::ReturnOp op, llvm::DenseMap<Value, PredicatedData>
  * combines the predicates of all operands (including the optional predicate if present), and stores the result as a boolean scalar (1.0f for true, 0.0f for false) 
  * in the value map. Errors are returned for insufficient operands or unsupported comparison types.
  * 
- * @param op          The neura.fcmp operation to handle
- * @param value_map   Reference to the map where the comparison result will be stored, keyed by the operation's result value
- * @return bool       True if the comparison is successfully evaluated; false if there are insufficient operands or an unsupported comparison type
+ * @param op                             The neura.fcmp operation to handle
+ * @param value_to_predicated_data_map   Reference to the map where the comparison result will be stored, keyed by the operation's result value
+ * @return bool                          True if the comparison is successfully evaluated; false if there are insufficient operands or an unsupported comparison type
  */
-bool handleFCmpOp(neura::FCmpOp op, llvm::DenseMap<Value, PredicatedData> &value_map) {
+bool handleFCmpOp(neura::FCmpOp op, llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map) {
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.fcmp:\n";
   }
@@ -1099,8 +1077,8 @@ bool handleFCmpOp(neura::FCmpOp op, llvm::DenseMap<Value, PredicatedData> &value
     return false;
   }
 
-  auto lhs = value_map[op.getLhs()];
-  auto rhs = value_map[op.getRhs()];
+  auto lhs = value_to_predicated_data_map[op.getLhs()];
+  auto rhs = value_to_predicated_data_map[op.getRhs()];
 
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Operands \n";
@@ -1112,7 +1090,7 @@ bool handleFCmpOp(neura::FCmpOp op, llvm::DenseMap<Value, PredicatedData> &value
 
   bool pred = true;
   if (op.getNumOperands() > 2) {
-    auto pred_data = value_map[op.getPredicate()];
+    auto pred_data = value_to_predicated_data_map[op.getPredicate()];
     pred = pred_data.predicate && (pred_data.value != 0.0f);
     if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
@@ -1160,7 +1138,7 @@ bool handleFCmpOp(neura::FCmpOp op, llvm::DenseMap<Value, PredicatedData> &value
                  << result_value << ", [pred = " << final_predicate << "]\n";
   }
 
-  value_map[op.getResult()] = result;
+  value_to_predicated_data_map[op.getResult()] = result;
   return true;
 }
 
@@ -1173,11 +1151,11 @@ bool handleFCmpOp(neura::FCmpOp op, llvm::DenseMap<Value, PredicatedData> &value
  * the result as a boolean scalar (1.0f for true, 0.0f for false) in the value map. Errors are returned for insufficient operands or unsupported
  * comparison types.
  * 
- * @param op          The neura.icmp operation to handle
- * @param value_map   Reference to the map where the comparison result will be stored, keyed by the operation's result value
- * @return bool       True if the comparison is successfully evaluated; false if there are insufficient operands or an unsupported comparison type
+ * @param op                             The neura.icmp operation to handle
+ * @param value_to_predicated_data_map   Reference to the map where the comparison result will be stored, keyed by the operation's result value
+ * @return bool                          True if the comparison is successfully evaluated; false if there are insufficient operands or an unsupported comparison type
  */
-bool handleICmpOp(neura::ICmpOp op, llvm::DenseMap<Value, PredicatedData> &value_map) {
+bool handleICmpOp(neura::ICmpOp op, llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map) {
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.icmp:\n";
   }
@@ -1188,8 +1166,8 @@ bool handleICmpOp(neura::ICmpOp op, llvm::DenseMap<Value, PredicatedData> &value
     return false;
   }
 
-  auto lhs = value_map[op.getLhs()];
-  auto rhs = value_map[op.getRhs()];
+  auto lhs = value_to_predicated_data_map[op.getLhs()];
+  auto rhs = value_to_predicated_data_map[op.getRhs()];
 
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Operands \n";
@@ -1201,7 +1179,7 @@ bool handleICmpOp(neura::ICmpOp op, llvm::DenseMap<Value, PredicatedData> &value
 
   bool pred = true;
   if (op.getNumOperands() > 2) {
-    auto pred_data = value_map[op.getPredicate()];
+    auto pred_data = value_to_predicated_data_map[op.getPredicate()];
     pred = pred_data.predicate && (pred_data.value != 0.0f);
     if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
@@ -1283,75 +1261,9 @@ bool handleICmpOp(neura::ICmpOp op, llvm::DenseMap<Value, PredicatedData> &value
                  << ", [pred = " << final_predicate << "]\n";
   }
 
-  value_map[op.getResult()] = result;
+  value_to_predicated_data_map[op.getResult()] = result;
   return true;
 }
-
-// bool handleOrOp(neura::OrOp op, llvm::DenseMap<Value, PredicatedData> &value_map) {
-//   if (isVerboseMode()) {
-//     llvm::outs() << "[neura-interpreter]  Executing neura.or:\n";
-//   }
-
-//   if (op.getNumOperands() < 2) {
-//     if (isVerboseMode()) {
-//       llvm::errs() << "[neura-interpreter]  └─ neura.or expects at least two operands\n";
-//     }
-//     return false;
-//   }
-
-//   auto lhs = value_map[op.getOperand(0)];
-//   auto rhs = value_map[op.getOperand(1)];
-
-//   if (lhs.is_vector || rhs.is_vector) {
-//     if (isVerboseMode()) {
-//       llvm::errs() << "[neura-interpreter]  └─ neura.or requires scalar operands\n";
-//     }
-//     return false;
-//   }
-
-//   if (isVerboseMode()) {
-//     llvm::outs() << "[neura-interpreter]  ├─ Operands \n";
-//     llvm::outs() << "[neura-interpreter]  │  ├─ LHS        : value = " << lhs.value << ", [pred = " << lhs.predicate << "]\n";
-//     llvm::outs() << "[neura-interpreter]  │  └─ RHS        : value = " << rhs.value << ", [pred = " << rhs.predicate << "]\n";
-//   }
-
-//   int64_t lhs_int = static_cast<int64_t>(std::round(lhs.value));
-//   int64_t rhs_int = static_cast<int64_t>(std::round(rhs.value));
-//   int64_t result_int = lhs_int | rhs_int;
-
-//   bool final_predicate = lhs.predicate && rhs.predicate;
-//   if (op.getNumOperands() > 2) {
-//     auto pred = value_map[op.getOperand(2)];
-//     final_predicate = final_predicate && pred.predicate && (pred.value != 0.0f);
-//     llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
-//     llvm::outs() << "[neura-interpreter]  │  └─ Pred           : value = " << pred.value 
-//                  << ", [pred = " << pred.predicate << "]\n";
-//   }
-
-//   if (isVerboseMode()) {
-//     llvm::outs() << "[neura-interpreter]  ├─ Evaluation\n";
-//     llvm::outs() << "[neura-interpreter]  │  └─ Bitwise OR : " << lhs_int;
-//     if (lhs_int == -1) llvm::outs() << " (0xFFFFFFFFFFFFFFFF)";
-//     llvm::outs() << " | " << rhs_int;
-//     if (rhs_int == -1) llvm::outs() << " (0xFFFFFFFFFFFFFFFF)";
-//     llvm::outs() << " = " << result_int;
-//     if (result_int == -1) llvm::outs() << " (0xFFFFFFFFFFFFFFFF)";
-//     llvm::outs() << "\n";
-//   }
-
-//   PredicatedData result;
-//   result.value = static_cast<float>(result_int);
-//   result.predicate = final_predicate;
-//   result.is_vector = false;
-
-//   if (isVerboseMode()) {
-//     llvm::outs() << "[neura-interpreter]  └─ Result     : value = " << result.value 
-//                  << ", [pred = " << final_predicate << "]\n";
-//   }
-
-//   value_map[op.getResult()] = result;
-//   return true;
-// }
 
 /**
  * @brief Handles the execution of a Neura logical OR operation (neura.or) for scalar boolean values.
@@ -1361,11 +1273,11 @@ bool handleICmpOp(neura::ICmpOp op, llvm::DenseMap<Value, PredicatedData> &value
  * as a predicate to further validate the result. The operation requires scalar operands (no vectors) and returns
  * a scalar result with a combined validity predicate.
  * 
- * @param op          The neura.or operation to handle (modified for logical OR)
- * @param value_map   Reference to the map storing operands and where the result will be stored
- * @return bool       True if the logical OR is successfully executed; false for invalid operands (e.g., vectors, insufficient count)
+ * @param op                             The neura.or operation to handle (modified for logical OR)
+ * @param value_to_predicated_data_map   Reference to the map storing operands and where the result will be stored
+ * @return bool                          True if the logical OR is successfully executed; false for invalid operands (e.g., vectors, insufficient count)
  */
-bool handleOrOp(neura::OrOp op, llvm::DenseMap<Value, PredicatedData> &value_map) {
+bool handleOrOp(neura::OrOp op, llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map) {
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.or (logical OR):\n";
   }
@@ -1378,8 +1290,8 @@ bool handleOrOp(neura::OrOp op, llvm::DenseMap<Value, PredicatedData> &value_map
   }
 
   // Retrieve left and right operands
-  auto lhs = value_map[op.getOperand(0)];
-  auto rhs = value_map[op.getOperand(1)];
+  auto lhs = value_to_predicated_data_map[op.getOperand(0)];
+  auto rhs = value_to_predicated_data_map[op.getOperand(1)];
 
   if (lhs.is_vector || rhs.is_vector) {
     if (isVerboseMode()) {
@@ -1405,7 +1317,7 @@ bool handleOrOp(neura::OrOp op, llvm::DenseMap<Value, PredicatedData> &value_map
   // Compute final validity predicate (combines operand predicates and optional predicate)
   bool final_predicate = lhs.predicate && rhs.predicate;
   if (op.getNumOperands() > 2) {
-    auto pred = value_map[op.getOperand(2)];
+    auto pred = value_to_predicated_data_map[op.getOperand(2)];
     final_predicate = final_predicate && pred.predicate && (pred.value != 0.0f);
     if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
@@ -1430,7 +1342,7 @@ bool handleOrOp(neura::OrOp op, llvm::DenseMap<Value, PredicatedData> &value_map
                  << " (boolean: " << (result_bool ? "true" : "false") << "), [pred = " << final_predicate << "]\n";
   }
 
-  value_map[op.getResult()] = result;
+  value_to_predicated_data_map[op.getResult()] = result;
   return true;
 }
 
@@ -1442,12 +1354,12 @@ bool handleOrOp(neura::OrOp op, llvm::DenseMap<Value, PredicatedData> &value_map
  * and stores the result as a floating-point value (1.0f for true, 0.0f for false) in the value map. The result's predicate is inherited 
  * from the input operand's predicate.
  * 
- * @param op          The neura.not operation to handle
- * @param value_map   Reference to the map where the result will be stored, keyed by the operation's result value
- * @return bool       Always returns true as the operation is guaranteed to execute successfully with valid input
+ * @param op                             The neura.not operation to handle
+ * @param value_to_predicated_data_map   Reference to the map where the result will be stored, keyed by the operation's result value
+ * @return bool                          Always returns true as the operation is guaranteed to execute successfully with valid input
  */
-bool handleNotOp(neura::NotOp op, llvm::DenseMap<Value, PredicatedData> &value_map) {
-  auto input = value_map[op.getOperand()];
+bool handleNotOp(neura::NotOp op, llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map) {
+  auto input = value_to_predicated_data_map[op.getOperand()];
 
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.not:\n";
@@ -1477,7 +1389,7 @@ bool handleNotOp(neura::NotOp op, llvm::DenseMap<Value, PredicatedData> &value_m
                  << ", [pred = " << result.predicate << "]\n";
   }
 
-  value_map[op.getResult()] = result;
+  value_to_predicated_data_map[op.getResult()] = result;
   return true;
 }
 
@@ -1489,11 +1401,11 @@ bool handleNotOp(neura::NotOp op, llvm::DenseMap<Value, PredicatedData> &value_m
  * selects the corresponding value (either "if_true" or "if_false"), and combines the predicate of the condition with the predicate of the selected value.
  * The result is marked as a vector only if both input values are vectors. Errors are returned if the operand count is not exactly 3.
  * 
- * @param op          The neura.sel operation to handle
- * @param value_map   Reference to the map where the selected result will be stored, keyed by the operation's result value
- * @return bool       True if the selection is successfully computed; false if the operand count is invalid
+ * @param op                             The neura.sel operation to handle
+ * @param value_to_predicated_data_map   Reference to the map where the selected result will be stored, keyed by the operation's result value
+ * @return bool                          True if the selection is successfully computed; false if the operand count is invalid
  */
-bool handleSelOp(neura::SelOp op, llvm::DenseMap<Value, PredicatedData> &value_map) {
+bool handleSelOp(neura::SelOp op, llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map) {
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.sel:\n";
   }
@@ -1505,9 +1417,9 @@ bool handleSelOp(neura::SelOp op, llvm::DenseMap<Value, PredicatedData> &value_m
     return false;
   }
 
-  auto cond = value_map[op.getCond()];              /* Condition to evaluate */
-  auto if_true = value_map[op.getIfTrue()];         /* Value if condition is true */
-  auto if_false = value_map[op.getIfFalse()];       /* Value if condition is false */
+  auto cond = value_to_predicated_data_map[op.getCond()];              /* Condition to evaluate */
+  auto if_true = value_to_predicated_data_map[op.getIfTrue()];         /* Value if condition is true */
+  auto if_false = value_to_predicated_data_map[op.getIfFalse()];       /* Value if condition is false */
   // Evaluate the condition: true if the value is non-zero and its predicate is true
   bool cond_value = (cond.value != 0.0f) && cond.predicate;
 
@@ -1545,7 +1457,7 @@ bool handleSelOp(neura::SelOp op, llvm::DenseMap<Value, PredicatedData> &value_m
                  << ", predicate = " << result.predicate << "\n";
   }
 
-  value_map[op.getResult()] = result;
+  value_to_predicated_data_map[op.getResult()] = result;
   return true;
 }
 
@@ -1557,11 +1469,11 @@ bool handleSelOp(neura::SelOp op, llvm::DenseMap<Value, PredicatedData> &value_m
  * The result's predicate is combined with the optional predicate operand (if present), and the result inherits the input's vector flag. Errors are returned for 
  * invalid operand counts, unsupported conversion types, or mismatched input types for the specified conversion.
  * 
- * @param op          The neura.cast operation to handle
- * @param value_map   Reference to the map where the converted result will be stored, keyed by the operation's result value
- * @return bool       True if the conversion is successfully computed; false for invalid operands, unsupported types, or mismatched input types
+ * @param op                             The neura.cast operation to handle
+ * @param value_to_predicated_data_map   Reference to the map where the converted result will be stored, keyed by the operation's result value
+ * @return bool                          True if the conversion is successfully computed; false for invalid operands, unsupported types, or mismatched input types
  */
-bool handleCastOp(neura::CastOp op, llvm::DenseMap<Value, PredicatedData> &value_map) {
+bool handleCastOp(neura::CastOp op, llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map) {
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.cast:\n";
   }
@@ -1572,7 +1484,7 @@ bool handleCastOp(neura::CastOp op, llvm::DenseMap<Value, PredicatedData> &value
     return false;
   }
 
-  auto input = value_map[op.getOperand(0)];
+  auto input = value_to_predicated_data_map[op.getOperand(0)];
   std::string cast_type = op.getCastType().str();
 
   if (isVerboseMode()) {
@@ -1583,7 +1495,7 @@ bool handleCastOp(neura::CastOp op, llvm::DenseMap<Value, PredicatedData> &value
 
   bool final_predicate = input.predicate;
   if (op.getOperation()->getNumOperands() > 1) {
-    auto pred_operand = value_map[op.getOperand(1)];
+    auto pred_operand = value_to_predicated_data_map[op.getOperand(1)];
     final_predicate = final_predicate && pred_operand.predicate && (pred_operand.value != 0.0f);
     if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n"; 
@@ -1670,7 +1582,7 @@ bool handleCastOp(neura::CastOp op, llvm::DenseMap<Value, PredicatedData> &value
                  << ", [pred = " << final_predicate << "]\n";
   }
 
-  value_map[op.getResult()] = result;
+  value_to_predicated_data_map[op.getResult()] = result;
   return true;
 }
 
@@ -1682,12 +1594,12 @@ bool handleCastOp(neura::CastOp op, llvm::DenseMap<Value, PredicatedData> &value
  * is skipped if the combined predicate (input address predicate + optional predicate operand) is false, returning a default value of 0.0f. Errors are 
  * returned for invalid operand counts or unsupported data types.
  * 
- * @param op          The neura.load operation to handle
- * @param value_map   Reference to the map where the loaded value will be stored, keyed by the operation's result value
- * @param mem         Reference to the memory object used to read the value
- * @return bool       True if the load is successfully executed (including skipped loads); false for invalid operands or unsupported types
+ * @param op                             The neura.load operation to handle
+ * @param value_to_predicated_data_map   Reference to the map where the loaded value will be stored, keyed by the operation's result value
+ * @param mem                            Reference to the memory object used to read the value
+ * @return bool                          True if the load is successfully executed (including skipped loads); false for invalid operands or unsupported types
  */
-bool handleLoadOp(neura::LoadOp op, llvm::DenseMap<Value, PredicatedData> &value_map, Memory &mem) {
+bool handleLoadOp(neura::LoadOp op, llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map, Memory &mem) {
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.load:\n";
   }
@@ -1699,11 +1611,11 @@ bool handleLoadOp(neura::LoadOp op, llvm::DenseMap<Value, PredicatedData> &value
     return false;
   }
   // Convert address from float to size_t (memory address type)
-  auto addr_val = value_map[op.getOperand(0)];
+  auto addr_val = value_to_predicated_data_map[op.getOperand(0)];
   bool final_predicate = addr_val.predicate;
 
   if (op.getNumOperands() > 1) {
-    auto pred_val = value_map[op.getOperand(1)];
+    auto pred_val = value_to_predicated_data_map[op.getOperand(1)];
     final_predicate = final_predicate && pred_val.predicate && (pred_val.value != 0.0f);
     if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n"; 
@@ -1741,7 +1653,7 @@ bool handleLoadOp(neura::LoadOp op, llvm::DenseMap<Value, PredicatedData> &value
                  << val << ", [pred = " << final_predicate << "]\n";
   }
 
-  value_map[op.getResult()] = { val, final_predicate };
+  value_to_predicated_data_map[op.getResult()] = { val, final_predicate };
   return true;
 }
 
@@ -1753,12 +1665,12 @@ bool handleLoadOp(neura::LoadOp op, llvm::DenseMap<Value, PredicatedData> &value
  * optional predicate operand) is true. Supported types include 32-bit floats, 32-bit integers, and booleans (1-bit integers). The operation 
  * is skipped if the predicate is false. Errors are returned for insufficient operands or unsupported data types.
  * 
- * @param op          The neura.store operation to handle
- * @param value_map   Reference to the map storing the value and address to be used for the store
- * @param mem         Reference to the memory object used to write the value
- * @return bool       True if the store is successfully executed (including skipped stores); false for invalid operands or unsupported types
+ * @param op                             The neura.store operation to handle
+ * @param value_to_predicated_data_map   Reference to the map storing the value and address to be used for the store
+ * @param mem                            Reference to the memory object used to write the value
+ * @return bool                          True if the store is successfully executed; false for invalid operands or unsupported types
  */
-bool handleStoreOp(neura::StoreOp op, llvm::DenseMap<Value, PredicatedData> &value_map, Memory &mem) {
+bool handleStoreOp(neura::StoreOp op, llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map, Memory &mem) {
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.store:\n";
   }
@@ -1770,12 +1682,12 @@ bool handleStoreOp(neura::StoreOp op, llvm::DenseMap<Value, PredicatedData> &val
     return false;
   }
 
-  auto val_data = value_map[op.getOperand(0)];  /* Value to store */
-  auto addr_val = value_map[op.getOperand(1)];  /* Target address */
+  auto val_data = value_to_predicated_data_map[op.getOperand(0)];  /* Value to store */
+  auto addr_val = value_to_predicated_data_map[op.getOperand(1)];  /* Target address */
   bool final_predicate = addr_val.predicate;    /* Base predicate from address validity */
 
   if (op.getNumOperands() > 2) {
-    auto pred_val = value_map[op.getOperand(2)];
+    auto pred_val = value_to_predicated_data_map[op.getOperand(2)];
     final_predicate = final_predicate && pred_val.predicate && (pred_val.value != 0.0f);
     if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n"; 
@@ -1830,11 +1742,11 @@ bool handleStoreOp(neura::StoreOp op, llvm::DenseMap<Value, PredicatedData> &val
  * - Combines predicates from base address and optional predicate operand
  * - Returns the final address (base + offset) with the combined predicate
  * 
- * @param op          The neura.gep operation to handle
- * @param value_map   Reference to the map storing predicated data for values (base address, indices, predicate)
- * @return bool       True if the address is successfully computed; false for invalid operands, missing strides, or mismatched indices/strides
+ * @param op                             The neura.gep operation to handle
+ * @param value_to_predicated_data_map   Reference to the map storing predicated data for values (base address, indices, predicate)
+ * @return bool                          True if the address is successfully computed; false for invalid operands, missing strides, or mismatched indices/strides
  */
-bool handleGEPOp(neura::GEP op, llvm::DenseMap<Value, PredicatedData> &value_map) {
+bool handleGEPOp(neura::GEP op, llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map) {
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.gep:\n";
   }
@@ -1846,7 +1758,7 @@ bool handleGEPOp(neura::GEP op, llvm::DenseMap<Value, PredicatedData> &value_map
     return false;
   }
 
-  auto base_val = value_map[op.getOperand(0)];
+  auto base_val = value_to_predicated_data_map[op.getOperand(0)];
   size_t base_addr = static_cast<size_t>(base_val.value);
   bool final_predicate = base_val.predicate;
 
@@ -1898,7 +1810,7 @@ bool handleGEPOp(neura::GEP op, llvm::DenseMap<Value, PredicatedData> &value_map
   // Calculate total offset by scaling each index with its stride and summing
   size_t offset = 0;
   for (unsigned i = 0; i < index_count; ++i) {
-    auto idx_val = value_map[op.getOperand(i + 1)]; 
+    auto idx_val = value_to_predicated_data_map[op.getOperand(i + 1)]; 
     if (!idx_val.predicate) {
       if (isVerboseMode()) {
         llvm::errs() << "[neura-interpreter]  └─ GEP index " << i << " has false predicate\n";
@@ -1915,7 +1827,7 @@ bool handleGEPOp(neura::GEP op, llvm::DenseMap<Value, PredicatedData> &value_map
   }
 
   if (has_predicate) {
-    auto pred_val = value_map[op.getOperand(num_operands - 1)];
+    auto pred_val = value_to_predicated_data_map[op.getOperand(num_operands - 1)];
     final_predicate = final_predicate && pred_val.predicate && (pred_val.value != 0.0f);
     if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  └─ Predicate operand: value = " << pred_val.value 
@@ -1936,7 +1848,7 @@ bool handleGEPOp(neura::GEP op, llvm::DenseMap<Value, PredicatedData> &value_map
                  << ", [pred = " << final_predicate << "]\n";    
   }
 
-  value_map[op.getResult()] = result;
+  value_to_predicated_data_map[op.getResult()] = result;
   return true;
 }
 
@@ -1947,20 +1859,20 @@ bool handleGEPOp(neura::GEP op, llvm::DenseMap<Value, PredicatedData> &value_map
  * It supports scalar values only (no vectors) for the base address, indices, and predicate. The operation loads data from the computed address if the combined 
  * predicate (validity of base, indices, and optional predicate operand) is true. Supported data types include 32-bit floats, 32-bit integers, and booleans (1-bit integers).
  * 
- * @param op          The neura.load_indexed operation to handle
- * @param value_map   Reference to the map storing values (base address, indices, predicate) and where the loaded result will be stored
- * @param mem         Reference to the memory object used to read the value
- * @return bool       True if the indexed load is successfully executed (including skipped loads); false for vector inputs, unsupported types, or errors
+ * @param op                             The neura.load_indexed operation to handle
+ * @param value_to_predicated_data_map   Reference to the map storing values (base address, indices, predicate) and where the loaded result will be stored
+ * @param mem                            Reference to the memory object used to read the value
+ * @return bool                          True if the indexed load is successfully executed; false for vector inputs, unsupported types, or errors
  */
 bool handleLoadIndexedOp(neura::LoadIndexedOp op,
-                         llvm::DenseMap<Value, PredicatedData> &value_map,
+                         llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map,
                          Memory &mem) {
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  └─ Executing neura.load_indexed:\n";
   }
 
   // Retrieve base address and validate it is not a vector
-  auto base_val = value_map[op.getBase()];
+  auto base_val = value_to_predicated_data_map[op.getBase()];
   if (base_val.is_vector) {
     if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ Vector base not supported in load_indexed\n";
@@ -1975,7 +1887,7 @@ bool handleLoadIndexedOp(neura::LoadIndexedOp op,
   // Todo: multi-dimensional index will be supported in the future
   float offset = 0.0f;
   for (Value idx : op.getIndices()) {
-    auto idx_val = value_map[idx];
+    auto idx_val = value_to_predicated_data_map[idx];
     if (idx_val.is_vector) {
       if (isVerboseMode()) {
         llvm::errs() << "[neura-interpreter]  └─ Vector index not supported in load_indexed\n";
@@ -1990,7 +1902,7 @@ bool handleLoadIndexedOp(neura::LoadIndexedOp op,
   // Incorporate optional predicate operand (validate it is not a vector)
   if (op.getPredicate()) {
     Value pred_operand = op.getPredicate();
-    auto pred_val = value_map[pred_operand];
+    auto pred_val = value_to_predicated_data_map[pred_operand];
     if (pred_val.is_vector) {
       if (isVerboseMode()) {
         llvm::errs() << "[neura-interpreter]  └─ Vector predicate not supported\n";
@@ -2026,7 +1938,7 @@ bool handleLoadIndexedOp(neura::LoadIndexedOp op,
                  << val << ", [pred = " << final_predicate << "]\n";
   }
 
-  value_map[op.getResult()] = { val, final_predicate, false, {}, false };
+  value_to_predicated_data_map[op.getResult()] = { val, final_predicate, false, {}, false };
   return true;
 }
 
@@ -2037,19 +1949,19 @@ bool handleLoadIndexedOp(neura::LoadIndexedOp op,
  * It supports scalar values only (no vectors) for the value to store, base address, indices, and predicate. The operation performs the store only if the combined predicate (validity of the value,
  * base, indices, and optional predicate operand) is true. Supported data types include 32-bit floats, 32-bit integers, and booleans (1-bit integers).
  * 
- * @param op          The neura.store_indexed operation to handle
- * @param value_map   Reference to the map storing the value to store, base address, indices, and predicate
- * @param mem         Reference to the memory object used to write the value
- * @return bool       True if the indexed store is successfully executed (including skipped stores); false for vector inputs, unsupported types, or errors
+ * @param op                             The neura.store_indexed operation to handle
+ * @param value_to_predicated_data_map   Reference to the map storing the value to store, base address, indices, and predicate
+ * @param mem                            Reference to the memory object used to write the value
+ * @return bool                          True if the indexed store is successfully executed; false for vector inputs, unsupported types, or errors
  */
 bool handleStoreIndexedOp(neura::StoreIndexedOp op,
-                          llvm::DenseMap<Value, PredicatedData> &value_map,
+                          llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map,
                           Memory &mem) {
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.store_indexed:\n";
   }
 
-  auto val_to_store = value_map[op.getValue()];
+  auto val_to_store = value_to_predicated_data_map[op.getValue()];
   if (val_to_store.is_vector) {
     if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ Vector value not supported in store_indexed\n";
@@ -2059,7 +1971,7 @@ bool handleStoreIndexedOp(neura::StoreIndexedOp op,
   float value = val_to_store.value;
   bool final_predicate = val_to_store.predicate;
 
-  auto base_val = value_map[op.getBase()];
+  auto base_val = value_to_predicated_data_map[op.getBase()];
   if (base_val.is_vector) {
     if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ Vector base not supported in store_indexed\n";
@@ -2075,7 +1987,7 @@ bool handleStoreIndexedOp(neura::StoreIndexedOp op,
   // Todo: multi-dimensional index will be supported in the future
   float offset = 0.0f;
   for (Value idx : op.getIndices()) {
-    auto idx_val = value_map[idx];
+    auto idx_val = value_to_predicated_data_map[idx];
     if (idx_val.is_vector) {
       if (isVerboseMode()) {
         llvm::errs() << "[neura-interpreter]  └─ Vector index not supported in store_indexed\n";
@@ -2088,7 +2000,7 @@ bool handleStoreIndexedOp(neura::StoreIndexedOp op,
 
   if (op.getPredicate()) {
       Value pred_operand = op.getPredicate();
-      auto pred_val = value_map[pred_operand];
+      auto pred_val = value_to_predicated_data_map[pred_operand];
       if (pred_val.is_vector) {
         if (isVerboseMode()) {
           llvm::errs() << "[neura-interpreter]  └─ Vector predicate not supported\n";
@@ -2131,13 +2043,13 @@ bool handleStoreIndexedOp(neura::StoreIndexedOp op,
  * It validates the target block exists, ensures the number of branch arguments matches the target block's parameters, and copies argument
  * values to the target's parameters. Finally, it updates the current and last visited blocks to reflect the control transfer.
  * 
- * @param op                  The neura.br operation to handle
- * @param value_map           Reference to the map storing branch arguments and where target parameters will be updated
- * @param current_block       Reference to the current block; updated to the target block after branch
- * @param last_visited_block  Reference to the last visited block; updated to the previous current block after branch
- * @return bool               True if the branch is successfully executed; false for invalid target block or argument/parameter mismatch
+ * @param op                            The neura.br operation to handle
+ * @param value_to_predicated_data_map  Reference to the map storing branch arguments and where target parameters will be updated
+ * @param current_block                 Reference to the current block; updated to the target block after branch
+ * @param last_visited_block            Reference to the last visited block; updated to the previous current block after branch
+ * @return bool                         True if the branch is successfully executed; false for invalid target block or argument/parameter mismatch
  */
-bool handleBrOp(neura::Br op, llvm::DenseMap<Value, PredicatedData> &value_map, 
+bool handleBrOp(neura::Br op, llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map, 
                 Block *&current_block, Block *&last_visited_block) {
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.br:\n";
@@ -2187,7 +2099,7 @@ bool handleBrOp(neura::Br op, llvm::DenseMap<Value, PredicatedData> &value_map,
     Value dest_param = dest_params[i];
     Value src_arg = args[i];
     
-    if (!value_map.count(src_arg)) {
+    if (!value_to_predicated_data_map.count(src_arg)) {
       if (isVerboseMode()) {
         llvm::errs() << "[neura-interpreter]  └─ neura.br: Argument " << i 
                      << " (source value) not found in value map\n";
@@ -2196,13 +2108,13 @@ bool handleBrOp(neura::Br op, llvm::DenseMap<Value, PredicatedData> &value_map,
     }
     
     // Transfer argument value to target parameter
-    value_map[dest_param] = value_map[src_arg];
+    value_to_predicated_data_map[dest_param] = value_to_predicated_data_map[src_arg];
     if (isVerboseMode() && i < dest_params.size() - 1) {
       llvm::outs() << "[neura-interpreter]  │  ├─ Param[" << i << "]: value = " 
-                   << value_map[src_arg].value << "\n";
+                   << value_to_predicated_data_map[src_arg].value << "\n";
     } else if (isVerboseMode() && i == dest_params.size() - 1) {
       llvm::outs() << "[neura-interpreter]  │  └─ Param[" << i << "]: value = " 
-                   << value_map[src_arg].value << "\n";
+                   << value_to_predicated_data_map[src_arg].value << "\n";
     }
   }
 
@@ -2223,13 +2135,13 @@ bool handleBrOp(neura::Br op, llvm::DenseMap<Value, PredicatedData> &value_map,
  * It validates the operation's operands (1 mandatory condition + 1 optional predicate), checks that the condition is a boolean (i1 type), and computes a final predicate to determine if the branch is valid. 
  * If valid, it selects the target block based on the condition's value, passes arguments to the target block's parameters, and updates the current and last visited blocks to reflect the control transfer.
  * 
- * @param op                  The neura.cond_br operation to handle
- * @param value_map           Reference to the map storing values (including the condition and optional predicate)
- * @param current_block       Reference to the current block; updated to the target block after branch
- * @param last_visited_block  Reference to the last visited block; updated to the previous current block after branch
- * @return bool               True if the branch is successfully executed; false for invalid operands, missing values, type mismatches, or invalid predicates
+ * @param op                             The neura.cond_br operation to handle
+ * @param value_to_predicated_data_map   Reference to the map storing values (including the condition and optional predicate)
+ * @param current_block                  Reference to the current block; updated to the target block after branch
+ * @param last_visited_block             Reference to the last visited block; updated to the previous current block after branch
+ * @return bool                          True if the branch is successfully executed; false for invalid operands, missing values, type mismatches, or invalid predicates
  */
-bool handleCondBrOp(neura::CondBr op, llvm::DenseMap<Value, PredicatedData> &value_map, 
+bool handleCondBrOp(neura::CondBr op, llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map, 
                     Block *&current_block, Block *&last_visited_block) {
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.cond_br:\n";
@@ -2243,13 +2155,13 @@ bool handleCondBrOp(neura::CondBr op, llvm::DenseMap<Value, PredicatedData> &val
   }
 
   auto cond_value = op.getCondition();
-  if (!value_map.count(cond_value)) {
+  if (!value_to_predicated_data_map.count(cond_value)) {
     if (isVerboseMode()) {
-      llvm::errs() << "[neura-interpreter]  └─ cond_br: condition value not found in value_map! (SSA name missing)\n";
+      llvm::errs() << "[neura-interpreter]  └─ cond_br: condition value not found in value_to_predicated_data_map! (SSA name missing)\n";
     }
     return false;
   }
-  auto cond_data = value_map[op.getCondition()];
+  auto cond_data = value_to_predicated_data_map[op.getCondition()];
 
   if (!op.getCondition().getType().isInteger(1)) {
     if (isVerboseMode()) {
@@ -2267,7 +2179,7 @@ bool handleCondBrOp(neura::CondBr op, llvm::DenseMap<Value, PredicatedData> &val
   // Compute final predicate (combines condition's predicate and optional predicate operand)
   bool final_predicate = cond_data.predicate;
   if (op.getNumOperands() > 1) {
-    auto pred_data = value_map[op.getPredicate()];
+    auto pred_data = value_to_predicated_data_map[op.getPredicate()];
     final_predicate = final_predicate && pred_data.predicate && (pred_data.value != 0.0f);
     if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
@@ -2319,7 +2231,7 @@ bool handleCondBrOp(neura::CondBr op, llvm::DenseMap<Value, PredicatedData> &val
     return false;
   }
 
-  // Pass branch arguments to target block parameters (update value_map)
+  // Pass branch arguments to target block parameters (update value_to_predicated_data_map)
   if (!branch_args.empty()) {
     if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Pass Arguments\n";
@@ -2327,16 +2239,16 @@ bool handleCondBrOp(neura::CondBr op, llvm::DenseMap<Value, PredicatedData> &val
   }
 
   for (size_t i = 0; i < branch_args.size(); ++i) {
-    value_map[target_params[i]] = value_map[branch_args[i]];
+    value_to_predicated_data_map[target_params[i]] = value_to_predicated_data_map[branch_args[i]];
     if (i < branch_args.size() - 1) {
       if (isVerboseMode()) {
         llvm::outs() << "[neura-interpreter]  │  ├─ param[" << i << "]: value = " 
-                     << value_map[branch_args[i]].value << "\n";
+                     << value_to_predicated_data_map[branch_args[i]].value << "\n";
       }
     } else {
       if (isVerboseMode()) {
         llvm::outs() << "[neura-interpreter]  │  └─ param[" << i << "]: value = " 
-                     << value_map[branch_args[i]].value << "\n";
+                     << value_to_predicated_data_map[branch_args[i]].value << "\n";
       }
     }
   }
@@ -2354,235 +2266,219 @@ bool handleCondBrOp(neura::CondBr op, llvm::DenseMap<Value, PredicatedData> &val
 }
 
 /**
- * @brief Handles the execution of a Neura phi operation (neura.phi) in control flow mode, selecting the correct input based on the execution path.
+ * @brief Unified handler for Neura phi operations, supporting both control flow and data flow modes.
  * 
- * This function processes Neura's phi operations, which act as control flow merge points by selecting one of several input values based on the predecessor block
- * that was most recently visited. It identifies the predecessor block that matches the last visited block, retrieves the corresponding input value, and assigns
- * it to the phi operation's result. Validations ensure the current block has predecessors, the last visited block is a valid predecessor, and input count matches
- * predecessor count.
+ * In ControlFlow mode: Selects the input based on the most recently visited predecessor block, 
+ * requiring validation of block relationships and input-predecessor count matching.
  * 
- * @param op                  The neura.phi operation to handle
- * @param value_map           Reference to the map storing input values and where the phi result will be stored
- * @param current_block       The block containing the phi operation (current execution block)
- * @param last_visited_block  The most recently visited predecessor block (determines which input to select)
- * @return bool               True if the phi operation is successfully processed; false for validation errors (e.g., missing predecessors, mismatched inputs)
+ * In DataFlow mode: Merges inputs by selecting the first valid (true predicate) input. Falls back to 
+ * the first input with a false predicate if no valid inputs exist. Tracks result updates for propagation.
+ * 
+ * @param op                            The neura.phi operation to process
+ * @param value_to_predicated_data_map  Reference to the map storing input values and where the result will be stored
+ * @param current_block                 [ControlFlow only] Block containing the phi operation (nullptr for DataFlow)
+ * @param last_visited_block            [ControlFlow only] Most recently visited predecessor block (nullptr for DataFlow)
+ * @return bool                         True if processing succeeds; false for validation failures in ControlFlow mode (always true for DataFlow)
  */
-bool handlePhiOpControlFlowMode(neura::PhiOp op, llvm::DenseMap<Value, PredicatedData> &value_map, 
-                 Block *current_block, Block *last_visited_block) {
+bool handlePhiOp(neura::PhiOp op, 
+                 llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map, 
+                 Block *current_block = nullptr,
+                 Block *last_visited_block = nullptr) {
   if (isVerboseMode()) {
-    llvm::outs() << "[neura-interpreter]  Executing neura.phi:\n";
-  }
-
-  // Get all predecessor blocks of the current block (possible execution paths leading to this phi)
-  auto predecessors_range = current_block->getPredecessors();
-  std::vector<Block*> predecessors(predecessors_range.begin(), predecessors_range.end());
-  size_t pred_count = predecessors.size(); 
-
-  // Validate current block has at least one predecessor (phi requires merge of paths)
-  if (pred_count == 0) {
-    if (isVerboseMode()) {
-      llvm::errs() << "[neura-interpreter]  └─ neura.phi: Current block has no predecessors\n";
+    if (!isDataflowMode()) {
+      llvm::outs() << "[neura-interpreter]  Executing neura.phi:\n";
+    } else {
+      llvm::outs() << "[neura-interpreter]  Executing neura.phi(dataflow):\n";
     }
-    return false;
-  }
-
-  // Find the index of the last visited block among the predecessors (determines which input to use)
-  size_t pred_index = 0;
-  bool found = false;
-  for (auto pred : predecessors) {
-    if (pred == last_visited_block) {
-      found = true;
-      break;
-    }
-    ++pred_index;
-  }
-
-  // Validate the last visited block is a valid predecessor of the current block
-  if (!found) {
-    if (isVerboseMode()) {
-      llvm::errs() << "[neura-interpreter]  └─ neura.phi: Last visited block not found in predecessors\n";
-    }
-    return false;
   }
 
   auto inputs = op.getInputs();
   size_t input_count = inputs.size();
-
-  // Validate input count matches predecessor count (one input per path)
-  if (input_count != pred_count) {
-    if (isVerboseMode()) {
-      llvm::errs() << "[neura-interpreter]  └─ neura.phi: Input count (" << input_count 
-                   << ") != predecessor count (" << pred_count << ")\n";
-    }
-    return false;
-  }
-
-  // Validate the predecessor index is within the valid range of inputs
-  if (pred_index >= input_count) {
-    if (isVerboseMode()) {
-      llvm::errs() << "[neura-interpreter]  └─ neura.phi: Invalid predecessor index (" << pred_index << ")\n";
-    }
-    return false;
-  }
-
-  Value input_val = inputs[pred_index];
-  if (!value_map.count(input_val)) {
-    if (isVerboseMode()) {
-      llvm::errs() << "[neura-interpreter]  └─ neura.phi: Input value not found in value map\n";
-    }
-    return false;
-  }
-
-  // Assign the selected input's data to the phi operation's result
-  PredicatedData input_data = value_map[input_val];
-  value_map[op.getResult()] = input_data;
-
-  if (isVerboseMode()) {
-    llvm::outs() << "[neura-interpreter]  ├─ Predecessor blocks (" << pred_count << ")\n";
-    for (size_t i = 0; i < pred_count; ++i) {
-      if(i < pred_count - 1) {
-        llvm::outs() << "[neura-interpreter]  │  ├─ [" << i << "]: " << "Block@" << predecessors[i];
-      } else {
-        llvm::outs() << "[neura-interpreter]  │  └─ [" << i << "]: " << "Block@" << predecessors[i];
-      }
-      if (i == pred_index) {
-        llvm::outs() << " (→ current path)\n";
-      } else {
-        llvm::outs() << "\n";
-      }
-    }
-    llvm::outs() << "[neura-interpreter]  └─ Result    : " << op.getResult() << "\n";
-    llvm::outs() << "[neura-interpreter]     └─ Value : " << input_data.value 
-                 << ", [Pred = " << input_data.predicate << "]\n";
-  }
-  return true;
-}
-
-/**
- * @brief Handles the execution of a Neura phi operation (neura.phi) in dataflow mode, merging input values based on their validity.
- * 
- * This function processes Neura's phi operations under dataflow analysis, focusing on merging values from multiple input paths. 
- * It selects the first valid input (with a true predicate) as the result. If no valid inputs exist, it falls back to the first input 
- * but marks its predicate as false. Additionally, it tracks whether the result has changed from its previous state (via `is_updated`) 
- * to support dataflow propagation of changes.
- * 
- * Key dataflow-specific behaviors:
- * - Prioritizes inputs with valid predicates (true) when merging paths.
- * - Explicitly tracks updates to the result to trigger reprocessing of dependent operations.
- * - Gracefully handles missing or invalid inputs by falling back to the first input with an invalid predicate.
- * 
- * @param op          The neura.phi operation to handle
- * @param value_map   Reference to the map storing input values and where the merged result will be stored
- * @return bool       Always returns true, even if no valid inputs are found (handles partial success gracefully)
- */
-bool handlePhiOpDataFlowMode(neura::PhiOp op, llvm::DenseMap<Value, PredicatedData> &value_map) {
-  if (isVerboseMode()) {
-    llvm::outs() << "[neura-interpreter]  Executing neura.phi(dataflow):\n";
-  }
-
-  auto inputs = op.getInputs();
-  size_t input_count = inputs.size();
-
   if (input_count == 0) {
     if (isVerboseMode()) {
       llvm::errs() << "[neura-interpreter]  └─ Error: No inputs provided (execution failed)\n";
     }
-    return false;
+    return false; // No inputs is a failure in both modes
   }
 
-  if (isVerboseMode()) {
-    llvm::outs() << "[neura-interpreter]  ├─ Input values (" << input_count << ")\n";
+  // Store the finally selected input data
+  PredicatedData selected_input_data;
+  bool selection_success = false;
+
+  // --------------------------
+  // Mode-specific logic: Input selection and validation
+  // --------------------------
+  if (!isDataflowMode()) {
+    // ControlFlow mode: Validate required block parameters
+    if (!current_block || !last_visited_block) {
+      if (isVerboseMode()) {
+        llvm::errs() << "[neura-interpreter]  └─ ControlFlow mode requires current_block and last_visited_block\n";
+      }
+      return false;
+    }
+
+    // ControlFlow mode: Get predecessors and validate count
+    auto predecessors_range = current_block->getPredecessors();
+    std::vector<Block*> predecessors(predecessors_range.begin(), predecessors_range.end());
+    size_t pred_count = predecessors.size();
+    if (pred_count == 0) {
+      if (isVerboseMode()) {
+        llvm::errs() << "[neura-interpreter]  └─ neura.phi: Current block has no predecessors\n";
+      }
+      return false;
+    }
+
+    // ControlFlow mode: Validate input count matches predecessor count
+    if (input_count != pred_count) {
+      if (isVerboseMode()) {
+        llvm::errs() << "[neura-interpreter]  └─ neura.phi: Input count (" << input_count 
+                     << ") != predecessor count (" << pred_count << ")\n";
+      }
+      return false;
+    }
+
+    // ControlFlow mode: Find index of last visited block among predecessors
+    size_t pred_index = 0;
+    bool found = false;
+    for (auto pred : predecessors) {
+      if (pred == last_visited_block) {
+        found = true;
+        break;
+      }
+      ++pred_index;
+    }
+    if (!found) {
+      if (isVerboseMode()) {
+        llvm::errs() << "[neura-interpreter]  └─ neura.phi: Last visited block not found in predecessors\n";
+      }
+      return false;
+    }
+
+    // ControlFlow mode: Validate index and retrieve selected input
+    if (pred_index >= input_count) {
+      if (isVerboseMode()) {
+        llvm::errs() << "[neura-interpreter]  └─ neura.phi: Invalid predecessor index (" << pred_index << ")\n";
+      }
+      return false;
+    }
+    Value selected_input = inputs[pred_index];
+    if (!value_to_predicated_data_map.count(selected_input)) {
+      if (isVerboseMode()) {
+        llvm::errs() << "[neura-interpreter]  └─ neura.phi: Selected input not found in value map\n";
+      }
+      return false;
+    }
+    selected_input_data = value_to_predicated_data_map[selected_input];
+    selection_success = true;
+
+    // ControlFlow mode: Log predecessor details
+    if (isVerboseMode()) {
+      llvm::outs() << "[neura-interpreter]  ├─ Predecessor blocks (" << pred_count << ")\n";
+      for (size_t i = 0; i < pred_count; ++i) {
+        if(i < pred_count - 1) {
+          llvm::outs() << "[neura-interpreter]  │  ├─ [" << i << "]: " << "Block@" << predecessors[i];
+        } else {
+          llvm::outs() << "[neura-interpreter]  │  └─ [" << i << "]: " << "Block@" << predecessors[i];
+        }
+        if (i == pred_index) {
+          llvm::outs() << " (→ current path)\n";
+        } else {
+          llvm::outs() << "\n";
+        }
+      }
+    }
+
+  } else { // DataFlow mode
+    // DataFlow mode: Select first valid input (with true predicate)
+    bool found_valid_input = false;
     for (size_t i = 0; i < input_count; ++i) {
       Value input = inputs[i];
-      if (value_map.count(input)) {
-        auto input_data = value_map[input];
-        const std::string prefix = (i < input_count - 1) ? "│ ├─" : "│ └─";
-        llvm::outs() << "[neura-interpreter]  " << prefix << "[" << i << "]:"
-                     << "value = " << input_data.value << ","
-                     << "pred = " << input_data.predicate << "\n";
+      if (!value_to_predicated_data_map.count(input)) {
+        if (isVerboseMode()) {
+          llvm::outs() << "[neura-interpreter]  ├─ Input [" << i << "] not found, skipping\n";
+        }
+        continue;
+      }
+      auto input_data = value_to_predicated_data_map[input];
+      if (input_data.predicate) {
+        selected_input_data = input_data;
+        found_valid_input = true;
+        if (isVerboseMode()) {
+          llvm::outs() << "[neura-interpreter]  ├─ Selected input [" << i << "] (latest valid)\n";
+        }
+        break;
+      }
+    }
+
+    // DataFlow mode: Fallback to first input with false predicate if no valid inputs
+    if (!found_valid_input) {
+      Value first_input = inputs[0];
+      if (value_to_predicated_data_map.count(first_input)) {
+        auto first_data = value_to_predicated_data_map[first_input];
+        selected_input_data.value = first_data.value;
+        selected_input_data.is_vector = first_data.is_vector;
+        selected_input_data.vector_data = first_data.vector_data;
+        selected_input_data.predicate = false;
+        if (isVerboseMode()) {
+          llvm::outs() << "[neura-interpreter]  ├─ No valid input, using first input with pred=false\n";
+        }
       } else {
-        const std::string prefix = (i < input_count - 1) ? "│ ├─" : "│ └─";
-        llvm::outs() << "[neura-interpreter]  " << prefix << "[" << i << "]: <undefined>\n";
+        // Edge case: First input is undefined, initialize default values
+        selected_input_data.value = 0.0f;
+        selected_input_data.predicate = false;
+        selected_input_data.is_vector = false;
+        selected_input_data.vector_data = {};
+      }
+    }
+    selection_success = true; // DataFlow mode always considers selection successful
+
+    // DataFlow mode: Log input values
+    if (isVerboseMode()) {
+      llvm::outs() << "[neura-interpreter]  ├─ Input values (" << input_count << ")\n";
+      for (size_t i = 0; i < input_count; ++i) {
+        Value input = inputs[i];
+        if (value_to_predicated_data_map.count(input)) {
+          auto input_data = value_to_predicated_data_map[input];
+          const std::string prefix = (i < input_count - 1) ? "│ ├─" : "│ └─";
+          llvm::outs() << "[neura-interpreter]  " << prefix << "[" << i << "]:"
+                       << "value = " << input_data.value << ","
+                       << "pred = " << input_data.predicate << "\n";
+        } else {
+          const std::string prefix = (i < input_count - 1) ? "│ ├─" : "│ └─";
+          llvm::outs() << "[neura-interpreter]  " << prefix << "[" << i << "]: <undefined>\n";
+        }
       }
     }
   }
 
-  // Initialize result with default values
-  PredicatedData result;
-  result.value = 0.0f;
-  result.predicate = false;
-  result.is_vector = false;
-  result.vector_data = {};
-  result.is_reserve = false;
-  result.is_updated = false;
-  bool found_valid_input = false;
-
-  // Select the first valid input (with true predicate) to use as the result
-  for (size_t i = 0; i < input_count; ++i) { 
-    Value input = inputs[i];
-
-    if (!value_map.count(input)) {
-      if (isVerboseMode()) {
-        llvm::outs() << "[neura-interpreter]  ├─ Input [" << i << "] not found, skipping\n";
-      }
-      continue;
-    }
-
-    auto input_data = value_map[input];
-
-    // Use the first valid input and stop searching
-    if (input_data.predicate && !found_valid_input) {
-      result.value = input_data.value;
-      result.predicate = input_data.predicate;
-      result.is_vector = input_data.is_vector;
-      result.vector_data = input_data.vector_data;
-      found_valid_input = true;
-
-      if (isVerboseMode()) {
-        llvm::outs() << "[neura-interpreter]  ├─ Selected input [" << i << "] (latest valid)\n";
-      }
-      break;
-    }
-  }
-
-  // Fallback: if no valid inputs, use the first input but mark predicate as false
-  if (!found_valid_input && input_count > 0) {
-    Value first_input = inputs[0];
-    if (value_map.count(first_input)) {
-      auto first_data = value_map[first_input];
-      result.value = first_data.value;
-      result.is_vector = first_data.is_vector;
-      result.vector_data = first_data.vector_data;
-      result.predicate = false;
-      if (isVerboseMode()) {
-        llvm::outs() << "[neura-interpreter]  ├─ No valid input, using first input with pred=false\n";
-      }
-    }
-  }
-
-  // Check if the result has changed from its previous state (for dataflow propagation)
-  bool fields_changed = false;
-  if (value_map.count(op.getResult())) {
-    auto old_result = value_map[op.getResult()];
-    fields_changed = (result.value != old_result.value) ||
-                    (result.predicate != old_result.predicate) ||
-                    (result.is_vector != old_result.is_vector) ||
-                    (result.vector_data != old_result.vector_data);
+  // Check for changes
+  bool is_updated = false;
+  if (value_to_predicated_data_map.count(op.getResult())) {
+    auto old_result = value_to_predicated_data_map[op.getResult()];
+    is_updated = selected_input_data.isUpdatedComparedTo(old_result);
   } else {
-    fields_changed = true;
+    is_updated = true;
   }
 
-  result.is_updated = fields_changed;
-  value_map[op.getResult()] = result;
+  PredicatedData result = selected_input_data;
+  result.is_updated = is_updated;
+  result.is_reserve = false;
+  value_to_predicated_data_map[op.getResult()] = result;
 
   if (isVerboseMode()) {
-    llvm::outs() << "[neura-interpreter]  └─ Execution " << (found_valid_input ? "succeeded" : "partially succeeded")
-                 << " | Result: value = " << result.value
-                 << ", pred = " << result.predicate
-                 << ", is_updated = " << result.is_updated << "\n";
+    if (!isDataflowMode()) {
+      llvm::outs() << "[neura-interpreter]  └─ Result    : " << op.getResult() << "\n";
+      llvm::outs() << "[neura-interpreter]     └─ Value : " << result.value 
+                   << ", [Pred = " << result.predicate << "]\n";
+    } else {
+      llvm::outs() << "[neura-interpreter]  └─ Execution " << (selection_success ? "succeeded" : "partially succeeded")
+                   << " | Result: value = " << result.value
+                   << ", pred = " << result.predicate
+                   << ", is_updated = " << result.is_updated << "\n";
+    }
   }
 
-  return true;
+  return selection_success;
 }
 
 /**
@@ -2593,11 +2489,11 @@ bool handlePhiOpDataFlowMode(neura::PhiOp op, llvm::DenseMap<Value, PredicatedDa
  * value via the is_reserve flag. This operation is typically used to allocate or reserve a value slot for future use,
  * where the actual value and validity will be set later.
  * 
- * @param op          The neura.reserve operation to handle
- * @param value_map   Reference to the map where the reserved placeholder will be stored, keyed by the operation's result value
- * @return bool       Always returns true as the reservation operation is guaranteed to succeed
+ * @param op                             The neura.reserve operation to handle
+ * @param value_to_predicated_data_map   Reference to the map where the reserved placeholder will be stored, keyed by the operation's result value
+ * @return bool                          Always returns true as the reservation operation is guaranteed to succeed
  */
-bool handleReserveOp(neura::ReserveOp op, llvm::DenseMap<Value, PredicatedData> &value_map) {
+bool handleReserveOp(neura::ReserveOp op, llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map) {
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.reserve:\n";
   }
@@ -2608,7 +2504,7 @@ bool handleReserveOp(neura::ReserveOp op, llvm::DenseMap<Value, PredicatedData> 
   placeholder.is_reserve = true;    /* Flag to indicate this is a reserved placeholder */
 
   Value result = op.getResult();
-  value_map[result] = placeholder;
+  value_to_predicated_data_map[result] = placeholder;
 
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  └─ Created placeholder  : " << result << "\n";
@@ -2621,155 +2517,113 @@ bool handleReserveOp(neura::ReserveOp op, llvm::DenseMap<Value, PredicatedData> 
 }
 
 /**
- * @brief Handles the execution of a Neura control move operation (neura.ctrl_mov) by copying a source value into a reserved target placeholder.
+ * @brief Unified handler for Neura control move operations (neura.ctrl_mov) supporting both control-flow and data-flow modes.
  * 
- * This function processes Neura's ctrl_mov operations, which transfer data from a source value to a target placeholder that was previously reserved via a neura.reserve operation.
- * It validates that the source exists in the value map, the target is a reserved placeholder, and both have matching types. If valid, it copies the source's value, predicate, vector flag,
- * and vector data (if applicable) into the target, updating the reserved placeholder with the source's data.
+ * This function processes neura.ctrl_mov operations by copying data from a source value to a reserved target placeholder,
+ * with behavior adjusted via the CtrlMovMode parameter:
+ * - In ControlFlow mode: Unconditionally copies source data to the target after validating type matching, ensuring strict
+ *   consistency between source and target types. Fails on validation errors (e.g., missing source/target, type mismatch).
+ * - In DataFlow mode: Conditionally copies data only if the source's predicate is valid (true). Tracks updates via the
+ *   `is_updated` flag (computed by comparing with the target's previous state) to support propagation of changes to dependent operations.
  * 
- * @param op          The neura.ctrl_mov operation to handle
- * @param value_map   Reference to the map storing both the source value and the target reserved placeholder
- * @return bool       True if the data is successfully moved to the target; false if validation fails (e.g., missing source, invalid target, type mismatch)
+ * Both modes validate that the source exists in the value map and the target is a reserved placeholder (created via neura.reserve).
+ * Vector/scalar type consistency is preserved during data copying, with vector data copied only if the source is a vector.
+ * 
+ * @param op                             The neura.ctrl_mov operation to handle
+ * @param value_to_predicated_data_map   Reference to the map storing source/target values and their metadata (value, predicate, type flags)
+ * @return bool                          True if processing succeeds; false only for critical errors (e.g., invalid target) in ControlFlow mode
  */
-bool handleCtrlMovOp(neura::CtrlMovOp op, llvm::DenseMap<Value, PredicatedData> &value_map) {
-  if (isVerboseMode()) {
-    llvm::outs() << "[neura-interpreter]  Executing neura.ctrl_mov:\n";
-  }
-
-  Value source = op.getValue();
-  Value target = op.getTarget();
-
-  if (!value_map.count(source)) {
+bool handleCtrlMovOp(neura::CtrlMovOp op, 
+                     llvm::DenseMap<Value, PredicatedData>& value_to_predicated_data_map) {
     if (isVerboseMode()) {
-      llvm::errs() << "[neura-interpreter]  └─ neura.ctrl_mov: Source value not found in value map\n";
+        llvm::outs() << "[neura-interpreter]  Executing neura.ctrl_mov" 
+                     << (isDataflowMode() ? "(dataflow)" : "") << ":\n";
     }
-    return false;
-  }
 
-  if (!value_map.count(target) || !value_map[target].is_reserve) {
-    if (isVerboseMode()) {
-      llvm::errs() << "[neura-interpreter]  └─ neura.ctrl_mov: Target is not a reserve placeholder\n";
+    Value source = op.getValue();
+    Value target = op.getTarget();
+
+    // Check source exists in map
+    if (!value_to_predicated_data_map.count(source)) {
+        if (isVerboseMode()) {
+            llvm::errs() << "[neura-interpreter]  └─ Error: Source value not found in value map\n";
+        }
+        return false;
     }
-    return false;
-  }
 
-  const auto &source_data = value_map[source];
-  auto &target_data = value_map[target];
-
-  if (source.getType() != target.getType()) {
-    if (isVerboseMode()) {
-      llvm::errs() << "[neura-interpreter]  └─ neura.ctrl_mov: Type mismatch (source ="
-                   << source.getType() << ", target =" << target.getType() << ")\n";
+    // Check target is a reserved placeholder
+    if (!value_to_predicated_data_map.count(target) || !value_to_predicated_data_map[target].is_reserve) {
+        if (isVerboseMode()) {
+            llvm::errs() << "[neura-interpreter]  └─ Error: Target is not a reserve placeholder\n";
+        }
+        return false;
     }
-    return false;
-  }
 
-  if (isVerboseMode()) {
-    llvm::outs() << "[neura-interpreter]  ├─ Source: " << source <<"\n";
-    llvm::outs() << "[neura-interpreter]  │  └─ value = "  << source_data.value 
-                 << ", [pred = " << source_data.predicate << "]\n";
-    llvm::outs() << "[neura-interpreter]  ├─ Target: " << target << "\n";
-    llvm::outs() << "[neura-interpreter]  │  └─ value = "  << target_data.value 
-                 << ", [pred = " << target_data.predicate << "]\n";
-  }
-  // Copy data from source to target: value, predicate, vector flag, and vector data (if vector)
-  target_data.value = source_data.value;
-  target_data.predicate = source_data.predicate;
-  target_data.is_vector = source_data.is_vector;
-  if (source_data.is_vector) {
-    target_data.vector_data = source_data.vector_data;
-  }
+    const auto& source_data = value_to_predicated_data_map[source];
+    auto& target_data = value_to_predicated_data_map[target];
+    bool success = true;
 
-  if (isVerboseMode()) {
-    llvm::outs() << "[neura-interpreter]  └─ Updated target placeholder\n";
-    llvm::outs() << "[neura-interpreter]     └─ value = "  << target_data.value 
-                 << ", [pred = " << target_data.predicate << "]\n";
-  }
+    if (!isDataflowMode()) {
+        // Control-flow mode: Validate type match and unconditionally copy data
+        if (source.getType() != target.getType()) {
+            if (isVerboseMode()) {
+                llvm::errs() << "[neura-interpreter]  └─ Error: Type mismatch (source="
+                             << source.getType() << ", target=" << target.getType() << ")\n";
+            }
+            return false;
+        }
 
-  return true;
-}
+        if (isVerboseMode()) {
+            llvm::outs() << "[neura-interpreter]  ├─ Source: " << source << "\n"
+                         << "[neura-interpreter]  │  └─ value = " << source_data.value
+                         << ", [pred = " << source_data.predicate << "]\n"
+                         << "[neura-interpreter]  ├─ Target: " << target << "\n"
+                         << "[neura-interpreter]  │  └─ value = " << target_data.value
+                         << ", [pred = " << target_data.predicate << "]\n";
+        }
 
-/**
- * @brief Handles the execution of a Neura control move operation (neura.ctrl_mov) in dataflow mode, with explicit tracking of value updates.
- * 
- * This function processes neura.ctrl_mov operations under dataflow analysis, focusing on conditional updates to a reserved target placeholder.
- * It only updates the target if the source value's predicate is valid (true). Additionally, it tracks whether the target was actually modified
- * (via the `is_updated` flag) to support dataflow propagation (e.g., triggering reprocessing of dependent operations).
- * 
- * Key differences from standard mode:
- * - Explicitly checks if the source predicate is valid before updating.
- * - Tracks detailed changes (value, predicate, vector status) to set `is_updated`.
- * - Focuses on propagating state changes for dataflow analysis.
- * 
- * @param op          The neura.ctrl_mov operation to handle
- * @param value_map   Reference to the map storing the source value and target reserved placeholder
- * @return bool       True if the operation is processed successfully (including skipped updates); false for critical errors (e.g., missing source/target)
- */
-bool handleCtrlMovOpDataFlowMode(neura::CtrlMovOp op, 
-                                 llvm::DenseMap<Value, PredicatedData> &value_map) {
-  if (isVerboseMode()) {
-    llvm::outs() << "[neura-interpreter]  Executing neura.ctrl_mov(dataflow):\n";
-  }
+        // Unconditional copy for control flow
+        target_data.value = source_data.value;
+        target_data.predicate = source_data.predicate;
+        target_data.is_vector = source_data.is_vector;
+        if (source_data.is_vector) {
+            target_data.vector_data = source_data.vector_data;
+        }
 
-  Value source = op.getValue();
-  if (!value_map.count(source)) {
-    if (isVerboseMode()) {
-      llvm::errs() << "[neura-interpreter]  └─ Error: Source value not found (execution failed)\n";
+        if (isVerboseMode()) {
+            llvm::outs() << "[neura-interpreter]  └─ Updated target placeholder\n"
+                         << "[neura-interpreter]     └─ value = " << target_data.value
+                         << ", [pred = " << target_data.predicate << "]\n";
+        }
+
+    } else {  // DataFlow mode
+        // Data-flow mode: Conditional update based on source predicate
+        const bool should_update = (source_data.predicate == 1);
+        const auto old_target_data = target_data;  // Store current state for update check
+
+        if (should_update) {
+            // Copy source data to target
+            target_data.value = source_data.value;
+            target_data.predicate = source_data.predicate;
+            target_data.is_vector = source_data.is_vector;
+            target_data.vector_data = source_data.is_vector ? source_data.vector_data : std::vector<float>();
+        } else if (isVerboseMode()) {
+            llvm::outs() << "[neura-interpreter]  ├─ Skip update: Source predicate invalid (pred="
+                         << source_data.predicate << ")\n";
+        }
+
+        // Calculate is_updated by comparing with old state
+        target_data.is_updated = target_data.isUpdatedComparedTo(old_target_data);
+
+        if (isVerboseMode()) {
+            llvm::outs() << "[neura-interpreter]  ├─ Source: " << source_data.value << " | " << source_data.predicate << "\n"
+                         << "[neura-interpreter]  ├─ Target (after): " << target_data.value << " | " << target_data.predicate
+                         << " | is_updated=" << target_data.is_updated << "\n"
+                         << "[neura-interpreter]  └─ Execution succeeded\n";
+        }
     }
-    return false;
-  }
 
-  Value target = op.getTarget();
-  auto &target_data = value_map[target];
-  if (!value_map.count(target) || !target_data.is_reserve) {
-    if (isVerboseMode()) {
-      llvm::errs() << "[neura-interpreter]  └─ Error: Target is not a reserve placeholder (execution failed)\n";
-    }
-    return false; 
-  }
-
-  // Capture source data and target's current state (for update checks)
-  const auto &source_data = value_map[source];
-  const float old_value = target_data.value;
-  const bool old_predicate = target_data.predicate;
-  const bool old_is_vector = target_data.is_vector;
-  const std::vector<float> oldvector_data = target_data.vector_data;
-
-  // Reset update flag; will be set to true only if actual changes occur
-  target_data.is_updated = false;
-  // Determine if update should proceed: only if source predicate is valid (true)
-  const bool should_update = (source_data.predicate == 1);
-
-  if (should_update) {
-    // Copy source data to target
-    target_data.value = source_data.value;
-    target_data.predicate = source_data.predicate;
-    target_data.is_vector = source_data.is_vector;
-    target_data.vector_data = source_data.is_vector ? source_data.vector_data : std::vector<float>();
-
-    // Check if scalar target was updated (value, predicate, or vector state changed)
-    const bool is_scalar_updated = !target_data.is_vector && 
-                               (target_data.value != old_value || 
-                                target_data.predicate != old_predicate || 
-                                !oldvector_data.empty());
-    // Check if vector target was updated (predicate or vector elements changed)
-    const bool is_vector_updated = target_data.is_vector && 
-                               (target_data.predicate != old_predicate || 
-                                target_data.vector_data != oldvector_data);
-    target_data.is_updated = is_scalar_updated || is_vector_updated || (target_data.is_vector != old_is_vector);
-  } else if (isVerboseMode()) {
-    llvm::outs() << "[neura-interpreter]  ├─ Skip update: Source predicate invalid (pred=" 
-                 << source_data.predicate << ")\n";
-  }
-
-  if (isVerboseMode()) {
-    llvm::outs() << "[neura-interpreter]  ├─ Source: " << source_data.value << " | " << source_data.predicate << "\n"
-                 << "[neura-interpreter]  ├─ Target (after): " << target_data.value << " | " << target_data.predicate 
-                 << " | is_updated=" << target_data.is_updated << "\n"
-                 << "[neura-interpreter]  └─ Execution succeeded\n";
-  }
-
-  return true;
+    return success;
 }
 
 /**
@@ -2779,11 +2633,11 @@ bool handleCtrlMovOpDataFlowMode(neura::CtrlMovOp op,
  * validates their existence, and prints them in a human-readable format (scalar or vector) in verbose mode. For vector values, it formats elements as a 
  * comma-separated list, using 0.0f for elements with an invalid predicate. If no return values are present, it indicates a void return.
  * 
- * @param op          The neura.return operation to handle
- * @param value_map   Reference to the map storing the return values to be processed
- * @return bool       True if return values are successfully processed; false if any return value is missing from the value map
+ * @param op                             The neura.return operation to handle
+ * @param value_to_predicated_data_map   Reference to the map storing the return values to be processed
+ * @return bool                          True if return values are successfully processed; false if any return value is missing from the value map
  */
-bool handleNeuraReturnOp(neura::ReturnOp op, llvm::DenseMap<Value, PredicatedData> &value_map) {
+bool handleNeuraReturnOp(neura::ReturnOp op, llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map) {
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.return:\n";
   }
@@ -2798,11 +2652,11 @@ bool handleNeuraReturnOp(neura::ReturnOp op, llvm::DenseMap<Value, PredicatedDat
   // Collect and validate return values from the value map
   std::vector<PredicatedData> results;
   for (Value val : return_values) {
-    if (!value_map.count(val)) {
+    if (!value_to_predicated_data_map.count(val)) {
       llvm::errs() << "[neura-interpreter]  └─ Return value not found in value map\n";
       return false;
     }
-    results.push_back(value_map[val]);
+    results.push_back(value_to_predicated_data_map[val]);
   }
 
   if (isVerboseMode()) {
@@ -2839,11 +2693,11 @@ bool handleNeuraReturnOp(neura::ReturnOp op, llvm::DenseMap<Value, PredicatedDat
  * predicate to be the logical AND of the source's original predicate, the new predicate's validity, and the new predicate's non-zero value (treating non-zero as true). 
  * The result retains the source's value but uses the computed combined predicate. Errors are returned for invalid operand counts or missing operands in the value map.
  * 
- * @param op          The neura.grant_predicate operation to handle
- * @param value_map   Reference to the map where the updated result will be stored, keyed by the operation's result value
- * @return bool       True if the operation is successfully executed; false for invalid operands or missing entries in the value map
+ * @param op                             The neura.grant_predicate operation to handle
+ * @param value_to_predicated_data_map   Reference to the map where the updated result will be stored, keyed by the operation's result value
+ * @return bool                          True if the operation is successfully executed; false for invalid operands or missing entries in the value map
  */
-bool handleGrantPredicateOp(neura::GrantPredicateOp op, llvm::DenseMap<Value, PredicatedData> &value_map) {
+bool handleGrantPredicateOp(neura::GrantPredicateOp op, llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map) {
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.grant_predicate:\n";
   }
@@ -2855,15 +2709,15 @@ bool handleGrantPredicateOp(neura::GrantPredicateOp op, llvm::DenseMap<Value, Pr
     return false;
   }
 
-  if (!value_map.count(op.getValue()) || !value_map.count(op.getPredicate())) {
+  if (!value_to_predicated_data_map.count(op.getValue()) || !value_to_predicated_data_map.count(op.getPredicate())) {
     if (isVerboseMode()) {
-      llvm::errs() << "[neura-interpreter]  └─ Error: Source or new predicate not found in value_map\n";
+      llvm::errs() << "[neura-interpreter]  └─ Error: Source or new predicate not found in value_to_predicated_data_map\n";
     }
     return false;
   }
 
-  auto source = value_map[op.getValue()];
-  auto new_pred = value_map[op.getPredicate()];
+  auto source = value_to_predicated_data_map[op.getValue()];
+  auto new_pred = value_to_predicated_data_map[op.getPredicate()];
 
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  ├─ Operand\n";
@@ -2887,7 +2741,7 @@ bool handleGrantPredicateOp(neura::GrantPredicateOp op, llvm::DenseMap<Value, Pr
                  << ", [pred = " << result_predicate << "]\n";
   }
 
-  value_map[op.getResult()] = result;
+  value_to_predicated_data_map[op.getResult()] = result;
   return true;
 }
 
@@ -2899,11 +2753,11 @@ bool handleGrantPredicateOp(neura::GrantPredicateOp op, llvm::DenseMap<Value, Pr
  * The result retains the source/constant value but uses the one-time predicate. Errors are returned for invalid operand/attribute combinations 
  * or unsupported constant types.
  * 
- * @param op          The neura.grant_once operation to handle
- * @param value_map   Reference to the map where the result will be stored, keyed by the operation's result value
- * @return bool       True if the operation is successfully executed; false for invalid inputs or unsupported types
+ * @param op                             The neura.grant_once operation to handle
+ * @param value_to_predicated_data_map   Reference to the map where the result will be stored, keyed by the operation's result value
+ * @return bool                          True if the operation is successfully executed; false for invalid inputs or unsupported types
  */
-bool handleGrantOnceOp(neura::GrantOnceOp op, llvm::DenseMap<Value, PredicatedData> &value_map) {
+bool handleGrantOnceOp(neura::GrantOnceOp op, llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map) {
   if(isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  Executing neura.grant_once:\n";
   }
@@ -2921,13 +2775,13 @@ bool handleGrantOnceOp(neura::GrantOnceOp op, llvm::DenseMap<Value, PredicatedDa
   PredicatedData source;
   if (has_value) {
     Value input_value = op.getValue();
-    if (!value_map.count(input_value)) {
+    if (!value_to_predicated_data_map.count(input_value)) {
       if (isVerboseMode()) {
-        llvm::errs() << "[neura-interpreter]  └─ Source value not found in value_map\n";
+        llvm::errs() << "[neura-interpreter]  └─ Source value not found in value_to_predicated_data_map\n";
       }
       return false;
     }
-    source = value_map[input_value];
+    source = value_to_predicated_data_map[input_value];
     
     if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  ├─ Operand\n";
@@ -2981,7 +2835,7 @@ bool handleGrantOnceOp(neura::GrantOnceOp op, llvm::DenseMap<Value, PredicatedDa
                  << ", [pred = " << result_predicate << "]\n";
   }
 
-  value_map[op.getResult()] = result;
+  value_to_predicated_data_map[op.getResult()] = result;
   return true;
 }
 
@@ -2991,11 +2845,11 @@ bool handleGrantOnceOp(neura::GrantOnceOp op, llvm::DenseMap<Value, PredicatedDa
  * This function processes Neura's grant_always operations, which take exactly 1 operand (a source value) and return a copy of that value with its predicate set to true,
  * regardless of the original predicate. This operation effectively "grants" validity to the value unconditionally. Errors are returned if the operand count is not exactly 1.
  * 
- * @param op          The neura.grant_always operation to handle
- * @param value_map   Reference to the map where the granted result will be stored, keyed by the operation's result value
- * @return bool       True if the operation is successfully executed; false if the operand count is invalid
+ * @param op                             The neura.grant_always operation to handle
+ * @param value_to_predicated_data_map   Reference to the map where the granted result will be stored, keyed by the operation's result value
+ * @return bool                          True if the operation is successfully executed; false if the operand count is invalid
  */
-bool handleGrantAlwaysOp(neura::GrantAlwaysOp op, llvm::DenseMap<Value, PredicatedData> &value_map) {
+bool handleGrantAlwaysOp(neura::GrantAlwaysOp op, llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map) {
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.grant_always:\n";
   }
@@ -3007,7 +2861,7 @@ bool handleGrantAlwaysOp(neura::GrantAlwaysOp op, llvm::DenseMap<Value, Predicat
     return false;
   }
 
-  auto source = value_map[op.getValue()];
+  auto source = value_to_predicated_data_map[op.getValue()];
   // Unconditionally set the result predicate to true
   bool result_predicate = true;
   PredicatedData result = source;
@@ -3023,147 +2877,195 @@ bool handleGrantAlwaysOp(neura::GrantAlwaysOp op, llvm::DenseMap<Value, Predicat
   }
   
 
-  value_map[op.getResult()] = result;
+  value_to_predicated_data_map[op.getResult()] = result;
   return true;
 }
 
-bool isDataUpdated(const PredicatedData& old_data, const PredicatedData& new_data) {
-  if (old_data.value != new_data.value) return true;
-  if (old_data.predicate != new_data.predicate) return true;
-  if (old_data.is_vector != new_data.is_vector) return true;
-  if (old_data.is_vector && old_data.vector_data != new_data.vector_data) return true;
-  return false;
-}
-
 /**
- * @brief Executes a single operation, handles type-specific processing, tracks value updates, and propagates changes to dependent operations.
+ * @brief Generic operation handling function that unifies type checking for both execution modes
  * 
- * This function processes the given operation using specialized handlers based on its type. It first saves the current values of the operation's
- * results to detect updates after execution. If execution succeeds, it checks for changes in the results' values. If updates are detected,
- * it marks the values as updated and adds all dependent operations (users) to the next work list for subsequent processing.
+ * Processes core logic for all operation types and returns handling results. This function
+ * abstracts the common operation processing logic while accommodating mode-specific requirements
+ * through optional parameters for control flow information.
  * 
- * @param op               The operation to execute
- * @param value_map        Reference to the map storing predicated data for values (tracks current state and updates)
- * @param mem              Reference to the memory object for handling load/store operations
- * @param next_work_list   Reference to the list of operations to process in the next iteration (receives dependent operations on updates)
- * @return bool            True if the operation executes successfully; false if execution fails (e.g., unhandled operation type)
+ * @param op                              The operation to process
+ * @param value_to_predicated_data_map    Reference to map storing predicated data for values
+ * @param mem                             Reference to memory object for load/store operations
+ * @param current_block                   Pointer to current block (control flow mode only)
+ * @param last_visited_block              Pointer to previously visited block (control flow mode only)
+ * @return OperationHandleResult          Structure containing processing status and control flags
  */
-bool executeOperation(Operation* op, 
-                     llvm::DenseMap<Value, PredicatedData>& value_map, 
-                     Memory& mem,
-                     llvm::SmallVector<Operation*, 16>& next_work_list) {
-  llvm::DenseMap<Value, PredicatedData> old_values;
-  for (Value result : op->getResults()) {
-    if (value_map.count(result)) {
-      old_values[result] = value_map[result];
-    }
-  }
+OperationHandleResult handleOperation(
+    Operation* op,
+    llvm::DenseMap<Value, PredicatedData>& value_to_predicated_data_map,
+    Memory& mem,
+    Block**current_block = nullptr,
+    Block** last_visited_block = nullptr) {
+  
+  OperationHandleResult result{true, false, false};
 
-  bool execution_success = true;
   if (auto const_op = dyn_cast<mlir::arith::ConstantOp>(op)) {
-    execution_success = handleArithConstantOp(const_op, value_map);
+    result.success = handleArithConstantOp(const_op, value_to_predicated_data_map);
   } else if (auto const_op = dyn_cast<neura::ConstantOp>(op)) {
-    execution_success = handleNeuraConstantOp(const_op, value_map);
+    result.success = handleNeuraConstantOp(const_op, value_to_predicated_data_map);
   } else if (auto mov_op = dyn_cast<neura::DataMovOp>(op)) {
-    value_map[mov_op.getResult()] = value_map[mov_op.getOperand()];
+    value_to_predicated_data_map[mov_op.getResult()] = value_to_predicated_data_map[mov_op.getOperand()];
   } else if (auto add_op = dyn_cast<neura::AddOp>(op)) {
-    execution_success = handleAddOp(add_op, value_map);
+    result.success = handleAddOp(add_op, value_to_predicated_data_map);
   } else if (auto sub_op = dyn_cast<neura::SubOp>(op)) {
-    execution_success = handleSubOp(sub_op, value_map);
+    result.success = handleSubOp(sub_op, value_to_predicated_data_map);
   } else if (auto fadd_op = dyn_cast<neura::FAddOp>(op)) {
-    execution_success = handleFAddOp(fadd_op, value_map);
+    result.success = handleFAddOp(fadd_op, value_to_predicated_data_map);
   } else if (auto fsub_op = dyn_cast<neura::FSubOp>(op)) {
-    execution_success = handleFSubOp(fsub_op, value_map);
+    result.success = handleFSubOp(fsub_op, value_to_predicated_data_map);
   } else if (auto fmul_op = dyn_cast<neura::FMulOp>(op)) {
-    execution_success = handleFMulOp(fmul_op, value_map);
+    result.success = handleFMulOp(fmul_op, value_to_predicated_data_map);
   } else if (auto fdiv_op = dyn_cast<neura::FDivOp>(op)) {
-    execution_success = handleFDivOp(fdiv_op, value_map);
+    result.success = handleFDivOp(fdiv_op, value_to_predicated_data_map);
   } else if (auto vfmul_op = dyn_cast<neura::VFMulOp>(op)) {
-    execution_success = handleVFMulOp(vfmul_op, value_map);
+    result.success = handleVFMulOp(vfmul_op, value_to_predicated_data_map);
   } else if (auto fadd_fadd_op = dyn_cast<neura::FAddFAddOp>(op)) {
-    execution_success = handleFAddFAddOp(fadd_fadd_op, value_map);
+    result.success = handleFAddFAddOp(fadd_fadd_op, value_to_predicated_data_map);
   } else if (auto fmul_fadd_op = dyn_cast<neura::FMulFAddOp>(op)) {
-    execution_success = handleFMulFAddOp(fmul_fadd_op, value_map);
+    result.success = handleFMulFAddOp(fmul_fadd_op, value_to_predicated_data_map);
   } else if (auto ret_op = dyn_cast<func::ReturnOp>(op)) {
-    execution_success = handleFuncReturnOp(ret_op, value_map);
+    result.success = handleFuncReturnOp(ret_op, value_to_predicated_data_map);
+    result.is_terminated = true;  // Return operations terminate execution
   } else if (auto fcmp_op = dyn_cast<neura::FCmpOp>(op)) {
-    execution_success = handleFCmpOp(fcmp_op, value_map);
+    result.success = handleFCmpOp(fcmp_op, value_to_predicated_data_map);
   } else if (auto icmp_op = dyn_cast<neura::ICmpOp>(op)) {
-    execution_success = handleICmpOp(icmp_op, value_map);
+    result.success = handleICmpOp(icmp_op, value_to_predicated_data_map);
   } else if (auto or_op = dyn_cast<neura::OrOp>(op)) {
-    execution_success = handleOrOp(or_op, value_map);
+    result.success = handleOrOp(or_op, value_to_predicated_data_map);
   } else if (auto not_op = dyn_cast<neura::NotOp>(op)) {
-    execution_success = handleNotOp(not_op, value_map);
+    result.success = handleNotOp(not_op, value_to_predicated_data_map);
   } else if (auto sel_op = dyn_cast<neura::SelOp>(op)) {
-    execution_success = handleSelOp(sel_op, value_map);
+    result.success = handleSelOp(sel_op, value_to_predicated_data_map);
   } else if (auto cast_op = dyn_cast<neura::CastOp>(op)) {
-    execution_success = handleCastOp(cast_op, value_map);
+    result.success = handleCastOp(cast_op, value_to_predicated_data_map);
   } else if (auto load_op = dyn_cast<neura::LoadOp>(op)) {
-    execution_success = handleLoadOp(load_op, value_map, mem);
+    result.success = handleLoadOp(load_op, value_to_predicated_data_map, mem);
   } else if (auto store_op = dyn_cast<neura::StoreOp>(op)) {
-    execution_success = handleStoreOp(store_op, value_map, mem);
+    result.success = handleStoreOp(store_op, value_to_predicated_data_map, mem);
   } else if (auto gep_op = dyn_cast<neura::GEP>(op)) {
-    execution_success = handleGEPOp(gep_op, value_map);
+    result.success = handleGEPOp(gep_op, value_to_predicated_data_map);
   } else if (auto load_index_op = dyn_cast<neura::LoadIndexedOp>(op)) {
-    execution_success = handleLoadIndexedOp(load_index_op, value_map, mem);
+    result.success = handleLoadIndexedOp(load_index_op, value_to_predicated_data_map, mem);
   } else if (auto store_index_op = dyn_cast<neura::StoreIndexedOp>(op)) {
-    execution_success = handleStoreIndexedOp(store_index_op, value_map, mem);
+    result.success = handleStoreIndexedOp(store_index_op, value_to_predicated_data_map, mem);
   } else if (auto br_op = dyn_cast<neura::Br>(op)) {
-    // execution_success = handleBrOp(br_op, value_map, current_block, last_visited_block);
+    // Branch operations only need block handling in control flow mode
+    if (current_block && last_visited_block) {
+      result.success = handleBrOp(br_op, value_to_predicated_data_map, *current_block, *last_visited_block);
+      result.is_branch = true;  // Mark as branch to reset index
+    } else {
+      result.success = false;
+    }
   } else if (auto cond_br_op = dyn_cast<neura::CondBr>(op)) {
-    // execution_success = handleCondBrOp(cond_br_op, value_map, current_block, last_visited_block);
+    if (current_block && last_visited_block) {
+      result.success = handleCondBrOp(cond_br_op, value_to_predicated_data_map, *current_block, *last_visited_block);
+      result.is_branch = true;
+    } else {
+      result.success = false;
+    }
   } else if (auto phi_op = dyn_cast<neura::PhiOp>(op)) {
-    execution_success = handlePhiOpDataFlowMode(phi_op, value_map);
+    // Phi operations need block information in control flow mode, but not in data flow
+    if (current_block && last_visited_block) {
+      result.success = handlePhiOp(phi_op, value_to_predicated_data_map, *current_block, *last_visited_block);
+    } else {
+      result.success = handlePhiOp(phi_op, value_to_predicated_data_map);
+    }
   } else if (auto reserve_op = dyn_cast<neura::ReserveOp>(op)) {
-    execution_success = handleReserveOp(reserve_op, value_map);
+    result.success = handleReserveOp(reserve_op, value_to_predicated_data_map);
   } else if (auto ctrl_mov_op = dyn_cast<neura::CtrlMovOp>(op)) {
-    execution_success = handleCtrlMovOpDataFlowMode(ctrl_mov_op, value_map);
+    result.success = handleCtrlMovOp(ctrl_mov_op, value_to_predicated_data_map);
   } else if (auto return_op = dyn_cast<neura::ReturnOp>(op)) {
-    execution_success = handleNeuraReturnOp(return_op, value_map);
+    result.success = handleNeuraReturnOp(return_op, value_to_predicated_data_map);
+    result.is_terminated = true;
   } else if (auto grant_pred_op = dyn_cast<neura::GrantPredicateOp>(op)) {
-    execution_success = handleGrantPredicateOp(grant_pred_op, value_map);
+    result.success = handleGrantPredicateOp(grant_pred_op, value_to_predicated_data_map);
   } else if (auto grant_once_op = dyn_cast<neura::GrantOnceOp>(op)) {
-    execution_success = handleGrantOnceOp(grant_once_op, value_map);
+    result.success = handleGrantOnceOp(grant_once_op, value_to_predicated_data_map);
   } else if (auto grant_always_op = dyn_cast<neura::GrantAlwaysOp>(op)) {
-    execution_success = handleGrantAlwaysOp(grant_always_op, value_map);
+    result.success = handleGrantAlwaysOp(grant_always_op, value_to_predicated_data_map);
   } else {
     llvm::errs() << "[neura-interpreter]  Unhandled op: ";
     op->print(llvm::errs());
     llvm::errs() << "\n";
-    execution_success = false;
+    result.success = false;
   }
 
-  // If execution failed, exit early without propagating updates
-  if (!execution_success) {
+  return result;
+}
+
+/**
+ * @brief Executes a single operation in data flow mode with update propagation
+ * 
+ * Processes the operation using the generic handler, then checks for value updates
+ * and propagates changes to dependent operations. This function contains data flow
+ * specific logic for dependency management and pending operation queue updates.
+ * 
+ * @param op                              The operation to execute
+ * @param value_to_predicated_data_map    Reference to map storing predicated data for values
+ * @param mem                             Reference to memory object for load/store operations
+ * @param next_pending_operation_queue    Queue to receive dependent operations needing processing
+ * @return bool                           True if operation executed successfully, false otherwise
+ */
+bool executeOperation(Operation* op, 
+                     llvm::DenseMap<Value, PredicatedData>& value_to_predicated_data_map, 
+                     Memory& mem,
+                     llvm::SmallVector<Operation*, 16>& next_pending_operation_queue) {
+  
+  // Save current values to detect updates after execution
+  llvm::DenseMap<Value, PredicatedData> old_values;
+  for (Value result : op->getResults()) {
+    if (value_to_predicated_data_map.count(result)) {
+      old_values[result] = value_to_predicated_data_map[result];
+    }
+  }
+
+  // Process the operation using the generic handler (no block info needed for data flow)
+  auto handle_result = handleOperation(op, value_to_predicated_data_map, mem);
+  if (!handle_result.success) {
     if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  Operation failed, no propagation\n";
     }
-    return execution_success;
+    return false;
   }
 
-  // Check if any of the operation's results were updated during execution
+  // Check if any operands are invalid (data flow specific validation)
+  bool has_invalid_operands = false;
+  for (Value operand : op->getOperands()) {
+    if (value_to_predicated_data_map.count(operand) && 
+        !value_to_predicated_data_map[operand].predicate) {
+      has_invalid_operands = true;
+      break;
+    }
+  }
+
+  // Check if any results were updated during execution
   bool has_update = false;
   for (Value result : op->getResults()) {
-    if (!value_map.count(result)) continue;
-    PredicatedData new_data = value_map[result];
+    if (!value_to_predicated_data_map.count(result)) continue;
+    PredicatedData new_data = value_to_predicated_data_map[result];
 
-    // New result (not in old_values) is considered an update
+    // New results (not in old_values) are considered updates
     if (!old_values.count(result)) {
       new_data.is_updated = true;
-      value_map[result] = new_data; 
+      value_to_predicated_data_map[result] = new_data; 
       has_update = true;
       continue;
     }
 
-    // Compare new value with old value to detect updates
+    // Compare new value with old value to detect changes
     PredicatedData old_data = old_values[result];
-    if (isDataUpdated(old_data, new_data)) {
+    if (old_data.isUpdatedComparedTo(new_data)) {
       new_data.is_updated = true;
-      value_map[result] = new_data;
+      value_to_predicated_data_map[result] = new_data;
       has_update = true;
     } else {
       new_data.is_updated = false;
-      value_map[result] = new_data;
+      value_to_predicated_data_map[result] = new_data;
     }
   }
 
@@ -3171,7 +3073,9 @@ bool executeOperation(Operation* op,
   if (op->getNumResults() == 0) {
     if (auto ctrl_mov_op = dyn_cast<neura::CtrlMovOp>(op)) {
       Value target = ctrl_mov_op.getTarget();
-      if (value_map.count(target) && value_map[target].is_updated) {
+      if (value_to_predicated_data_map.count(target) && 
+          value_to_predicated_data_map[target].is_updated &&
+          value_to_predicated_data_map[target].predicate) {
         has_update = true;
       } else {
         llvm::outs() << "[neura-interpreter]  No update for ctrl_mov target: " << target << "\n";
@@ -3179,8 +3083,8 @@ bool executeOperation(Operation* op,
     }
   }
 
-  // If updates occurred, propagate to dependent operations (users)
-  if (has_update) {
+  // Propagate updates to dependent operations if changes occurred
+  if (has_update && !has_invalid_operands) {
     if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  Operation updated, propagating to users...\n";
     }
@@ -3188,284 +3092,134 @@ bool executeOperation(Operation* op,
     // Collect all values affected by the update
     llvm::SmallVector<Value, 4> affected_values;
     for (Value result : op->getResults()) {
-      if (value_map.count(result) && value_map[result].is_updated) {
+      if (value_to_predicated_data_map.count(result) && 
+          value_to_predicated_data_map[result].is_updated &&
+          value_to_predicated_data_map[result].predicate) {
         affected_values.push_back(result);
       }
     }
 
-    // Include targets from the operations without result (e.g., CtrlMovOp)
+    // Include targets from operations without results (e.g., CtrlMovOp)
     if (op->getNumResults() == 0) {
       if (auto ctrl_mov_op = dyn_cast<neura::CtrlMovOp>(op)) {
+        Value source = ctrl_mov_op.getValue();
         Value target = ctrl_mov_op.getTarget();
-        if (value_map.count(target) && value_map[target].is_updated) {
+        if (value_to_predicated_data_map.count(source) &&
+            value_to_predicated_data_map[source].is_updated &&
+            value_to_predicated_data_map[source].predicate &&
+            value_to_predicated_data_map.count(target) && 
+            value_to_predicated_data_map[target].is_updated &&
+            value_to_predicated_data_map[target].predicate) {
           affected_values.push_back(target);
         }
       }
     }
 
-     // Add all users of affected values to the next work list (if not already present)
+    // Add all users of affected values to the next pending operation queue (if not already present)
     for (Value val : affected_values) {
-      if (!value_users.count(val)) continue;
-      for (Operation* user_op : value_users[val]) {
-        if (!in_work_list[user_op]) {
-          next_work_list.push_back(user_op);
-          in_work_list[user_op] = true;
+      for (Operation* user_op : val.getUsers()) {
+        if (!is_operation_enqueued[user_op]) {
+          next_pending_operation_queue.push_back(user_op);
+          is_operation_enqueued[user_op] = true;
           if (isVerboseMode()) {
-            llvm::outs() << "[neura-interpreter]  Added user to next work_list: ";
+            llvm::outs() << "[neura-interpreter]  Added user to next pending_operation_queue: ";
             user_op->print(llvm::outs());
             llvm::outs() << "\n";
           }
         }
-      }
+      } 
     }
   }
 
-  return execution_success;
+  return true;
 }
 
 /**
- * @brief Executes a function in data flow mode, processing operations based on data availability and managing return operations separately.
+ * @brief Unified execution entry point supporting both data flow and control flow modes
  * 
- * This function processes operations in a work list, where each operation is executed once its dependencies are satisfied. 
- * Return operations are held in a delay queue until all their input values are valid, ensuring they execute only when all prerequisites are met.
- * It iteratively processes the work list, propagating data through the graph until all operations (including returns) are completed.
+ * Executes a function using either data flow or control flow semantics based on the specified mode.
+ * Data flow mode processes operations when their dependencies are satisfied, while control flow
+ * mode follows traditional sequential execution with branch handling.
  * 
- * @param func        The function to execute in data flow mode
- * @param value_map   Reference to a map storing predicated data for each value (tracks valid/invalid state)
- * @param mem         Reference to the memory object for handling load/store operations
- * @return int        0 if execution completes successfully, 1 if an error occurs during operation execution
+ * @param func                           The function to execute
+ * @param value_to_predicated_data_map   Reference to map storing predicated data for values
+ * @param mem                            Reference to memory object for load/store operations
+ * @return int                           0 if execution completes successfully, 1 on error
  */
-int runDataFlowMode(func::FuncOp func,
-                    llvm::DenseMap<Value, PredicatedData>& value_map,
-                    Memory& mem) {
-  // Queue to hold return operations until their dependencies are satisfied
-  llvm::SmallVector<Operation*, 4> delay_queue;
-
-  // Initialize work list with all operations except return ops (which go to delay queue)
-  for (auto& block : func.getBody()) {
-    for (auto& op : block.getOperations()) {
-      if (isa<neura::ReturnOp>(op) || isa<func::ReturnOp>(op)) {
-        delay_queue.push_back(&op);
-        if (isVerboseMode()) {
-          llvm::outs() << "[neura-interpreter]  Return op added to delay queue: ";
-          op.print(llvm::outs());
-          llvm::outs() << "\n";
+int run(func::FuncOp func,
+        llvm::DenseMap<Value, PredicatedData>& value_to_predicated_data_map,
+        Memory& mem) {
+  if (isDataflowMode()) {
+    // Data flow mode execution logic
+    // Initialize pending operation queue with all operations except return operations
+    for (auto& block : func.getBody()) {
+      for (auto& op : block.getOperations()) {
+        if (isa<neura::ReturnOp>(op) || isa<func::ReturnOp>(op)) {
+          continue;
+        } else {
+          pending_operation_queue.push_back(&op);
+          is_operation_enqueued[&op] = true;
         }
-      } else {
-        // Add non-return operations to the work list and mark them as present
-        work_list.push_back(&op);
-        in_work_list[&op] = true;
       }
     }
-  }
 
-  int iter_count = 0;
-  // Main loop: process work list and delay queue until both are empty
-  while (!work_list.empty() || !delay_queue.empty()) {
-    iter_count++;
+    int iter_count = 0;
+    // Main loop: process pending operation queue until empty
+    while (!pending_operation_queue.empty()) {
+      iter_count++;
+      if (isVerboseMode()) {
+        llvm::outs() << "[neura-interpreter]  Iteration " << iter_count
+                     << " | pending_operation_queue: " << pending_operation_queue.size() << "\n";
+      }
+
+      llvm::SmallVector<Operation*, 16> next_pending_operation_queue;
+      for (Operation* op : pending_operation_queue) {
+        is_operation_enqueued[op] = false;
+        if (!executeOperation(op, value_to_predicated_data_map, mem, next_pending_operation_queue)) {
+          return 1;
+        }
+      }
+      pending_operation_queue = std::move(next_pending_operation_queue);
+    }
+
     if (isVerboseMode()) {
-      llvm::outs() << "[neura-interpreter]  Iteration " << iter_count
-                   << " | work_list: " << work_list.size()
-                   << " | delay_queue: " << delay_queue.size() << "\n";
+      llvm::outs() << "[neura-interpreter]  Total iterations: " << iter_count << "\n";
     }
+  } else {
+    // Control flow mode execution logic
+    Block* current_block = &func.getBody().front();
+    Block* last_visited_block = nullptr;
+    size_t op_index = 0;
+    bool is_terminated = false;
 
-    llvm::SmallVector<Operation*, 16> next_work_list;
+    // Main loop: process operations sequentially through blocks
+    while (!is_terminated && current_block) {
+      auto& operations = current_block->getOperations();
+      if (op_index >= operations.size()) break;
 
-    // Process all operations in the current work list
-    for (Operation* op : work_list) {
-      in_work_list[op] = false;
-      if (!executeOperation(op, value_map, mem, next_work_list)) {
-        return 1;
-      }
-    }
-
-    // Check if return operations in the delay queue can be executed
-    if (!delay_queue.empty()) {
-      Operation* return_op = delay_queue[0];
-      bool can_execute_return = true;
-      // Verify all input operands of the return op are valid (exist and have true predicate)
-      for (Value input : return_op->getOperands()) {
-        if (!value_map.count(input) || !value_map[input].predicate) {
-          can_execute_return = false;
-          break;
-        }
-      }
-
-      if (can_execute_return) {
-        if (isVerboseMode()) {
-          llvm::outs() << "[neura-interpreter]  All return inputs are valid, executing return\n";
-        }
-        for (Operation* op : delay_queue) {
-          next_work_list.push_back(op);
-          in_work_list[op] = true;
-        }
-        delay_queue.clear();
+      Operation& op = *std::next(operations.begin(), op_index);
+      // Process operation with block information for control flow handling
+      auto handle_result = handleOperation(&op, value_to_predicated_data_map, mem, &current_block, &last_visited_block);
+      
+      if (!handle_result.success) return 1;
+      if (handle_result.is_terminated) {
+        is_terminated = true;
+        op_index++;
+      } else if (handle_result.is_branch) {
+        // Branch operations update current_block, reset index to start of new block
+        op_index = 0;
       } else {
-        if (isVerboseMode()) {
-          llvm::outs() << "[neura-interpreter]  Some return inputs are invalid, keeping return in delay queue\n";
-        }
+        // Regular operations increment to next operation in block
+        op_index++;
       }
     }
-
-    // Prepare work list for the next iteration
-    work_list = std::move(next_work_list);
-  }
-
-  if (isVerboseMode()) {
-    llvm::outs() << "[neura-interpreter]  Total iterations: " << iter_count << "\n";
   }
 
   return 0;
 }
 
-/**
- * @brief Executes the control flow of a function by processing operations in sequence and handling control transfers.
- * 
- * This function iterates through the operations within the function's blocks, processing each operation
- * according to its type using specialized handler functions. It manages control flow transfers (branches,
- * conditional branches) and maintains the current execution state including the active block and operation index.
- * 
- * @param func        The function to execute in control flow mode
- * @param value_map   Reference to a map storing predicated data for each value
- * @param mem         Reference to the memory object for handling load/store operations
- * @return int        0 if execution completes successfully, 1 if an error occurs (unhandled operation or handler failure)
- */
-int runControlFlowMode(func::FuncOp func, 
-                      llvm::DenseMap<Value, PredicatedData>& value_map, 
-                      Memory& mem) {
-  Block* current_block = &func.getBody().front(); /* Initialize execution state - start at the first block of the function */
-  Block* last_visited_block = nullptr;            /* Track the previous block for handling phi operations */
-  size_t op_index = 0;                            /* Current position within the operations of the current block */
-  bool is_terminated = false;                     /* Flag to indicate if execution has been terminated (e.g., by return operation) */
-  
-  // Main execution loop - continues until termination or no more blocks to process
-  while (!is_terminated && current_block) {
-    auto& operations = current_block->getOperations();
-
-    if (op_index >= operations.size()) {
-      break;
-    }
-
-    Operation& op = *std::next(operations.begin(), op_index);
-
-    // Handle each operation type with specialized handlers
-    if (auto const_op = dyn_cast<mlir::arith::ConstantOp>(op)) {
-      if (!handleArithConstantOp(const_op, value_map)) return 1;
-      ++op_index;
-    } else if (auto const_op = dyn_cast<neura::ConstantOp>(op)) {
-      if (!handleNeuraConstantOp(const_op, value_map)) return 1;
-      ++op_index;
-    } else if (auto mov_op = dyn_cast<neura::DataMovOp>(op)) {
-      value_map[mov_op.getResult()] = value_map[mov_op.getOperand()];
-      ++op_index;
-    } else if (auto add_op = dyn_cast<neura::AddOp>(op)) {
-      if (!handleAddOp(add_op, value_map)) return 1;
-      ++op_index;
-    } else if (auto sub_op = dyn_cast<neura::SubOp>(op)) {
-      if (!handleSubOp(sub_op, value_map)) return 1;
-      ++op_index;
-    } else if (auto fadd_op = dyn_cast<neura::FAddOp>(op)) {
-      if (!handleFAddOp(fadd_op, value_map)) return 1;
-      ++op_index;
-    } else if (auto fsub_op = dyn_cast<neura::FSubOp>(op)) {
-      if (!handleFSubOp(fsub_op, value_map)) return 1;
-      ++op_index;
-    } else if (auto fmul_op = dyn_cast<neura::FMulOp>(op)) {
-      if (!handleFMulOp(fmul_op, value_map)) return 1;
-      ++op_index;
-    } else if (auto fdiv_op = dyn_cast<neura::FDivOp>(op)) {
-      if (!handleFDivOp(fdiv_op, value_map)) return 1;
-      ++op_index;
-    } else if (auto vfmul_op = dyn_cast<neura::VFMulOp>(op)) {
-      if (!handleVFMulOp(vfmul_op, value_map)) return 1;
-      ++op_index;
-    } else if (auto fadd_fadd_op = dyn_cast<neura::FAddFAddOp>(op)) {
-      if (!handleFAddFAddOp(fadd_fadd_op, value_map)) return 1;
-      ++op_index;
-    } else if (auto fmul_fadd_op = dyn_cast<neura::FMulFAddOp>(op)) {
-      if (!handleFMulFAddOp(fmul_fadd_op, value_map)) return 1;
-      ++op_index;
-    } else if (auto ret_op = dyn_cast<func::ReturnOp>(op)) {
-      if (!handleFuncReturnOp(ret_op, value_map)) return 1;
-      is_terminated = true;
-      ++op_index;
-    } else if (auto fcmp_op = dyn_cast<neura::FCmpOp>(op)) {
-      if (!handleFCmpOp(fcmp_op, value_map)) return 1;
-      ++op_index;
-    } else if (auto icmp_op = dyn_cast<neura::ICmpOp>(op)) {
-      if (!handleICmpOp(icmp_op, value_map)) return 1;
-      ++op_index;
-    } else if (auto or_op = dyn_cast<neura::OrOp>(op)) {
-      if (!handleOrOp(or_op, value_map)) return 1;
-      ++op_index;
-    } else if (auto not_op = dyn_cast<neura::NotOp>(op)) {
-      if (!handleNotOp(not_op, value_map)) return 1;
-      ++op_index;
-    } else if (auto sel_op = dyn_cast<neura::SelOp>(op)) {
-      if (!handleSelOp(sel_op, value_map)) return 1;
-      ++op_index;
-    } else if (auto cast_op = dyn_cast<neura::CastOp>(op)) {
-      if (!handleCastOp(cast_op, value_map)) return 1;
-      ++op_index;
-    } else if (auto load_op = dyn_cast<neura::LoadOp>(op)) {
-      if (!handleLoadOp(load_op, value_map, mem)) return 1;
-      ++op_index;
-    } else if (auto store_op = dyn_cast<neura::StoreOp>(op)) {
-      if (!handleStoreOp(store_op, value_map, mem)) return 1;
-      ++op_index;
-    } else if (auto gep_op = dyn_cast<neura::GEP>(op)) {
-      if (!handleGEPOp(gep_op, value_map)) return 1;
-      ++op_index;
-    } else if (auto load_index_op = dyn_cast<neura::LoadIndexedOp>(op)) {
-      if (!handleLoadIndexedOp(load_index_op, value_map, mem)) return 1;
-      ++op_index;
-    } else if (auto store_index_op = dyn_cast<neura::StoreIndexedOp>(op)) {
-      if (!handleStoreIndexedOp(store_index_op, value_map, mem)) return 1;
-      ++op_index;
-    } else if (auto br_op = dyn_cast<neura::Br>(op)) {
-      // Branch operations change the current block - reset index to start of new block
-      if (!handleBrOp(br_op, value_map, current_block, last_visited_block)) return 1;
-      op_index = 0;  
-    } else if (auto cond_br_op = dyn_cast<neura::CondBr>(op)) {
-      // Conditional branches change the current block - reset index to start of new block
-      if (!handleCondBrOp(cond_br_op, value_map, current_block, last_visited_block)) return 1;
-      op_index = 0; 
-    } else if (auto phi_op = dyn_cast<neura::PhiOp>(op)) {
-      // Phi operations depend on previous block for value selection
-      if (!handlePhiOpControlFlowMode(phi_op, value_map, current_block, last_visited_block)) return 1;
-      ++op_index;
-    } else if (auto reserve_op = dyn_cast<neura::ReserveOp>(op)) {
-      if (!handleReserveOp(reserve_op, value_map)) return 1;
-      ++op_index;
-    } else if (auto ctrl_mov_op = dyn_cast<neura::CtrlMovOp>(op)) {
-      if (!handleCtrlMovOp(ctrl_mov_op, value_map)) return 1;
-      ++op_index;
-    } else if (auto return_op = dyn_cast<neura::ReturnOp>(op)) {
-      if (!handleNeuraReturnOp(return_op, value_map)) return 1;
-      is_terminated = true;
-      ++op_index;
-    } else if (auto grant_pred_op = dyn_cast<neura::GrantPredicateOp>(op)) {
-      if (!handleGrantPredicateOp(grant_pred_op, value_map)) return 1;
-      ++op_index;
-    } else if (auto grant_once_op = dyn_cast<neura::GrantOnceOp>(op)) {
-      if (!handleGrantOnceOp(grant_once_op, value_map)) return 1;
-      ++op_index;
-    } else if (auto grant_always_op = dyn_cast<neura::GrantAlwaysOp>(op)) {
-      if (!handleGrantAlwaysOp(grant_always_op, value_map)) return 1;
-      ++op_index;
-    } else {
-      llvm::errs() << "[neura-interpreter]  Unhandled op: ";
-      op.print(llvm::errs());
-      llvm::errs() << "\n";
-      return 1;
-    }
-  }
-
-  return 0; 
-}
-
 int main(int argc, char **argv) {
-
+  // Parse command line arguments
   for (int i = 0; i < argc; ++i) {
     if (std::string(argv[i]) == "--verbose") {
       setVerboseMode(true);
@@ -3475,16 +3229,18 @@ int main(int argc, char **argv) {
   }
 
   if (argc < 2) {
-    llvm::errs() << "[neura-interpreter]  Usage: neura-interpreter <input.mlir> [--verbose]\n";
+    llvm::errs() << "[neura-interpreter]  Usage: neura-interpreter <input.mlir> [--verbose] [--dataflow]\n";
     return 1;
   }
 
+  // Initialize MLIR context and dialects
   DialectRegistry registry;
   registry.insert<neura::NeuraDialect, func::FuncDialect, arith::ArithDialect>();
 
   MLIRContext context;
   context.appendDialectRegistry(registry);
 
+  // Load and parse input MLIR file
   llvm::SourceMgr source_mgr;
   auto file_or_err = mlir::openInputFile(argv[1]);
   if (!file_or_err) {
@@ -3500,25 +3256,14 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  // Changes map to store PredicatedData instead of just float.
-  llvm::DenseMap<Value, PredicatedData> value_map;
+  // Initialize data structures
+  llvm::DenseMap<Value, PredicatedData> value_to_predicated_data_map;
+  Memory mem(1024); // 1MB memory allocation
 
-  Memory mem(1024); // 1MB
-
-  if (isDataflowMode()) {
-    buildDependencyGraph(*module);
-    for (auto func : module->getOps<func::FuncOp>()) {
-      if (runDataFlowMode(func, value_map, mem)) {
-        llvm::errs() << "[neura-interpreter]  Data Flow execution failed\n";
-        return 1;
-      }
-    }
-  } else {
-    for (auto func : module->getOps<func::FuncOp>()) {
-      if (runControlFlowMode(func, value_map, mem)) {
-        llvm::errs() << "[neura-interpreter]  Control Flow execution failed\n";
-        return 1;
-      }
+  for (auto func : module->getOps<func::FuncOp>()) {
+    if (run(func, value_to_predicated_data_map, mem)) {
+      llvm::errs() << "[neura-interpreter]  Execution failed\n";
+      return 1;
     }
   }
 
