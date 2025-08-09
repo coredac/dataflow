@@ -6,18 +6,11 @@
 
 namespace mlir {
 namespace neura {
-
-// Returns true if the operation does not need CGRA tile placement.
-inline bool is_non_materialized(Operation *op) {
-  // Returns true if the operation does not need CGRA tile placement.
-  return mlir::isa<neura::ReserveOp, neura::CtrlMovOp, neura::DataMovOp>(op);
-}
-
 bool HeuristicMapping::map(
     std::vector<std::pair<Operation *, int>> &sorted_ops_with_levels,
     std::set<Operation *> &critical_ops, const Architecture &architecture,
     MappingState &mapping_state) {
-  // Start the backtracking mapping process from the first operation.
+  // Starts the backtracking mapping process.
   return mapWithBacktrack(sorted_ops_with_levels, critical_ops, architecture,
                           mapping_state);
 }
@@ -86,9 +79,18 @@ bool HeuristicMapping::mapWithBacktrack(
     }
 
     Operation *current_op = materialized_ops[current_op_index].first;
-    std::vector<MappingLoc> candidate_locs = calculateAward(
-        current_op, critical_ops, materialized_ops[current_op_index].second,
-        architecture, mapping_state);
+    std::vector<MappingLoc> candidate_locs;
+    if (this->is_spatial) {
+      candidate_locs = calculateSpatialAward(
+          current_op, critical_ops, materialized_ops[current_op_index].second,
+          architecture, mapping_state);
+    } else {
+      // For non-spatial mapping, we can use the existing calculateAward
+      // function.
+      candidate_locs = calculateAward(current_op, critical_ops,
+                                      materialized_ops[current_op_index].second,
+                                      architecture, mapping_state);
+    }
 
     if (candidate_locs.empty()) {
       llvm::outs() << "[HeuristicMapping] No candidate locations found "
@@ -192,6 +194,190 @@ bool HeuristicMapping::mapWithBacktrack(
   // If we reach here, it means we have exhausted all possibilities.
   llvm::errs() << "[HeuristicMapping] FAILURE: Exhausted all possibilities\n";
   return false;
+}
+
+std::vector<MappingLoc> HeuristicMapping::calculateSpatialAward(
+    Operation *op, std::set<Operation *> &critical_ops, int target_level,
+    const Architecture &architecture, const MappingState &mapping_state) {
+  llvm::outs() << "[caculateSpatialAward] Calculating spatial award for " << *op
+               << "\n";
+  // Early exit if the operation is not supported by all the tiles.
+  bool op_can_be_supported = false;
+  for (Tile *tile : architecture.getAllTiles()) {
+    if (tile->canSupportOperation(
+            mlir::neura::getOperationKindFromMlirOp(op))) {
+      op_can_be_supported = true;
+    }
+  }
+  if (!op_can_be_supported) {
+    llvm::errs() << "[caculateSpatialAward] Operation: " << *op
+                 << " is not supported by any tile.\n";
+    return {};
+  }
+
+  // A map of locations with their associated award.
+  std::map<MappingLoc, int> locs_with_award;
+
+  // Assembles all the producers.
+  std::vector<Operation *> producers;
+  for (Value operand : op->getOperands()) {
+    if (isa<neura::ReserveOp>(operand.getDefiningOp())) {
+      // Skips Reserve ops (backward ctrl move) when calculating award.
+      continue;
+    }
+    Operation *producer = getMaterializedProducer(operand);
+    assert(producer && "Expected a materialized producer");
+    producers.push_back(producer);
+  }
+
+  // Assembles all the backward users if exist.
+  std::vector<Operation *> backward_users;
+  for (Operation *user : getCtrlMovUsers(op)) {
+    auto ctrl_mov = dyn_cast<neura::CtrlMovOp>(user);
+    assert(ctrl_mov && "Expected user to be a CtrlMovOp");
+    mlir::Operation *materialized_backward_op =
+        getMaterializedBackwardUser(ctrl_mov);
+    assert(isa<neura::PhiOp>(materialized_backward_op) &&
+           "Expected materialized operation of ctrl_mov to be a PhiOp");
+    backward_users.push_back(materialized_backward_op);
+  }
+
+  llvm::errs() << "[caculateSpatialAward] Operation: " << *op
+               << "; Producers: " << producers.size() << "\n";
+
+  // Tracks which tiles are already allocated to operations
+  std::set<Tile *> occupied_tiles;
+  for (const auto &entry : mapping_state.getLocToOp()) {
+    if (entry.first.resource->getKind() == ResourceKind::Tile) {
+      llvm::outs() << "[caculateSpatialAward] Tile: "
+                   << entry.first.resource->getId()
+                   << " is already occupied by operation: " << *(entry.second)
+                   << "\n";
+      occupied_tiles.insert(dyn_cast<Tile>(entry.first.resource));
+    }
+  }
+
+  for (Tile *tile : architecture.getAllTiles()) {
+    // Skip tiles that are already allocated to other operations
+    if (occupied_tiles.count(tile)) {
+      llvm::outs() << "[caculateSpatialAward] Tile: " << tile->getId()
+                   << " is already occupied, skip it.\n";
+      continue;
+    }
+
+    if (!tile->canSupportOperation(getOperationKindFromMlirOp(op))) {
+      llvm::errs() << "[caculateSpatialAward] Tile: " << tile->getId()
+                   << " does not support operation: " << *op << "\n";
+      continue; // Skip tiles that cannot support the operation.
+    }
+
+    int earliest_start_time_step = target_level;
+
+    for (Operation *producer : producers) {
+      std::vector<MappingLoc> producer_locs =
+          mapping_state.getAllLocsOfOp(producer);
+      assert(!producer_locs.empty() && "No locations found for producer");
+
+      MappingLoc producer_loc = producer_locs.back();
+      earliest_start_time_step =
+          std::max(earliest_start_time_step, producer_loc.time_step + 1);
+    }
+
+    int latest_end_time_step = earliest_start_time_step + mapping_state.getII();
+    std::vector<MappingLoc> backward_users_locs;
+    for (Operation *user : backward_users) {
+      std::vector<MappingLoc> user_locs = mapping_state.getAllLocsOfOp(user);
+      assert(!user_locs.empty() && "No locations found for backward user");
+
+      MappingLoc backward_user_loc = user_locs.back();
+      latest_end_time_step =
+          std::min(latest_end_time_step,
+                   backward_user_loc.time_step + mapping_state.getII());
+      llvm::outs() << "[caculateSpatialAward] Latest end time step for " << *op
+                   << " on tile: " << tile->getId()
+                   << " is now: " << latest_end_time_step << "\n";
+      backward_users_locs.push_back(backward_user_loc);
+    }
+
+    int award = 2 * mapping_state.getII();
+    if (critical_ops.count(op)) {
+      award += tile->getDstTiles().size();
+      award += op->getOperands().size() -
+               getPhysicalHops(producers, tile, mapping_state);
+    }
+
+    if (!backward_users.empty()) {
+      llvm::outs() << "[caculateSpatialAward] earliest_start_time_step: "
+                   << earliest_start_time_step
+                   << ", latest_end_time_step: " << latest_end_time_step
+                   << " for tile: " << tile->getType() << "#" << tile->getId()
+                   << "\n";
+    }
+
+    for (int t = earliest_start_time_step; t < latest_end_time_step; t += 1) {
+      MappingLoc tile_loc_candidate = {tile, t};
+
+      // If the tile at time `t` is available, we can consider it for mapping.
+      if (mapping_state.isAvailableAcrossTime(tile_loc_candidate)) {
+        if (!backward_users.empty()) {
+          llvm::outs() << "[caculateSpatialAward] Tile: " << tile->getType()
+                       << "#" << tile->getId() << " at time step: " << t
+                       << " is available for mapping operation: " << *op
+                       << "\n";
+        }
+
+        bool meet_producer_constraint =
+            producers.empty() ||
+            canReachLocInTime(producers, tile_loc_candidate, t, mapping_state);
+        if (!backward_users.empty()) {
+          llvm::outs() << "[caculateSpatialAward] "
+                       << "Meet producer constraint: "
+                       << meet_producer_constraint << "\n";
+        }
+        bool meet_backward_user_constraint = true;
+        for (auto &backward_user_loc : backward_users_locs) {
+          // Check if the location can reach all backward users.
+          if (!canReachLocInTime(tile_loc_candidate, backward_user_loc,
+                                 backward_user_loc.time_step +
+                                     mapping_state.getII(),
+                                 mapping_state)) {
+            meet_backward_user_constraint = false;
+            break; // No need to check further.
+          }
+        }
+        if (!backward_users.empty()) {
+          llvm::outs() << "[caculateSpatialAward] "
+                       << "Meet backward user constraint: "
+                       << meet_backward_user_constraint << "\n";
+        }
+
+        if (meet_producer_constraint && meet_backward_user_constraint) {
+          updateAward(locs_with_award, tile_loc_candidate, award);
+        }
+      }
+      // The mapping location with earlier time step is granted with a higher
+      // award.
+      award -= 1;
+    }
+  }
+
+  // Copies map entries into a vector of pairs for sorting.
+  std::vector<std::pair<MappingLoc, int>> locs_award_vec(
+      locs_with_award.begin(), locs_with_award.end());
+
+  // Sorts by award (descending).
+  std::sort(
+      locs_award_vec.begin(), locs_award_vec.end(),
+      [](const std::pair<MappingLoc, int> &a,
+         const std::pair<MappingLoc, int> &b) { return a.second > b.second; });
+
+  // Extracts just the MappingLocs, already sorted by award.
+  std::vector<MappingLoc> sorted_locs;
+  sorted_locs.reserve(locs_award_vec.size());
+  for (const auto &pair : locs_award_vec)
+    sorted_locs.push_back(pair.first);
+
+  return sorted_locs;
 }
 
 } // namespace neura
