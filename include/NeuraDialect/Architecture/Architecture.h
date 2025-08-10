@@ -5,8 +5,8 @@
 #include <map>
 #include <memory>
 #include <optional>
-#include <string>
 #include <set>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -31,12 +31,7 @@ enum class FunctionUnitKind {
 };
 
 // Enum for supported operation types.
-enum OperationKind {
-  IAdd = 0,
-  IMul = 1,
-  FAdd = 2,
-  FMul = 3
-};
+enum OperationKind { IAdd = 0, IMul = 1, FAdd = 2, FMul = 3 };
 
 //===----------------------------------------------------------------------===//
 // BasicResource: abstract base class for Tile, Link, etc.
@@ -75,9 +70,9 @@ public:
     return res && res->getKind() == ResourceKind::FunctionUnit;
   }
 
-  Tile* getTile() const;
+  Tile *getTile() const;
 
-  void setTile(Tile* tile);
+  void setTile(Tile *tile);
 
   std::set<OperationKind> getSupportedOperations() const {
     return supported_operations;
@@ -97,7 +92,7 @@ protected:
 
 private:
   int id;
-  Tile* tile;
+  Tile *tile;
 };
 
 class FixedPointAdder : public FunctionUnit {
@@ -148,11 +143,11 @@ public:
   int getX() const;
   int getY() const;
 
-  void linkDstTile(Link* link, Tile* tile);
-  const std::set<Tile*>& getDstTiles() const;
-  const std::set<Tile*>& getSrcTiles() const;
-  const std::set<Link*>& getOutLinks() const;
-  const std::set<Link*>& getInLinks() const;
+  void linkDstTile(Link *link, Tile *tile);
+  const std::set<Tile *> &getDstTiles() const;
+  const std::set<Tile *> &getSrcTiles() const;
+  const std::set<Link *> &getOutLinks() const;
+  const std::set<Link *> &getInLinks() const;
 
   void addFunctionUnit(std::unique_ptr<FunctionUnit> func_unit) {
     assert(func_unit && "Cannot add null function unit");
@@ -167,12 +162,13 @@ public:
         return true;
       }
     }
-    // TODO: Check if the tile can support the operation based on its capabilities.
+    // TODO: Check if the tile can support the operation based on its
+    // capabilities.
     // @Jackcuii, https://github.com/coredac/dataflow/issues/82.
     return true;
   }
 
-  void addRegisterFileCluster(RegisterFileCluster* register_file_cluster);
+  void addRegisterFileCluster(RegisterFileCluster *register_file_cluster);
 
   const RegisterFileCluster *getRegisterFileCluster() const;
 
@@ -183,12 +179,13 @@ public:
 private:
   int id;
   int x, y;
-  std::set<Tile*> src_tiles;
-  std::set<Tile*> dst_tiles;
-  std::set<Link*> in_links;
-  std::set<Link*> out_links;
-  std::vector<std::unique_ptr<FunctionUnit>> functional_unit_storage; // Owns FUs.
-  std::set<FunctionUnit*> functional_units; // Non-owning, for fast lookup.
+  std::set<Tile *> src_tiles;
+  std::set<Tile *> dst_tiles;
+  std::set<Link *> in_links;
+  std::set<Link *> out_links;
+  std::vector<std::unique_ptr<FunctionUnit>>
+      functional_unit_storage;               // Owns FUs.
+  std::set<FunctionUnit *> functional_units; // Non-owning, for fast lookup.
   RegisterFileCluster *register_file_cluster = nullptr;
 };
 
@@ -209,15 +206,15 @@ public:
   static bool classof(const BasicResource *res) {
     return res && res->getKind() == ResourceKind::Link;
   }
-  Tile* getSrcTile() const;
-  Tile* getDstTile() const;
+  Tile *getSrcTile() const;
+  Tile *getDstTile() const;
 
-  void connect(Tile* src, Tile* dst);
+  void connect(Tile *src, Tile *dst);
 
 private:
   int id;
-  Tile* src_tile;
-  Tile* dst_tile;
+  Tile *src_tile;
+  Tile *dst_tile;
 };
 
 //===----------------------------------------------------------------------===//
@@ -238,15 +235,15 @@ public:
     return res && res->getKind() == ResourceKind::Register;
   }
 
-  Tile* getTile() const;
+  Tile *getTile() const;
 
-  void setRegisterFile(RegisterFile* register_file);
+  void setRegisterFile(RegisterFile *register_file);
 
-  RegisterFile* getRegisterFile() const;
+  RegisterFile *getRegisterFile() const;
 
 private:
   int id;
-  RegisterFile* register_file;
+  RegisterFile *register_file;
 };
 
 //===----------------------------------------------------------------------===//
@@ -267,19 +264,19 @@ public:
     return res && res->getKind() == ResourceKind::RegisterFile;
   }
 
-  Tile* getTile() const;
+  Tile *getTile() const;
 
-  void setRegisterFileCluster(RegisterFileCluster* register_file_cluster);
+  void setRegisterFileCluster(RegisterFileCluster *register_file_cluster);
 
-  void addRegister(Register* reg);
+  void addRegister(Register *reg);
 
-  const std::map<int, Register*>& getRegisters() const;
-  RegisterFileCluster* getRegisterFileCluster() const;
+  const std::map<int, Register *> &getRegisters() const;
+  RegisterFileCluster *getRegisterFileCluster() const;
 
 private:
   int id;
-  std::map<int, Register*> registers;
-  RegisterFileCluster* register_file_cluster = nullptr;
+  std::map<int, Register *> registers;
+  RegisterFileCluster *register_file_cluster = nullptr;
 };
 
 //===----------------------------------------------------------------------===//
@@ -293,29 +290,32 @@ public:
 
   std::string getType() const override { return "register_file_cluster"; }
 
-  ResourceKind getKind() const override { return ResourceKind::RegisterFileCluster; }
+  ResourceKind getKind() const override {
+    return ResourceKind::RegisterFileCluster;
+  }
 
   static bool classof(const BasicResource *res) {
     return res && res->getKind() == ResourceKind::RegisterFileCluster;
   }
 
-  Tile* getTile() const;
-  void setTile(Tile* tile);
+  Tile *getTile() const;
+  void setTile(Tile *tile);
 
-  void addRegisterFile(RegisterFile* register_file);
-  const std::map<int, RegisterFile*>& getRegisterFiles() const;
+  void addRegisterFile(RegisterFile *register_file);
+  const std::map<int, RegisterFile *> &getRegisterFiles() const;
 
 private:
   int id;
-  Tile* tile;
-  std::map<int, RegisterFile*> register_files;
+  Tile *tile;
+  std::map<int, RegisterFile *> register_files;
 };
 
 //===----------------------------------------------------------------------===//
 
 struct PairHash {
   std::size_t operator()(const std::pair<int, int> &coord) const {
-    return std::hash<int>()(coord.first) ^ (std::hash<int>()(coord.second) << 1);
+    return std::hash<int>()(coord.first) ^
+           (std::hash<int>()(coord.second) << 1);
   }
 };
 
@@ -325,22 +325,28 @@ class Architecture {
 public:
   Architecture(int width, int height);
 
-  Tile* getTile(int id);
-  Tile* getTile(int x, int y);
+  Tile *getTile(int id);
+  Tile *getTile(int x, int y);
 
-  Link* getLink(int id);
+  int getWidth() const { return width; }
+  int getHeight() const { return height; }
+
+  Link *getLink(int id);
 
   int getNumTiles() const;
-  std::vector<Tile*> getAllTiles() const;
-  std::vector<Link*> getAllLinks() const;
+  std::vector<Tile *> getAllTiles() const;
+  std::vector<Link *> getAllLinks() const;
 
 private:
   // TODO: Model architecture in detail, e.g., ports, registers, crossbars, etc.
   // https://github.com/coredac/dataflow/issues/52.
   std::vector<std::unique_ptr<Tile>> tile_storage;
   std::vector<std::unique_ptr<Link>> link_storage;
-  std::unordered_map<int, Tile*> id_to_tile;
-  std::unordered_map<std::pair<int, int>, Tile*, PairHash> coord_to_tile;
+  std::unordered_map<int, Tile *> id_to_tile;
+  std::unordered_map<std::pair<int, int>, Tile *, PairHash> coord_to_tile;
+
+  int width;
+  int height;
 };
 
 } // namespace neura

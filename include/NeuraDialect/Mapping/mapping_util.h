@@ -15,9 +15,10 @@ bool is_non_materialized(Operation *op);
 // Represents a recurrence cycle rooted at a reserve operation and closed by
 // ctrl_mov.
 struct RecurrenceCycle {
-  SmallVector<Operation *>
-      operations; // Ordered list of operations in the cycle.
-  int length = 0; // Number of operations excluding reserve/ctrl_mov.
+  // Ordered list of operations in the cycle.
+  SmallVector<Operation *> operations;
+  // Number of operations excluding reserve/ctrl_mov.
+  int length = 0;
 };
 
 // Collects recurrence cycles rooted at reserve and closed by ctrl_mov.
