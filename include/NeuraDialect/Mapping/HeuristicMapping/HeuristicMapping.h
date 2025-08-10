@@ -15,7 +15,7 @@ public:
   HeuristicMapping(int max_location_to_try = 5, int max_backtrack_depth = 3,
                    bool is_spatial = false)
       : max_location_to_try(max_location_to_try),
-        max_backtrack_depth(max_backtrack_depth), is_spatial(is_spatial) {}
+        max_backtrack_depth(max_backtrack_depth) {}
 
   bool map(std::vector<std::pair<Operation *, int>> &sorted_ops_with_levels,
            std::set<Operation *> &critical_ops,
@@ -49,10 +49,10 @@ private:
                         const MappingState &mapping_state);
 
   // Configuration parameters.
-  int max_location_to_try; // Maximum number of locations to try for
-                           // each op.
-  int max_backtrack_depth; // Maximum depth for backtracking.
-  bool is_spatial; // Indicates if the mapping is spatial or spatial-temporal.
+  // Maximum number of locations to try for each op.
+  int max_location_to_try;
+  // Maximum depth for backtracking.
+  int max_backtrack_depth;
 };
 } // namespace neura
 } // namespace mlir

@@ -42,7 +42,7 @@ const std::set<Link *> &Tile::getOutLinks() const { return out_links; }
 
 const std::set<Link *> &Tile::getInLinks() const { return in_links; }
 
-void Tile::addRegisterFileCluster(RegisterFileCluster* register_file_cluster) {
+void Tile::addRegisterFileCluster(RegisterFileCluster *register_file_cluster) {
   assert(register_file_cluster && "Cannot add null register file cluster");
   if (this->register_file_cluster != nullptr) {
     llvm::errs() << "Warning: Overwriting existing register file cluster ("
@@ -55,13 +55,14 @@ void Tile::addRegisterFileCluster(RegisterFileCluster* register_file_cluster) {
   register_file_cluster->setTile(this);
 }
 
-const RegisterFileCluster* Tile::getRegisterFileCluster() const {
+const RegisterFileCluster *Tile::getRegisterFileCluster() const {
   return register_file_cluster;
 }
 
 const std::vector<RegisterFile *> Tile::getRegisterFiles() const {
-  std::vector<RegisterFile*> all_register_files;
-  for (const auto& [id, file] : this->register_file_cluster->getRegisterFiles()) {
+  std::vector<RegisterFile *> all_register_files;
+  for (const auto &[id, file] :
+       this->register_file_cluster->getRegisterFiles()) {
     all_register_files.push_back(file);
   }
   return all_register_files;
@@ -69,8 +70,9 @@ const std::vector<RegisterFile *> Tile::getRegisterFiles() const {
 
 const std::vector<Register *> Tile::getRegisters() const {
   std::vector<Register *> all_registers;
-  for (const auto& [reg_file_id, reg_file] : this->register_file_cluster->getRegisterFiles()) {
-    for (const auto& [reg_id, reg] : reg_file->getRegisters()) {
+  for (const auto &[reg_file_id, reg_file] :
+       this->register_file_cluster->getRegisterFiles()) {
+    for (const auto &[reg_id, reg] : reg_file->getRegisters()) {
       all_registers.push_back(reg);
     }
   }
@@ -104,13 +106,9 @@ FunctionUnit::FunctionUnit(int id) { this->id = id; }
 
 int FunctionUnit::getId() const { return id; }
 
-void FunctionUnit::setTile(Tile* tile) {
-  this->tile = tile;
-}
+void FunctionUnit::setTile(Tile *tile) { this->tile = tile; }
 
-Tile *FunctionUnit::getTile() const {
-  return this->tile;
-}
+Tile *FunctionUnit::getTile() const { return this->tile; }
 
 //===----------------------------------------------------------------------===//
 // Register
@@ -124,13 +122,11 @@ Tile *Register::getTile() const {
   return this->register_file ? register_file->getTile() : nullptr;
 }
 
-void Register::setRegisterFile(RegisterFile* register_file) {
+void Register::setRegisterFile(RegisterFile *register_file) {
   this->register_file = register_file;
 }
 
-RegisterFile *Register::getRegisterFile() const {
-  return this->register_file;
-}
+RegisterFile *Register::getRegisterFile() const { return this->register_file; }
 
 //===----------------------------------------------------------------------===//
 // Register File
@@ -141,23 +137,25 @@ RegisterFile::RegisterFile(int id) { this->id = id; }
 int RegisterFile::getId() const { return id; }
 
 Tile *RegisterFile::getTile() const {
-  return this->register_file_cluster ? register_file_cluster->getTile() : nullptr;
+  return this->register_file_cluster ? register_file_cluster->getTile()
+                                     : nullptr;
 }
 
-void RegisterFile::setRegisterFileCluster(RegisterFileCluster* register_file_cluster) {
+void RegisterFile::setRegisterFileCluster(
+    RegisterFileCluster *register_file_cluster) {
   this->register_file_cluster = register_file_cluster;
 }
 
-void RegisterFile::addRegister(Register* reg) {
+void RegisterFile::addRegister(Register *reg) {
   registers[reg->getId()] = reg;
   reg->setRegisterFile(this);
 }
 
-const std::map<int, Register*>& RegisterFile::getRegisters() const {
+const std::map<int, Register *> &RegisterFile::getRegisters() const {
   return this->registers;
 }
 
-RegisterFileCluster* RegisterFile::getRegisterFileCluster() const {
+RegisterFileCluster *RegisterFile::getRegisterFileCluster() const {
   return this->register_file_cluster;
 }
 
@@ -169,20 +167,17 @@ RegisterFileCluster::RegisterFileCluster(int id) { this->id = id; }
 
 int RegisterFileCluster::getId() const { return id; }
 
-void RegisterFileCluster::setTile(Tile* tile) {
-  this->tile = tile;
-}
+void RegisterFileCluster::setTile(Tile *tile) { this->tile = tile; }
 
-Tile *RegisterFileCluster::getTile() const {
-  return this->tile;
-}
+Tile *RegisterFileCluster::getTile() const { return this->tile; }
 
-void RegisterFileCluster::addRegisterFile(RegisterFile* register_file) {
+void RegisterFileCluster::addRegisterFile(RegisterFile *register_file) {
   register_files[register_file->getId()] = register_file;
   register_file->setRegisterFileCluster(this);
 }
 
-const std::map<int, RegisterFile*>& RegisterFileCluster::getRegisterFiles() const {
+const std::map<int, RegisterFile *> &
+RegisterFileCluster::getRegisterFiles() const {
   return this->register_files;
 }
 
@@ -191,6 +186,8 @@ const std::map<int, RegisterFile*>& RegisterFileCluster::getRegisterFiles() cons
 //===----------------------------------------------------------------------===//
 
 Architecture::Architecture(int width, int height) {
+  this->width = width;
+  this->height = height;
   const int num_tiles = width * height;
 
   // Initializes tiles.
@@ -230,15 +227,16 @@ Architecture::Architecture(int width, int height) {
       register_file_1->addRegister(register_3);
 
       // Assembles register files into a cluster.
-      RegisterFileCluster *register_file_cluster = new RegisterFileCluster(y * width + x);
+      RegisterFileCluster *register_file_cluster =
+          new RegisterFileCluster(y * width + x);
       register_file_cluster->addRegisterFile(register_file_0);
       register_file_cluster->addRegisterFile(register_file_1);
 
       // Adds register file cluster to the tile.
       tile->addRegisterFileCluster(register_file_cluster);
       llvm::errs() << "Tile (" << x << ", " << y
-                 << ") added register file cluster with ID: "
-                 << register_file_cluster->getId() << "\n";
+                   << ") added register file cluster with ID: "
+                   << register_file_cluster->getId() << "\n";
     }
   }
 

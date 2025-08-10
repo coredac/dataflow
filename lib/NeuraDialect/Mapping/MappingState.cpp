@@ -5,7 +5,8 @@
 using namespace mlir;
 using namespace mlir::neura;
 
-MappingState::MappingState(const Architecture &arch, int II) : II(II) {}
+MappingState::MappingState(const Architecture &arch, int II, bool is_spatial)
+    : II(II), is_spatial(is_spatial) {}
 
 bool MappingState::bindOp(const MappingLoc &loc, Operation *op) {
   loc_to_op[loc] = op;
@@ -31,14 +32,26 @@ void MappingState::unbindOp(Operation *op) {
 }
 
 bool MappingState::isAvailableAcrossTime(const MappingLoc &loc) const {
-  // Checks the availability across time domain.
-  for (int t = loc.time_step % II; t < II * kMaxSteps; t += II) {
-    MappingLoc check_loc = {loc.resource, t};
-    if (occupied_locs.find(check_loc) != occupied_locs.end()) {
-      return false;
+  // For spatial mapping, checks if the location is available across all time.
+  if (this->is_spatial) {
+    for (int t = 0; t < II * kMaxSteps; ++t) {
+      MappingLoc check_loc = {loc.resource, t};
+      if (occupied_locs.find(check_loc) != occupied_locs.end()) {
+        return false;
+      }
     }
+    return true;
+  } else {
+
+    // Checks the availability across time domain.
+    for (int t = loc.time_step % II; t < II * kMaxSteps; t += II) {
+      MappingLoc check_loc = {loc.resource, t};
+      if (occupied_locs.find(check_loc) != occupied_locs.end()) {
+        return false;
+      }
+    }
+    return true;
   }
-  return true;
 }
 
 bool MappingState::isAvailableAcrossTimeInRange(BasicResource *resource,
