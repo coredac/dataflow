@@ -5,8 +5,9 @@
 using namespace mlir;
 using namespace mlir::neura;
 
-MappingState::MappingState(const Architecture &arch, int II, bool is_spatial)
-    : II(II), is_spatial(is_spatial) {}
+MappingState::MappingState(const Architecture &arch, int II,
+                           bool is_spatial_only)
+    : II(II), is_spatial_only(is_spatial_only) {}
 
 bool MappingState::bindOp(const MappingLoc &loc, Operation *op) {
   loc_to_op[loc] = op;
@@ -33,7 +34,7 @@ void MappingState::unbindOp(Operation *op) {
 
 bool MappingState::isAvailableAcrossTime(const MappingLoc &loc) const {
   // For spatial mapping, checks if the location is available across all time.
-  if (this->is_spatial) {
+  if (this->is_spatial_only) {
     for (int t = 0; t < II * kMaxSteps; ++t) {
       MappingLoc check_loc = {loc.resource, t};
       if (occupied_locs.find(check_loc) != occupied_locs.end()) {
