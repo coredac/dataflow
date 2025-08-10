@@ -138,7 +138,7 @@ public:
 private:
   // Initiation interval.
   int II;
-  bool is_spatial;
+  bool is_spatial_only;
   static constexpr int kMaxSteps = 10;
 
   std::set<MappingLoc> occupied_locs;

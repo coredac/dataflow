@@ -49,7 +49,7 @@ struct MapToAcceleratorPass
       *this, "mapping-mode",
       llvm::cl::desc(
           "Mapping mode to use for mapping operations to the "
-          "accelerator. Options: spatial, spatial-temporal (default)."),
+          "accelerator. Options: spatial-only, spatial-temporal (default)."),
       llvm::cl::init("spatial-temporal")};
   Option<std::string> backtrackConfig{
       *this, "backtrack-config",
@@ -66,8 +66,8 @@ struct MapToAcceleratorPass
     StringRef mappingStrategy_stringRef(mappingStrategy.getValue());
     StringRef backtrackConfig_stringRef(backtrackConfig.getValue());
     StringRef mappingMode_stringRef(mappingMode.getValue());
-    bool is_spatial = (mappingMode_stringRef == "spatial");
-    if (is_spatial || mappingMode_stringRef == "spatial-temporal" ||
+    bool is_spatial_only = (mappingMode_stringRef == "spatial-only");
+    if (is_spatial_only || mappingMode_stringRef == "spatial-temporal" ||
         mappingMode_stringRef.empty()) {
       if (mappingMode_stringRef.empty()) {
         mappingMode_stringRef = "spatial-temporal";
@@ -85,15 +85,13 @@ struct MapToAcceleratorPass
       mappingStrategy_stringRef = "heuristic";
 
       if (backtrackConfig_stringRef == "simple") {
-        mapping_strategy = std::make_unique<HeuristicMapping>(1, 1, is_spatial);
+        mapping_strategy = std::make_unique<HeuristicMapping>(1, 1);
       } else if (backtrackConfig_stringRef == "greedy") {
-        mapping_strategy =
-            std::make_unique<HeuristicMapping>(INT_MAX, 1, is_spatial);
+        mapping_strategy = std::make_unique<HeuristicMapping>(INT_MAX, 1);
       } else if (backtrackConfig_stringRef == "exhaustive") {
-        mapping_strategy =
-            std::make_unique<HeuristicMapping>(INT_MAX, INT_MAX, is_spatial);
+        mapping_strategy = std::make_unique<HeuristicMapping>(INT_MAX, INT_MAX);
       } else if (backtrackConfig_stringRef == "customized") {
-        mapping_strategy = std::make_unique<HeuristicMapping>(5, 3, is_spatial);
+        mapping_strategy = std::make_unique<HeuristicMapping>(5, 3);
       } else if (backtrackConfig_stringRef.starts_with("customized=")) {
         // Used for custom backtrack parameters.
         // Example: "customized=5,3" means max_loc=5, max_depth=3
@@ -109,8 +107,8 @@ struct MapToAcceleratorPass
           int max_loc, max_depth;
           if (!max_loc_str.getAsInteger(10, max_loc) &&
               !max_depth_str.getAsInteger(10, max_depth)) {
-            mapping_strategy = std::make_unique<HeuristicMapping>(
-                max_loc, max_depth, is_spatial);
+            mapping_strategy =
+                std::make_unique<HeuristicMapping>(max_loc, max_depth);
             llvm::errs()
                 << "[MapToAcceleratorPass] Use custom backtrack parameters: "
                 << "max_location_to_try=" << max_loc
@@ -216,7 +214,7 @@ struct MapToAcceleratorPass
             << "[MapToAcceleratorPass] Start mapping with target II of " << ii
             << "\n";
         // Creates a mapping state for the current II.
-        MappingState mapping_state(architecture, ii, is_spatial);
+        MappingState mapping_state(architecture, ii, is_spatial_only);
         if (mapping_strategy->map(sorted_ops_with_alap_levels, critical_ops,
                                   architecture, mapping_state)) {
           // success
