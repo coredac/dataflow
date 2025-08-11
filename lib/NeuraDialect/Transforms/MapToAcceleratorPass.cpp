@@ -55,6 +55,44 @@ struct MapToAcceleratorPass
                      "If not specified, will use default 4x4 architecture."),
       llvm::cl::init("")};
 
+private:
+  // Loads architecture configuration from YAML file or returns default configuration
+  std::pair<YAML::Node, bool> loadArchitectureConfig() const {
+    YAML::Node config;
+    bool use_default_arch = false;
+    
+    if (!archSpecPath.getValue().empty()) {
+      try {
+        std::ifstream file(archSpecPath.getValue());
+        if (file.is_open()) {
+          config = YAML::Load(file);
+          if (config["architecture"]) {
+            llvm::outs() << "\033[31m[MapToAcceleratorPass] Loaded architecture from " 
+                        << archSpecPath.getValue() << "\033[0m\n";
+          } else {
+            llvm::errs() << "[MapToAcceleratorPass] Invalid YAML format in " 
+                        << archSpecPath.getValue() << ", using default 4x4\n";
+            use_default_arch = true;
+          }
+        } else {
+          llvm::errs() << "[MapToAcceleratorPass] Could not open architecture file " 
+                      << archSpecPath.getValue() << ", using default 4x4\n";
+          use_default_arch = true;
+        }
+      } catch (const std::exception& e) {
+        llvm::errs() << "[MapToAcceleratorPass] Error parsing YAML file " 
+                    << archSpecPath.getValue() << ": " << e.what() << ", using default 4x4\n";
+        use_default_arch = true;
+      }
+    } else {
+      use_default_arch = true;
+      llvm::errs() << "[MapToAcceleratorPass] No architecture specification provided, using default 4x4\n";
+    }
+    
+    return {config, use_default_arch};
+  }
+
+public:
   void runOnOperation() override {
     ModuleOp module = getOperation();
 
@@ -148,38 +186,11 @@ struct MapToAcceleratorPass
 
       // AcceleratorConfig config{/*numTiles=*/8}; // Example
       // Read architecture specification from command line option
-      YAML::Node config;
-      bool use_default_arch = false;
+      auto [config, use_default_arch] = loadArchitectureConfig();
       
-      if (!archSpecPath.getValue().empty()) {
-        try {
-          std::ifstream file(archSpecPath.getValue());
-          if (file.is_open()) {
-            config = YAML::Load(file);
-            if (config["architecture"]) {
-              llvm::outs() << "\033[31m[MapToAcceleratorPass] Loaded architecture from " 
-                          << archSpecPath.getValue() << "\033[0m\n";
-            } else {
-              llvm::errs() << "[MapToAcceleratorPass] Invalid YAML format in " 
-                          << archSpecPath.getValue() << ", using default 4x4\n";
-              use_default_arch = true;
-            }
-          } else {
-            llvm::errs() << "[MapToAcceleratorPass] Could not open architecture file " 
-                        << archSpecPath.getValue() << ", using default 4x4\n";
-            use_default_arch = true;
-          }
-        } catch (const std::exception& e) {
-          llvm::errs() << "[MapToAcceleratorPass] Error parsing YAML file " 
-                      << archSpecPath.getValue() << ": " << e.what() << ", using default 4x4\n";
-          use_default_arch = true;
-        }
-      } else {
-        use_default_arch = true;
-        llvm::errs() << "[MapToAcceleratorPass] No architecture specification provided, using default 4x4\n";
-      }
-
-      Architecture architecture = use_default_arch ? Architecture(4, 4) : Architecture(config);
+      constexpr int kWidth = 4;
+      constexpr int kHeight = 4;
+      Architecture architecture = use_default_arch ? Architecture(kWidth, kHeight) : Architecture(config);
       
       int res_mii = calculateResMii(func, architecture);
       IntegerAttr res_mii_attr =

@@ -33,40 +33,39 @@ enum class FunctionUnitKind {
 
 // Enum for supported operation types.
 enum OperationKind {
-  IAdd = 0,
-  IMul = 1,
-  FAdd = 2,
-  FMul = 3,
-  ISub = 4,
-  FSub = 5,
-  IDiv = 6,
-  FDiv = 7,
-  FAddFAdd = 8,
-  FMulFAdd = 9,
-  VFMul = 10,
-  ICmp = 11,
-  FCmp = 12,
-  Not = 13,
-  Or = 14,
-  Sel = 15,
-  Cast = 16,
-  Phi = 17,
-  Load = 18,
-  LoadIndexed = 19,
-  Store = 20,
-  StoreIndexed = 21,
-  Br_ = 22,
-  CondBr_ = 23,
-  Return = 24,
-  LoopController = 25,
-  GrantAlways = 26,
-  GrantOnce = 27,
-  GrantPredicate = 28,
-  GEP_ = 29,
-  Constant = 30,
-  DataMov = 31,
-  CtrlMov = 32,
-  Reserve = 33
+  OpIAdd = 0,
+  OpIMul = 1,
+  OpFAdd = 2,
+  OpFMul = 3,
+  OpISub = 4,
+  OpFSub = 5,
+  OpIDiv = 6,
+  OpFDiv = 7,
+  OpFAddFAdd = 8,
+  OpFMulFAdd = 9,
+  OpVFMul = 10,
+  OpICmp = 11,
+  OpFCmp = 12,
+  OpNot = 13,
+  OpOr = 14,
+  OpSel = 15,
+  OpCast = 16,
+  OpPhi = 17,
+  OpLoad = 18,
+  OpLoadIndexed = 19,
+  OpStore = 20,
+  OpStoreIndexed = 21,
+  OpBr = 22,
+  OpCondBr = 23,
+  OpReturn = 24,
+  OpLoopController = 25,
+  OpGrantAlways = 26,
+  OpGrantOnce = 27,
+  OpGrantPredicate = 28,
+  OpGEP_ = 29,
+  OpConstant = 30,
+  OpDataMov = 31,
+  OpCtrlMov = 32
 };
 
 //===----------------------------------------------------------------------===//
@@ -134,7 +133,7 @@ private:
 class FixedPointAdder : public FunctionUnit {
 public:
   FixedPointAdder(int id) : FunctionUnit(id) {
-    supported_operations.insert(OperationKind::IAdd);
+    supported_operations.insert(OperationKind::OpIAdd);
   }
   std::string getType() const override { return "fixed_point_adder"; }
   ResourceKind getKind() const override { return ResourceKind::FunctionUnit; }
@@ -143,7 +142,7 @@ public:
 class FixedPointMultiplier : public FunctionUnit {
 public:
   FixedPointMultiplier(int id) : FunctionUnit(id) {
-    supported_operations.insert(OperationKind::IMul);
+    supported_operations.insert(OperationKind::OpIMul);
   }
   std::string getType() const override { return "fixed_point_multiplier"; }
   ResourceKind getKind() const override { return ResourceKind::FunctionUnit; }

@@ -297,7 +297,7 @@ Architecture::Architecture(const YAML::Node& config) {
       // Override the default function units.
       for (const auto& operation : config["tile_overrides"][i]["operations"]) {
         if (operation.as<std::string>() == "add") {
-          tile->addFunctionUnit(std::make_unique<FixedPointAdder>(++fu_id));
+          tile->addFunctionUnit(std::make_unique<FixedPointAdder>(fu_id++));
           // Add more function units here if more operations are supported.
         }
       }
@@ -305,7 +305,7 @@ Architecture::Architecture(const YAML::Node& config) {
       // Add default function units.
       for (const auto& operation : config["tile_defaults"]["operations"]) {
         if (operation.as<std::string>() == "add") {
-          tile->addFunctionUnit(std::make_unique<FixedPointAdder>(++fu_id));
+          tile->addFunctionUnit(std::make_unique<FixedPointAdder>(fu_id++));
         }
       }
     }
