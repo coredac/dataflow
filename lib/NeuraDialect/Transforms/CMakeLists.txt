@@ -4,7 +4,7 @@ add_mlir_library(
     MLIRNeuraTransforms
     InsertDataMovPass.cpp
     InsertCtrlMovPass.cpp
-    FusePatternsPass.cpp
+    FusePatternPass.cpp
     AssignAcceleratorPass.cpp
     TransformCtrlToDataFlowPass.cpp
     LeveragePredicatedValuePass.cpp
@@ -13,6 +13,7 @@ add_mlir_library(
     FuseControlFlowPass.cpp
     CanonicalizeLiveInPass.cpp
     CanonicalizeCastPass.cpp
+    FoldConstantPass.cpp
 
     DEPENDS
     MLIRNeuraTransformsIncGen

@@ -154,9 +154,8 @@ int mlir::neura::calculateResMii(Operation *func_op,
   // Count all "compute" operations (non-terminators, non-block ops).
   func_op->walk([&](Operation *op) {
     // Skips non-materialized ops.
-    if (isa<func::FuncOp>(op) || isa<neura::CtrlMovOp,
-                                     neura::DataMovOp,
-                                     neura::ReserveOp>(op)) {
+    if (isa<func::FuncOp>(op) ||
+        isa<neura::CtrlMovOp, neura::DataMovOp, neura::ReserveOp>(op)) {
       return;
     }
     ++num_ops;
@@ -411,13 +410,15 @@ bool mlir::neura::tryRouteBackwardMove(Operation *mov_op, MappingLoc src_loc,
   return tryRouteDataMove(mov_op, src_loc, dst_loc, true, state, path_out);
 }
 
-Register *mlir::neura::getAvailableRegister(
-    const MappingState &state, Tile *tile, int start_time, int exclusive_end_time) {
+Register *mlir::neura::getAvailableRegister(const MappingState &state,
+                                            Tile *tile, int start_time,
+                                            int exclusive_end_time) {
   for (Register *reg : tile->getRegisters()) {
     // FIXME: We may need constrain the register availability to the conflicting
-    // input channel (either the input channel or a register file on the same input
-    // direction could be active at one time).
-    if (state.isAvailableAcrossTimeInRange(reg, start_time, exclusive_end_time)) {
+    // input channel (either the input channel or a register file on the same
+    // input direction could be active at one time).
+    if (state.isAvailableAcrossTimeInRange(reg, start_time,
+                                           exclusive_end_time)) {
       return reg;
     }
   }
@@ -487,7 +488,8 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
         //          << " at tile: " << dst_tile->getId()
         //          << " from time step: " << current_step
         //          << " till deadline step: " << deadline_step << "\n";
-        // Register is available, so we can occupy the specific register across remaining time steps.
+        // Register is available, so we can occupy the specific register across
+        // remaining time steps.
         std::vector<MappingLoc> register_occupyings;
         for (int t = current_step; t < deadline_step; ++t) {
           MappingLoc register_loc{available_register, t};
@@ -624,10 +626,10 @@ bool mlir::neura::canReachLocInTime(const MappingLoc &src_loc,
     // // Explores all next step tiles from the current location.
     // for (const MappingLoc &next_loc_tile :
     //      mapping_state.getNextStepTiles(current_loc)) {
-    
+
     // Explores all next step tiles from the current location.
     for (const MappingLoc &current_loc_out_link :
-             mapping_state.getCurrentStepLinks(current_loc)) {
+         mapping_state.getCurrentStepLinks(current_loc)) {
 
       // Makes sure the link is not occupied.
       if (!mapping_state.isAvailableAcrossTime(current_loc_out_link)) {
@@ -641,7 +643,8 @@ bool mlir::neura::canReachLocInTime(const MappingLoc &src_loc,
       }
 
       // Records the tile for further exploration.
-      Tile *next_tile = llvm::dyn_cast<Link>(current_loc_out_link.resource)->getDstTile();
+      Tile *next_tile =
+          llvm::dyn_cast<Link>(current_loc_out_link.resource)->getDstTile();
       assert(next_tile && "Next location must be a Tile");
       if (visited.contains(next_tile)) {
         continue;
@@ -714,6 +717,7 @@ std::vector<MappingLoc> mlir::neura::calculateAward(Operation *op,
 
   llvm::errs() << "[calculateAward] Operation: " << *op
                << "; Producers: " << producers.size() << "\n";
+
   for (Tile *tile : architecture.getAllTiles()) {
     if (!tile->canSupportOperation(getOperationKindFromMlirOp(op))) {
       llvm::errs() << "[calculateAward] Tile: " << tile->getType()
@@ -842,8 +846,8 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
   if (mapping_state.bindOp(target_loc, op)) {
     std::vector<Operation *> routed_operands;
     std::vector<Operation *> routed_ctrl_movs;
-    llvm::errs() << "[DEBUG] Schedule op " << *op << " onto loc: "
-                 << target_loc.resource->getType() << "#"
+    llvm::errs() << "[DEBUG] Schedule op " << *op
+                 << " onto loc: " << target_loc.resource->getType() << "#"
                  << target_loc.resource->getId()
                  << " @t=" << target_loc.time_step << "\n";
     // Tries to route the data move operations.
@@ -913,10 +917,12 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
       }
       llvm::errs() << "[DEBUG] Failed to route ctrl_mov: " << *ctrl_mov
                    << " from " << target_loc.resource->getType() << "#"
-                   << target_loc.resource->getId() << " @t=" << target_loc.time_step
-                   << " to " << backward_loc.resource->getType() << "#"
+                   << target_loc.resource->getId()
+                   << " @t=" << target_loc.time_step << " to "
+                   << backward_loc.resource->getType() << "#"
                    << backward_loc.resource->getId()
-                   << " @t=" << backward_loc.time_step << "; so unschedule op\n";
+                   << " @t=" << backward_loc.time_step
+                   << "; so unschedule op\n";
       mapping_state.unbindOp(op);
       for (Operation *routed_ctrl_mov : routed_ctrl_movs) {
         llvm::errs() << "[DEBUG] Releasing route for routed ctrl_mov: "
