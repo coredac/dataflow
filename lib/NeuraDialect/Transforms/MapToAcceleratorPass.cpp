@@ -15,6 +15,9 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
+#include <cstdlib>
+#include <fstream>
+#include <yaml-cpp/yaml.h>
 
 using namespace mlir;
 using namespace mlir::neura;
@@ -54,6 +57,50 @@ struct MapToAcceleratorPass
           "max_loc=5, max_depth=3)"),
       llvm::cl::init("heuristic")};
 
+  Option<std::string> archSpecPath{
+      *this, "arch-spec",
+      llvm::cl::desc("Path to the architecture specification YAML file. "
+                     "If not specified, will use default 4x4 architecture."),
+      llvm::cl::init("")};
+
+private:
+  // Loads architecture configuration from YAML file or returns default configuration
+  std::pair<YAML::Node, bool> loadArchitectureConfig() const {
+    YAML::Node config;
+    bool use_default_arch = false;
+    
+    if (!archSpecPath.getValue().empty()) {
+      try {
+        std::ifstream file(archSpecPath.getValue());
+        if (file.is_open()) {
+          config = YAML::Load(file);
+          if (config["architecture"]) {
+            llvm::outs() << "\033[31m[MapToAcceleratorPass] Loaded architecture from " 
+                        << archSpecPath.getValue() << "\033[0m\n";
+          } else {
+            llvm::errs() << "[MapToAcceleratorPass] Invalid YAML format in " 
+                        << archSpecPath.getValue() << ", using default 4x4\n";
+            use_default_arch = true;
+          }
+        } else {
+          llvm::errs() << "[MapToAcceleratorPass] Could not open architecture file " 
+                      << archSpecPath.getValue() << ", using default 4x4\n";
+          use_default_arch = true;
+        }
+      } catch (const std::exception& e) {
+        llvm::errs() << "[MapToAcceleratorPass] Error parsing YAML file " 
+                    << archSpecPath.getValue() << ": " << e.what() << ", using default 4x4\n";
+        use_default_arch = true;
+      }
+    } else {
+      use_default_arch = true;
+      llvm::errs() << "[MapToAcceleratorPass] No architecture specification provided, using default 4x4\n";
+    }
+    
+    return {config, use_default_arch};
+  }
+
+public:
   void runOnOperation() override {
     ModuleOp module = getOperation();
     std::unique_ptr<Mapping> mapping_strategy;
@@ -150,7 +197,13 @@ struct MapToAcceleratorPass
       func->setAttr("RecMII", rec_mii_attr);
 
       // AcceleratorConfig config{/*numTiles=*/8}; // Example
-      Architecture architecture(4, 4);
+      // Read architecture specification from command line option
+      auto [config, use_default_arch] = loadArchitectureConfig();
+      
+      constexpr int kWidth = 4;
+      constexpr int kHeight = 4;
+      Architecture architecture = use_default_arch ? Architecture(kWidth, kHeight) : Architecture(config);
+      
       int res_mii = calculateResMii(func, architecture);
       IntegerAttr res_mii_attr =
           IntegerAttr::get(IntegerType::get(func.getContext(), 32), res_mii);

@@ -20,6 +20,10 @@ add_mlir_dialect_library(MLIRNeura
         MLIRIR
         MLIRSupport
         MLIRInferTypeOpInterface
+        yaml-cpp
         )
+
+# Enable exception handling for yaml-cpp
+target_compile_options(MLIRNeura PRIVATE -fexceptions)
 
 add_subdirectory(Transforms)

@@ -16,17 +16,40 @@ using namespace mlir::neura;
 namespace {
 
 inline OperationKind getOperationKindFromMlirOp(Operation *op) {
-  if (isa<neura::AddOp>(op))
-    return IAdd;
-  if (isa<neura::MulOp>(op))
-    return IMul;
-  if (isa<neura::FAddOp>(op))
-    return FAdd;
-  if (isa<neura::FMulOp>(op))
-    return FMul;
-  // TODO: Complete the list here.
-  // @Jackcuii, https://github.com/coredac/dataflow/issues/82.
-  return IAdd;
+  if (isa<neura::AddOp>(op))   return OpIAdd;
+  if (isa<neura::MulOp>(op))   return OpIMul;
+  if (isa<neura::FAddOp>(op))  return OpFAdd;
+  if (isa<neura::FMulOp>(op))  return OpFMul;
+  if (isa<neura::SubOp>(op))   return OpISub;
+  if (isa<neura::FSubOp>(op))  return OpFSub;
+  if (isa<neura::DivOp>(op))   return OpIDiv;
+  if (isa<neura::FDivOp>(op))  return OpFDiv;
+  if (isa<neura::FAddFAddOp>(op)) return OpFAddFAdd;
+  if (isa<neura::FMulFAddOp>(op)) return OpFMulFAdd;
+  if (isa<neura::VFMulOp>(op)) return OpVFMul;
+  if (isa<neura::ICmpOp>(op))  return OpICmp;
+  if (isa<neura::NotOp>(op))   return OpNot;
+  if (isa<neura::OrOp>(op))    return OpOr;
+  if (isa<neura::SelOp>(op))   return OpSel;
+  if (isa<neura::CastOp>(op))  return OpCast;
+  if (isa<neura::LoadOp>(op))  return OpLoad;
+  if (isa<neura::LoadIndexedOp>(op)) return OpLoadIndexed;
+  if (isa<neura::StoreOp>(op)) return OpStore;
+  if (isa<neura::StoreIndexedOp>(op)) return OpStoreIndexed;
+  if (isa<neura::Br>(op))       return OpBr;
+  if (isa<neura::CondBr>(op))   return OpCondBr;
+  if (isa<neura::ReturnOp>(op)) return OpReturn;
+  if (isa<neura::LoopControllerOp>(op)) return OpLoopController;
+  if (isa<neura::GrantAlwaysOp>(op)) return OpGrantAlways;
+  if (isa<neura::GrantOnceOp>(op)) return OpGrantOnce;
+  if (isa<neura::GrantPredicateOp>(op)) return OpGrantPredicate;
+  if (isa<neura::GEP>(op))      return OpGEP_;
+  if (isa<neura::ConstantOp>(op)) return OpConstant;
+  if (isa<neura::PhiOp>(op))    return OpPhi;
+  if (isa<neura::DataMovOp>(op)) return OpDataMov;
+  if (isa<neura::CtrlMovOp>(op)) return OpCtrlMov;
+  // Default fallback
+  return OpIAdd;
 }
 
 // Returns true if the operation does not need CGRA tile placement.
