@@ -1,6 +1,7 @@
 #include <deque>
 #include <queue>
 
+#include "NeuraDialect/Mapping/MappingState.h"
 #include "NeuraDialect/Mapping/mapping_util.h"
 #include "NeuraDialect/NeuraOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -654,6 +655,45 @@ void mlir::neura::updateAward(std::map<MappingLoc, int> &locs_with_award,
   }
 }
 
+int mlir::neura::estimateUtilization(const MappingLoc &loc,
+                                     const MappingState &mapping_state) {
+  Tile *tile = dyn_cast<Tile>(loc.resource);
+  if (!tile) {
+    return 0;
+  }
+
+  int utilization = 0;
+
+  // 1. Estimates the tile utilization.
+  int tile_utilization = mapping_state.countOpsAtResource(tile);
+  utilization += tile_utilization;
+
+  // 2. Estimates the routing congestion.
+  std::vector<MappingLoc> out_links = mapping_state.getCurrentStepLinks(loc);
+  int occupied_links = 0;
+  for (const MappingLoc &out_link_loc : out_links) {
+    if (!mapping_state.isAvailableAcrossTime(out_link_loc)) {
+      occupied_links++;
+    }
+  }
+
+  if (!out_links.empty()) {
+    float link_utilization =
+        static_cast<float>(occupied_links) / out_links.size();
+    utilization += static_cast<int>(link_utilization * 10);
+  }
+
+  // 3. Identifies the resource hot points.
+  for (Tile *neighbor : tile->getDstTiles()) {
+    int neighbor_utilization = mapping_state.countOpsAtResource(neighbor);
+    if (neighbor_utilization > 2) {
+      utilization += 1;
+    }
+  }
+
+  return utilization;
+}
+
 std::vector<MappingLoc>
 mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
                             int target_level, const Architecture &architecture,
@@ -769,7 +809,16 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
           // getPhysicalHops(producers, tile, mapping_state) < 2) {
           //   award += 1;
           // }
-          updateAward(locs_with_award, tile_loc_candidate, award);
+          int additional_award = 0;
+
+          // Awards the location that is mapped earlier in the time domain.
+          additional_award += (latest_end_time_step - t) * 4;
+
+          additional_award -=
+              estimateUtilization(tile_loc_candidate, mapping_state);
+
+          updateAward(locs_with_award, tile_loc_candidate,
+                      award + additional_award);
         }
       }
       // The mapping location with earlier time step is granted with a higher

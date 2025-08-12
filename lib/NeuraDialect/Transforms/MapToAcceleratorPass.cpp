@@ -208,6 +208,11 @@ struct MapToAcceleratorPass
         llvm::outs() << "[MapToAcceleratorPass] ALAP sorted op: " << *op
                      << " (ALAP level: " << level << ")\n";
       }
+
+      llvm::outs() << "[MapToAcceleratorPass] Critical Ops: \n";
+      for (Operation *op : critical_ops) {
+        llvm::outs() << "  " << *op << "\n";
+      }
       // assert(false);
       for (int ii = possibleMinII; ii <= maxII; ++ii) {
         llvm::errs()

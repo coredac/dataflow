@@ -77,6 +77,11 @@ llvm::SmallVector<Operation *> getCtrlMovUsers(Operation *op);
 bool placeAndRoute(Operation *op, const MappingLoc &target_loc,
                    MappingState &mapping_state);
 
+// Estimates the utilization of a given location in the mapping state.
+// The utilization considers both routing congestion and tile utilization.
+int estimateUtilization(const MappingLoc &loc,
+                        const MappingState &mapping_state);
+
 // Calculates the award of mapping locations for a given op, the returned
 // locations are sorted based on the award.
 std::vector<MappingLoc> calculateAward(Operation *op,
