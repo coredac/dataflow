@@ -40,10 +40,18 @@ private:
       std::set<Operation *> &critical_ops, const Architecture &architecture,
       MappingState &mapping_state);
 
+  // Gets the sorted candidate locations for a given operation based on spatial
+  // execution model.
+  std::vector<MappingLoc>
+  calculateSpatialAward(Operation *op, std::set<Operation *> &critical_ops,
+                        int target_level, const Architecture &architecture,
+                        const MappingState &mapping_state);
+
   // Configuration parameters.
-  int max_location_to_try; // Maximum number of locations to try for
-                           // each op
-  int max_backtrack_depth; // Maximum depth for backtracking
+  // Maximum number of locations to try for each op.
+  int max_location_to_try;
+  // Maximum depth for backtracking.
+  int max_backtrack_depth;
 };
 } // namespace neura
 } // namespace mlir

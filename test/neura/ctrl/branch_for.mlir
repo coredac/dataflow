@@ -244,7 +244,7 @@ func.func @loop_test() -> f32 {
 // MOV-NEXT:     "neura.return"(%49) : (!neura.data<f32, i1>) -> ()
 // MOV-NEXT:   }
 
-// MAPPING:        func.func @loop_test() -> f32 attributes {CompiledII = 6 : i32, RecMII = 4 : i32, ResMII = 2 : i32, accelerator = "neura"} {
+// MAPPING:        func.func @loop_test() -> f32 attributes {accelerator = "neura", mapping_info = {compiled_ii = 6 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 4 : i32, res_mii = 2 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {
 // MAPPING-NEXT:     %0 = "neura.grant_once"() <{constant_value = 10 : i64}> {mapping_locs = [{id = 0 : i32, resource = "tile", time_step = 1 : i32, x = 0 : i32, y = 0 : i32}]} : () -> !neura.data<i64, i1>
 // MAPPING-NEXT:     %1 = "neura.grant_once"() <{constant_value = 0 : i64}> {mapping_locs = [{id = 0 : i32, resource = "tile", time_step = 0 : i32, x = 0 : i32, y = 0 : i32}]} : () -> !neura.data<i64, i1>
 // MAPPING-NEXT:     %2 = "neura.grant_once"() <{constant_value = 1 : i64}> {mapping_locs = [{id = 2 : i32, resource = "tile", time_step = 0 : i32, x = 2 : i32, y = 0 : i32}]} : () -> !neura.data<i64, i1>
