@@ -6,8 +6,10 @@
 #include "NeuraDialect/NeuraOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/Support/LLVM.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cassert>
 
@@ -655,45 +657,6 @@ void mlir::neura::updateAward(std::map<MappingLoc, int> &locs_with_award,
   }
 }
 
-int mlir::neura::estimateUtilization(const MappingLoc &loc,
-                                     const MappingState &mapping_state) {
-  Tile *tile = dyn_cast<Tile>(loc.resource);
-  if (!tile) {
-    return 0;
-  }
-
-  int utilization = 0;
-
-  // 1. Estimates the tile utilization.
-  int tile_utilization = mapping_state.countOpsAtResource(tile);
-  utilization += tile_utilization;
-
-  // 2. Estimates the routing congestion.
-  std::vector<MappingLoc> out_links = mapping_state.getCurrentStepLinks(loc);
-  int occupied_links = 0;
-  for (const MappingLoc &out_link_loc : out_links) {
-    if (!mapping_state.isAvailableAcrossTime(out_link_loc)) {
-      occupied_links++;
-    }
-  }
-
-  if (!out_links.empty()) {
-    float link_utilization =
-        static_cast<float>(occupied_links) / out_links.size();
-    utilization += static_cast<int>(link_utilization * 10);
-  }
-
-  // 3. Identifies the resource hot points.
-  for (Tile *neighbor : tile->getDstTiles()) {
-    int neighbor_utilization = mapping_state.countOpsAtResource(neighbor);
-    if (neighbor_utilization > 2) {
-      utilization += 1;
-    }
-  }
-
-  return utilization;
-}
-
 std::vector<MappingLoc>
 mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
                             int target_level, const Architecture &architecture,
@@ -748,16 +711,8 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
                    << " does not support operation: " << *op << "\n";
       continue; // Skip tiles that cannot support the operation.
     }
-    int earliest_start_time_step = target_level;
-    for (Operation *producer : producers) {
-      std::vector<MappingLoc> producer_locs =
-          mapping_state.getAllLocsOfOp(producer);
-      assert(!producer_locs.empty() && "No locations found for producer");
 
-      MappingLoc producer_loc = producer_locs.back();
-      earliest_start_time_step =
-          std::max(earliest_start_time_step, producer_loc.time_step + 1);
-    }
+    int earliest_start_time_step = target_level;
     int latest_end_time_step = earliest_start_time_step + mapping_state.getII();
     std::vector<MappingLoc> backward_users_locs;
     for (Operation *user : backward_users) {
@@ -770,19 +725,18 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
                    backward_user_loc.time_step + mapping_state.getII());
       backward_users_locs.push_back(backward_user_loc);
     }
+
     int award = 2 * mapping_state.getII();
     if (critical_ops.count(op)) {
       award += tile->getDstTiles().size();
       award += op->getOperands().size() -
                getPhysicalHops(producers, tile, mapping_state);
     }
-    // llvm::errs() << "[DEBUG] checking range: "
-    //              << earliest_start_time_step << " to "
-    //              << latest_end_time_step << " for tile: "
-    //              << tile->getType() << "#" << tile->getId() << "\n";
+
     for (int t = earliest_start_time_step; t < latest_end_time_step; t += 1) {
       MappingLoc tile_loc_candidate = {tile, t};
-      // If the tile at time `t` is available, we can consider it for mapping.
+      // If the tile at time `t` is available, we can consider it for
+      // mapping.
       if (mapping_state.isAvailableAcrossTime(tile_loc_candidate)) {
         bool meet_producer_constraint =
             producers.empty() ||
@@ -804,26 +758,19 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
         // we can consider it for mapping and grant reward.
         if (meet_producer_constraint && meet_backward_user_constraint) {
           // Grants higher award if the location is physically closed to
-          // producers. award += producers.size() - getPhysicalHops(producers,
+          // producers. award += producers.size() -
+          // getPhysicalHops(producers,
           // tile, mapping_state); if (op->getOperands().size() > 1 &&
           // getPhysicalHops(producers, tile, mapping_state) < 2) {
           //   award += 1;
           // }
-          int additional_award = 0;
 
-          // Awards the location that is mapped earlier in the time domain.
-          additional_award += (latest_end_time_step - t) * 4;
-
-          additional_award -=
-              estimateUtilization(tile_loc_candidate, mapping_state);
-
-          updateAward(locs_with_award, tile_loc_candidate,
-                      award + additional_award);
+          // The mapping location with earlier time step is granted with a
+          // higher award.
+          award -= t;
+          updateAward(locs_with_award, tile_loc_candidate, award);
         }
       }
-      // The mapping location with earlier time step is granted with a higher
-      // award.
-      award -= 1;
     }
     // assert(award >= 0 && "Award should not be negative");
   }
@@ -837,16 +784,17 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
       locs_award_vec.begin(), locs_award_vec.end(),
       [](const std::pair<MappingLoc, int> &a,
          const std::pair<MappingLoc, int> &b) { return a.second > b.second; });
-  // TODO: Needs to handle tie case and prioritize lower resource utilization,
-  // however, compiled II becomes worse after adding this tie-breaker:
-  // https://github.com/coredac/dataflow/issues/59.
+  // TODO: Needs to handle tie case and prioritize lower resource
+  // utilization, however, compiled II becomes worse after adding this
+  // tie-breaker: https://github.com/coredac/dataflow/issues/59.
   // std::sort(locs_award_vec.begin(), locs_award_vec.end(),
   //           [&](const std::pair<MappingLoc, int> &a, const
   //           std::pair<MappingLoc, int> &b) {
   //               if (a.second != b.second) {
   //                 return a.second > b.second;
   //               }
-  //               // Tie-breaker: prioritizes lower resource utilization and
+  //               // Tie-breaker: prioritizes lower resource utilization
+  //               and
   //               // earlier time step.
   //               if (a.first.time_step != b.first.time_step) {
   //                 return a.first.time_step > b.first.time_step;
@@ -856,6 +804,15 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
   //                   mapping_state.countOpsAtResource(b.first.resource);
   //               return is_resource_a_lower_utilized;
   //             });
+
+  // llvm::outs() << "[calculateAward] Locations with awards:\n";
+  // for (const auto &pair : locs_award_vec) {
+  //   llvm::outs() << "  Loc: " << pair.first.resource->getType() << "#"
+  //                << pair.first.resource->getId()
+  //                << " @t=" << pair.first.time_step << ", Award: " <<
+  //                pair.second
+  //                << "\n";
+  // }
 
   // Extracts just the MappingLocs, already sorted by award.
   std::vector<MappingLoc> sorted_locs;

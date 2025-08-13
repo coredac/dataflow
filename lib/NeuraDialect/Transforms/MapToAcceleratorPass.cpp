@@ -227,7 +227,6 @@ struct MapToAcceleratorPass
                        << func.getName() << "' with II = " << ii << "\n";
           mapping_state.dumpOpToLocs(); // logs to stderr
           mapping_state.encodeMappingState();
-
           // Sets the mapping_info attribute on the function.
           auto ctx = func.getContext();
           DictionaryAttr mapping_info = DictionaryAttr::get(

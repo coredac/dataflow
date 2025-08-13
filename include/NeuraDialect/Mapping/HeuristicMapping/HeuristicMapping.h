@@ -40,8 +40,24 @@ private:
       std::set<Operation *> &critical_ops, const Architecture &architecture,
       MappingState &mapping_state);
 
-  // Gets the sorted candidate locations for a given operation based on spatial
-  // execution model.
+  // Checks if the current operation is after a no-producer operation.
+  bool
+  isAfterNoProducerOp(const std::unordered_set<Operation *> &no_producer_ops,
+                      const std::vector<std::pair<Operation *, int>>
+                          &materialized_ops_with_levels,
+                      int current_op_index);
+
+  // Performs backtracking to restore the previous mapping state.
+  bool performBacktrack(const std::unordered_set<Operation *> &no_producer_ops,
+                        const std::vector<std::pair<Operation *, int>>
+                            &materialized_ops_with_levels,
+                        std::vector<MappingStateSnapshot> &snapshots,
+                        std::vector<int> &candidate_history,
+                        std::vector<int> &operation_index_history,
+                        int current_op_index, MappingState &mapping_state);
+
+  // Gets the sorted candidate locations for a given operation based on
+  // spatial execution model.
   std::vector<MappingLoc>
   calculateSpatialAward(Operation *op, std::set<Operation *> &critical_ops,
                         int target_level, const Architecture &architecture,
