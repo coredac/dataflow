@@ -213,7 +213,7 @@ struct MapToAcceleratorPass
       for (Operation *op : critical_ops) {
         llvm::outs() << "  " << *op << "\n";
       }
-      mapping_strategy->loadDFG(sorted_ops_with_alap_levels, critical_ops);
+      mapping_strategy->loadDfg(sorted_ops_with_alap_levels, critical_ops);
       // assert(false);
       for (int ii = possibleMinII; ii <= maxII; ++ii) {
         llvm::errs()

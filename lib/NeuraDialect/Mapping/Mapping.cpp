@@ -7,7 +7,7 @@
 
 namespace mlir {
 namespace neura {
-void Mapping::loadDFG(
+void Mapping::loadDfg(
     const std::vector<std::pair<Operation *, int>> &sorted_ops_with_levels,
     const std::set<Operation *> &critical_ops) {
   this->sorted_ops_with_levels = sorted_ops_with_levels;

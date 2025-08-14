@@ -20,7 +20,7 @@ public:
   // Gets the name of this strategy
   virtual std::string getName() const = 0;
 
-  void loadDFG(
+  void loadDfg(
       const std::vector<std::pair<Operation *, int>> &sorted_ops_with_levels,
       const std::set<Operation *> &critical_ops);
   std::vector<std::pair<Operation *, int>> getSortedOpsWithLevels() const {

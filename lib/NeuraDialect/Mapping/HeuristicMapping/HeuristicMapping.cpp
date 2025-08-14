@@ -4,7 +4,6 @@
 #include "NeuraDialect/NeuraOps.h"
 #include "llvm/Support/raw_ostream.h"
 #include <ctime>
-#include <random>
 
 namespace mlir {
 namespace neura {
@@ -124,7 +123,7 @@ bool HeuristicMapping::tryToMapNoProducerOp(
   int candidates_to_try = std::min(static_cast<int>(candidate_locs.size()),
                                    no_producer_candidates_to_try);
 
-  // Tries full mapping with greedy strategy (All candidate locations andzero
+  // Tries full mapping with greedy strategy (all candidate locations and zero
   // backtrack) for each candidate location. And use the number of
   // mapped operations as the score.
   for (int i = 0; i < candidates_to_try; i++) {

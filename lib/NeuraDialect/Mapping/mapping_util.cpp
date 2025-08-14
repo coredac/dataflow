@@ -657,10 +657,9 @@ void mlir::neura::updateAward(std::map<MappingLoc, int> &locs_with_award,
   }
 }
 
-std::vector<MappingLoc>
-mlir::neura::calculateAward(Operation *op, std::set<Operation *> critical_ops,
-                            int target_level, const Architecture &architecture,
-                            const MappingState &mapping_state) {
+std::vector<MappingLoc> mlir::neura::calculateAward(
+    Operation *op, const std::set<Operation *> &critical_ops, int target_level,
+    const Architecture &architecture, const MappingState &mapping_state) {
   // Early exit if the operation is not supported by all the tiles.
   bool op_can_be_supported = false;
   for (Tile *tile : architecture.getAllTiles()) {
