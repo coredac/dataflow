@@ -3,6 +3,7 @@
 #include "NeuraDialect/Mapping/mapping_util.h"
 #include "NeuraDialect/NeuraOps.h"
 #include "llvm/Support/raw_ostream.h"
+#include <cstddef>
 #include <ctime>
 
 namespace mlir {
@@ -99,7 +100,7 @@ HeuristicMapping::evaluateNoProducerOpCandidate(
   }
 }
 
-bool HeuristicMapping::tryToMapNoProducerOp(
+HeuristicMapping::NoProducerOpCandidate HeuristicMapping::tryToMapNoProducerOp(
     Operation *current_op, int current_op_index,
     const std::vector<MappingLoc> &candidate_locs,
     std::vector<MappingStateSnapshot> &snapshots,
@@ -160,18 +161,22 @@ bool HeuristicMapping::tryToMapNoProducerOp(
     llvm::outs() << "[GlobalExploration] No feasible solutions found, "
                     "backtracking\n";
 
-    snapshots.pop_back();
-    candidate_history.pop_back();
-    operation_index_history.pop_back();
+    // snapshots.pop_back();
+    // candidate_history.pop_back();
+    // operation_index_history.pop_back();
 
-    if (snapshots.empty()) {
-      llvm::outs() << "[HeuristicMapping] No more snapshots to restore, "
-                      "mapping failed.\n";
-      return false;
-    }
-    snapshots.back().restore(mapping_state);
-    candidate_history.back()++;
-    return false;
+    // if (snapshots.empty()) {
+    //   llvm::outs() << "[HeuristicMapping] No more snapshots to restore, "
+    //                   "mapping failed.\n";
+    //   return false;
+    // }
+    // snapshots.back().restore(mapping_state);
+    // candidate_history.back()++;
+
+    // performBacktrack(no_producer_ops, snapshots, candidate_history,
+    //                  operation_index_history, current_op_index,
+    //                  mapping_state);
+    return {mapping_state, 0, false, mapping_state.getII()};
   }
 
   // Selects the best solution for mapping this no-producer op based on the
@@ -196,14 +201,14 @@ bool HeuristicMapping::tryToMapNoProducerOp(
     llvm::outs()
         << "[HeuristicMapping] Found complete mapping solution through "
         << "global exploration, finalizing...\n";
-    return true;
+    return best_solution;
   }
 
   // Otherwise continues the normal mapping process from the current best state.
   snapshots.push_back(MappingStateSnapshot(mapping_state));
   candidate_history.push_back(0);
   operation_index_history.push_back(current_op_index + 1);
-  return false;
+  return best_solution;
 }
 
 bool HeuristicMapping::performBacktrack(
@@ -225,25 +230,51 @@ bool HeuristicMapping::performBacktrack(
 
   // Because we have already thoroughly iterated candidates of no-producer
   // operations. If the current operation is after a no-producer operation, we
-  // need backtrack 2 depths.
+  // need backtrack until we find an operation with a producer.
+  // This is to ensure we do not get stuck in a loop of no-producer operations
+  // without making progress.
+
+  // Example:
+  // <op0, no_producer_op1, no_producer_op2, op3, op4>
+
+  //   |         |                 |        |    |
+
+  //         | loc_0 |         | loc_3 | ...
+  //         | loc_1 |         | loc_4 | ...
+  //         | loc_2 |         | loc_5 | ...
+
+  // 1. If we fail to map op4, we can backtrack to op3 using this
+  // performBacktrack function.
+  // 2. If we fail to map op3, we need to backtrack to op0 to avoid getting
+  // stuck in a loop of no-producer operations
+  // (<op3->no_producer_op2->op3->no_producer_op2->...>).
+  // 3. If we fail to map no_producer_op2, we will also backtrack to op0 to
+  // avoid getting stuck in similar loop.
   if (this->isAfterNoProducerOp(no_producer_ops, current_op_index)) {
     llvm::outs() << "[HeuristicMapping] Failed after no-producer op, "
                  << "performing deep backtrack\n";
 
-    // Removes the mapping state snapshot of the no-producer operation.
-    snapshots.pop_back();
-    candidate_history.pop_back();
-    operation_index_history.pop_back();
+    bool is_op_with_producer = false;
+    while (!is_op_with_producer) {
+      snapshots.pop_back();
+      candidate_history.pop_back();
+      operation_index_history.pop_back();
 
-    // Checks if there are any operations left to backtrack.
-    if (operation_index_history.empty()) {
-      llvm::outs() << "[HeuristicMapping] No more operations available "
-                   << "after deep backtrack.\n";
-      return false;
+      if (snapshots.empty() || operation_index_history.empty()) {
+        llvm::outs() << "[HeuristicMapping] No more operations available.\n";
+        return false;
+      }
+      int op_index = operation_index_history.back();
+
+      if (op_index == 0) {
+        return true;
+      } else {
+        Operation *op = getMaterializedOpsWithLevels()[op_index].first;
+        is_op_with_producer = !(no_producer_ops.count(op) > 0);
+      }
     }
 
-    // Restores the state before the previous operation of the no-producer
-    // operation.
+    // Restores the state to the last operation with a producer.
     snapshots.back().restore(mapping_state);
     candidate_history.back()++;
   } else {
@@ -356,16 +387,25 @@ bool HeuristicMapping::mapWithBacktrack(const Architecture &architecture,
 
     // Handles no-producer operations with global exploration.
     if (no_producer_ops.count(current_op) > 0 && candidate_locs.size() > 1) {
-      bool fully_mapped = tryToMapNoProducerOp(
+      NoProducerOpCandidate no_producer_candidate = tryToMapNoProducerOp(
           current_op, current_op_index, candidate_locs, snapshots,
           candidate_history, operation_index_history, architecture,
           mapping_state);
-      if (fully_mapped) {
-        llvm::outs() << "[HeuristicMapping] Found complete mapping solution "
-                        "for no-producer op, finalizing...\n";
-        return true; // Mapping completed successfully.
+      if (no_producer_candidate.mapped_ops_count > 0) {
+        if (no_producer_candidate.fully_mapped) {
+          llvm::outs() << "[HeuristicMapping] Found complete mapping solution "
+                          "for no-producer op, finalizing...\n";
+          return true; // Mapping completed successfully.
+        }
+        continue;
+      } else {
+        if (!this->performBacktrack(no_producer_ops, snapshots,
+                                    candidate_history, operation_index_history,
+                                    current_op_index, mapping_state)) {
+          return false; // Backtrack failed, no more snapshots to restore.
+        }
+        continue;
       }
-      continue; // Continue to the next operation.
     }
 
     // Limits the number of locations to try.

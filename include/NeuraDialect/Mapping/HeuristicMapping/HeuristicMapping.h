@@ -68,13 +68,14 @@ private:
                         int current_op_index, MappingState &mapping_state);
 
   // Attempts to map a no-producer operation with global exploration.
-  bool tryToMapNoProducerOp(Operation *current_op, int current_op_index,
-                            const std::vector<MappingLoc> &candidate_locs,
-                            std::vector<MappingStateSnapshot> &snapshots,
-                            std::vector<int> &candidate_history,
-                            std::vector<int> &operation_index_history,
-                            const Architecture &architecture,
-                            MappingState &mapping_state);
+  NoProducerOpCandidate
+  tryToMapNoProducerOp(Operation *current_op, int current_op_index,
+                       const std::vector<MappingLoc> &candidate_locs,
+                       std::vector<MappingStateSnapshot> &snapshots,
+                       std::vector<int> &candidate_history,
+                       std::vector<int> &operation_index_history,
+                       const Architecture &architecture,
+                       MappingState &mapping_state);
 
   // Evaluates a candidate location for a no-producer operation.
   NoProducerOpCandidate evaluateNoProducerOpCandidate(
