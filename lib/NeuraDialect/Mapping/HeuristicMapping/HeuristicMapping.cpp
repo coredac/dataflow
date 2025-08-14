@@ -160,22 +160,6 @@ HeuristicMapping::NoProducerOpCandidate HeuristicMapping::tryToMapNoProducerOp(
   if (solutions.empty()) {
     llvm::outs() << "[GlobalExploration] No feasible solutions found, "
                     "backtracking\n";
-
-    // snapshots.pop_back();
-    // candidate_history.pop_back();
-    // operation_index_history.pop_back();
-
-    // if (snapshots.empty()) {
-    //   llvm::outs() << "[HeuristicMapping] No more snapshots to restore, "
-    //                   "mapping failed.\n";
-    //   return false;
-    // }
-    // snapshots.back().restore(mapping_state);
-    // candidate_history.back()++;
-
-    // performBacktrack(no_producer_ops, snapshots, candidate_history,
-    //                  operation_index_history, current_op_index,
-    //                  mapping_state);
     return {mapping_state, 0, false, mapping_state.getII()};
   }
 
