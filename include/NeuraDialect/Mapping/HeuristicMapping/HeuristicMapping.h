@@ -16,9 +16,7 @@ public:
       : max_location_to_try(max_location_to_try),
         max_backtrack_depth(max_backtrack_depth) {}
 
-  bool map(std::vector<std::pair<Operation *, int>> &sorted_ops_with_levels,
-           std::set<Operation *> &critical_ops,
-           const Architecture &architecture,
+  bool map(const Architecture &architecture,
            MappingState &mapping_state) override;
 
   std::string getName() const override {
@@ -34,34 +32,56 @@ public:
     }
   }
 
+  // Temporary structure to hold the result of no-producer operation mapping.
+  struct NoProducerOpCandidate {
+    MappingStateSnapshot state;
+    int mapped_ops_count;
+    bool fully_mapped;
+    int current_ii;
+
+    // Calculates the quality score of the solution.
+    double getQualityScore() const {
+      // If it is not fully mapped, return the number of mapped operations.
+      if (!fully_mapped) {
+        return mapped_ops_count;
+      }
+
+      // If it is fully mapped, return a score inversely proportional to II.
+      return 1000.0 - this->current_ii * 100.0;
+    }
+  };
+
 private:
-  bool mapWithBacktrack(
-      std::vector<std::pair<Operation *, int>> &sorted_ops_with_levels,
-      std::set<Operation *> &critical_ops, const Architecture &architecture,
-      MappingState &mapping_state);
+  bool mapWithBacktrack(const Architecture &architecture,
+                        MappingState &mapping_state);
 
   // Checks if the current operation is after a no-producer operation.
   bool
   isAfterNoProducerOp(const std::unordered_set<Operation *> &no_producer_ops,
-                      const std::vector<std::pair<Operation *, int>>
-                          &materialized_ops_with_levels,
                       int current_op_index);
 
   // Performs backtracking to restore the previous mapping state.
   bool performBacktrack(const std::unordered_set<Operation *> &no_producer_ops,
-                        const std::vector<std::pair<Operation *, int>>
-                            &materialized_ops_with_levels,
                         std::vector<MappingStateSnapshot> &snapshots,
                         std::vector<int> &candidate_history,
                         std::vector<int> &operation_index_history,
                         int current_op_index, MappingState &mapping_state);
 
-  // Gets the sorted candidate locations for a given operation based on
-  // spatial execution model.
-  std::vector<MappingLoc>
-  calculateSpatialAward(Operation *op, std::set<Operation *> &critical_ops,
-                        int target_level, const Architecture &architecture,
-                        const MappingState &mapping_state);
+  // Attempts to map a no-producer operation with global exploration.
+  bool tryToMapNoProducerOp(Operation *current_op, int current_op_index,
+                            const std::vector<MappingLoc> &candidate_locs,
+                            std::vector<MappingStateSnapshot> &snapshots,
+                            std::vector<int> &candidate_history,
+                            std::vector<int> &operation_index_history,
+                            const Architecture &architecture,
+                            MappingState &mapping_state);
+
+  // Evaluates a candidate location for a no-producer operation.
+  NoProducerOpCandidate evaluateNoProducerOpCandidate(
+      Operation *current_op, int current_op_index,
+      const MappingLoc &candidate_loc, int candidate_index,
+      int total_candidates, const Architecture &architecture,
+      MappingState &mapping_state, MappingStateSnapshot &initial_state);
 
   // Configuration parameters.
   // Maximum number of locations to try for each op.

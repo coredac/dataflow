@@ -213,6 +213,7 @@ struct MapToAcceleratorPass
       for (Operation *op : critical_ops) {
         llvm::outs() << "  " << *op << "\n";
       }
+      mapping_strategy->loadDFG(sorted_ops_with_alap_levels, critical_ops);
       // assert(false);
       for (int ii = possibleMinII; ii <= maxII; ++ii) {
         llvm::errs()
@@ -220,8 +221,7 @@ struct MapToAcceleratorPass
             << "\n";
         // Creates a mapping state for the current II.
         MappingState mapping_state(architecture, ii, is_spatial_only);
-        if (mapping_strategy->map(sorted_ops_with_alap_levels, critical_ops,
-                                  architecture, mapping_state)) {
+        if (mapping_strategy->map(architecture, mapping_state)) {
           // success
           llvm::errs() << "[MapToAcceleratorPass] Successfully mapped function "
                        << func.getName() << "' with II = " << ii << "\n";

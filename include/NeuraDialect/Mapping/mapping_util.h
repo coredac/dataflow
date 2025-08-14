@@ -80,7 +80,7 @@ bool placeAndRoute(Operation *op, const MappingLoc &target_loc,
 // Calculates the award of mapping locations for a given op, the returned
 // locations are sorted based on the award.
 std::vector<MappingLoc> calculateAward(Operation *op,
-                                       std::set<Operation *> &critical_ops,
+                                       std::set<Operation *> critical_ops,
                                        int target_level,
                                        const Architecture &architecture,
                                        const MappingState &mapping_state);
