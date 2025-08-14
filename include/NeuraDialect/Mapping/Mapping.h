@@ -14,15 +14,28 @@ public:
   virtual ~Mapping() = default;
 
   // Applies the mapping strategy to map operations onto hardware
-  virtual bool
-  map(std::vector<std::pair<Operation *, int>> &sorted_ops_with_alap_levels,
-      std::set<Operation *> &critical_ops, const Architecture &architecture,
-      MappingState &mapping_state) = 0;
+  virtual bool map(const Architecture &architecture,
+                   MappingState &mapping_state) = 0;
 
   // Gets the name of this strategy
   virtual std::string getName() const = 0;
 
+  void loadDfg(
+      const std::vector<std::pair<Operation *, int>> &sorted_ops_with_levels,
+      const std::set<Operation *> &critical_ops);
+  std::vector<std::pair<Operation *, int>> getSortedOpsWithLevels() const {
+    return this->sorted_ops_with_levels;
+  }
+  std::vector<std::pair<Operation *, int>>
+  getMaterializedOpsWithLevels() const {
+    return this->materialized_ops_with_levels;
+  }
+  std::set<Operation *> getCriticalOps() const { return this->critical_ops; }
+
 private:
+  std::vector<std::pair<Operation *, int>> sorted_ops_with_levels;
+  std::vector<std::pair<Operation *, int>> materialized_ops_with_levels;
+  std::set<Operation *> critical_ops;
 };
 
 } // namespace neura
