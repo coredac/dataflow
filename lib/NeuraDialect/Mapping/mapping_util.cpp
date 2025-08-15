@@ -13,9 +13,9 @@
 using namespace mlir;
 using namespace mlir::neura;
 
-namespace {
-
-inline OperationKind getOperationKindFromMlirOp(Operation *op) {
+namespace mlir {
+namespace neura {
+OperationKind getOperationKindFromMlirOp(Operation *op) {
   if (isa<neura::AddOp>(op))
     return IAdd;
   if (isa<neura::MulOp>(op))
@@ -30,11 +30,15 @@ inline OperationKind getOperationKindFromMlirOp(Operation *op) {
 }
 
 // Returns true if the operation does not need CGRA tile placement.
-inline bool is_non_materialized(Operation *op) {
+bool is_non_materialized(Operation *op) {
   // Returns true if the operation does not need CGRA tile placement.
   return mlir::isa<neura::ReserveOp, neura::CtrlMovOp, neura::DataMovOp>(op);
 }
 
+} // namespace neura
+} // namespace mlir
+
+namespace {
 // Traverses (backward) the operation graph starting from the given operation
 // towards reserve_value.
 void traverseAlongPath(Operation *op, Value reserve_value,

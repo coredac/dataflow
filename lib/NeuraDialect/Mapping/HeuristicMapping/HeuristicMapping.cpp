@@ -6,18 +6,11 @@
 
 namespace mlir {
 namespace neura {
-
-// Returns true if the operation does not need CGRA tile placement.
-inline bool is_non_materialized(Operation *op) {
-  // Returns true if the operation does not need CGRA tile placement.
-  return mlir::isa<neura::ReserveOp, neura::CtrlMovOp, neura::DataMovOp>(op);
-}
-
 bool HeuristicMapping::map(
     std::vector<std::pair<Operation *, int>> &sorted_ops_with_levels,
     std::set<Operation *> &critical_ops, const Architecture &architecture,
     MappingState &mapping_state) {
-  // Start the backtracking mapping process from the first operation.
+  // Starts the backtracking mapping process.
   return mapWithBacktrack(sorted_ops_with_levels, critical_ops, architecture,
                           mapping_state);
 }
@@ -86,9 +79,10 @@ bool HeuristicMapping::mapWithBacktrack(
     }
 
     Operation *current_op = materialized_ops[current_op_index].first;
-    std::vector<MappingLoc> candidate_locs = calculateAward(
-        current_op, critical_ops, materialized_ops[current_op_index].second,
-        architecture, mapping_state);
+    std::vector<MappingLoc> candidate_locs;
+    candidate_locs = calculateAward(current_op, critical_ops,
+                                    materialized_ops[current_op_index].second,
+                                    architecture, mapping_state);
 
     if (candidate_locs.empty()) {
       llvm::outs() << "[HeuristicMapping] No candidate locations found "
