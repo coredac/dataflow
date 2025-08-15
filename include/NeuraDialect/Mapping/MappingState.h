@@ -55,7 +55,7 @@ namespace neura {
 // Tracks placement and routing of ops on the CGRA.
 class MappingState {
 public:
-  MappingState(const Architecture &arch, int II);
+  MappingState(const Architecture &arch, int II, bool is_spatial_only);
   // Binds a (tile/link, time_step) location to an operation.
   bool bindOp(const MappingLoc &loc, Operation *op);
 
@@ -138,6 +138,7 @@ public:
 private:
   // Initiation interval.
   int II;
+  bool is_spatial_only;
   static constexpr int kMaxSteps = 10;
 
   std::set<MappingLoc> occupied_locs;

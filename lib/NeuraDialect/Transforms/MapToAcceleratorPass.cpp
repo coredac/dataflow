@@ -10,6 +10,7 @@
 #include "NeuraDialect/NeuraPasses.h"
 #include "NeuraDialect/NeuraTypes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -23,7 +24,6 @@ using namespace mlir::neura;
 #include "NeuraDialect/NeuraPasses.h.inc"
 
 namespace {
-
 struct MapToAcceleratorPass
     : public PassWrapper<MapToAcceleratorPass, OperationPass<ModuleOp>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(MapToAcceleratorPass)
@@ -45,6 +45,12 @@ struct MapToAcceleratorPass
       llvm::cl::desc("Mapping strategy to use for mapping operations to the "
                      "accelerator. Options: heuristic (default)."),
       llvm::cl::init("heuristic")};
+  Option<std::string> mappingMode{
+      *this, "mapping-mode",
+      llvm::cl::desc(
+          "Mapping mode to use for mapping operations to the "
+          "accelerator. Options: spatial-only, spatial-temporal (default)."),
+      llvm::cl::init("spatial-temporal")};
   Option<std::string> backtrackConfig{
       *this, "backtrack-config",
       llvm::cl::desc(
@@ -52,15 +58,31 @@ struct MapToAcceleratorPass
           "accelerator. Options: simple, greedy, exhaustive, "
           "customized=max_loc,max_depth (default "
           "max_loc=5, max_depth=3)"),
-      llvm::cl::init("heuristic")};
+      llvm::cl::init("customized")};
 
   void runOnOperation() override {
     ModuleOp module = getOperation();
     std::unique_ptr<Mapping> mapping_strategy;
     StringRef mappingStrategy_stringRef(mappingStrategy.getValue());
     StringRef backtrackConfig_stringRef(backtrackConfig.getValue());
+    StringRef mappingMode_stringRef(mappingMode.getValue());
+    bool is_spatial_only = (mappingMode_stringRef == "spatial-only");
+    if (is_spatial_only || mappingMode_stringRef == "spatial-temporal" ||
+        mappingMode_stringRef.empty()) {
+      if (mappingMode_stringRef.empty()) {
+        mappingMode_stringRef = "spatial-temporal";
+      }
+      llvm::errs() << "[MapToAcceleratorPass] Using Mapping Mode: "
+                   << mappingMode_stringRef << "\n";
+    } else {
+      llvm::errs() << "[MapToAcceleratorPass] Unsupported mapping mode: "
+                   << mappingMode_stringRef << "\n";
+      return;
+    }
+
     if (mappingStrategy_stringRef == "heuristic" ||
         mappingStrategy_stringRef.empty()) {
+      mappingStrategy_stringRef = "heuristic";
 
       if (backtrackConfig_stringRef == "simple") {
         mapping_strategy = std::make_unique<HeuristicMapping>(1, 1);
@@ -145,16 +167,16 @@ struct MapToAcceleratorPass
       } else if (!longest) {
         rec_mii = 1; // No recurrence cycles found, set MII to 1.
       }
-      IntegerAttr rec_mii_attr =
-          IntegerAttr::get(IntegerType::get(func.getContext(), 32), rec_mii);
-      func->setAttr("RecMII", rec_mii_attr);
+      // IntegerAttr rec_mii_attr =
+      //     IntegerAttr::get(IntegerType::get(func.getContext(), 32), rec_mii);
+      // func->setAttr("RecMII", rec_mii_attr);
 
       // AcceleratorConfig config{/*numTiles=*/8}; // Example
       Architecture architecture(4, 4);
       int res_mii = calculateResMii(func, architecture);
-      IntegerAttr res_mii_attr =
-          IntegerAttr::get(IntegerType::get(func.getContext(), 32), res_mii);
-      func->setAttr("ResMII", res_mii_attr);
+      // IntegerAttr res_mii_attr =
+      //     IntegerAttr::get(IntegerType::get(func.getContext(), 32), res_mii);
+      // func->setAttr("ResMII", res_mii_attr);
 
       const int possibleMinII = std::max(rec_mii, res_mii);
       constexpr int maxII = 10;
@@ -192,7 +214,7 @@ struct MapToAcceleratorPass
             << "[MapToAcceleratorPass] Start mapping with target II of " << ii
             << "\n";
         // Creates a mapping state for the current II.
-        MappingState mapping_state(architecture, ii);
+        MappingState mapping_state(architecture, ii, is_spatial_only);
         if (mapping_strategy->map(sorted_ops_with_alap_levels, critical_ops,
                                   architecture, mapping_state)) {
           // success
@@ -200,9 +222,31 @@ struct MapToAcceleratorPass
                        << func.getName() << "' with II = " << ii << "\n";
           mapping_state.dumpOpToLocs(); // logs to stderr
           mapping_state.encodeMappingState();
-          func->setAttr(
-              "CompiledII",
-              IntegerAttr::get(IntegerType::get(func.getContext(), 32), ii));
+
+          // Sets the mapping_info attribute on the function.
+          auto ctx = func.getContext();
+          DictionaryAttr mapping_info = DictionaryAttr::get(
+              ctx,
+              {NamedAttribute(StringAttr::get(ctx, "x_tiles"),
+                              IntegerAttr::get(IntegerType::get(ctx, 32),
+                                               architecture.getWidth())),
+               NamedAttribute(StringAttr::get(ctx, "y_tiles"),
+                              IntegerAttr::get(IntegerType::get(ctx, 32),
+                                               architecture.getHeight())),
+               NamedAttribute(StringAttr::get(ctx, "mapping_strategy"),
+                              StringAttr::get(ctx, mappingStrategy_stringRef)),
+               NamedAttribute(StringAttr::get(ctx, "mapping_mode"),
+                              StringAttr::get(ctx, mappingMode_stringRef)),
+               NamedAttribute(StringAttr::get(ctx, "compiled_ii"),
+                              IntegerAttr::get(IntegerType::get(ctx, 32), ii)),
+               NamedAttribute(
+                   StringAttr::get(ctx, "rec_mii"),
+                   IntegerAttr::get(IntegerType::get(ctx, 32), rec_mii)),
+               NamedAttribute(
+                   StringAttr::get(ctx, "res_mii"),
+                   IntegerAttr::get(IntegerType::get(ctx, 32), res_mii))});
+
+          func->setAttr("mapping_info", mapping_info);
           break;
         }
         llvm::errs() << "[DEBUG] mapping failed for II = " << ii << "\n";
