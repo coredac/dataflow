@@ -1,5 +1,6 @@
 #include "llvm/Support/Format.h"
 #include "llvm/Support/SourceMgr.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -24,166 +25,6 @@
 
 using namespace mlir;
 
-/**
- * @brief Implements a memory management system with allocation and deallocation capabilities.
- * 
- * This class provides a simulated memory space with malloc/free operations, load/store 
- * operations for data access, and memory visualization. It maintains internal bookkeeping
- * of allocated and free memory blocks using allocation tables and free lists.
- */
-class Memory {
-public:
-    /**
-     * @brief Constructs a Memory object with specified size.
-     * @param size The total size of memory to allocate (in bytes)
-     */
-    Memory(size_t size);
-    
-    /**
-     * @brief Loads a value of type T from the specified memory address.
-     * @tparam T The type of data to load (must be trivially copyable)
-     * @param addr The memory address to load from
-     * @return The value loaded from memory
-     * @throws std::runtime_error if address is out of bounds
-     */
-    template <typename T>
-    T load(size_t addr) const;
-    
-    /**
-     * @brief Stores a value of type T at the specified memory address.
-     * @tparam T The type of data to store (must be trivially copyable)
-     * @param addr The memory address to store at
-     * @param value The value to store
-     * @throws std::runtime_error if address is out of bounds
-     */
-    template <typename T>
-    void store(size_t addr, const T& value);
-    
-    /**
-     * @brief Allocates a contiguous block of memory.
-     * @param sizeBytes The size of memory to allocate (in bytes)
-     * @return The starting address of the allocated block
-     * @throws std::runtime_error if insufficient memory is available
-     */
-    size_t malloc(size_t sizeBytes);
-
-    /**
-     * @brief Deallocates a previously allocated memory block.
-     * @param addr The starting address of the block to free
-     * @note Silently ignores invalid free operations (prints warning)
-     */
-    void free(size_t addr);
-
-    /**
-     * @brief Dumps memory contents in hexadecimal format.
-     * @param start The starting address for the dump (default: 0)
-     * @param length The number of bytes to display (default: 64)
-     */
-    void dump(size_t start = 0, size_t length = 64) const;
-
-    /**
-     * @brief Gets the total size of the memory space.
-     * @return The total memory size in bytes
-     */
-    size_t getSize() const;
-
-private:
-    std::vector<uint8_t> mem;                         /* The actual memory storage */
-    std::unordered_map<size_t, size_t> alloc_table;   /* Tracks allocated blocks (address -> size) */
-    std::map<size_t, size_t> free_list;               /* Tracks free blocks (address -> size) */
-
-    /**
-     * @brief Validates if a memory access is within bounds.
-     * @param addr The starting address to check
-     * @param size The size of the memory region to check
-     * @return true if access is valid, false otherwise
-     */
-    bool validAddr(size_t addr, size_t size) const;
-
-    /**
-     * @brief Merges adjacent free blocks in the free list.
-     * 
-     * This internal method coalesces contiguous free blocks to prevent fragmentation
-     * and maintain optimal allocation performance.
-     */
-    void mergeFreeBlocks();
-};
-
-Memory::Memory(size_t size) : mem(size, 0) {
-    free_list[0] = size;
-}
-
-template <typename T>
-T Memory::load(size_t addr) const {
-    assert(validAddr(addr, sizeof(T)) && "Memory load out of bounds");
-    T result;
-    std::memcpy(&result, &mem[addr], sizeof(T));
-    return result;
-}
-
-template <typename T>
-void Memory::store(size_t addr, const T& value) {
-    assert(validAddr(addr, sizeof(T)) && "Memory store out of bounds");
-    std::memcpy(&mem[addr], &value, sizeof(T));
-}
-
-size_t Memory::malloc(size_t sizeBytes) {
-    for (auto it = free_list.begin(); it != free_list.end(); ++it) {
-        if (it->second >= sizeBytes) {
-            size_t addr = it->first;
-            size_t remain = it->second - sizeBytes;
-            free_list.erase(it);
-            if (remain > 0) {
-                free_list[addr + sizeBytes] = remain;
-            }
-            alloc_table[addr] = sizeBytes;
-            return addr;
-        }
-    }
-    throw std::runtime_error("Out of memory");
-}
-
-void Memory::free(size_t addr) {
-    auto it = alloc_table.find(addr);
-    if (it == alloc_table.end()) {
-        std::cerr << "Invalid free at addr " << addr << "\n";
-        return;
-    }
-    size_t size = it->second;
-    alloc_table.erase(it);
-    free_list[addr] = size;
-
-    mergeFreeBlocks();
-}
-
-void Memory::dump(size_t start, size_t length) const {
-    for (size_t i = start; i < start + length && i < mem.size(); ++i) {
-        printf("%02X ", mem[i]);
-        if ((i - start + 1) % 16 == 0) printf("\n");
-    }
-    printf("\n");
-}
-
-size_t Memory::getSize() const { 
-    return mem.size(); 
-}
-
-bool Memory::validAddr(size_t addr, size_t size) const {
-    return addr + size <= mem.size();
-}
-
-void Memory::mergeFreeBlocks() {
-    auto it = free_list.begin();
-    while (it != free_list.end()) {
-        auto curr = it++;
-        if (it != free_list.end() && curr->first + curr->second == it->first) {
-            curr->second += it->second;
-            free_list.erase(it);
-            it = curr;
-        }
-    }
-}
-
 // Predicated data structure, used to store scalar/vector values and related metadata
 struct PredicatedData {
   float value;                        /* Scalar floating-point value (valid when is_vector is false) */
@@ -192,6 +33,10 @@ struct PredicatedData {
   std::vector<float> vector_data;     /* Vector data (valid when is_vector is true) */
   bool is_reserve;                    /* Reserve flag (may be used for memory reservation or temporary storage marking) */
   bool is_updated;                    /* Update flag (indicates whether the data has been modified) */
+
+
+  PredicatedData() : value{0.0f}, predicate{true}, is_vector{false}, 
+                     vector_data{}, is_reserve{false}, is_updated{false} {}
 
   /**
   * @brief Compares this PredicatedData instance with another to check if the data has been updated.
@@ -214,12 +59,86 @@ bool PredicatedData::isUpdatedComparedTo(const PredicatedData& other) const {
   return false;
 }
 
-// Define structure to hold operation handling results and control flow information
+/** @brief Structure to hold operation handling results and control flow information */
 struct OperationHandleResult {
   bool success;         /* Indicates if the operation was processed successfully */
   bool is_terminated;   /* Indicates if execution should terminate (e.g., after return operations) */
   bool is_branch;       /* Indicates if the operation is a branch (requires special index handling) */
 };
+
+/** @brief Structure to represent the dependency graph of operations */
+struct DependencyGraph {
+  llvm::DenseMap<Operation*, int> dep_count;  /* Stores the current dependency count of each operation */
+  llvm::DenseSet<Operation*> executed_ops;    /* Records the operations that have been executed */
+
+  /**
+   * @brief Builds a dependency graph for operations, calculating the initial dependency count (in-degree)
+   * for each operation. The dependency count is defined as the number of preceding operations within the
+   * same sequence that the current operation depends on.
+   *
+   * @param op_sequence The sequence of operations for which to build the dependency graph.
+   */
+  void buildDependencyGraph(const std::vector<Operation*>& op_sequence);
+
+  /**
+   * @brief Checks if an operation can be executed based on its dependency count.
+   * An operation can be executed if its dependency count is zero and it has not been executed yet.
+   *
+   * @param op The operation to check for execution eligibility.
+   * @return true if the operation can be executed; false otherwise.
+   */
+  bool canExecute(Operation* op); 
+
+  /**
+   * @brief Updates the dependency graph after an operation has been executed.
+   * This involves marking the operation as executed and updating the dependency counts of its users.
+   *
+   * @param executed_op The operation that has been executed.
+   */
+  void updateAfterExecution(Operation* executed_op); 
+};
+
+void DependencyGraph::buildDependencyGraph(const std::vector<Operation*>& op_sequence) {
+  for (Operation* op : op_sequence) {
+    int deps = 0;
+    // Traverse all operands (input values) of the current operation to analyze dependency sources
+    for (Value operand : op->getOperands()) {
+      if (Operation* def_op = operand.getDefiningOp()) {
+        if (std::find(op_sequence.begin(), op_sequence.end(), def_op) != op_sequence.end()) {
+          deps++;
+        }
+      }
+    }
+    dep_count[op] = deps;
+  }
+}
+
+bool DependencyGraph::canExecute(Operation* op) {
+  auto it = dep_count.find(op);
+  // The operation is executable if:
+  // 1. It exists in our dependency graph (it != dep_count.end())
+  // 2. It has no unmet dependencies (dependency count == 0)
+  return it != dep_count.end() && it->second == 0;
+}
+
+void DependencyGraph::updateAfterExecution(Operation* executed_op) {
+  // Mark as executed
+  executed_ops.insert(executed_op);
+  
+  // Traverse all output results produced by the executed operation
+  for (Value result : executed_op->getResults()) {
+    // Get all operations that use this result (dependent operations)
+    for (Operation* user : result.getUsers()) {
+      // Find the dependent operation in our dependency count map
+      auto it = dep_count.find(user);
+      // If the dependent operation is in our graph and has remaining dependencies,
+      // reduce its dependency count by 1 (since this executed operation was one of its dependencies)
+      if (it != dep_count.end() && it->second > 0) {
+        it->second--;
+      }
+    }
+  }
+}
 
 static llvm::SmallVector<Operation*, 16> pending_operation_queue; /* List of operations to execute in current iteration */
 static llvm::DenseMap<Operation*, bool> is_operation_enqueued;    /* Marks whether an operation is already in pending_operation_queue */
@@ -243,30 +162,6 @@ inline bool isVerboseMode() {
   return verbose;
 }
 
-// /**
-//  * @brief Adds an operation to the pending operation queue if it's not already present.
-//  * 
-//  * This function checks if the given operation is valid and not already in the pending operation queue
-//  * before adding it. It also maintains a flag to track presence in the pending operation queue for efficiency.
-//  * Verbose mode will log the addition of operations.
-//  * 
-//  * @param op The Operation to be added to the pending operation queue.
-//  * @return void
-//  */
-// void addToWorkList(Operation* op) {
-//   if (op == nullptr)
-//     return;
-//   if (is_operation_enqueued.lookup(op))
-//     return;
-
-//   pending_operation_queue.push_back(op);
-//   is_operation_enqueued[op] = true;
-
-//   if (isVerboseMode()) {
-//     llvm::outs() << "[neura-interpreter] pending_operation_queue Added: " << op->getName() << "\n";
-//   }
-// }
-
 /**
  * @brief Handles the execution of an arithmetic constant operation (arith.constant) by parsing its value and storing it in the value map.
  * 
@@ -284,7 +179,7 @@ bool handleArithConstantOp(mlir::arith::ConstantOp op, llvm::DenseMap<Value, Pre
     llvm::outs() << "[neura-interpreter]  Executing arith.constant:\n";
   }
 
-  PredicatedData val{0.0f, true};
+  PredicatedData val;
   
   // Handle floating-point constants (convert to double-precision float)
   if (auto float_attr = llvm::dyn_cast<mlir::FloatAttr>(attr)) {
@@ -1587,146 +1482,6 @@ bool handleCastOp(neura::CastOp op, llvm::DenseMap<Value, PredicatedData> &value
 }
 
 /**
- * @brief Handles the execution of a Neura load operation (neura.load) by reading a value from memory at a specified address.
- * 
- * This function processes Neura's memory load operations, which take 1-2 operands: a memory address (stored as a float) and an optional predicate operand. 
- * It reads the value from memory at the specified address, with support for 32-bit floats, 32-bit integers, and booleans (1-bit integers). The operation 
- * is skipped if the combined predicate (input address predicate + optional predicate operand) is false, returning a default value of 0.0f. Errors are 
- * returned for invalid operand counts or unsupported data types.
- * 
- * @param op                             The neura.load operation to handle
- * @param value_to_predicated_data_map   Reference to the map where the loaded value will be stored, keyed by the operation's result value
- * @param mem                            Reference to the memory object used to read the value
- * @return bool                          True if the load is successfully executed (including skipped loads); false for invalid operands or unsupported types
- */
-bool handleLoadOp(neura::LoadOp op, llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map, Memory &mem) {
-  if (isVerboseMode()) {
-    llvm::outs() << "[neura-interpreter]  Executing neura.load:\n";
-  }
-
-  if (op.getNumOperands() < 1 || op.getNumOperands() > 2) {
-    if (isVerboseMode()) {
-      llvm::errs() << "[neura-interpreter]  └─ neura.load expects 1 or 2 operands (address, [predicate])\n";
-    }
-    return false;
-  }
-  // Convert address from float to size_t (memory address type)
-  auto addr_val = value_to_predicated_data_map[op.getOperand(0)];
-  bool final_predicate = addr_val.predicate;
-
-  if (op.getNumOperands() > 1) {
-    auto pred_val = value_to_predicated_data_map[op.getOperand(1)];
-    final_predicate = final_predicate && pred_val.predicate && (pred_val.value != 0.0f);
-    if (isVerboseMode()) {
-      llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n"; 
-      llvm::outs() << "[neura-interpreter]  │  └─ Pred      : value = " << pred_val.value 
-                   << ", [pred = " << pred_val.predicate << "]\n";
-    }
-  }
-
-  float val = 0.0f;
-  size_t addr = static_cast<size_t>(addr_val.value);
-  // Perform load only if final predicate is true
-  if (final_predicate) {
-    auto result_type = op.getResult().getType();
-    if (result_type.isF32()) {
-      val = mem.load<float>(addr);
-    } else if (result_type.isInteger(32)) {
-      val = static_cast<float>(mem.load<int32_t>(addr));
-    } else if (result_type.isInteger(1)) {
-      val = static_cast<float>(mem.load<bool>(addr));
-    } else {
-      if (isVerboseMode()) {
-        llvm::errs() << "[neura-interpreter]  └─ Unsupported load type\n";
-      }
-      return false;
-    }
-  } else {
-    if (isVerboseMode()) {
-      llvm::outs() << "[neura-interpreter]  └─ Load skipped due to [pred = 0]\n";
-    }
-    val = 0.0f; // Default value when load is skipped
-  }
-
-  if (isVerboseMode()) {
-    llvm::outs() << "[neura-interpreter]  └─ Load [addr = " << addr << "] => val = "
-                 << val << ", [pred = " << final_predicate << "]\n";
-  }
-
-  value_to_predicated_data_map[op.getResult()] = { val, final_predicate };
-  return true;
-}
-
-/**
- * @brief Handles the execution of a Neura store operation (neura.store) by writing a value to memory at a specified address.
- * 
- * This function processes Neura's memory store operations, which take 2-3 operands: a value to store, a memory address (both stored as floats), 
- * and an optional predicate operand. It writes the value to memory at the specified address if the combined predicate (address predicate + 
- * optional predicate operand) is true. Supported types include 32-bit floats, 32-bit integers, and booleans (1-bit integers). The operation 
- * is skipped if the predicate is false. Errors are returned for insufficient operands or unsupported data types.
- * 
- * @param op                             The neura.store operation to handle
- * @param value_to_predicated_data_map   Reference to the map storing the value and address to be used for the store
- * @param mem                            Reference to the memory object used to write the value
- * @return bool                          True if the store is successfully executed; false for invalid operands or unsupported types
- */
-bool handleStoreOp(neura::StoreOp op, llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map, Memory &mem) {
-  if (isVerboseMode()) {
-    llvm::outs() << "[neura-interpreter]  Executing neura.store:\n";
-  }
-
-  if (op.getNumOperands() < 2) {
-    if (isVerboseMode()) {
-      llvm::errs() << "[neura-interpreter]  └─ neura.store expects at least two operands (value, address)\n";
-    }
-    return false;
-  }
-
-  auto val_data = value_to_predicated_data_map[op.getOperand(0)];  /* Value to store */
-  auto addr_val = value_to_predicated_data_map[op.getOperand(1)];  /* Target address */
-  bool final_predicate = addr_val.predicate;    /* Base predicate from address validity */
-
-  if (op.getNumOperands() > 2) {
-    auto pred_val = value_to_predicated_data_map[op.getOperand(2)];
-    final_predicate = final_predicate && pred_val.predicate && (pred_val.value != 0.0f);
-    if (isVerboseMode()) {
-      llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n"; 
-      llvm::outs() << "[neura-interpreter]  │  └─ Pred      : value = " << pred_val.value 
-                   << ", [pred = " << pred_val.predicate << "]\n";
-    }
-  }
-  // Convert address from float to size_t (memory address type)
-  size_t addr = static_cast<size_t>(addr_val.value);
-  // Perform store only if final predicate is true
-  if(final_predicate) {
-    auto val_type = op.getOperand(0).getType();
-    if (val_type.isF32()) {
-      mem.store<float>(addr, val_data.value);
-    } else if (val_type.isInteger(32)) {
-      mem.store<int32_t>(addr, static_cast<int32_t>(val_data.value));
-    } else if (val_type.isInteger(1)) {
-    mem.store<bool>(addr, (val_data.value != 0.0f));
-    } else {
-      if (isVerboseMode()) {
-        llvm::errs() << "[neura-interpreter]  └─ Unsupported store type\n";
-      }
-      return false;
-    }
-    if (isVerboseMode()) {
-      llvm::outs() << "[neura-interpreter]  └─ Store [addr = " << addr 
-                   << "] => val = " << val_data.value 
-                   << ", [pred = 1" << "]\n";
-    }
-  } else {
-    if (isVerboseMode()) {
-      llvm::outs() << "[neura-interpreter]  └─ Store skipped due to [pred = 0]\n";
-    }
-  }
-
-  return true;
-}
-
-/**
  * @brief Handles the execution of a Neura Get Element Pointer operation (neura.gep) by computing a memory address from a base address and indices.
  * 
  * This function processes Neura's GEP operations, which calculate a target memory address by adding an offset to a base address. The offset is computed 
@@ -1849,190 +1604,6 @@ bool handleGEPOp(neura::GEP op, llvm::DenseMap<Value, PredicatedData> &value_to_
   }
 
   value_to_predicated_data_map[op.getResult()] = result;
-  return true;
-}
-
-/**
- * @brief Handles the execution of a Neura indexed load operation (neura.load_indexed) by loading a value from memory using a base address and summed indices.
- * 
- * This function processes Neura's indexed load operations, which calculate a target memory address by adding a base address to the sum of multiple indices. 
- * It supports scalar values only (no vectors) for the base address, indices, and predicate. The operation loads data from the computed address if the combined 
- * predicate (validity of base, indices, and optional predicate operand) is true. Supported data types include 32-bit floats, 32-bit integers, and booleans (1-bit integers).
- * 
- * @param op                             The neura.load_indexed operation to handle
- * @param value_to_predicated_data_map   Reference to the map storing values (base address, indices, predicate) and where the loaded result will be stored
- * @param mem                            Reference to the memory object used to read the value
- * @return bool                          True if the indexed load is successfully executed; false for vector inputs, unsupported types, or errors
- */
-bool handleLoadIndexedOp(neura::LoadIndexedOp op,
-                         llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map,
-                         Memory &mem) {
-  if (isVerboseMode()) {
-    llvm::outs() << "[neura-interpreter]  └─ Executing neura.load_indexed:\n";
-  }
-
-  // Retrieve base address and validate it is not a vector
-  auto base_val = value_to_predicated_data_map[op.getBase()];
-  if (base_val.is_vector) {
-    if (isVerboseMode()) {
-      llvm::errs() << "[neura-interpreter]  └─ Vector base not supported in load_indexed\n";
-    }
-    return false;
-  }
-
-  float base_F = base_val.value;                /* Base address (stored as float) */
-  bool final_predicate = base_val.predicate;    /* Initialize predicate with base's validity */
-
-  // Calculate total offset by summing all indices (validate indices are not vectors)
-  // Todo: multi-dimensional index will be supported in the future
-  float offset = 0.0f;
-  for (Value idx : op.getIndices()) {
-    auto idx_val = value_to_predicated_data_map[idx];
-    if (idx_val.is_vector) {
-      if (isVerboseMode()) {
-        llvm::errs() << "[neura-interpreter]  └─ Vector index not supported in load_indexed\n";
-      }
-      return false;
-    }
-    // Accumulate index values into total offset
-    offset += idx_val.value;
-    final_predicate = final_predicate && idx_val.predicate;
-  }
-
-  // Incorporate optional predicate operand (validate it is not a vector)
-  if (op.getPredicate()) {
-    Value pred_operand = op.getPredicate();
-    auto pred_val = value_to_predicated_data_map[pred_operand];
-    if (pred_val.is_vector) {
-      if (isVerboseMode()) {
-        llvm::errs() << "[neura-interpreter]  └─ Vector predicate not supported\n";
-      }
-      return false;
-    }
-    final_predicate = final_predicate && pred_val.predicate && (pred_val.value != 0.0f);
-  }
-
-  // Compute target address (base + total offset) and initialize loaded value
-  size_t addr = static_cast<size_t>(base_F + offset);
-  float val = 0.0f;
-
-  // Perform load only if final predicate is true (valid address and conditions)
-  if (final_predicate) {
-    auto result_type = op.getResult().getType();
-    if (result_type.isF32()) {
-      val = mem.load<float>(addr);
-    } else if (result_type.isInteger(32)) {
-      val = static_cast<float>(mem.load<int32_t>(addr));
-    } else if (result_type.isInteger(1)) {
-      val = static_cast<float>(mem.load<bool>(addr));
-    } else {
-      if (isVerboseMode()) {
-        llvm::errs() << "[neura-interpreter]  └─ Unsupported result type\n";
-      }
-      return false;
-    }
-  }
-
-  if (isVerboseMode()) {
-    llvm::outs() << "[neura-interpreter]  └─ LoadIndexed [addr = " << addr << "] => val = "
-                 << val << ", [pred = " << final_predicate << "]\n";
-  }
-
-  value_to_predicated_data_map[op.getResult()] = { val, final_predicate, false, {}, false };
-  return true;
-}
-
-/**
- * @brief Handles the execution of a Neura indexed store operation (neura.store_indexed) by storing a value to memory using a base address and summed indices.
- * 
- * This function processes Neura's indexed store operations, which calculate a target memory address by adding a base address to the sum of multiple indices, then stores a value at that address.
- * It supports scalar values only (no vectors) for the value to store, base address, indices, and predicate. The operation performs the store only if the combined predicate (validity of the value,
- * base, indices, and optional predicate operand) is true. Supported data types include 32-bit floats, 32-bit integers, and booleans (1-bit integers).
- * 
- * @param op                             The neura.store_indexed operation to handle
- * @param value_to_predicated_data_map   Reference to the map storing the value to store, base address, indices, and predicate
- * @param mem                            Reference to the memory object used to write the value
- * @return bool                          True if the indexed store is successfully executed; false for vector inputs, unsupported types, or errors
- */
-bool handleStoreIndexedOp(neura::StoreIndexedOp op,
-                          llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map,
-                          Memory &mem) {
-  if (isVerboseMode()) {
-    llvm::outs() << "[neura-interpreter]  Executing neura.store_indexed:\n";
-  }
-
-  auto val_to_store = value_to_predicated_data_map[op.getValue()];
-  if (val_to_store.is_vector) {
-    if (isVerboseMode()) {
-      llvm::errs() << "[neura-interpreter]  └─ Vector value not supported in store_indexed\n";
-    }
-    return false;
-  }
-  float value = val_to_store.value;
-  bool final_predicate = val_to_store.predicate;
-
-  auto base_val = value_to_predicated_data_map[op.getBase()];
-  if (base_val.is_vector) {
-    if (isVerboseMode()) {
-      llvm::errs() << "[neura-interpreter]  └─ Vector base not supported in store_indexed\n";
-    }
-    return false;
-  }
-
-   // Retrieve base address and validate it is not a vector
-  float base_F = base_val.value;
-  final_predicate = final_predicate && base_val.predicate;
-
-  // Calculate total offset by summing all indices (validate indices are not vectors)
-  // Todo: multi-dimensional index will be supported in the future
-  float offset = 0.0f;
-  for (Value idx : op.getIndices()) {
-    auto idx_val = value_to_predicated_data_map[idx];
-    if (idx_val.is_vector) {
-      if (isVerboseMode()) {
-        llvm::errs() << "[neura-interpreter]  └─ Vector index not supported in store_indexed\n";
-      }
-      return false;
-    }
-    offset += idx_val.value;
-    final_predicate = final_predicate && idx_val.predicate;
-  }
-
-  if (op.getPredicate()) {
-      Value pred_operand = op.getPredicate();
-      auto pred_val = value_to_predicated_data_map[pred_operand];
-      if (pred_val.is_vector) {
-        if (isVerboseMode()) {
-          llvm::errs() << "[neura-interpreter]  └─ Vector predicate not supported\n";
-        }
-        return false;
-      }
-      final_predicate = final_predicate && pred_val.predicate && (pred_val.value != 0.0f);
-  }
-
-  size_t addr = static_cast<size_t>(base_F + offset);
-
-  if (final_predicate) {
-    auto val_type = op.getValue().getType();
-    if (val_type.isF32()) {
-      mem.store<float>(addr, value);
-    } else if (val_type.isInteger(32)) {
-      mem.store<int32_t>(addr, static_cast<int32_t>(value));
-    } else if (val_type.isInteger(1)) {
-      mem.store<bool>(addr, value != 0.0f);
-    } else {
-      if (isVerboseMode()) {
-        llvm::errs() << "[neura-interpreter]  └─ Unsupported value type in store_indexed\n";
-      }
-      return false;
-    }
-  }
-
-  if (isVerboseMode()) {
-    llvm::outs() << "[neura-interpreter]  └─ StoreIndexed [addr = " << addr << "] <= val = "
-                 << value << ", [pred = " << final_predicate << "]\n";
-  }
-
   return true;
 }
 
@@ -2882,6 +2453,44 @@ bool handleGrantAlwaysOp(neura::GrantAlwaysOp op, llvm::DenseMap<Value, Predicat
 }
 
 /**
+ * @brief Finds operations in the given sequence that have no intra-sequence dependencies.
+ * An independent operation is one that does not rely on any values defined by other operations
+ * within the same sequence. It may depend on values from outside the sequence.
+
+ * @param op_sequence                The sequence of operations to analyze
+ * @return std::vector<Operation *>  Vector of operations with no intra-sequence dependencies
+ */
+std::vector<Operation *> findIndependentInSequence(
+    const std::vector<Operation *> &op_sequence) {
+  std::vector<Operation *> independent_ops;
+  // Track all values defined by operations within the sequence for quick lookup
+  llvm::DenseSet<Value> values_defined_in_sequence;
+
+  for (Operation *op : op_sequence) {
+    for (Value result : op->getResults()) {
+      values_defined_in_sequence.insert(result);
+    }
+  }
+
+  for (Operation *op : op_sequence) {
+    bool has_intra_dependencies = false;
+
+    for (Value operand : op->getOperands()) {
+      if (values_defined_in_sequence.count(operand)) {
+        has_intra_dependencies = true;
+        break;
+      }
+    }
+
+    if (!has_intra_dependencies) {
+      independent_ops.push_back(op);
+    }
+  }
+
+  return independent_ops;
+}
+
+/**
  * @brief Generic operation handling function that unifies type checking for both execution modes
  * 
  * Processes core logic for all operation types and returns handling results. This function
@@ -2890,7 +2499,6 @@ bool handleGrantAlwaysOp(neura::GrantAlwaysOp op, llvm::DenseMap<Value, Predicat
  * 
  * @param op                              The operation to process
  * @param value_to_predicated_data_map    Reference to map storing predicated data for values
- * @param mem                             Reference to memory object for load/store operations
  * @param current_block                   Pointer to current block (control flow mode only)
  * @param last_visited_block              Pointer to previously visited block (control flow mode only)
  * @return OperationHandleResult          Structure containing processing status and control flags
@@ -2898,7 +2506,6 @@ bool handleGrantAlwaysOp(neura::GrantAlwaysOp op, llvm::DenseMap<Value, Predicat
 OperationHandleResult handleOperation(
     Operation* op,
     llvm::DenseMap<Value, PredicatedData>& value_to_predicated_data_map,
-    Memory& mem,
     Block**current_block = nullptr,
     Block** last_visited_block = nullptr) {
   
@@ -2943,16 +2550,8 @@ OperationHandleResult handleOperation(
     result.success = handleSelOp(sel_op, value_to_predicated_data_map);
   } else if (auto cast_op = dyn_cast<neura::CastOp>(op)) {
     result.success = handleCastOp(cast_op, value_to_predicated_data_map);
-  } else if (auto load_op = dyn_cast<neura::LoadOp>(op)) {
-    result.success = handleLoadOp(load_op, value_to_predicated_data_map, mem);
-  } else if (auto store_op = dyn_cast<neura::StoreOp>(op)) {
-    result.success = handleStoreOp(store_op, value_to_predicated_data_map, mem);
   } else if (auto gep_op = dyn_cast<neura::GEP>(op)) {
     result.success = handleGEPOp(gep_op, value_to_predicated_data_map);
-  } else if (auto load_index_op = dyn_cast<neura::LoadIndexedOp>(op)) {
-    result.success = handleLoadIndexedOp(load_index_op, value_to_predicated_data_map, mem);
-  } else if (auto store_index_op = dyn_cast<neura::StoreIndexedOp>(op)) {
-    result.success = handleStoreIndexedOp(store_index_op, value_to_predicated_data_map, mem);
   } else if (auto br_op = dyn_cast<neura::Br>(op)) {
     // Branch operations only need block handling in control flow mode
     if (current_block && last_visited_block) {
@@ -3006,14 +2605,12 @@ OperationHandleResult handleOperation(
  * specific logic for dependency management and pending operation queue updates.
  * 
  * @param op                              The operation to execute
- * @param value_to_predicated_data_map    Reference to map storing predicated data for values
- * @param mem                             Reference to memory object for load/store operations
+ * @param value_to_predicated_data_map    Reference to map storing predicated data for valuess
  * @param next_pending_operation_queue    Queue to receive dependent operations needing processing
  * @return bool                           True if operation executed successfully, false otherwise
  */
 bool executeOperation(Operation* op, 
                      llvm::DenseMap<Value, PredicatedData>& value_to_predicated_data_map, 
-                     Memory& mem,
                      llvm::SmallVector<Operation*, 16>& next_pending_operation_queue) {
   
   // Save current values to detect updates after execution
@@ -3025,22 +2622,12 @@ bool executeOperation(Operation* op,
   }
 
   // Process the operation using the generic handler (no block info needed for data flow)
-  auto handle_result = handleOperation(op, value_to_predicated_data_map, mem);
+  auto handle_result = handleOperation(op, value_to_predicated_data_map);
   if (!handle_result.success) {
     if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  Operation failed, no propagation\n";
     }
     return false;
-  }
-
-  // Check if any operands are invalid (data flow specific validation)
-  bool has_invalid_operands = false;
-  for (Value operand : op->getOperands()) {
-    if (value_to_predicated_data_map.count(operand) && 
-        !value_to_predicated_data_map[operand].predicate) {
-      has_invalid_operands = true;
-      break;
-    }
   }
 
   // Check if any results were updated during execution
@@ -3084,7 +2671,7 @@ bool executeOperation(Operation* op,
   }
 
   // Propagate updates to dependent operations if changes occurred
-  if (has_update && !has_invalid_operands) {
+  if (has_update) {
     if (isVerboseMode()) {
       llvm::outs() << "[neura-interpreter]  Operation updated, propagating to users...\n";
     }
@@ -3147,19 +2734,30 @@ bool executeOperation(Operation* op,
  * @return int                           0 if execution completes successfully, 1 on error
  */
 int run(func::FuncOp func,
-        llvm::DenseMap<Value, PredicatedData>& value_to_predicated_data_map,
-        Memory& mem) {
+        llvm::DenseMap<Value, PredicatedData>& value_to_predicated_data_map) {
   if (isDataflowMode()) {
     // Data flow mode execution logic
     // Initialize pending operation queue with all operations except return operations
+
+    std::vector<Operation*> op_seq;
     for (auto& block : func.getBody()) {
       for (auto& op : block.getOperations()) {
-        if (isa<neura::ReturnOp>(op) || isa<func::ReturnOp>(op)) {
-          continue;
-        } else {
-          pending_operation_queue.push_back(&op);
-          is_operation_enqueued[&op] = true;
-        }
+        op_seq.emplace_back(&op);
+      }
+    }
+
+    // Dependency graph to track operation dependencies
+    DependencyGraph dep_graph;                                 
+    dep_graph.buildDependencyGraph(op_seq);
+
+    std::vector<Operation*> independent_ops = findIndependentInSequence(op_seq);
+
+    for (auto* op : independent_ops) {
+      pending_operation_queue.emplace_back(op);
+      if (isVerboseMode()) {
+        llvm::outs() << "[neura-interpreter]  Initial pending operation: ";
+        op->print(llvm::outs());
+        llvm::outs() << "\n";
       }
     }
 
@@ -3168,6 +2766,7 @@ int run(func::FuncOp func,
     while (!pending_operation_queue.empty()) {
       iter_count++;
       if (isVerboseMode()) {
+        llvm::outs() << "[neura-interpreter]  ----------------------------------------\n";
         llvm::outs() << "[neura-interpreter]  Iteration " << iter_count
                      << " | pending_operation_queue: " << pending_operation_queue.size() << "\n";
       }
@@ -3175,8 +2774,19 @@ int run(func::FuncOp func,
       llvm::SmallVector<Operation*, 16> next_pending_operation_queue;
       for (Operation* op : pending_operation_queue) {
         is_operation_enqueued[op] = false;
-        if (!executeOperation(op, value_to_predicated_data_map, mem, next_pending_operation_queue)) {
-          return 1;
+        if (dep_graph.canExecute(op)) {
+          if (isVerboseMode()) {
+            llvm::outs() << "[neura-interpreter]  ========================================\n";
+            llvm::outs() << "[neura-interpreter]  Executing operation: " << *op << "\n";
+          }
+          if (!executeOperation(op, value_to_predicated_data_map, next_pending_operation_queue)) {
+            return 1;
+          }
+          dep_graph.updateAfterExecution(op);
+        } else {
+          if (isVerboseMode()) {
+            llvm::outs() << "[neura-interpreter]  Skipping operation (dependencies not satisfied): " << *op << "\n";
+          }
         }
       }
       pending_operation_queue = std::move(next_pending_operation_queue);
@@ -3199,7 +2809,7 @@ int run(func::FuncOp func,
 
       Operation& op = *std::next(operations.begin(), op_index);
       // Process operation with block information for control flow handling
-      auto handle_result = handleOperation(&op, value_to_predicated_data_map, mem, &current_block, &last_visited_block);
+      auto handle_result = handleOperation(&op, value_to_predicated_data_map, &current_block, &last_visited_block);
       
       if (!handle_result.success) return 1;
       if (handle_result.is_terminated) {
@@ -3258,10 +2868,9 @@ int main(int argc, char **argv) {
 
   // Initialize data structures
   llvm::DenseMap<Value, PredicatedData> value_to_predicated_data_map;
-  Memory mem(1024); // 1MB memory allocation
 
   for (auto func : module->getOps<func::FuncOp>()) {
-    if (run(func, value_to_predicated_data_map, mem)) {
+    if (run(func, value_to_predicated_data_map)) {
       llvm::errs() << "[neura-interpreter]  Execution failed\n";
       return 1;
     }
