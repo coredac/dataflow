@@ -5,7 +5,9 @@
 using namespace mlir;
 using namespace mlir::neura;
 
-MappingState::MappingState(const Architecture &arch, int II) : II(II) {}
+MappingState::MappingState(const Architecture &arch, int II,
+                           bool is_spatial_only)
+    : II(II), is_spatial_only(is_spatial_only) {}
 
 bool MappingState::bindOp(const MappingLoc &loc, Operation *op) {
   loc_to_op[loc] = op;
@@ -31,14 +33,26 @@ void MappingState::unbindOp(Operation *op) {
 }
 
 bool MappingState::isAvailableAcrossTime(const MappingLoc &loc) const {
-  // Checks the availability across time domain.
-  for (int t = loc.time_step % II; t < II * kMaxSteps; t += II) {
-    MappingLoc check_loc = {loc.resource, t};
-    if (occupied_locs.find(check_loc) != occupied_locs.end()) {
-      return false;
+  // For spatial mapping, checks if the location is available across all time.
+  if (this->is_spatial_only) {
+    for (int t = 0; t < II * kMaxSteps; ++t) {
+      MappingLoc check_loc = {loc.resource, t};
+      if (occupied_locs.find(check_loc) != occupied_locs.end()) {
+        return false;
+      }
     }
+    return true;
+  } else {
+
+    // Checks the availability across time domain.
+    for (int t = loc.time_step % II; t < II * kMaxSteps; t += II) {
+      MappingLoc check_loc = {loc.resource, t};
+      if (occupied_locs.find(check_loc) != occupied_locs.end()) {
+        return false;
+      }
+    }
+    return true;
   }
-  return true;
 }
 
 bool MappingState::isAvailableAcrossTimeInRange(BasicResource *resource,
@@ -63,7 +77,8 @@ std::optional<Operation *> MappingState::getOpAt(MappingLoc loc) const {
   return it->second;
 }
 
-std::optional<Operation *> MappingState::getOpAtLocAcrossTime(MappingLoc loc) const {
+std::optional<Operation *>
+MappingState::getOpAtLocAcrossTime(MappingLoc loc) const {
   for (int t = loc.time_step % II; t < II * kMaxSteps; t += II) {
     MappingLoc check_loc = {loc.resource, t};
     auto it = loc_to_op.find(check_loc);
@@ -84,7 +99,8 @@ int MappingState::countOpsAtResource(BasicResource *resource) const {
   return count;
 }
 
-const std::vector<MappingLoc> &MappingState::getAllLocsOfOp(Operation *op) const {
+const std::vector<MappingLoc> &
+MappingState::getAllLocsOfOp(Operation *op) const {
   auto it = op_to_locs.find(op);
   if (it != op_to_locs.end()) {
     return it->second;
@@ -130,7 +146,8 @@ std::vector<MappingLoc> MappingState::getNextStepTiles(MappingLoc loc) const {
 //   return it != current_step_tiles.end() ? it->second : empty;
 // }
 
-std::vector<MappingLoc> MappingState::getCurrentStepLinks(MappingLoc loc) const {
+std::vector<MappingLoc>
+MappingState::getCurrentStepLinks(MappingLoc loc) const {
   assert((loc.resource->getKind() == ResourceKind::Tile) &&
          "Current step links can only be queried for tiles");
   std::vector<MappingLoc> current_step_links;
@@ -276,4 +293,16 @@ void MappingState::encodeMappingState() {
     }
     op->setAttr("mapping_locs", mlir::ArrayAttr::get(ctx, mapping_entries));
   }
+}
+
+MappingStateSnapshot::MappingStateSnapshot(const MappingState &mapping_state) {
+  this->occupied_locs = mapping_state.getOccupiedLocs();
+  this->loc_to_op = mapping_state.getLocToOp();
+  this->op_to_locs = mapping_state.getOpToLocs();
+}
+
+void MappingStateSnapshot::restore(MappingState &mapping_state) {
+  mapping_state.setOccupiedLocs(this->occupied_locs);
+  mapping_state.setLocToOp(this->loc_to_op);
+  mapping_state.setOpToLocs(this->op_to_locs);
 }

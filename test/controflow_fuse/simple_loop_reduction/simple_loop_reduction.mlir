@@ -57,7 +57,7 @@
 // RUN: --fuse-control-flow \
 // RUN: --fold-constant \
 // RUN: --insert-data-mov \
-// RUN: --map-to-accelerator="mapping-strategy=heuristic" | FileCheck %s -check-prefix=FUSE-MAPPING
+// RUN: --map-to-accelerator="mapping-strategy=heuristic backtrack-config=customized=4,5" | FileCheck %s -check-prefix=FUSE-MAPPING
 
 module attributes {} {
   func.func @_Z10simpleloopv() -> i32 attributes {llvm.linkage = #llvm.linkage<external>} {
@@ -161,7 +161,7 @@ module attributes {} {
 // FUSE-NEXT: }
 
 
-// FUSE-MAPPING:        func.func @_Z10simpleloopv() -> i32 attributes {CompiledII = 3 : i32, RecMII = 3 : i32, ResMII = 1 : i32, accelerator = "neura", llvm.linkage = #llvm.linkage<external>} {
+// FUSE-MAPPING:        func.func @_Z10simpleloopv() -> i32 attributes {accelerator = "neura", llvm.linkage = #llvm.linkage<external>, mapping_info = {compiled_ii = 3 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 3 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {
 // FUSE-MAPPING-NEXT:     %0 = "neura.grant_always"() <{constant_value = 1 : i64}> {mapping_locs = [{id = 4 : i32, resource = "tile", time_step = 0 : i32, x = 0 : i32, y = 1 : i32}]} : () -> !neura.data<i64, i1>
 // FUSE-MAPPING-NEXT:     %1 = "neura.grant_always"() <{constant_value = 128 : i64}> {mapping_locs = [{id = 12 : i32, resource = "tile", time_step = 0 : i32, x = 0 : i32, y = 3 : i32}]} : () -> !neura.data<i64, i1>
 // FUSE-MAPPING-NEXT:     %2 = "neura.grant_once"() <{constant_value = 0 : i32}> {mapping_locs = [{id = 0 : i32, resource = "tile", time_step = 1 : i32, x = 0 : i32, y = 0 : i32}]} : () -> !neura.data<i32, i1>
