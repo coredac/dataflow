@@ -29,6 +29,7 @@ The structure of the files in this folder is as follows：
 ├── samples
 │   ├── bert
 │   └── lenet
+├── visualize
 └── test.mlir
 ```
 
@@ -55,3 +56,6 @@ We generate the `linalg` dialect of these models via [Torch MLIR](https://github
 Due to the data dependencies between loops in models, we are now unable to automatically extract each of these SINGLE loops from the model IR for individual tests.
 
 But we can manually collect some small unit tests from these sample IRs. For example, you can write `c++` code of a loop from BERT by mimicing the its corresponding `affine.for` operations, then use [Polygeist](https://github.com/llvm/Polygeist) to convert these `c++` code into `affine` mlir for further lowering. And that's how we generated tests in `affine2neura/bert`.
+
+## 4 Visualization
+We provide an example to visualize the MLIR code. Please refer to [visualize/README.md](visualize/README.md) for details.
