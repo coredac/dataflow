@@ -5,7 +5,7 @@ add_mlir_dialect_library(MLIRNeura
         NeuraPasses.cpp
         Mapping/mapping_util.cpp
         Mapping/MappingState.cpp
-        Mapping/MappingStrategy.cpp
+        Mapping/Mapping.cpp
         Mapping/HeuristicMapping/HeuristicMapping.cpp
         Architecture/Architecture.cpp
 

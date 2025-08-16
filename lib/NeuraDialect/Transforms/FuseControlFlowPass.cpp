@@ -385,7 +385,7 @@ LogicalResult replaceWithLoopController(LoopInfo *loop_info,
       rewriter.create<neura::GrantAlwaysOp>(loc, index_type, end_val, nullptr);
 
   Value step_val = loop_info->step_val;
-  rewriter.setInsertionPointAfter(end_val.getDefiningOp());
+  rewriter.setInsertionPointAfter(step_val.getDefiningOp());
   step_val =
       rewriter.create<neura::GrantAlwaysOp>(loc, index_type, step_val, nullptr);
 
