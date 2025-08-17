@@ -15,13 +15,13 @@
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraOps.h"
 
+#include <cstdlib>
 #include <unordered_map>
 #include <iostream>
 #include <vector>
-#include <map>
 #include <cstdint>
-#include <cstring>
 #include <cassert>
+#include <stdlib.h>
 
 using namespace mlir;
 
@@ -68,21 +68,24 @@ struct OperationHandleResult {
 
 /** @brief Structure to represent the dependency graph of operations */
 struct DependencyGraph {
-  llvm::DenseMap<Operation*, int> dep_count;  /* Stores the current dependency count of each operation */
-  llvm::DenseSet<Operation*> executed_ops;    /* Records the operations that have been executed */
+  // Tracks the number of pending producer operations that each consumer operation is waiting for
+  llvm::DenseMap<Operation*, int> consumer_pending_producers;
+  // Records operations that have been executed
+  llvm::DenseSet<Operation*> executed_ops;
 
   /**
-   * @brief Builds a dependency graph for operations, calculating the initial dependency count (in-degree)
-   * for each operation. The dependency count is defined as the number of preceding operations within the
-   * same sequence that the current operation depends on.
+   * @brief Builds a dependency graph for operations, calculating the initial count of producer operations
+   * that each consumer operation depends on. This count represents how many preceding producer operations
+   * within the same sequence the current consumer operation relies on.
    *
    * @param op_sequence The sequence of operations for which to build the dependency graph.
    */
-  void buildDependencyGraph(const std::vector<Operation*>& op_sequence);
+  void build(const std::vector<Operation*>& op_sequence);
 
   /**
-   * @brief Checks if an operation can be executed based on its dependency count.
-   * An operation can be executed if its dependency count is zero and it has not been executed yet.
+   * @brief Determines if an operation can be executed based on its count of pending producers.
+   * An operation is executable when it has zero pending producers (all dependencies have been satisfied)
+   * and it hasn't been executed yet.
    *
    * @param op The operation to check for execution eligibility.
    * @return true if the operation can be executed; false otherwise.
@@ -91,49 +94,48 @@ struct DependencyGraph {
 
   /**
    * @brief Updates the dependency graph after an operation has been executed.
-   * This involves marking the operation as executed and updating the dependency counts of its users.
+   * This involves marking the operation as executed and decrementing the pending producer count
+   * for all consumer operations that depend on it.
    *
-   * @param executed_op The operation that has been executed.
+   * @param executed_op The operation that has been executed (acts as a producer).
    */
   void updateAfterExecution(Operation* executed_op); 
 };
 
-void DependencyGraph::buildDependencyGraph(const std::vector<Operation*>& op_sequence) {
-  for (Operation* op : op_sequence) {
-    int deps = 0;
-    // Traverse all operands (input values) of the current operation to analyze dependency sources
-    for (Value operand : op->getOperands()) {
-      if (Operation* def_op = operand.getDefiningOp()) {
-        if (std::find(op_sequence.begin(), op_sequence.end(), def_op) != op_sequence.end()) {
-          deps++;
+void DependencyGraph::build(const std::vector<Operation*>& op_sequence) {
+  for (Operation* consumer_op : op_sequence) {
+    int required_producers = 0;
+    // Count how many producer operations this consumer depends on
+    for (Value operand : consumer_op->getOperands()) {
+      if (Operation* producer_op = operand.getDefiningOp()) {
+        // Only count producers within the same operation sequence
+        if (std::find(op_sequence.begin(), op_sequence.end(), producer_op) != op_sequence.end()) {
+          required_producers++;
         }
       }
     }
-    dep_count[op] = deps;
+    consumer_pending_producers[consumer_op] = required_producers;
   }
 }
 
 bool DependencyGraph::canExecute(Operation* op) {
-  auto it = dep_count.find(op);
-  // The operation is executable if:
-  // 1. It exists in our dependency graph (it != dep_count.end())
-  // 2. It has no unmet dependencies (dependency count == 0)
-  return it != dep_count.end() && it->second == 0;
+  auto it = consumer_pending_producers.find(op);
+  // Operation is executable if:
+  // 1. It exists in the dependency graph
+  // 2. It has no pending producers (all dependencies satisfied)
+  return it != consumer_pending_producers.end() && it->second == 0;
 }
 
 void DependencyGraph::updateAfterExecution(Operation* executed_op) {
-  // Mark as executed
+  // Mark the completed operation as executed (it acts as a producer)
   executed_ops.insert(executed_op);
   
-  // Traverse all output results produced by the executed operation
+  // Update all consumer operations that depend on this producer
   for (Value result : executed_op->getResults()) {
-    // Get all operations that use this result (dependent operations)
-    for (Operation* user : result.getUsers()) {
-      // Find the dependent operation in our dependency count map
-      auto it = dep_count.find(user);
-      // If the dependent operation is in our graph and has remaining dependencies,
-      // reduce its dependency count by 1 (since this executed operation was one of its dependencies)
-      if (it != dep_count.end() && it->second > 0) {
+    for (Operation* consumer_op : result.getUsers()) {
+      auto it = consumer_pending_producers.find(consumer_op);
+      // Decrement pending producer count for valid consumers
+      if (it != consumer_pending_producers.end() && it->second > 0) {
         it->second--;
       }
     }
@@ -2106,95 +2108,65 @@ bool handleReserveOp(neura::ReserveOp op, llvm::DenseMap<Value, PredicatedData> 
  */
 bool handleCtrlMovOp(neura::CtrlMovOp op, 
                      llvm::DenseMap<Value, PredicatedData>& value_to_predicated_data_map) {
-    if (isVerboseMode()) {
-        llvm::outs() << "[neura-interpreter]  Executing neura.ctrl_mov" 
+  if (isVerboseMode()) {
+    llvm::outs() << "[neura-interpreter]  Executing neura.ctrl_mov" 
                      << (isDataflowMode() ? "(dataflow)" : "") << ":\n";
+  }
+
+  Value source = op.getValue();
+  Value target = op.getTarget();
+
+  if (!value_to_predicated_data_map.count(source)) {
+    if (isVerboseMode()) {
+      llvm::errs() << "[neura-interpreter]  └─ Error: Source value not found in value map\n";
     }
+    return false;
+  }
 
-    Value source = op.getValue();
-    Value target = op.getTarget();
-
-    // Check source exists in map
-    if (!value_to_predicated_data_map.count(source)) {
-        if (isVerboseMode()) {
-            llvm::errs() << "[neura-interpreter]  └─ Error: Source value not found in value map\n";
-        }
-        return false;
+  if (!value_to_predicated_data_map.count(target) || !value_to_predicated_data_map[target].is_reserve) {
+    if (isVerboseMode()) {
+      llvm::errs() << "[neura-interpreter]  └─ Error: Target is not a reserve placeholder\n";
     }
+    return false;
+  }
 
-    // Check target is a reserved placeholder
-    if (!value_to_predicated_data_map.count(target) || !value_to_predicated_data_map[target].is_reserve) {
-        if (isVerboseMode()) {
-            llvm::errs() << "[neura-interpreter]  └─ Error: Target is not a reserve placeholder\n";
-        }
-        return false;
+  const auto& source_data = value_to_predicated_data_map[source];
+  auto& target_data = value_to_predicated_data_map[target];
+
+  if (!isDataflowMode() && source.getType() != target.getType()) {
+    if (isVerboseMode()) {
+      llvm::errs() << "[neura-interpreter]  └─ Error: Type mismatch (source="
+                   << source.getType() << ", target = " << target.getType() << ")\n";
     }
+    return false;
+  }
 
-    const auto& source_data = value_to_predicated_data_map[source];
-    auto& target_data = value_to_predicated_data_map[target];
-    bool success = true;
+  const PredicatedData old_target_data = target_data;
+  const bool should_update = isDataflowMode() ? (source_data.predicate == 1) : true;
 
-    if (!isDataflowMode()) {
-        // Control-flow mode: Validate type match and unconditionally copy data
-        if (source.getType() != target.getType()) {
-            if (isVerboseMode()) {
-                llvm::errs() << "[neura-interpreter]  └─ Error: Type mismatch (source="
-                             << source.getType() << ", target=" << target.getType() << ")\n";
-            }
-            return false;
-        }
-
-        if (isVerboseMode()) {
-            llvm::outs() << "[neura-interpreter]  ├─ Source: " << source << "\n"
-                         << "[neura-interpreter]  │  └─ value = " << source_data.value
-                         << ", [pred = " << source_data.predicate << "]\n"
-                         << "[neura-interpreter]  ├─ Target: " << target << "\n"
-                         << "[neura-interpreter]  │  └─ value = " << target_data.value
-                         << ", [pred = " << target_data.predicate << "]\n";
-        }
-
-        // Unconditional copy for control flow
-        target_data.value = source_data.value;
-        target_data.predicate = source_data.predicate;
-        target_data.is_vector = source_data.is_vector;
-        if (source_data.is_vector) {
-            target_data.vector_data = source_data.vector_data;
-        }
-
-        if (isVerboseMode()) {
-            llvm::outs() << "[neura-interpreter]  └─ Updated target placeholder\n"
-                         << "[neura-interpreter]     └─ value = " << target_data.value
-                         << ", [pred = " << target_data.predicate << "]\n";
-        }
-
-    } else {  // DataFlow mode
-        // Data-flow mode: Conditional update based on source predicate
-        const bool should_update = (source_data.predicate == 1);
-        const auto old_target_data = target_data;  // Store current state for update check
-
-        if (should_update) {
-            // Copy source data to target
-            target_data.value = source_data.value;
-            target_data.predicate = source_data.predicate;
-            target_data.is_vector = source_data.is_vector;
-            target_data.vector_data = source_data.is_vector ? source_data.vector_data : std::vector<float>();
-        } else if (isVerboseMode()) {
-            llvm::outs() << "[neura-interpreter]  ├─ Skip update: Source predicate invalid (pred="
-                         << source_data.predicate << ")\n";
-        }
-
-        // Calculate is_updated by comparing with old state
-        target_data.is_updated = target_data.isUpdatedComparedTo(old_target_data);
-
-        if (isVerboseMode()) {
-            llvm::outs() << "[neura-interpreter]  ├─ Source: " << source_data.value << " | " << source_data.predicate << "\n"
-                         << "[neura-interpreter]  ├─ Target (after): " << target_data.value << " | " << target_data.predicate
-                         << " | is_updated=" << target_data.is_updated << "\n"
-                         << "[neura-interpreter]  └─ Execution succeeded\n";
-        }
+  if (should_update) {
+    target_data.value = source_data.value;
+    target_data.predicate = source_data.predicate;
+    target_data.is_vector = source_data.is_vector;
+    if (source_data.is_vector) {
+      target_data.vector_data = source_data.vector_data;
     }
+  } else if (isVerboseMode()) {
+    llvm::outs() << "[neura-interpreter]  ├─ Skip update: Source predicate invalid (pred="
+                 << source_data.predicate << ")\n";
+  }
 
-    return success;
+  target_data.is_updated = target_data.isUpdatedComparedTo(old_target_data);
+
+  if (isVerboseMode()) {
+    llvm::outs() << "[neura-interpreter]  ├─ Source: " << source << ", value = " << source_data.value 
+                 << ", [pred = " << source_data.predicate << "]\n"
+                 << "[neura-interpreter]  ├─ Target: " << target << ", value = " << target_data.value 
+                 << ", [pred = " << target_data.predicate << "]\n"
+                 << "[neura-interpreter]  └─ Updated (is_updated = " << target_data.is_updated << ")\n";
+  } 
+
+  return true;
 }
 
 /**
@@ -2319,7 +2291,7 @@ bool handleGrantPredicateOp(neura::GrantPredicateOp op, llvm::DenseMap<Value, Pr
 /**
  * @brief Handles the execution of a Neura one-time grant operation (neura.grant_once) by granting validity to a value exactly once.
  * 
- * This function processes Neura's grant_once operations, which take either a source value operand or a constant value attribute (but not both). 
+ * This function processes Neura's grant_once operations, which take either a source value operand or a constant value attribute (but not both).
  * It grants validity (sets predicate to true) on the first execution and denies validity (sets predicate to false) on all subsequent executions. 
  * The result retains the source/constant value but uses the one-time predicate. Errors are returned for invalid operand/attribute combinations 
  * or unsupported constant types.
@@ -2730,7 +2702,6 @@ bool executeOperation(Operation* op,
  * 
  * @param func                           The function to execute
  * @param value_to_predicated_data_map   Reference to map storing predicated data for values
- * @param mem                            Reference to memory object for load/store operations
  * @return int                           0 if execution completes successfully, 1 on error
  */
 int run(func::FuncOp func,
@@ -2747,9 +2718,8 @@ int run(func::FuncOp func,
     }
 
     // Dependency graph to track operation dependencies
-    DependencyGraph dep_graph;                                 
-    dep_graph.buildDependencyGraph(op_seq);
-
+    DependencyGraph consumer_dependent_on_producer_graph;                                 
+    consumer_dependent_on_producer_graph.build(op_seq);
     std::vector<Operation*> independent_ops = findIndependentInSequence(op_seq);
 
     for (auto* op : independent_ops) {
@@ -2774,15 +2744,15 @@ int run(func::FuncOp func,
       llvm::SmallVector<Operation*, 16> next_pending_operation_queue;
       for (Operation* op : pending_operation_queue) {
         is_operation_enqueued[op] = false;
-        if (dep_graph.canExecute(op)) {
+        if (consumer_dependent_on_producer_graph.canExecute(op)) {
           if (isVerboseMode()) {
             llvm::outs() << "[neura-interpreter]  ========================================\n";
             llvm::outs() << "[neura-interpreter]  Executing operation: " << *op << "\n";
           }
           if (!executeOperation(op, value_to_predicated_data_map, next_pending_operation_queue)) {
-            return 1;
+            return EXIT_FAILURE;
           }
-          dep_graph.updateAfterExecution(op);
+          consumer_dependent_on_producer_graph.updateAfterExecution(op);
         } else {
           if (isVerboseMode()) {
             llvm::outs() << "[neura-interpreter]  Skipping operation (dependencies not satisfied): " << *op << "\n";
@@ -2811,7 +2781,7 @@ int run(func::FuncOp func,
       // Process operation with block information for control flow handling
       auto handle_result = handleOperation(&op, value_to_predicated_data_map, &current_block, &last_visited_block);
       
-      if (!handle_result.success) return 1;
+      if (!handle_result.success) return EXIT_FAILURE;
       if (handle_result.is_terminated) {
         is_terminated = true;
         op_index++;
@@ -2825,7 +2795,7 @@ int run(func::FuncOp func,
     }
   }
 
-  return 0;
+  return EXIT_SUCCESS;
 }
 
 int main(int argc, char **argv) {
@@ -2840,7 +2810,7 @@ int main(int argc, char **argv) {
 
   if (argc < 2) {
     llvm::errs() << "[neura-interpreter]  Usage: neura-interpreter <input.mlir> [--verbose] [--dataflow]\n";
-    return 1;
+    return EXIT_FAILURE;
   }
 
   // Initialize MLIR context and dialects
@@ -2855,7 +2825,7 @@ int main(int argc, char **argv) {
   auto file_or_err = mlir::openInputFile(argv[1]);
   if (!file_or_err) {
     llvm::errs() << "[neura-interpreter]  Error opening file\n";
-    return 1;
+    return EXIT_FAILURE;
   }
 
   source_mgr.AddNewSourceBuffer(std::move(file_or_err), llvm::SMLoc());
@@ -2863,7 +2833,7 @@ int main(int argc, char **argv) {
   OwningOpRef<ModuleOp> module = parseSourceFile<ModuleOp>(source_mgr, &context);
   if (!module) {
     llvm::errs() << "[neura-interpreter]  Failed to parse MLIR input file\n";
-    return 1;
+    return EXIT_FAILURE;
   }
 
   // Initialize data structures
@@ -2872,9 +2842,9 @@ int main(int argc, char **argv) {
   for (auto func : module->getOps<func::FuncOp>()) {
     if (run(func, value_to_predicated_data_map)) {
       llvm::errs() << "[neura-interpreter]  Execution failed\n";
-      return 1;
+      return EXIT_FAILURE;
     }
   }
 
-  return 0;
+  return EXIT_SUCCESS;
 }
