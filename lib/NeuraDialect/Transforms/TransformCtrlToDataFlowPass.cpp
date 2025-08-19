@@ -14,11 +14,13 @@
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
+#include <algorithm>
 #include <cassert>
 #include <memory>
 
@@ -187,6 +189,12 @@ void assertLiveOutValuesDominatedByBlockArgs(Region &region) {
 // Builds control flow info for the given function.
 void buildControlFlowInfo(Region &region, ControlFlowInfo &ctrl_info,
                           DominanceInfo &dom_info) {
+  ctrl_info.all_edges.clear();
+  ctrl_info.incoming_edges.clear();
+  ctrl_info.outgoing_edges.clear();
+  ctrl_info.back_edges.clear();
+  ctrl_info.forward_edges.clear();
+  ctrl_info.blocks_with_back_edges.clear();
   for (Block &block : region) {
     Operation *terminator = block.getTerminator();
 
@@ -271,7 +279,7 @@ void buildControlFlowInfo(Region &region, ControlFlowInfo &ctrl_info,
   }
 }
 
-Value getPrecessedCondition(Value condition, bool is_not_condition,
+Value getProcessedCondition(Value condition, bool is_not_condition,
                             llvm::MapVector<Value, Value> &condition_cache,
                             OpBuilder &builder) {
   if (!is_not_condition) {
@@ -291,6 +299,217 @@ Value getPrecessedCondition(Value condition, bool is_not_condition,
   return not_condition;
 }
 
+Value createGrantPredicateOrSkip(OpBuilder &builder, Location loc, Value value,
+                                 Value predicate) {
+  if (value == predicate) {
+    return value;
+  }
+
+  return builder.create<neura::GrantPredicateOp>(loc, value.getType(), value,
+                                                 predicate);
+}
+
+// Calculates the block execution conditions for each block in the region.
+void calculateBlockExecuteConditions(
+    Region &region, ControlFlowInfo &ctrl_info,
+    llvm::MapVector<Value, Value> &condition_cache, OpBuilder &builder) {
+  // Tracks the execution condition for each block.
+  llvm::MapVector<Block *, Value> block_execution_conditions;
+
+  // Tracks the value need to be grant_predicated in each block.
+  llvm::MapVector<Value, Value> value_to_predicated_value;
+
+  // Sorts the blocks in topological order based on DFS.
+  SmallVector<Block *> topological_order_blocks;
+  DenseSet<Block *> visited;
+  std::function<void(Block *)> dfs = [&](Block *block) {
+    if (visited.count(block)) {
+      return;
+    }
+    visited.insert(block);
+    for (auto *edge : ctrl_info.outgoing_edges[block]) {
+      if (edge->is_back_edge) {
+        continue;
+      }
+      dfs(edge->target);
+    }
+
+    topological_order_blocks.push_back(block);
+  };
+
+  Block *entry_block = &region.front();
+  dfs(entry_block);
+  std::reverse(topological_order_blocks.begin(),
+               topological_order_blocks.end());
+
+  // Initializes the entry block condition to nullptr (always true).
+  block_execution_conditions[entry_block] = nullptr;
+
+  for (Block *block : topological_order_blocks) {
+    if (block == entry_block) {
+      continue;
+    }
+
+    Value block_condition = nullptr;
+
+    // Collects all non-backward incoming edges.
+    SmallVector<ControlFlowInfo::Edge *> incoming_non_back_edges;
+    for (ControlFlowInfo::Edge *edge : ctrl_info.incoming_edges[block]) {
+      if (!edge->is_back_edge)
+        incoming_non_back_edges.push_back(edge);
+    }
+
+    // Calculates the block condition by OR all incoming non-back edges.
+    for (ControlFlowInfo::Edge *edge : incoming_non_back_edges) {
+      Value edge_condition = nullptr;
+
+      // Gets the execute condition of the predecessor block.
+      Value pred_condition = block_execution_conditions[edge->source];
+
+      // Gets the edge condition.
+      if (edge->condition) {
+        Value processed_edge_condition = getProcessedCondition(
+            edge->condition, edge->is_not_condition, condition_cache, builder);
+
+        // If the predecessor condition is not null, combine it with the edge
+        // condition.
+        if (pred_condition) {
+          builder.setInsertionPoint(edge->source->getTerminator());
+          edge_condition = builder.create<neura::AndOp>(
+              edge->condition.getLoc(), edge->condition.getType(),
+              pred_condition, processed_edge_condition, nullptr);
+        } else {
+          // If the predecessor condition is null, use the edge condition.
+          edge_condition = processed_edge_condition;
+        }
+      } else {
+        // If the edge has no condition, use the predecessor condition.
+        edge_condition = pred_condition;
+      }
+
+      // If the block has multiple incoming edges, we need to OR them.
+      // Adds this edge condition to the block condition (OR combination).
+      if (edge_condition) {
+        if (!block_condition) {
+          block_condition = edge_condition;
+        } else {
+          builder.setInsertionPoint(edge->source->getTerminator());
+          block_condition = builder.create<neura::OrOp>(
+              edge_condition.getLoc(), edge_condition.getType(),
+              block_condition, edge_condition, nullptr);
+        }
+      }
+    }
+    block_execution_conditions[block] = block_condition;
+  }
+
+  // // Prints debug information
+  // llvm::errs() << "[ctrl2data] Block execution conditions (initial):\n";
+  // for (auto &pair : block_execution_conditions) {
+  //   llvm::errs() << "  Block: " << *pair.first;
+  //   if (pair.second)
+  //     llvm::errs() << " Condition: " << pair.second << "\n";
+  //   else
+  //     llvm::errs() << " Condition: <always>\n";
+  // }
+
+  // We need to grant_predicate all the live-in values in each block based on
+  // the block execution condition.
+  for (Block &block : region) {
+    // If the block is the entry block, we skip it.
+    if (&block == entry_block) {
+      continue;
+    }
+
+    Value block_condition = block_execution_conditions[&block];
+
+    // If the block condition is null, it means the block is always executed.
+    if (!block_condition) {
+      continue;
+    }
+
+    // Collects all live-in values that need to be predicated.
+    SetVector<Value> live_in_values;
+    for (Operation &op : block) {
+      // If the operation is a control flow operation, we skip it.
+      // Because they belong to Type 1 & 3 edges, we will handle them later.
+      if (isa<neura::CondBr>(&op)) {
+        continue;
+      }
+
+      // If the live-in value is a block condition (e.g., neura.and(%cond1,
+      // %cond2)), we skip it. Because they are already handled by the block
+      // execution.
+      bool is_block_condition = false;
+      for (auto &[block, condition] : block_execution_conditions) {
+        if (condition && condition.getDefiningOp() &&
+            condition.getDefiningOp() == &op) {
+          llvm::errs() << "[ctrl2data] Checking block condition: " << condition
+                       << "\n";
+          is_block_condition = true;
+          break;
+        }
+      }
+      if (is_block_condition) {
+        continue;
+      }
+
+      for (Value operand : op.getOperands()) {
+        if (operand.getDefiningOp() &&
+            operand.getDefiningOp()->getBlock() != &block &&
+            isa<neura::PredicatedValue>(operand.getType()) &&
+            !isa<neura::ReserveOp>(operand.getDefiningOp())) {
+          live_in_values.insert(operand);
+        }
+      }
+    }
+
+    // Grants predicate for each live-in value.
+    for (Value live_in_value : live_in_values) {
+      // Find the earliest use point.
+      Operation *earliest_use = nullptr;
+      for (Operation &op : block) {
+        for (Value operand : op.getOperands()) {
+          if (operand == live_in_value) {
+            earliest_use = &op;
+            break;
+          }
+        }
+        if (earliest_use)
+          break;
+      }
+
+      // Sets the insertion point to the earliest use or to the start of the
+      // block.
+      if (earliest_use) {
+        builder.setInsertionPoint(earliest_use);
+      } else {
+        builder.setInsertionPointToStart(&block);
+      }
+
+      // Grants predicate for live-in value.
+      Value predicated_value = createGrantPredicateOrSkip(
+          builder, live_in_value.getLoc(), live_in_value, block_condition);
+
+      // Records replacement.
+      value_to_predicated_value[live_in_value] = predicated_value;
+
+      // Replaces all uses of the live-in value in the block with the predicated
+      // value.
+      for (OpOperand &use :
+           llvm::make_early_inc_range(live_in_value.getUses())) {
+        if (use.getOwner()->getBlock() == &block &&
+            use.getOwner() != predicated_value.getDefiningOp()) {
+          use.set(predicated_value);
+        }
+      }
+    }
+  }
+
+  // llvm::outs() << "[ctrl2data] Current function:\n";
+  // llvm::outs() << *region.getParentOp() << "\n";
+}
+
 void createReserveAndPhiOps(
     Region &region, ControlFlowInfo &ctrl_info,
     llvm::MapVector<BlockArgument, Value> &arg_to_reserve,
@@ -299,30 +518,47 @@ void createReserveAndPhiOps(
   DominanceInfo dom_info(region.getParentOp());
 
   // ================================================
-  // Step 1: Categorizes edges into six types.
+  // Step 0: Categorizes edges into six types.
   // ================================================
-  // Type 1: Backward cond_br edges with arguments.
+  // Type 1: Backward cond_br edges with values.
   // Type 2: Backward br edges with values.
   // Type 3: Forward cond_br edges with values.
   // Type 4: Forward br edges with values.
   // Type 5: Forward cond_br edges without values.
   // Type 6: Forward br edges without values.
-  // For Backward edges without values, they can be transformed into type 1 or 2
 
+  // For Backward edges without values, they can be transformed into type 1
+  // or 2.
+  // For Type 5 and 6, since we already have the canonicalize-live-in
+  // pass and grant all the live-ins based on the block execution
+  // conditions, we can skip them.
+
+  // Summary: We only need to handle Type 1, 2, 3, and 4 edges.
+
+  llvm::MapVector<Value, Value> condition_cache;
+
+  // ================================================
+  // Step 1: Calculates block execution conditions.
+  // ================================================
+  // This step handles the Type 5 and 6 edges.
+  calculateBlockExecuteConditions(region, ctrl_info, condition_cache, builder);
+
+  // =================================================
+  // Step 2: Updates the control flow info with the
+  // calculated block execution conditions.
+  // =================================================
+  buildControlFlowInfo(region, ctrl_info, dom_info);
+
+  // =================================================
+  // Step 3: Preparations for Type 1, 2, 3, and 4 edges.
+  // =================================================
   // Uses llvm::MapVector instead of DenseMap to maintain insertion order.
   llvm::MapVector<BlockArgument, SmallVector<ControlFlowInfo::Edge *>>
       backward_value_edges;
   llvm::MapVector<BlockArgument, SmallVector<ControlFlowInfo::Edge *>>
       forward_value_edges;
-  llvm::MapVector<Block *, SmallVector<ControlFlowInfo::Edge *>>
-      block_conditional_edges;
-
-  llvm::MapVector<Value, Value> condition_cache;
 
   llvm::MapVector<BlockArgument, SmallVector<Value>> arg_to_phi_operands;
-
-  // Tracks the mapping of live-out values.
-  llvm::MapVector<Value, Value> value_to_predicated_value;
 
   for (auto &edge : ctrl_info.all_edges) {
     Block *target = edge->target;
@@ -341,7 +577,6 @@ void createReserveAndPhiOps(
     }
     // Type 3 & 4: Forward cond_br/br edges with values.
     else if (!edge->is_back_edge && !edge->passed_values.empty()) {
-      ;
       if (edge->passed_values.size() != target->getNumArguments()) {
         llvm::errs()
             << "[ctrl2data] Error: Number of passed values does not match "
@@ -352,113 +587,11 @@ void createReserveAndPhiOps(
         forward_value_edges[arg].push_back(edge.get());
       }
     }
-    // Type 5 & 6: Forward cond_br/br edges without values.
-    else if (!edge->is_back_edge && edge->passed_values.empty()) {
-      if (edge->condition) {
-        // Only Type 5 needs to be processed here.
-        // If the edge has a condition, store it for later use.
-        block_conditional_edges[target].push_back(edge.get());
-      }
-    }
   }
 
   // ================================================
-  // Step 2: Handles Forward cond_br edges without values.
-  // ================================================
-  // Handles Type 5 edges.
-  for (auto &condition_pair : block_conditional_edges) {
-    Block *target = condition_pair.first;
-    auto &edges = condition_pair.second;
-
-    if (edges.empty()) {
-      continue;
-    }
-
-    // Collects all conditions for the target block.
-    SmallVector<Value> conditions;
-    for (ControlFlowInfo::Edge *edge : edges) {
-      Value condition = getPrecessedCondition(
-          edge->condition, edge->is_not_condition, condition_cache, builder);
-      conditions.push_back(condition);
-    }
-
-    // Unsupported case: multiple conditions for a single block.
-    // TODO: Adds support if needed.
-    if (conditions.size() > 1) {
-      llvm::errs() << "[ctrl2data] Unsupported case: multiple conditions for a "
-                      "single block: "
-                   << *target << "\n";
-      assert(false);
-    }
-
-    if (target->getArguments().empty()) {
-      // Grants predicate for all the live-in values in the target block.
-      // Uses SetVector instead of DenseSet to maintain insertion order.
-      SetVector<Value> live_in_values;
-      for (Operation &op : target->getOperations()) {
-        for (Value operand : op.getOperands()) {
-          if (operand.getDefiningOp() &&
-              operand.getDefiningOp()->getBlock() != target &&
-              !isa<neura::ReserveOp>(operand.getDefiningOp())) {
-            live_in_values.insert(operand);
-          }
-        }
-      }
-
-      // Applies grant_predicate for each live-in value.
-      for (Value live_in_value : live_in_values) {
-        // Finds the earliest use of the live-in value.
-        Operation *earliest_use = nullptr;
-        for (Operation &op : target->getOperations()) {
-          for (Value operand : op.getOperands()) {
-            if (operand == live_in_value) {
-              earliest_use = &op;
-              break;
-            }
-          }
-          if (earliest_use) {
-            break;
-          }
-        }
-
-        if (earliest_use) {
-          builder.setInsertionPoint(earliest_use);
-        } else {
-          builder.setInsertionPointToStart(target);
-        }
-
-        // Creates predicated version of the live-in value.
-        Value predicated_value = builder.create<neura::GrantPredicateOp>(
-            live_in_value.getLoc(), live_in_value.getType(), live_in_value,
-            conditions[0]);
-
-        value_to_predicated_value[live_in_value] = predicated_value;
-
-        // Replace uses of the live-in value within this block only.
-        for (OpOperand &use :
-             llvm::make_early_inc_range(live_in_value.getUses())) {
-          if (use.getOwner()->getBlock() == target &&
-              use.getOwner() != predicated_value.getDefiningOp()) {
-            use.set(predicated_value);
-          }
-        }
-      }
-    }
-  }
-
-  // Updates the passed values in edges with predicated values.
-  for (auto &edge_ptr : ctrl_info.all_edges) {
-    ControlFlowInfo::Edge *edge = edge_ptr.get();
-    for (size_t i = 0; i < edge->passed_values.size(); ++i) {
-      Value val = edge->passed_values[i];
-      if (value_to_predicated_value.count(val)) {
-        edge->passed_values[i] = value_to_predicated_value[val];
-      }
-    }
-  }
-
-  // ================================================
-  // Step 3: Creates reserve and ctrl_mov operations for needed blockarguments.
+  // Step 4: Creates reserve and ctrl_mov operations for needed
+  // blockarguments.
   // ================================================
   // Handles Type 1 & 2 edges.
   for (auto &backward_pair : backward_value_edges) {
@@ -478,7 +611,7 @@ void createReserveAndPhiOps(
 
       Value predicated_val = val;
       if (edge->condition) {
-        Value processed_condition = getPrecessedCondition(
+        Value processed_condition = getProcessedCondition(
             edge->condition, edge->is_not_condition, condition_cache, builder);
         predicated_val = builder.create<neura::GrantPredicateOp>(
             edge->condition.getLoc(), val.getType(), predicated_val,
@@ -492,7 +625,7 @@ void createReserveAndPhiOps(
   }
 
   // ================================================
-  // Step 4: Prepares for creating phi operations.
+  // Step 5: Prepares for creating phi operations.
   // ================================================
   // Handles Type 3 & 4 edges.
 
@@ -506,7 +639,7 @@ void createReserveAndPhiOps(
       Value predicated_val = val;
       if (edge->condition) {
         builder.setInsertionPoint(edge->source->getTerminator());
-        Value processed_condition = getPrecessedCondition(
+        Value processed_condition = getProcessedCondition(
             edge->condition, edge->is_not_condition, condition_cache, builder);
 
         predicated_val = builder.create<neura::GrantPredicateOp>(
@@ -519,7 +652,7 @@ void createReserveAndPhiOps(
   }
 
   // ================================================
-  // Step 5: Creates phi operations for each block argument.
+  // Step 6: Creates phi operations for each block argument.
   // ================================================
   for (auto &arg_to_phi_pair : arg_to_phi_operands) {
     BlockArgument arg = arg_to_phi_pair.first;
@@ -557,6 +690,52 @@ void createReserveAndPhiOps(
       arg_to_phi_result[arg] = phi;
     }
   }
+}
+
+// Since we may insert some block execution conditions and we do not use them at
+// all, we need to remove them.
+void removeUnusedOperations(Block *block) {
+  llvm::errs() << "[ctrl2data] Removing unused operations\n";
+
+  // We will iterate through the block and remove operations that are not used
+  // anywhere in the block or outside of it.
+  // Because removing one operation may lead to another operation
+  // becoming unused, we will repeat this process until no more operations can
+  // be removed.
+  bool changed = true;
+  int iterations = 0;
+  int removed = 0;
+  const int k_max_iterations = 10;
+
+  while (changed && iterations < k_max_iterations) {
+    changed = false;
+    iterations++;
+    for (Operation &op : llvm::make_early_inc_range(*block)) {
+      // Skip operations that are naturally do not have users.
+      if (isa<neura::ReturnOp>(op) || isa<neura::CtrlMovOp>(op) ||
+          isa<neura::StoreOp>(op) || isa<neura::StoreIndexedOp>(op)) {
+        continue;
+      }
+
+      bool all_results_unused = true;
+      for (Value result : op.getResults()) {
+        if (!result.use_empty()) {
+          all_results_unused = false;
+          break;
+        }
+      }
+
+      if (all_results_unused) {
+        llvm::errs() << "[ctrl2data] Removing unused op: " << op << "\n";
+        op.erase();
+        changed = true;
+        removed++;
+      }
+    }
+  }
+
+  llvm::errs() << "[ctrl2data] Removed " << removed << " unused operations in "
+               << iterations << " iterations\n";
 }
 
 // Transforms control flow into data flow.
@@ -618,6 +797,8 @@ void transformControlFlowToDataFlow(Region &region, ControlFlowInfo &ctrl_info,
   for (Block *block : blocks_to_flatten) {
     block->erase();
   }
+
+  removeUnusedOperations(entryBlock);
 }
 
 namespace {

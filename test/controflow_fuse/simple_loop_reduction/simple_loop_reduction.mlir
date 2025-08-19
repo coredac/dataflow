@@ -110,7 +110,7 @@ module attributes {} {
 // CAST-NEXT:     "neura.return"(%5) : (i32) -> ()
 // CAST-NEXT:   }
 
-// CTRL2DATA: func.func @_Z10simpleloopv() -> i32 attributes {accelerator = "neura", llvm.linkage = #llvm.linkage<external>} {
+// CTRL2DATA:        func.func @_Z10simpleloopv() -> i32 attributes {accelerator = "neura", llvm.linkage = #llvm.linkage<external>} {
 // CTRL2DATA-NEXT:     %0 = "neura.constant"() <{predicate = true, value = 1 : i64}> : () -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %1 = "neura.grant_once"(%0) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %2 = "neura.constant"() <{predicate = true, value = 128 : i64}> : () -> !neura.data<i64, i1>
@@ -126,18 +126,18 @@ module attributes {} {
 // CTRL2DATA-NEXT:     %12 = neura.reserve : !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %13 = "neura.phi"(%12, %7) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %14 = "neura.icmp"(%13, %9) <{cmpType = "slt"}> : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i1, i1>
-// CTRL2DATA-NEXT:     %15 = neura.grant_predicate %13, %14 : !neura.data<i64, i1>, !neura.data<i1, i1> -> !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %16 = neura.grant_predicate %11, %14 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %17 = neura.grant_predicate %1, %14 : !neura.data<i64, i1>, !neura.data<i1, i1> -> !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %18 = neura.grant_predicate %3, %14 : !neura.data<i64, i1>, !neura.data<i1, i1> -> !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %19 = "neura.not"(%14) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
-// CTRL2DATA-NEXT:     %20 = neura.grant_predicate %11, %19 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %21 = "neura.cast"(%15) <{cast_type = "i64_to_i32"}> : (!neura.data<i64, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %22 = "neura.add"(%16, %21) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %23 = "neura.add"(%15, %17) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %15 = "neura.not"(%14) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
+// CTRL2DATA-NEXT:     %16 = neura.grant_predicate %13, %14 : !neura.data<i64, i1>, !neura.data<i1, i1> -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %17 = neura.grant_predicate %11, %14 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %18 = neura.grant_predicate %1, %14 : !neura.data<i64, i1>, !neura.data<i1, i1> -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %19 = neura.grant_predicate %3, %14 : !neura.data<i64, i1>, !neura.data<i1, i1> -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %20 = neura.grant_predicate %11, %15 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %21 = "neura.cast"(%16) <{cast_type = "i64_to_i32"}> : (!neura.data<i64, i1>) -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %22 = "neura.add"(%17, %21) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %23 = "neura.add"(%16, %18) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     neura.ctrl_mov %23 -> %12 : !neura.data<i64, i1> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     neura.ctrl_mov %22 -> %10 : !neura.data<i32, i1> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     neura.ctrl_mov %18 -> %8 : !neura.data<i64, i1> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     neura.ctrl_mov %19 -> %8 : !neura.data<i64, i1> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     "neura.return"(%20) : (!neura.data<i32, i1>) -> ()
 // CTRL2DATA-NEXT:   }
 
@@ -158,7 +158,7 @@ module attributes {} {
 // FUSE-NEXT:     %11 = "neura.add"(%8, %10) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
 // FUSE-NEXT:     neura.ctrl_mov %11 -> %6 : !neura.data<i32, i1> !neura.data<i32, i1>
 // FUSE-NEXT:     "neura.return"(%9) : (!neura.data<i32, i1>) -> ()
-// FUSE-NEXT: }
+// FUSE-NEXT:   }
 
 
 // FUSE-MAPPING:        func.func @_Z10simpleloopv() -> i32 attributes {accelerator = "neura", llvm.linkage = #llvm.linkage<external>, mapping_info = {compiled_ii = 3 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 3 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {
