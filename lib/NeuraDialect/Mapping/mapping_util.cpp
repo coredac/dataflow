@@ -427,32 +427,34 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
 
     // Defines the time window for the register allocation.
     int start_time = src_loc.time_step;
-    int end_time = dst_loc.time_step;
+    int exclusive_end_time = dst_loc.time_step;
 
-    // For backward moves, we need to adjust the end time
+    // For backward moves, we need to adjust the end time.
     if (is_backward_move) {
-      end_time += state.getII();
+      exclusive_end_time += state.getII();
     }
 
-    // Finds a register that is available during start_time to end_time
-    Register *reg = getAvailableRegister(state, tile, start_time, end_time);
+    // Finds a register that is available during start_time to
+    // exclusive_end_time.
+    Register *reg =
+        getAvailableRegister(state, tile, start_time, exclusive_end_time);
     if (!reg) {
       llvm::errs() << "[tryRouteDataMove] No available register found for "
                    << "tile: " << tile->getId()
                    << " from time step: " << start_time
-                   << " to time step: " << end_time << "\n";
+                   << " to time step: " << exclusive_end_time << "\n";
       return false;
     }
 
     // Adds the register locations to the path.
-    for (int t = start_time; t < end_time; ++t) {
+    for (int t = start_time; t < exclusive_end_time; ++t) {
       MappingLoc reg_loc{reg, t};
       path_out.push_back(reg_loc);
     }
 
     llvm::errs() << "[tryRouteDataMove] Allocated register " << reg->getId()
                  << " for same-tile data movement from t=" << start_time
-                 << " to t=" << end_time << "\n";
+                 << " to t=" << exclusive_end_time << "\n";
     return true;
   }
   struct QueueEntry {
