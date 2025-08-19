@@ -172,7 +172,7 @@ module attributes {} {
 // FUSE-MAPPING-NEXT:     %7 = "neura.data_mov"(%1) {mapping_locs = [{id = 39 : i32, resource = "link", time_step = 0 : i32}, {id = 33 : i32, resource = "register", time_step = 1 : i32}]} : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
 // FUSE-MAPPING-NEXT:     %8 = "neura.data_mov"(%0) {mapping_locs = [{id = 12 : i32, resource = "link", time_step = 0 : i32}, {id = 34 : i32, resource = "register", time_step = 1 : i32}]} : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
 // FUSE-MAPPING-NEXT:     %nextindex, %valid = neura.loop_control(parent_valid = %5, start = %6, end = %7, step = %8) {iterationType = "increment", mapping_locs = [{id = 8 : i32, resource = "tile", time_step = 2 : i32, x = 0 : i32, y = 2 : i32}]} : !neura.data<i1, i1>, !neura.data<i64, i1>, !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>, !neura.data<i1, i1>
-// FUSE-MAPPING-NEXT:     %9 = "neura.data_mov"(%valid) {mapping_locs = []} : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
+// FUSE-MAPPING-NEXT:     %9 = "neura.data_mov"(%valid) {mapping_locs = [{id = 32 : i32, resource = "register", time_step = 2 : i32}]} : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
 // FUSE-MAPPING-NEXT:     %10 = "neura.not"(%9) {mapping_locs = [{id = 8 : i32, resource = "tile", time_step = 3 : i32, x = 0 : i32, y = 2 : i32}]} : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
 // FUSE-MAPPING-NEXT:     %11 = neura.reserve : !neura.data<i32, i1>
 // FUSE-MAPPING-NEXT:     %12 = "neura.data_mov"(%2) {mapping_locs = [{id = 0 : i32, resource = "link", time_step = 1 : i32}, {id = 4 : i32, resource = "register", time_step = 2 : i32}]} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
@@ -185,7 +185,7 @@ module attributes {} {
 // FUSE-MAPPING-NEXT:     %19 = neura.grant_predicate %17, %18 {mapping_locs = [{id = 0 : i32, resource = "tile", time_step = 5 : i32, x = 0 : i32, y = 0 : i32}]} : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
 // FUSE-MAPPING-NEXT:     %20 = "neura.data_mov"(%nextindex) {mapping_locs = [{id = 25 : i32, resource = "link", time_step = 2 : i32}, {id = 16 : i32, resource = "register", time_step = 3 : i32}]} : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
 // FUSE-MAPPING-NEXT:     %21 = "neura.cast"(%20) <{cast_type = "i64_to_i32"}> {mapping_locs = [{id = 4 : i32, resource = "tile", time_step = 4 : i32, x = 0 : i32, y = 1 : i32}]} : (!neura.data<i64, i1>) -> !neura.data<i32, i1>
-// FUSE-MAPPING-NEXT:     %22 = "neura.data_mov"(%16) {mapping_locs = []} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
+// FUSE-MAPPING-NEXT:     %22 = "neura.data_mov"(%16) {mapping_locs = [{id = 20 : i32, resource = "register", time_step = 4 : i32}]} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
 // FUSE-MAPPING-NEXT:     %23 = "neura.data_mov"(%21) {mapping_locs = [{id = 10 : i32, resource = "link", time_step = 4 : i32}]} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
 // FUSE-MAPPING-NEXT:     %24 = "neura.add"(%22, %23) {mapping_locs = [{id = 5 : i32, resource = "tile", time_step = 5 : i32, x = 1 : i32, y = 1 : i32}]} : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
 // FUSE-MAPPING-NEXT:     neura.ctrl_mov %24 -> %11 {mapping_locs = [{id = 15 : i32, resource = "link", time_step = 5 : i32}]} : !neura.data<i32, i1> !neura.data<i32, i1>
