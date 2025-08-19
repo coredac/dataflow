@@ -1,62 +1,293 @@
-#include "NeuraDialect/NeuraDialect.h"
-#include "NeuraDialect/NeuraOps.h"
-#include "NeuraDialect/NeuraPasses.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/IR/BuiltinOps.h"
-#include <sstream>
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/Value.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SetVector.h"
 #include <map>
 #include <vector>
 #include <string>
-#include <utility>
 #include <set>
+#include <tuple>
+#include <optional>
 #include <algorithm>
 #include <queue>
-
+#include <cmath>
 
 using namespace mlir;
-using namespace mlir::neura;
-
-#define GEN_PASS_DEF_GenerateCode
-#include "NeuraDialect/NeuraPasses.h.inc"
 
 namespace {
 
-// Calculates direction of data movement from sender's perspective.
-// For example: if data moves from (1,1) to (1,2), then PE(1,1) sends to North.
-llvm::StringRef calculateSendDirection(int src_x, int src_y, int dst_x, int dst_y) {
-  int dx = dst_x - src_x;
-  int dy = dst_y - src_y;
-  if (dx == 0 && dy == 0) return "Local";
-  if (dx == 0 && dy > 0) return "North";
-  if (dx == 0 && dy < 0) return "South";
-  if (dx > 0 && dy == 0) return "East";
-  if (dx < 0 && dy == 0) return "West";
-  if (dx > 0 && dy > 0) return "NorthEast";
-  if (dx > 0 && dy < 0) return "SouthEast";
-  if (dx < 0 && dy > 0) return "NorthWest";
-  if (dx < 0 && dy < 0) return "SouthWest";
-  return "Unknown";
+struct Operand {
+  std::string operand;
+  std::string color;
+  Operand(const std::string &op, const std::string &c = "RED")
+      : operand(op), color(c) {}
+};
+
+struct RouteHint {
+  int toX = -1, toY = -1;
+  std::string firstHop; // EAST/WEST/NORTH/... (first hop direction)
+  int hops = 0;         // Chebyshev distance
+};
+
+struct Instruction {
+  std::string opcode;
+  std::vector<Operand> src_operands;
+  std::vector<Operand> dst_operands;
+  int                  time_step = -1; // for ordering
+  std::vector<RouteHint> route_hints;  // only on multi-hop producer insts
+  Instruction(const std::string &op) : opcode(op) {}
+};
+
+struct Entry {
+  std::string entry_id;
+  std::string type;
+  std::vector<Instruction> instructions;
+  Entry(const std::string &id, const std::string &t = "loop")
+      : entry_id(id), type(t) {}
+};
+
+struct Core {
+  int col, row;
+  int core_id;
+  Entry entry; // single entry per tile
+  Core(int c, int r, int id) : col(c), row(r), core_id(id), entry("entry0","loop") {}
+};
+
+struct ArrayConfig {
+  int columns;
+  int rows;
+  std::vector<Core> cores;
+};
+
+struct OpLocation {
+  int col = -1, row = -1, time_step = -1;
+  bool hasTile = false;
+};
+
+// Sets whether op is neura.data_mov.
+static bool isDataMov(Operation *op) { return op->getName().getStringRef() == "neura.data_mov"; }
+// Sets whether op is neura.ctrl_mov.
+static bool isCtrlMov(Operation *op) { return op->getName().getStringRef() == "neura.ctrl_mov"; }
+// Sets whether op is neura.phi.
+static bool isPhi(Operation *op)     { return op->getName().getStringRef() == "neura.phi"; }
+// Sets whether op is neura.reserve.
+static bool isReserve(Operation *op) { return op->getName().getStringRef() == "neura.reserve"; }
+// Sets whether op is neura.constant.
+static bool isConstant(Operation *op){ return op->getName().getStringRef() == "neura.constant"; }
+// Sets whether op is a forwarder (only neura.data_mov now).
+static bool isForwarder(Operation *op){ return isDataMov(op); }
+
+static OpLocation getTilePlace(Operation *op) {
+  OpLocation p;
+  if (ArrayAttr arr = op->getAttrOfType<ArrayAttr>("mapping_locs")) {
+    for (Attribute a : arr) {
+      DictionaryAttr d = dyn_cast<DictionaryAttr>(a);
+      if (!d) continue;
+      StringAttr res = dyn_cast_or_null<StringAttr>(d.get("resource"));
+      if (!res || res.getValue() != "tile") continue;
+      if (IntegerAttr x = dyn_cast_or_null<IntegerAttr>(d.get("x"))) p.col = x.getInt();
+      if (IntegerAttr y = dyn_cast_or_null<IntegerAttr>(d.get("y"))) p.row = y.getInt();
+      if (IntegerAttr ts= dyn_cast_or_null<IntegerAttr>(d.get("time_step"))) p.time_step = ts.getInt();
+      p.hasTile = true;
+      break;
+    }
+  }
+  return p;
 }
 
-// Calculates direction of data movement from receiver's perspective.
-// For example: if data moves from (1,1) to (1,2), then PE(1,2) receives from South.
-llvm::StringRef calculateRecvDirection(int src_x, int src_y, int dst_x, int dst_y) {
-  int dx = dst_x - src_x;
-  int dy = dst_y - src_y;
-  if (dx == 0 && dy == 0) return "Local";
-  if (dx == 0 && dy > 0) return "South";  // data moves up, receiver gets from South
-  if (dx == 0 && dy < 0) return "North";  // data moves down, receiver gets from North
-  if (dx > 0 && dy == 0) return "West";   // data moves right, receiver gets from West
-  if (dx < 0 && dy == 0) return "East";   // data moves left, receiver gets from East
-  if (dx > 0 && dy > 0) return "SouthWest";
-  if (dx > 0 && dy < 0) return "NorthWest";
-  if (dx < 0 && dy > 0) return "SouthEast";
-  if (dx < 0 && dy < 0) return "NorthEast";
-  return "Unknown";
+static std::optional<int> getMappedReg(Operation *op) {
+  if (ArrayAttr arr = op->getAttrOfType<ArrayAttr>("mapping_locs")) {
+    for (Attribute a : arr) {
+      DictionaryAttr d = dyn_cast<DictionaryAttr>(a);
+      if (!d) continue;
+      StringAttr res = dyn_cast_or_null<StringAttr>(d.get("resource"));
+      if (!res) continue;
+      if (res.getValue() == "register" || res.getValue() == "reg") {
+        if (IntegerAttr id = dyn_cast_or_null<IntegerAttr>(d.get("id")))
+          return id.getInt();
+      }
+    }
+  }
+  return std::nullopt;
 }
+
+static std::string mapOpcode(Operation *op) {
+  std::string opcode = op->getName().getStringRef().str();
+  if (opcode.rfind("neura.", 0) == 0) opcode = opcode.substr(6);
+  if (isConstant(op)) return "CONSTANT"; // keep as CONSTANT
+  std::transform(opcode.begin(), opcode.end(), opcode.begin(), ::toupper);
+  return opcode;
+}
+
+// Sets the first-hop direction from (c0,r0) to (c1,r1).
+static std::string dirFrom(int c0, int r0, int c1, int r1) {
+  int dc = c1 - c0;
+  int dr = r1 - r0;
+  // clamp to {-1, 0, 1}
+  int sdc = (dc > 0) ? 1 : (dc < 0 ? -1 : 0);
+  int sdr = (dr > 0) ? 1 : (dr < 0 ? -1 : 0);
+
+  if (sdc == 0 && sdr == 0) return "LOCAL";
+  if (sdc == 1 && sdr == 0) return "EAST";
+  if (sdc == -1 && sdr == 0) return "WEST";
+  if (sdc == 0 && sdr == 1) return "NORTH";
+  if (sdc == 0 && sdr == -1) return "SOUTH";
+  if (sdc == 1 && sdr == 1) return "NORTHEAST";
+  if (sdc == -1 && sdr == 1) return "NORTHWEST";
+  if (sdc == 1 && sdr == -1) return "SOUTHEAST";
+  if (sdc == -1 && sdr == -1) return "SOUTHWEST";
+  return "LOCAL";
+}
+
+// Sets the opposite direction of d.
+static std::string oppDir(StringRef d) {
+  if (d == "EAST") return "WEST";
+  if (d == "WEST") return "EAST";
+  if (d == "NORTH") return "SOUTH";
+  if (d == "SOUTH") return "NORTH";
+  if (d == "NORTHEAST") return "SOUTHWEST";
+  if (d == "NORTHWEST") return "SOUTHEAST";
+  if (d == "SOUTHEAST") return "NORTHWEST";
+  if (d == "SOUTHWEST") return "NORTHEAST";
+  return "LOCAL";
+}
+
+
+
+static int hopCount(int c0, int r0, int c1, int r1) {
+  return std::max(std::abs(c1 - c0), std::abs(r1 - r0));
+}
+
+// Sets the literal for CONSTANT's source: "#10"/"#0"/"#3.0".
+static std::string constantLiteral(Operation *op) {
+  if (!isConstant(op)) return "";
+  if (Attribute valAttr = op->getAttr("value")) {
+    if (IntegerAttr ia = dyn_cast<IntegerAttr>(valAttr))
+      return "#" + std::to_string(ia.getInt());
+    if (FloatAttr fa = dyn_cast<FloatAttr>(valAttr))
+      return "#" + std::to_string(fa.getValueAsDouble());
+  }
+  return "#0";
+}
+
+// Sets the root value by walking back through forwarders (data_mov).
+static Value chaseBackToRootValue(Value v) {
+  Operation *d = v.getDefiningOp();
+  while (d && isForwarder(d)) {
+    if (d->getNumOperands() == 0) break;
+    v = d->getOperand(0);
+    d = v.getDefiningOp();
+  }
+  return v;
+}
+
+// Sets the preferred register id along the backward path from vAtConsumer.
+static std::optional<int> regOnBackwardPath(Value vAtConsumer) {
+  Operation *d = vAtConsumer.getDefiningOp();
+  while (d) {
+    if (std::optional<int> r = getMappedReg(d)) return r; // op itself
+    if (!isForwarder(d)) break;
+
+    if (ArrayAttr arr = d->getAttrOfType<ArrayAttr>("mapping_locs")) {
+      for (Attribute a : arr) {
+        DictionaryAttr dict = dyn_cast<DictionaryAttr>(a);
+        if (!dict) continue;
+        StringAttr res = dyn_cast_or_null<StringAttr>(dict.get("resource"));
+        if (res && (res.getValue() == "register" || res.getValue() == "reg")) {
+          if (IntegerAttr id = dyn_cast_or_null<IntegerAttr>(dict.get("id")))
+            return id.getInt();
+        }
+      }
+    }
+    if (d->getNumOperands() == 0) break;
+    vAtConsumer = d->getOperand(0);
+    d = vAtConsumer.getDefiningOp();
+  }
+  return std::nullopt;
+}
+
+// Sets the register ids that appear on the forwarder chain that produces vAtConsumer.
+static SmallVector<int, 4> regsOnForwarderChainTo(Value vAtConsumer) {
+  SmallVector<int, 4> ids;
+  Operation *d = vAtConsumer.getDefiningOp();
+  while (d && isForwarder(d)) {
+    if (ArrayAttr arr = d->getAttrOfType<ArrayAttr>("mapping_locs")) {
+      for (Attribute a : arr) {
+        DictionaryAttr dict = dyn_cast<DictionaryAttr>(a);
+        if (!dict) continue;
+        StringAttr res = dyn_cast_or_null<StringAttr>(dict.get("resource"));
+        if (res && (res.getValue() == "register" || res.getValue() == "reg")) {
+          if (IntegerAttr id = dyn_cast_or_null<IntegerAttr>(dict.get("id"))) {
+            int v = id.getInt();
+            if (std::find(ids.begin(), ids.end(), v) == ids.end())
+              ids.push_back(v);
+          }
+        }
+      }
+    }
+    if (d->getNumOperands() == 0) break;
+    Value prev = d->getOperand(0);
+    d = prev.getDefiningOp();
+  }
+  return ids;
+}
+
+// Sets the nearest tiled ancestor by walking to the nearest tiled ancestor on its input chain if producer is not tiled.
+static Operation* chaseToTiledProducer(Operation *op,
+                                       const DenseMap<Operation*, OpLocation> &opPlace) {
+  SmallPtrSet<Operation*, 32> vis;
+  Operation *cur = op;
+  while (cur && !opPlace.lookup(cur).hasTile && !vis.count(cur)) {
+    vis.insert(cur);
+    if (cur->getNumOperands() == 0) break;
+    cur = cur->getOperand(0).getDefiningOp();
+  }
+  return (cur && opPlace.lookup(cur).hasTile) ? cur : op;
+}
+
+// Sets the final tiled consumers by skipping data_mov forwarders.
+static SmallVector<std::pair<Operation*, Value>, 8>
+findTiledConsumers(Value startV,
+                   const DenseMap<Operation*, OpLocation> &opPlace) {
+  SmallVector<std::pair<Operation*, Value>, 8> out;
+  SmallPtrSet<Value, 32> seenV;
+  std::queue<Value> q;
+  q.push(startV);
+  seenV.insert(startV);
+
+  while (!q.empty()) {
+    Value v = q.front(); q.pop();
+
+    for (OpOperand &use : v.getUses()) {
+      Operation *u = use.getOwner();
+      if (opPlace.lookup(u).hasTile) {
+        out.emplace_back(u, v);
+        continue;
+      }
+      if (isForwarder(u)) {
+        if (u->getNumResults() > 0) {
+          Value nv = u->getResult(0);
+          if (!seenV.count(nv)) { seenV.insert(nv); q.push(nv); }
+        }
+        continue;
+      }
+    }
+  }
+  return out;
+}
+
+struct InstRef { int col, row, t, idx; };
+
+struct ProdSummary {
+  std::set<std::string> dirs;   // directions to remote consumers (producer-side)
+  bool hasSameTileConsumer = false;
+};
 
 struct GenerateCodePass
     : public PassWrapper<GenerateCodePass, OperationPass<ModuleOp>> {
@@ -64,1362 +295,468 @@ struct GenerateCodePass
 
   StringRef getArgument() const override { return "generate-code"; }
   StringRef getDescription() const override {
-    return "Generates YAML code from mapped Neura IR.";
+    return "CGRA YAML gen (opposite consumer ports; multi-hop route_hints on producers; honor provided register ids; keep UNRESOLVED).";
   }
-
-  // Simple YAML node class
-  struct YamlNode {
-    enum Type { SCALAR, SEQUENCE, MAPPING };
-    Type type;
-    std::string scalar_value;
-    std::vector<YamlNode> sequence_value;
-    std::map<std::string, YamlNode> mapping_value;
-    
-    YamlNode() : type(SCALAR) {}
-    YamlNode(const std::string& value) : type(SCALAR), scalar_value(value) {}
-    
-    static YamlNode Scalar(const std::string& value) {
-      return YamlNode(value);
-    }
-    
-    static YamlNode Sequence() {
-      YamlNode node;
-      node.type = SEQUENCE;
-      return node;
-    }
-    
-    static YamlNode Mapping() {
-      YamlNode node;
-      node.type = MAPPING;
-      return node;
-    }
-    
-    void push_back(const YamlNode& node) {
-      if (type != SEQUENCE) {
-        type = SEQUENCE;
-        sequence_value.clear();
-      }
-      sequence_value.push_back(node);
-    }
-    
-    void set(const std::string& key, const YamlNode& value) {
-      if (type != MAPPING) {
-        type = MAPPING;
-        mapping_value.clear();
-      }
-      mapping_value[key] = value;
-    }
-    
-    void set(const std::string& key, const std::string& value) {
-      set(key, Scalar(value));
-    }
-    
-    void set(const std::string& key, int value) {
-      set(key, Scalar(std::to_string(value)));
-    }
-    
-    // Add operator[] for direct access
-    YamlNode& operator[](const std::string& key) {
-      if (type != MAPPING) {
-        type = MAPPING;
-        mapping_value.clear();
-      }
-      return mapping_value[key];
-    }
-    
-    // Add assignment operators for direct assignment
-    YamlNode& operator=(const std::string& value) {
-      type = SCALAR;
-      scalar_value = value;
-      return *this;
-    }
-    
-    YamlNode& operator=(int value) {
-      type = SCALAR;
-      scalar_value = std::to_string(value);
-      return *this;
-    }
-    
-    YamlNode& operator=(int64_t value) {
-      type = SCALAR;
-      scalar_value = std::to_string(value);
-      return *this;
-    }
-    
-    // Add erase method
-    void erase(const std::string& key) {
-      if (type == MAPPING) {
-        mapping_value.erase(key);
-      }
-    }
-    
-    std::string toString(int indent = 0) const {
-      std::stringstream ss;
-      std::string indent_str(indent * 2, ' ');
-      
-      switch (type) {
-        case SCALAR:
-          ss << scalar_value;
-          break;
-          
-        case SEQUENCE:
-          if (sequence_value.empty()) {
-            ss << "[]";
-          } else {
-            ss << "\n";
-            for (size_t i = 0; i < sequence_value.size(); ++i) {
-              ss << indent_str << "- " << sequence_value[i].toString(indent + 1);
-              if (i < sequence_value.size() - 1) ss << "\n";
-            }
-          }
-          break;
-          
-        case MAPPING:
-          if (mapping_value.empty()) {
-            ss << "{}";
-          } else {
-            ss << "\n";
-            size_t i = 0;
-            for (const auto& pair : mapping_value) {
-              ss << indent_str << pair.first << ": " << pair.second.toString(indent + 1);
-              if (i < mapping_value.size() - 1) ss << "\n";
-              ++i;
-            }
-          }
-          break;
-      }
-      
-      return ss.str();
-    }
-  };
-
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<mlir::func::FuncDialect, mlir::neura::NeuraDialect>();
+    registry.insert<mlir::func::FuncDialect>();
   }
 
-  // Sets helper function to process tile mapping for an operation.
-  void processTileMapping(mlir::Operation* op, mlir::DictionaryAttr loc,
-                         std::map<Operation*, std::pair<int, int>>& op_to_final_tile,
-                         std::map<Operation*, std::pair<int, int>>& op_to_source_tile,
-                         std::map<std::pair<int, int>, int>& tile_coord_to_id,
-                         int& tile_id_counter) {
-    auto x_attr = loc.getAs<IntegerAttr>("x");
-    auto y_attr = loc.getAs<IntegerAttr>("y");
-    auto id_attr = mlir::dyn_cast<IntegerAttr>(loc.get("id"));
-    
-    int x, y;
-    if (x_attr && y_attr) {
-      x = x_attr.getInt();
-      y = y_attr.getInt();
+  // per-tile round-robin $1..$32
+  DenseMap<std::pair<int,int>, int> tileNextReg;
+  // root SSA value -> chosen $N (sticky across same-tile uses)
+  DenseMap<Value, std::string>       localRegOf;
+  DenseMap<Operation*, OpLocation>   opPlace;
+
+  std::string allocTileReg(std::pair<int,int> tileKey) {
+    int &n = tileNextReg[tileKey];
+    if (n <= 0) n = 1;
+    std::string name = "$" + std::to_string(n);
+    n = (n % 32) + 1;
+    return name;
+  }
+
+  // Sets a register for a same-tile edge by honoring provided ids.
+  std::string pickRegisterForEdge(Operation *producer, Value vAtConsumer,
+                                  std::optional<int> preferredId = std::nullopt) {
+    Value root = chaseBackToRootValue(vAtConsumer);
+    DenseMap<Value, std::string>::iterator it = localRegOf.find(root);
+    if (it != localRegOf.end()) return it->second;
+
+    std::string rn;
+    if (preferredId) {
+      rn = "$" + std::to_string(*preferredId);
+    } else if (std::optional<int> id = regOnBackwardPath(vAtConsumer)) {
+      rn = "$" + std::to_string(*id);
+    } else if (std::optional<int> mr = getMappedReg(producer)) {
+      rn = "$" + std::to_string(*mr);
     } else {
-      x = id_attr ? id_attr.getInt() : 0;
-      y = 0;
+      Operation *tp = chaseToTiledProducer(producer, opPlace);
+              OpLocation pp = opPlace.lookup(tp);
+      rn = allocTileReg({pp.col, pp.row});
     }
-    
-    op_to_final_tile[op] = std::make_pair(x, y);
-    op_to_source_tile[op] = std::make_pair(x, y);
-    
-    // Sets use the ID from MLIR mapping_locs attribute
-    if (id_attr) {
-      auto coord = std::make_pair(x, y);
-      tile_coord_to_id[coord] = id_attr.getInt();
-    }
+    localRegOf[root] = rn;
+    return rn;
   }
 
-  // Sets helper function to process link mapping for an operation.
-  void processLinkMapping(mlir::Operation* op, mlir::DictionaryAttr loc,
-                         std::map<Operation*, std::pair<int, int>>& op_to_final_tile,
-                         std::map<Operation*, std::pair<int, int>>& op_to_source_tile) {
-    auto id_attr = mlir::dyn_cast<IntegerAttr>(loc.get("id"));
-    (void)id_attr; // Suppresses unused variable warning.
-    
-    for (mlir::Value result : op->getResults()) {
-      if (!result) continue;
-      for (mlir::Operation *user : result.getUsers()) {
-        if (!user) continue;
-        auto user_attr_array = user->getAttrOfType<ArrayAttr>("mapping_locs");
-        if (user_attr_array) {
-          for (mlir::Attribute user_attr : user_attr_array) {
-            if (auto user_loc = mlir::dyn_cast<DictionaryAttr>(user_attr)) {
-              auto user_resource_attr = mlir::dyn_cast<StringAttr>(user_loc.get("resource"));
-              if (user_resource_attr && user_resource_attr.getValue() == "tile") {
-                auto user_x_attr = user_loc.getAs<IntegerAttr>("x");
-                auto user_y_attr = user_loc.getAs<IntegerAttr>("y");
-                if (user_x_attr && user_y_attr) {
-                  int dst_x = user_x_attr.getInt();
-                  int dst_y = user_y_attr.getInt();
-                  op_to_final_tile[op] = std::make_pair(dst_x, dst_y);
-                  
-                  // Sets find source from operands.
-                  for (mlir::Value operand : op->getOperands()) {
-                    if (!operand) continue;
-                    if (auto defining_op = operand.getDefiningOp()) {
-                      auto src_it = op_to_source_tile.find(defining_op);
-                      if (src_it != op_to_source_tile.end()) {
-                        op_to_source_tile[op] = src_it->second;
-                        break;
-                      }
-                    }
-                  }
-                  return;
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-    
-    // Sets fallback: use source location from operands.
-    if (op_to_final_tile.find(op) == op_to_final_tile.end()) {
-      for (mlir::Value operand : op->getOperands()) {
-        if (!operand) continue;
-        if (auto defining_op = operand.getDefiningOp()) {
-          auto it = op_to_final_tile.find(defining_op);
-          if (it != op_to_final_tile.end()) {
-            op_to_final_tile[op] = it->second;
-            auto src_it = op_to_source_tile.find(defining_op);
-            if (src_it != op_to_source_tile.end()) {
-              op_to_source_tile[op] = src_it->second;
-            }
-            break;
-          }
-        }
-      }
-    }
-  }
-
-  // Sets helper function to process register mapping for an operation.
-  void processRegisterMapping(mlir::Operation* op, mlir::DictionaryAttr loc,
-                             std::map<Operation*, std::pair<int, int>>& op_to_final_tile,
-                             std::map<Operation*, std::pair<int, int>>& op_to_source_tile) {
-    auto id_attr = mlir::dyn_cast<IntegerAttr>(loc.get("id"));
-    auto timestep_attr = mlir::dyn_cast<IntegerAttr>(loc.get("time_step"));
-    
-    if (!id_attr || !timestep_attr) return;
-    
-    int register_id = id_attr.getInt();
-    int time_step = timestep_attr.getInt();
-    
-    // Sets register operations are part of data movement operations
-    // Sets they don't have direct tile coordinates, but they belong to either source or destination tile
-    
-    // Sets try to determine if this register belongs to source or destination tile
-    // Sets by looking at the operation's context (operands and users)
-    
-    (void)register_id; // Suppresses unused variable warning
-    (void)time_step;   // Suppresses unused variable warning
-    
-    // Sets first, try to find the source tile by looking at the operation's operands
-    for (mlir::Value operand : op->getOperands()) {
-      if (!operand) continue;
-      if (auto defining_op = operand.getDefiningOp()) {
-        auto def_attr_array = defining_op->getAttrOfType<ArrayAttr>("mapping_locs");
-        if (def_attr_array) {
-          for (mlir::Attribute def_attr : def_attr_array) {
-            if (auto def_loc = mlir::dyn_cast<DictionaryAttr>(def_attr)) {
-              auto def_resource_attr = mlir::dyn_cast<StringAttr>(def_loc.get("resource"));
-              if (def_resource_attr && def_resource_attr.getValue() == "tile") {
-                auto def_x_attr = def_loc.getAs<IntegerAttr>("x");
-                auto def_y_attr = def_loc.getAs<IntegerAttr>("y");
-                if (def_x_attr && def_y_attr) {
-                  int src_x = def_x_attr.getInt();
-                  int src_y = def_y_attr.getInt();
-                  op_to_source_tile[op] = std::make_pair(src_x, src_y);
-                  break;
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-    
-    // Sets then, try to find the destination tile by looking at operations that use this operation's results
-    for (mlir::Value result : op->getResults()) {
-      if (!result) continue;
-      for (mlir::Operation *user : result.getUsers()) {
-        if (!user) continue;
-        auto user_attr_array = user->getAttrOfType<ArrayAttr>("mapping_locs");
-        if (user_attr_array) {
-          for (mlir::Attribute user_attr : user_attr_array) {
-            if (auto user_loc = mlir::dyn_cast<DictionaryAttr>(user_attr)) {
-              auto user_resource_attr = mlir::dyn_cast<StringAttr>(user_loc.get("resource"));
-              if (user_resource_attr && user_resource_attr.getValue() == "tile") {
-                auto user_x_attr = user_loc.getAs<IntegerAttr>("x");
-                auto user_y_attr = user_loc.getAs<IntegerAttr>("y");
-                if (user_x_attr && user_y_attr) {
-                  int dst_x = user_x_attr.getInt();
-                  int dst_y = user_y_attr.getInt();
-                  op_to_final_tile[op] = std::make_pair(dst_x, dst_y);
-                  break;
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-    
-    // Sets if we found both source and destination, and they're the same, this is a local register
-    if (op_to_source_tile.find(op) != op_to_source_tile.end() && 
-        op_to_final_tile.find(op) != op_to_final_tile.end()) {
-      auto src = op_to_source_tile[op];
-      auto dst = op_to_final_tile[op];
-      if (src == dst) {
-        return;
-      }
-    }
-  }
-
-  // Sets helper function to collect operation tile mappings.
-  void collectOperationMappings(mlir::func::FuncOp func,
-                               std::map<Operation*, std::pair<int, int>>& op_to_final_tile,
-                               std::map<Operation*, std::pair<int, int>>& op_to_source_tile,
-                               std::map<std::pair<int, int>, int>& tile_coord_to_id,
-                               int& tile_id_counter) {
-    func.walk([&](Operation *op) {
-      auto attr_array = op->getAttrOfType<ArrayAttr>("mapping_locs");
-      if (!attr_array || attr_array.size() == 0) {
-        return;
-      }
-      
-      for (mlir::Attribute attr : attr_array) {
-        if (auto loc = mlir::dyn_cast<DictionaryAttr>(attr)) {
-          auto resource_attr = mlir::dyn_cast<StringAttr>(loc.get("resource"));
-          if (!resource_attr) continue;
-          
-          if (resource_attr.getValue() == "tile") {
-            processTileMapping(op, loc, op_to_final_tile, op_to_source_tile, 
-                             tile_coord_to_id, tile_id_counter);
-            break;
-          } else if (resource_attr.getValue() == "link") {
-            processLinkMapping(op, loc, op_to_final_tile, op_to_source_tile);
-            break;
-          } else if (resource_attr.getValue() == "register") {
-            processRegisterMapping(op, loc, op_to_final_tile, op_to_source_tile);
-            break;
-          }
-        }
-      }
-    });
-  }
-
-  // Sets helper function to calculate source direction for an operation.
-  void calculateSourceDirection(mlir::Operation* op, int x, int y, YamlNode& inst_obj) {
-    bool found_src = false;
-    for (mlir::Value operand : op->getOperands()) {
-      if (!operand) continue;
-      if (auto defining_op = operand.getDefiningOp()) {
-        // Sets find the source tile by looking at the defining operation's tile mapping.
-        std::pair<int, int> src_coord = std::make_pair(x, y); // Defaults to current location.
-        
-        auto def_attr_array = defining_op->getAttrOfType<ArrayAttr>("mapping_locs");
-        if (def_attr_array) {
-          for (mlir::Attribute attr : def_attr_array) {
-            if (auto loc = mlir::dyn_cast<DictionaryAttr>(attr)) {
-              auto resource_attr = mlir::dyn_cast<StringAttr>(loc.get("resource"));
-              if (resource_attr && resource_attr.getValue() == "tile") {
-                auto x_attr = loc.getAs<IntegerAttr>("x");
-                auto y_attr = loc.getAs<IntegerAttr>("y");
-                if (x_attr && y_attr) {
-                  src_coord = std::make_pair(x_attr.getInt(), y_attr.getInt());
-                  break;
-                }
-              } else if (resource_attr && resource_attr.getValue() == "register") {
-                // Sets for register operations, we need to trace back to find the source tile
-                // Sets this is handled in the ASM generation, not in YAML
-                continue;
-              }
-            }
-          }
-        }
-        
-        // Sets calculate the direction FROM source TO current tile.
-        inst_obj["src_direction"] = calculateRecvDirection(src_coord.first, src_coord.second, x, y).str();
-        inst_obj["src_tile"] = "(" + std::to_string(src_coord.first) + "," + std::to_string(src_coord.second) + ")";
-        found_src = true;
-        break;
-      }
-    }
-
-    // Sets if no source tile is found, sets to Local.
-    if (!found_src) {
-      inst_obj["src_direction"] = "Local";
-      inst_obj["src_tile"] = "(" + std::to_string(x) + "," + std::to_string(y) + ")";
-    }
-  }
-
-  // Sets helper function to calculate destination direction for an operation.
-  void calculateDestinationDirection(mlir::Operation* op, int x, int y, 
-                                   const std::map<Operation*, std::pair<int, int>>& op_to_final_tile,
-                                   YamlNode& inst_obj) {
-    bool found_dst = false;
-    for (mlir::Value result : op->getResults()) {
-      if (!result) continue;
-      for (mlir::Operation *user : result.getUsers()) {
-        if (!user) continue;
-        
-        // Sets check if user is a register operation
-        auto user_attr_array = user->getAttrOfType<ArrayAttr>("mapping_locs");
-        if (user_attr_array) {
-          bool is_register_user = false;
-          for (mlir::Attribute user_attr : user_attr_array) {
-            if (auto user_loc = mlir::dyn_cast<DictionaryAttr>(user_attr)) {
-              auto user_resource_attr = mlir::dyn_cast<StringAttr>(user_loc.get("resource"));
-              if (user_resource_attr && user_resource_attr.getValue() == "register") {
-                is_register_user = true;
-                break;
-              }
-            }
-          }
-          
-          if (!is_register_user) {
-            // Sets regular user handling
-            auto user_it = op_to_final_tile.find(user);
-            if (user_it != op_to_final_tile.end()) {
-              int dst_x = user_it->second.first;
-              int dst_y = user_it->second.second;
-              inst_obj["dst_direction"] = calculateSendDirection(x, y, dst_x, dst_y).str();
-              inst_obj["dst_tile"] = "(" + std::to_string(dst_x) + "," + std::to_string(dst_y) + ")";
-              found_dst = true;
-              break;
-            }
-          }
-        } else {
-          // Sets fallback for operations without mapping_locs
-          auto user_it = op_to_final_tile.find(user);
-          if (user_it != op_to_final_tile.end()) {
-            int dst_x = user_it->second.first;
-            int dst_y = user_it->second.second;
-            inst_obj["dst_direction"] = calculateSendDirection(x, y, dst_x, dst_y).str();
-            inst_obj["dst_tile"] = "(" + std::to_string(dst_x) + "," + std::to_string(dst_y) + ")";
-            found_dst = true;
-            break;
-          }
-        }
-      }
-      if (found_dst) break;
-    }
-    
-    // Sets if no destination tile is found, set to Local.
-    if (!found_dst) {
-      inst_obj["dst_direction"] = "Local";
-      inst_obj["dst_tile"] = "(" + std::to_string(x) + "," + std::to_string(y) + ")";
-    }
-  }
-
-  // Sets helper function to process tile instruction.
-  void processTileInstruction(mlir::Operation* op, mlir::DictionaryAttr loc,
-                            const std::map<Operation*, std::pair<int, int>>& op_to_final_tile,
-                            std::map<std::pair<int, int>, YamlNode>& tile_instructions) {
-    auto x_attr = loc.getAs<IntegerAttr>("x");
-    auto y_attr = loc.getAs<IntegerAttr>("y");
-    auto timestep_attr = mlir::dyn_cast<IntegerAttr>(loc.get("time_step"));
-    
-    if (x_attr && y_attr) {
-      int x = x_attr.getInt();
-      int y = y_attr.getInt();
-      int time_step = timestep_attr ? timestep_attr.getInt() : -1;
-      
-      // Sets create instruction object.
-      YamlNode inst_obj = createInstructionObject(op);
-      inst_obj.set("time_step", time_step);
-      inst_obj.set("dst_tile", "(" + std::to_string(x) + "," + std::to_string(y) + ")");
-      
-      // Sets calculate directions.
-      calculateSourceDirection(op, x, y, inst_obj);
-      calculateDestinationDirection(op, x, y, op_to_final_tile, inst_obj);
-      
-      // Sets special handling for return operations.
-      llvm::StringRef fullOpName = op->getName().getStringRef();
-      llvm::StringRef opcode = fullOpName;
-      size_t dotPos = fullOpName.find_last_of('.');
-      if (dotPos != llvm::StringRef::npos && dotPos + 1 < fullOpName.size()) {
-        opcode = fullOpName.substr(dotPos + 1);
-      }
-      if (opcode == "return") {
-        // Sets return operations don't have destination direction.
-        inst_obj.erase("dst_direction");
-        inst_obj.erase("dst_tile");
-      }
-      
-      // Sets add instruction to corresponding tile.
-      tile_instructions[std::make_pair(x, y)].push_back(std::move(inst_obj));
-    }
-  }
-
-  // Sets helper function to process link instruction.
-  void processLinkInstruction(mlir::Operation* op, mlir::DictionaryAttr loc,
-                            const std::map<Operation*, std::pair<int, int>>& op_to_final_tile,
-                            std::map<std::pair<int, int>, YamlNode>& tile_instructions) {
-    auto id_attr = mlir::dyn_cast<IntegerAttr>(loc.get("id"));
-    auto timestep_attr = mlir::dyn_cast<IntegerAttr>(loc.get("time_step"));
-    
-    if (!id_attr) return;
-    
-    int time_step = timestep_attr ? timestep_attr.getInt() : -1;
-    
-    // Sets try to find the destination tile by looking at subsequent operations.
-    std::pair<int, int> dst_tile = std::make_pair(-1, -1);
-    
-    if (op->getNumResults() > 0) {
-      for (mlir::Operation *user : op->getResults()[0].getUsers()) {
-        if (!user) continue;
-        auto user_it = op_to_final_tile.find(user);
-        if (user_it != op_to_final_tile.end()) {
-          dst_tile = user_it->second;
-          break;
-        }
-      }
-    }
-    
-    // Sets if we found a destination, create the instruction.
-    if (dst_tile.first != -1 && dst_tile.second != -1) {
-      YamlNode inst_obj = createInstructionObject(op);
-      inst_obj.set("time_step", time_step);
-      inst_obj.set("dst_tile", "(" + std::to_string(dst_tile.first) + "," + std::to_string(dst_tile.second) + ")");
-      
-      // Sets find source tile from operands.
-      bool found_src = false;
-      for (mlir::Value operand : op->getOperands()) {
-        if (!operand) continue;
-        if (auto defining_op = operand.getDefiningOp()) {
-          auto it = op_to_final_tile.find(defining_op);
-          if (it != op_to_final_tile.end()) {
-            int src_x = it->second.first;
-            int src_y = it->second.second;
-            inst_obj["src_direction"] = calculateRecvDirection(src_x, src_y, dst_tile.first, dst_tile.second).str();
-            inst_obj["src_tile"] = "(" + std::to_string(src_x) + "," + std::to_string(src_y) + ")";
-            found_src = true;
-            break;
-          }
-        }
-      }
-      
-      if (!found_src) {
-        inst_obj["src_direction"] = "Local";
-        inst_obj["src_tile"] = "(" + std::to_string(dst_tile.first) + "," + std::to_string(dst_tile.second) + ")";
-      }
-      
-      // Sets calculate destination direction.
-      calculateDestinationDirection(op, dst_tile.first, dst_tile.second, op_to_final_tile, inst_obj);
-      
-      // Sets add instruction to corresponding tile.
-      tile_instructions[dst_tile].push_back(std::move(inst_obj));
-    }
-  }
-
-  // Sets helper function to process function and generate YAML.
-  void processFunction(mlir::func::FuncOp func, YamlNode& functions_array) {
-    YamlNode func_obj;
-    func_obj.set("func_name", func.getName().str());
-
-    if (auto ii_attr = func->getAttrOfType<IntegerAttr>("CompiledII"))
-      func_obj["CompiledII"] = ii_attr.getInt();
-    if (auto recMII_attr = func->getAttrOfType<IntegerAttr>("RecMII"))
-      func_obj["RecMII"] = recMII_attr.getInt();
-    if (auto resMII_attr = func->getAttrOfType<IntegerAttr>("ResMII"))
-      func_obj["ResMII"] = resMII_attr.getInt();
-
-    // Sets maps instructions organized by tile.
-    std::map<std::pair<int, int>, YamlNode> tile_instructions;
-    
-    // Sets maps operation to its final tile location (after data movement).
-    std::map<Operation*, std::pair<int, int>> op_to_final_tile;
-    
-    // Sets maps operation to its original source location (for data flow tracking).
-    std::map<Operation*, std::pair<int, int>> op_to_source_tile;
-    
-    // Sets maps tile coordinates to ID.
-    std::map<std::pair<int, int>, int> tile_coord_to_id;
-    int tile_id_counter = 0;
-
-    // Sets first pass: collects all operation tile locations and assigns tile ID.
-    collectOperationMappings(func, op_to_final_tile, op_to_source_tile, 
-                           tile_coord_to_id, tile_id_counter);
-
-    // Sets second pass: generates instructions and calculates direction.
-    func.walk([&](Operation *op) {
-      auto attr_array = op->getAttrOfType<ArrayAttr>("mapping_locs");
-      if (!attr_array || attr_array.size() == 0) {
-        return;
-      }
-      
-      bool found = false;
-      for (mlir::Attribute attr : attr_array) {
-        if (auto loc = mlir::dyn_cast<DictionaryAttr>(attr)) {
-          auto resource_attr = mlir::dyn_cast<StringAttr>(loc.get("resource"));
-          if (!resource_attr) continue;
-          
-          if (resource_attr.getValue() == "tile") {
-            processTileInstruction(op, loc, op_to_final_tile, tile_instructions);
-            found = true;
-            break;
-          } else if (resource_attr.getValue() == "link") {
-            processLinkInstruction(op, loc, op_to_final_tile, tile_instructions);
-            found = true;
-            break;
-          } else if (resource_attr.getValue() == "register") {
-            // Sets register operations don't generate instructions directly
-            // Sets they are handled in data flow tracing
-            found = true;
-            break;
-          }
-        }
-      }
-      if (!found) return;
-    });
-
-    // Sets organizes instructions by tile and generates YAML.
-    YamlNode tile_instructions_obj;
-    for (std::pair<const std::pair<int, int>, YamlNode>& tile_pair : tile_instructions) {
-      int x = tile_pair.first.first;
-      int y = tile_pair.first.second;
-      YamlNode& instructions = tile_pair.second;
-      
-      // Sets gets tile ID.
-      auto coord = std::make_pair(x, y);
-      int tile_id = tile_coord_to_id[coord];
-      
-      YamlNode tile_obj;
-      tile_obj.set("id", tile_id);
-      tile_obj.set("x", x);
-      tile_obj.set("y", y);
-      // Sets adds instructions at the end, to ensure order.
-      tile_obj.set("instructions", instructions);
-      
-      // Sets uses "Tile(id)" as key.
-      std::string tile_key = "Tile(" + std::to_string(tile_id) + ")";
-      tile_instructions_obj[tile_key] = std::move(tile_obj);
-    }
-
-    func_obj["tile_instructions"] = std::move(tile_instructions_obj);
-    functions_array.push_back(std::move(func_obj));
-  }
-
-  // Sets helper function to create instruction object.
-  YamlNode createInstructionObject(Operation *op) {
-    YamlNode inst_obj;
-    
-    // Sets extract operation name.
-    llvm::StringRef fullOpName = op->getName().getStringRef();
-    llvm::StringRef opcode = fullOpName;
-    size_t dotPos = fullOpName.find_last_of('.');
-    if (dotPos != llvm::StringRef::npos && dotPos + 1 < fullOpName.size()) {
-      opcode = fullOpName.substr(dotPos + 1);
-    }
-
-    // Sets name, operands, result_types.
-    inst_obj["name"] = fullOpName.str();
-    
-    // Sets operands.
-    YamlNode operands_array = YamlNode::Sequence();
-    for (mlir::Value operand : op->getOperands()) {
-      if (auto defining_op = operand.getDefiningOp()) {
-        operands_array.push_back(YamlNode::Scalar(defining_op->getName().getStringRef().str()));
-      } else {
-        operands_array.push_back(YamlNode::Scalar("block_arg"));
-      }
-    }
-    inst_obj.set("operands", operands_array);
-    
-    // Sets result_types.
-    YamlNode result_types_array = YamlNode::Sequence();
-    for (mlir::Value result : op->getResults()) {
-      std::string type_str;
-      llvm::raw_string_ostream os(type_str);
-      result.getType().print(os);
-      result_types_array.push_back(YamlNode::Scalar(os.str()));
-    }
-    inst_obj.set("result_types", result_types_array);
-    
-    // Sets time_step only (remove opcode).
-    inst_obj["time_step"] = -1;
-
-    // Sets handles constant value.
-    if (opcode == "constant") {
-      if (op->getNumOperands() == 0 && op->getNumResults() == 1) {
-        if (auto value_attr = op->getAttr("value")) {
-          if (auto int_attr = mlir::dyn_cast<IntegerAttr>(value_attr)) {
-            inst_obj["constant_value"] = std::to_string(int_attr.getInt());
-          } else if (auto float_attr = mlir::dyn_cast<FloatAttr>(value_attr)) {
-            inst_obj["constant_value"] = std::to_string(float_attr.getValueAsDouble());
-          }
-        }
-      }
-    }
-
-    return inst_obj;
-  }
-
-  // Sets helper function to handle return operation ASM.
-  void handleReturnOperationASM(mlir::Operation* op, int x, int y, llvm::raw_fd_ostream& asm_out) {
-    asm_out << "            RETURN";
-    
-    // Sets handle operands (input directions).
-    for (mlir::Value operand : op->getOperands()) {
-      asm_out << ", [";
-      if (auto defining_op = operand.getDefiningOp()) {
-        // Sets find the source PE by looking at the defining operation's tile mapping.
-        std::pair<int, int> src_coord = std::make_pair(x, y); // Default to current location.
-        
-        auto def_attr_array = defining_op->getAttrOfType<ArrayAttr>("mapping_locs");
-        if (def_attr_array) {
-          for (mlir::Attribute attr : def_attr_array) {
-            if (auto loc = mlir::dyn_cast<DictionaryAttr>(attr)) {
-              auto resource_attr = mlir::dyn_cast<StringAttr>(loc.get("resource"));
-              if (resource_attr && resource_attr.getValue() == "tile") {
-                auto x_attr = loc.getAs<IntegerAttr>("x");
-                auto y_attr = loc.getAs<IntegerAttr>("y");
-                if (x_attr && y_attr) {
-                  src_coord = std::make_pair(x_attr.getInt(), y_attr.getInt());
-                  break;
-                }
-              }
-            }
-          }
-        }
-        
-        std::string direction = calculateRecvDirection(src_coord.first, src_coord.second, x, y).str();
-        asm_out << direction << ", R";
-      } else {
-        asm_out << "Local, R";
-      }
-      asm_out << "]";
-    }
-    
-    // Sets return operations don't have destination direction.
-    asm_out << "\n";
-    asm_out << "            NOP\n";
-  }
-
-  // Sets helper function to handle constant operation ASM.
-  void handleConstantOperationASM(mlir::Operation* op, int x, int y,
-                                 const std::map<Operation*, std::pair<int, int>>& asm_op_to_final_tile,
-                                 llvm::raw_fd_ostream& asm_out) {
-    // Sets for constants, output the value.
-    if (auto value_attr = op->getAttr("value")) {
-      if (auto int_attr = mlir::dyn_cast<IntegerAttr>(value_attr)) {
-        asm_out << "            CONSTANT, IMM[" << int_attr.getInt() << "] -> ";
-      } else if (auto float_attr = mlir::dyn_cast<FloatAttr>(value_attr)) {
-        asm_out << "            CONSTANT, IMM[" << float_attr.getValueAsDouble() << "] -> ";
-      }
-    }
-    
-    // Sets find destination direction.
-    std::set<std::string> dst_directions;
-    for (mlir::Value result : op->getResults()) {
-      if (!result) continue;
-      for (mlir::Operation *user : result.getUsers()) {
-        if (!user) continue;
-        auto user_it = asm_op_to_final_tile.find(user);
-        if (user_it != asm_op_to_final_tile.end()) {
-          int dst_x = user_it->second.first;
-          int dst_y = user_it->second.second;
-          std::string dst_direction = calculateSendDirection(x, y, dst_x, dst_y).str();
-          dst_directions.insert(dst_direction);
-        }
-      }
-    }
-    
-    if (dst_directions.empty()) {
-      asm_out << "[Local, R]\n";
-    } else {
-      bool first = true;
-      for (const std::string& direction : dst_directions) {
-        if (!first) asm_out << ", ";
-        asm_out << "[" << direction << ", R]";
-        first = false;
-      }
-      asm_out << "\n";
-    }
-  }
-
-  // Sets helper function to handle regular operation ASM.
-  void handleRegularOperationASM(mlir::Operation* op, int x, int y,
-                                const std::map<Operation*, std::pair<int, int>>& asm_op_to_final_tile,
-                                const std::map<Operation*, std::pair<int, int>>& asm_op_to_source_tile,
-                                const std::string& upper_opcode, llvm::raw_fd_ostream& asm_out) {
-    // Sets for other operations, handle operands and results.
-    asm_out << "            " << upper_opcode;
-    
-    // Sets handle operands (input sources).
-    for (mlir::Value operand : op->getOperands()) {
-      asm_out << ", [";
-      if (auto defining_op = operand.getDefiningOp()) {
-        // Sets try to find source through asm_op_to_source_tile first
-        auto src_it = asm_op_to_source_tile.find(defining_op);
-        if (src_it != asm_op_to_source_tile.end()) {
-          int src_x = src_it->second.first;
-          int src_y = src_it->second.second;
-          std::string direction = calculateRecvDirection(src_x, src_y, x, y).str();
-          asm_out << direction << ", R";
-        } else {
-          // Sets fallback: try to find source through direct tile mapping or register operations.
-          auto def_attr_array = defining_op->getAttrOfType<ArrayAttr>("mapping_locs");
-          if (def_attr_array) {
-            bool found_src = false;
-            for (mlir::Attribute attr : def_attr_array) {
-              if (auto loc = mlir::dyn_cast<DictionaryAttr>(attr)) {
-                auto resource_attr = mlir::dyn_cast<StringAttr>(loc.get("resource"));
-                if (resource_attr && resource_attr.getValue() == "tile") {
-                  auto x_attr = loc.getAs<IntegerAttr>("x");
-                  auto y_attr = loc.getAs<IntegerAttr>("y");
-                  if (x_attr && y_attr) {
-                    int src_x = x_attr.getInt();
-                    int src_y = y_attr.getInt();
-                    std::string direction = calculateRecvDirection(src_x, src_y, x, y).str();
-                    asm_out << direction << ", R";
-                    found_src = true;
-                    break;
-                  }
-                } else if (resource_attr && resource_attr.getValue() == "register") {
-                  // Sets this is a register operation, use register format
-                  auto register_id_attr = mlir::dyn_cast<IntegerAttr>(loc.get("id"));
-                  if (register_id_attr) {
-                    int register_id = register_id_attr.getInt();
-                    asm_out << "$" << register_id;
-                    found_src = true;
-                  }
-                  if (found_src) break;
-                }
-              }
-            }
-            if (!found_src) {
-              asm_out << "Local, R";
-            }
-          } else {
-            asm_out << "Local, R";
-          }
-        }
-      } else {
-        asm_out << "Local, R";
-      }
-      asm_out << "]";
-    }
-    
-    // Sets handle result (output destinations).
-    asm_out << " -> ";
-    std::set<std::string> dst_directions;
-    std::set<std::string> dst_registers;
-    
-    // Sets collect all destination directions and registers
-    for (mlir::Value result : op->getResults()) {
-      if (!result) continue;
-      for (mlir::Operation *user : result.getUsers()) {
-        if (!user) continue;
-        
-        // Sets check if user is a register operation
-        auto user_attr_array = user->getAttrOfType<ArrayAttr>("mapping_locs");
-        if (user_attr_array) {
-          bool is_register_user = false;
-          for (mlir::Attribute user_attr : user_attr_array) {
-            if (auto user_loc = mlir::dyn_cast<DictionaryAttr>(user_attr)) {
-              auto user_resource_attr = mlir::dyn_cast<StringAttr>(user_loc.get("resource"));
-              if (user_resource_attr && user_resource_attr.getValue() == "register") {
-                is_register_user = true;
-                // Sets for register operations, add register as destination
-                auto register_id_attr = mlir::dyn_cast<IntegerAttr>(user_loc.get("id"));
-                if (register_id_attr) {
-                  int register_id = register_id_attr.getInt();
-                  dst_registers.insert("$" + std::to_string(register_id));
-                }
-                break;
-              }
-            }
-          }
-          
-          if (!is_register_user) {
-            // Sets regular user handling
-            auto user_it = asm_op_to_final_tile.find(user);
-            if (user_it != asm_op_to_final_tile.end()) {
-              int dst_x = user_it->second.first;
-              int dst_y = user_it->second.second;
-              std::string dst_direction = calculateSendDirection(x, y, dst_x, dst_y).str();
-              dst_directions.insert(dst_direction);
-            }
-          }
-        } else {
-          // Sets fallback for operations without mapping_locs
-          auto user_it = asm_op_to_final_tile.find(user);
-          if (user_it != asm_op_to_final_tile.end()) {
-            int dst_x = user_it->second.first;
-            int dst_y = user_it->second.second;
-            std::string dst_direction = calculateSendDirection(x, y, dst_x, dst_y).str();
-            dst_directions.insert(dst_direction);
-          }
-        }
-      }
-    }
-    
-    // Sets if no destinations found through users, try asm_op_to_final_tile
-    if (dst_directions.empty() && dst_registers.empty()) {
-      auto op_dst_it = asm_op_to_final_tile.find(op);
-      if (op_dst_it != asm_op_to_final_tile.end()) {
-        int dst_x = op_dst_it->second.first;
-        int dst_y = op_dst_it->second.second;
-        std::string dst_direction = calculateSendDirection(x, y, dst_x, dst_y).str();
-        dst_directions.insert(dst_direction);
-      } else {
-        dst_directions.insert("Local");
-      }
-    }
-    
-    // Sets output all destination directions and registers
-    bool first = true;
-    for (const std::string& direction : dst_directions) {
-      if (!first) asm_out << ", ";
-      asm_out << "[" << direction << ", R]";
-      first = false;
-    }
-    for (const std::string& register_dst : dst_registers) {
-      if (!first) asm_out << ", ";
-      asm_out << "[" << register_dst << "]";
-      first = false;
-    }
-    asm_out << "\n";
-  }
-
-  // Sets helper function to generate ASM for a single operation.
-  void generateASMForOperation(mlir::Operation* op, int x, int y,
-                              const std::map<Operation*, std::pair<int, int>>& asm_op_to_final_tile,
-                              const std::map<Operation*, std::pair<int, int>>& asm_op_to_source_tile,
-                              llvm::raw_fd_ostream& asm_out) {
-    asm_out << "        {\n";
-    
-    // Sets extract operation name.
-    llvm::StringRef fullOpName = op->getName().getStringRef();
-    llvm::StringRef opcode = fullOpName;
-    size_t dotPos = fullOpName.find_last_of('.');
-    if (dotPos != llvm::StringRef::npos && dotPos + 1 < fullOpName.size()) {
-      opcode = fullOpName.substr(dotPos + 1);
-    }
-    
-    // Sets convert opcode to uppercase.
-    std::string upper_opcode = opcode.str();
-    std::transform(upper_opcode.begin(), upper_opcode.end(), upper_opcode.begin(), ::toupper);
-    
-    // Sets handle different operation types.
-    if (upper_opcode == "RETURN") {
-      handleReturnOperationASM(op, x, y, asm_out);
-    } else if (upper_opcode == "CONSTANT") {
-      handleConstantOperationASM(op, x, y, asm_op_to_final_tile, asm_out);
-    } else {
-      handleRegularOperationASM(op, x, y, asm_op_to_final_tile, asm_op_to_source_tile, upper_opcode, asm_out);
-    }
-    
-    asm_out << "        }\n";
-  }
-
-  // Sets helper function to rebuild ASM mappings using thorough tracing.
-  void rebuildASMMappings(mlir::func::FuncOp func,
-                         std::map<Operation*, std::pair<int, int>>& asm_op_to_final_tile,
-                         std::map<Operation*, std::pair<int, int>>& asm_op_to_source_tile) {
-    // Sets first pass: collect all operations and build value-to-operation mapping
-    std::vector<std::pair<mlir::Value, mlir::Operation*>> value_source_pairs;
-    func.walk([&](Operation *op) {
-      // Sets collect all value-to-operation pairs (for data flow tracing)
-      for (mlir::Value result : op->getResults()) {
-        value_source_pairs.push_back(std::make_pair(result, op));
-      }
-      
-      // Sets collect tile operations (only assign coordinates to operations with mapping_locs)
-      auto attr_array = op->getAttrOfType<ArrayAttr>("mapping_locs");
-      if (attr_array && attr_array.size() > 0) {
-        for (mlir::Attribute attr : attr_array) {
-          if (auto loc = mlir::dyn_cast<DictionaryAttr>(attr)) {
-            auto resource_attr = mlir::dyn_cast<StringAttr>(loc.get("resource"));
-            if (resource_attr && resource_attr.getValue() == "tile") {
-              auto x_attr = loc.getAs<IntegerAttr>("x");
-              auto y_attr = loc.getAs<IntegerAttr>("y");
-              if (x_attr && y_attr) {
-                int x = x_attr.getInt();
-                int y = y_attr.getInt();
-                asm_op_to_final_tile[op] = std::make_pair(x, y);
-                asm_op_to_source_tile[op] = std::make_pair(x, y);
-                break;
-              }
-            }
-          }
-        }
-      }
-      // Sets note: operations without mapping_locs are still included in value_source_pairs
-      // Sets for data flow tracing, but they don't get direct tile assignments
-    });
-    
-    // Sets helper function to find source tile through thorough tracing
-    std::function<std::pair<int, int>(mlir::Operation*, std::set<mlir::Operation*>&)> findSourceTile = 
-      [&](mlir::Operation* op, std::set<mlir::Operation*>& visited) -> std::pair<int, int> {
-        // Sets prevent infinite recursion
-        if (visited.find(op) != visited.end()) {
-          return std::make_pair(-1, -1);
-        }
-        visited.insert(op);
-        
-        // Sets check if this operation has a direct tile mapping
-        auto attr_array = op->getAttrOfType<ArrayAttr>("mapping_locs");
-        if (attr_array) {
-          for (mlir::Attribute attr : attr_array) {
-            if (auto loc = mlir::dyn_cast<DictionaryAttr>(attr)) {
-              auto resource_attr = mlir::dyn_cast<StringAttr>(loc.get("resource"));
-              if (resource_attr && resource_attr.getValue() == "tile") {
-                auto x_attr = loc.getAs<IntegerAttr>("x");
-                auto y_attr = loc.getAs<IntegerAttr>("y");
-                if (x_attr && y_attr) {
-                  return std::make_pair(x_attr.getInt(), y_attr.getInt());
-                }
-              }
-            }
-          }
-        }
-        
-        // Sets recursively trace through operands
-        for (mlir::Value operand : op->getOperands()) {
-          if (!operand) continue;
-          for (const auto& pair : value_source_pairs) {
-            if (pair.first == operand) {
-              mlir::Operation* source_op = pair.second;
-              auto source_tile = findSourceTile(source_op, visited);
-              if (source_tile.first != -1 && source_tile.second != -1) {
-                return source_tile;
-              }
-              break;
-            }
-          }
-        }
-        
-        return std::make_pair(-1, -1); // No source found
-      };
-    
-    // Sets helper function to find destination tile through thorough tracing
-    std::function<std::pair<int, int>(mlir::Operation*, std::set<mlir::Operation*>&)> findDestinationTile = 
-      [&](mlir::Operation* op, std::set<mlir::Operation*>& visited) -> std::pair<int, int> {
-        // Sets prevent infinite recursion
-        if (visited.find(op) != visited.end()) {
-          return std::make_pair(-1, -1);
-        }
-        visited.insert(op);
-        
-        // Sets check if this operation has a direct tile mapping
-        auto attr_array = op->getAttrOfType<ArrayAttr>("mapping_locs");
-        if (attr_array) {
-          for (mlir::Attribute attr : attr_array) {
-            if (auto loc = mlir::dyn_cast<DictionaryAttr>(attr)) {
-              auto resource_attr = mlir::dyn_cast<StringAttr>(loc.get("resource"));
-              if (resource_attr && resource_attr.getValue() == "tile") {
-                auto x_attr = loc.getAs<IntegerAttr>("x");
-                auto y_attr = loc.getAs<IntegerAttr>("y");
-                if (x_attr && y_attr) {
-                  return std::make_pair(x_attr.getInt(), y_attr.getInt());
-                }
-              }
-            }
-          }
-        }
-        
-        // Sets recursively trace through users
-        for (mlir::Value result : op->getResults()) {
-          if (!result) continue;
-          for (mlir::Operation *user : result.getUsers()) {
-            if (!user) continue;
-            auto dest_tile = findDestinationTile(user, visited);
-            if (dest_tile.first != -1 && dest_tile.second != -1) {
-              return dest_tile;
-            }
-          }
-        }
-        
-        return std::make_pair(-1, -1); // No destination found
-      };
-    
-    // Sets second pass: find source tiles for all operations
-    func.walk([&](Operation *op) {
-      if (asm_op_to_source_tile.find(op) == asm_op_to_source_tile.end()) {
-        std::set<mlir::Operation*> visited;
-        auto source_tile = findSourceTile(op, visited);
-        if (source_tile.first != -1 && source_tile.second != -1) {
-          asm_op_to_source_tile[op] = source_tile;
-        }
-      }
-    });
-    
-    // Sets third pass: find destination tiles for all operations
-    func.walk([&](Operation *op) {
-      if (asm_op_to_final_tile.find(op) == asm_op_to_final_tile.end()) {
-        std::set<mlir::Operation*> visited;
-        auto dest_tile = findDestinationTile(op, visited);
-        if (dest_tile.first != -1 && dest_tile.second != -1) {
-          asm_op_to_final_tile[op] = dest_tile;
-        }
-      }
-    });
-  }
-
-  // Sets helper function to group operations by PE and time step.
-  void groupOperationsByPEAndTime(mlir::func::FuncOp func,
-                                 std::map<std::pair<int, int>, std::map<int, std::vector<Operation*>>>& pe_time_ops) {
-    func.walk([&](Operation *op) {
-      auto attr_array = op->getAttrOfType<ArrayAttr>("mapping_locs");
-      if (!attr_array || attr_array.size() == 0) {
-        return; // Skip operations without mapping_locs for PE assignment
-      }
-      bool found = false;
-      for (mlir::Attribute attr : attr_array) {
-        if (auto loc = mlir::dyn_cast<DictionaryAttr>(attr)) {
-          auto resource_attr = mlir::dyn_cast<StringAttr>(loc.get("resource"));
-          auto timestep_attr = mlir::dyn_cast<IntegerAttr>(loc.get("time_step"));
-          
-          if (resource_attr && resource_attr.getValue() == "tile") {
-            auto x_attr = loc.getAs<IntegerAttr>("x");
-            auto y_attr = loc.getAs<IntegerAttr>("y");
-            
-            if (x_attr && y_attr && timestep_attr) {
-              int x = x_attr.getInt();
-              int y = y_attr.getInt();
-              int time_step = timestep_attr.getInt();
-              pe_time_ops[std::make_pair(x, y)][time_step].push_back(op);
-              found = true;
-              break;
-            }
-          }
-          // Sets link operations are not assigned to PEs, they are handled separately for data flow tracking
-        }
-      }
-      if (!found) return;
-    });
-  }
-
-  // Sets helper function to collect input directions for a PE.
-  void collectInputDirections(mlir::func::FuncOp func, int x, int y,
-                             const std::map<int, std::vector<Operation*>>& time_ops,
-                             std::set<std::string>& input_directions) {
-    for (const std::pair<const int, std::vector<Operation*>>& time_pair : time_ops) {
-      for (mlir::Operation* op : time_pair.second) {
-        // Sets find source directions for this operation.
-        for (mlir::Value operand : op->getOperands()) {
-          if (!operand) continue;
-          if (auto defining_op = operand.getDefiningOp()) {
-            // Sets find the source tile by looking at the defining operation's tile mapping.
-            std::pair<int, int> src_coord = std::make_pair(x, y); // Default to current location.
-            
-            auto def_attr_array = defining_op->getAttrOfType<ArrayAttr>("mapping_locs");
-            if (def_attr_array) {
-              for (mlir::Attribute attr : def_attr_array) {
-                if (auto loc = mlir::dyn_cast<DictionaryAttr>(attr)) {
-                  auto resource_attr = mlir::dyn_cast<StringAttr>(loc.get("resource"));
-                  if (resource_attr && resource_attr.getValue() == "tile") {
-                    auto x_attr = loc.getAs<IntegerAttr>("x");
-                    auto y_attr = loc.getAs<IntegerAttr>("y");
-                    if (x_attr && y_attr) {
-                      src_coord = std::make_pair(x_attr.getInt(), y_attr.getInt());
-                      break;
-                    }
-                  }
-                }
-              }
-            }
-            
-            std::string direction = calculateRecvDirection(src_coord.first, src_coord.second, x, y).str();
-            if (direction != "Local") {
-              input_directions.insert(direction);
-            }
-          }
-        }
-      }
-    }
-  }
-
-  // Sets helper function to collect input directions from link operations.
-  void collectLinkInputDirections(mlir::func::FuncOp func, int x, int y,
-                                 std::set<std::string>& input_directions) {
-    func.walk([&](Operation *op) {
-      auto attr_array = op->getAttrOfType<ArrayAttr>("mapping_locs");
-      if (!attr_array || attr_array.size() == 0) {
-        return;
-      }
-      bool found = false;
-      for (mlir::Attribute attr : attr_array) {
-        if (auto loc = mlir::dyn_cast<DictionaryAttr>(attr)) {
-          auto resource_attr = mlir::dyn_cast<StringAttr>(loc.get("resource"));
-          if (resource_attr && resource_attr.getValue() == "link") {
-            // Sets check if this link operation targets the current tile.
-            for (mlir::Value result : op->getResults()) {
-              if (!result) continue;
-              for (mlir::Operation *user : result.getUsers()) {
-                if (!user) continue;
-                auto user_attr_array = user->getAttrOfType<ArrayAttr>("mapping_locs");
-                if (!user_attr_array) continue;
-                for (mlir::Attribute user_attr : user_attr_array) {
-                  if (auto user_loc = mlir::dyn_cast<DictionaryAttr>(user_attr)) {
-                    auto user_resource_attr = mlir::dyn_cast<StringAttr>(user_loc.get("resource"));
-                    if (user_resource_attr && user_resource_attr.getValue() == "tile") {
-                      auto user_x_attr = user_loc.getAs<IntegerAttr>("x");
-                      auto user_y_attr = user_loc.getAs<IntegerAttr>("y");
-                      if (user_x_attr && user_y_attr && user_x_attr.getInt() == x && user_y_attr.getInt() == y) {
-                        // Sets this link operation targets the current tile, find its source.
-                        for (mlir::Value operand : op->getOperands()) {
-                          if (!operand) continue;
-                          if (auto defining_op = operand.getDefiningOp()) {
-                            auto def_attr_array = defining_op->getAttrOfType<ArrayAttr>("mapping_locs");
-                            if (def_attr_array) {
-                              for (mlir::Attribute def_attr : def_attr_array) {
-                                if (auto def_loc = mlir::dyn_cast<DictionaryAttr>(def_attr)) {
-                                  auto def_resource_attr = mlir::dyn_cast<StringAttr>(def_loc.get("resource"));
-                                  if (def_resource_attr && def_resource_attr.getValue() == "tile") {
-                                    auto def_x_attr = def_loc.getAs<IntegerAttr>("x");
-                                    auto def_y_attr = def_loc.getAs<IntegerAttr>("y");
-                                    if (def_x_attr && def_y_attr) {
-                                      int src_x = def_x_attr.getInt();
-                                      int src_y = def_y_attr.getInt();
-                                      std::string direction = calculateRecvDirection(src_x, src_y, x, y).str();
-                                      if (direction != "Local") {
-                                        input_directions.insert(direction);
-                                      }
-                                      break;
-                                    }
-                                  }
-                                }
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-      if (found) return;
-    });
-  }
-
-  // Sets helper function to generate ASM for a single PE.
-  void generateASMForPE(int x, int y, const std::map<int, std::vector<Operation*>>& time_ops,
-                       mlir::func::FuncOp func,
-                       const std::map<Operation*, std::pair<int, int>>& asm_op_to_final_tile,
-                       const std::map<Operation*, std::pair<int, int>>& asm_op_to_source_tile,
-                       llvm::raw_fd_ostream& asm_out) {
-    asm_out << "PE(" << x << "," << y << "):\n";
-    asm_out << "{\n";
-    
-    // Sets generate Entry conditions based on input directions.
-    std::set<std::string> input_directions;
-    collectInputDirections(func, x, y, time_ops, input_directions);
-    collectLinkInputDirections(func, x, y, input_directions);
-    
-    // Sets write Entry line.
-    // asm_out << "    Entry ";
-    // bool first = true;
-    // for (const std::string& dir : input_directions) {
-    //   if (!first) asm_out << ", ";
-    //   asm_out << "[" << dir << ", R]";
-    //   first = false;
-    // }
-    // if (input_directions.empty()) {
-    //   asm_out << "[]";
-    // }
-    // asm_out << " => ";
-    asm_out << "    Entry => ";
-    // Sets determine if it's Loop or Once based on time steps.
-    if (time_ops.size() > 1) {
-      asm_out << "Loop {\n";
-    } else {
-      asm_out << "Once {\n";
-    }
-    
-    // Sets generate operations for each time step.
-    for (const std::pair<const int, std::vector<Operation*>>& time_pair : time_ops) {
-      const std::vector<Operation*>& ops = time_pair.second;
-      
-      for (mlir::Operation* op : ops) {
-        generateASMForOperation(op, x, y, asm_op_to_final_tile, asm_op_to_source_tile, asm_out);
-      }
-    }
-    
-    asm_out << "    }\n";
-    asm_out << "}\n\n";
-  }
-
-  // Sets helper function to generate ASM output.
-  void generateASMOutput(ModuleOp module) {
-    std::error_code asm_ec;
-    llvm::raw_fd_ostream asm_out("generated-instructions.asm", asm_ec);
-    if (asm_ec) {
-        getOperation()->emitError("Failed to open 'generated-instructions.asm' for writing: " + asm_ec.message());
-        return signalPassFailure();
-    }
-    
-    // Sets generate ASM for each function.
-    for (mlir::func::FuncOp func : module.getOps<mlir::func::FuncOp>()) {
-      auto accel_attr = func->getAttrOfType<StringAttr>("accelerator");
-      if (!accel_attr || accel_attr.getValue() != "neura")
-        continue;
-
-      // Sets rebuild op_to_final_tile mapping for ASM generation.
-      std::map<Operation*, std::pair<int, int>> asm_op_to_final_tile;
-      std::map<Operation*, std::pair<int, int>> asm_op_to_source_tile;
-      rebuildASMMappings(func, asm_op_to_final_tile, asm_op_to_source_tile);
-      
-      // llvm::errs() << "DEBUG: asm_op_to_final_tile size: " << asm_op_to_final_tile.size() << "\n";
-      // llvm::errs() << "DEBUG: asm_op_to_source_tile size: " << asm_op_to_source_tile.size() << "\n";
-
-      // Sets group operations by PE and time step.
-      std::map<std::pair<int, int>, std::map<int, std::vector<Operation*>>> pe_time_ops;
-      groupOperationsByPEAndTime(func, pe_time_ops);
-      
-      // Sets generate ASM for each PE.
-      for (std::pair<const std::pair<int, int>, std::map<int, std::vector<Operation*>>>& pe_pair : pe_time_ops) {
-        int x = pe_pair.first.first;
-        int y = pe_pair.first.second;
-        std::map<int, std::vector<Operation*>>& time_ops = pe_pair.second;
-        
-        generateASMForPE(x, y, time_ops, func, asm_op_to_final_tile, asm_op_to_source_tile, asm_out);
-      }
-    }
+  // Sets a route hint on producer instruction if this edge is multi-hop.
+  static void addRouteHintIfMultiHop(Instruction *producerInst,
+                                     int fromC,int fromR,int toC,int toR,
+                                     StringRef firstHopDir) {
+    if (!producerInst) return;
+    int hops = hopCount(fromC, fromR, toC, toR);
+    if (hops <= 1) return;
+    RouteHint rh;
+    rh.toX = toC; rh.toY = toR;
+    rh.firstHop = firstHopDir.str();
+    rh.hops = hops;
+    producerInst->route_hints.push_back(std::move(rh));
   }
 
   void runOnOperation() override {
     ModuleOp module = getOperation();
 
-    YamlNode functions_array;
+    for (func::FuncOp func : module.getOps<func::FuncOp>()) {
+      StringAttr accel = func->getAttrOfType<StringAttr>("accelerator");
+      if (!accel || accel.getValue() != "neura") continue;
 
-    for (mlir::func::FuncOp func : module.getOps<mlir::func::FuncOp>()) {
-      auto accel_attr = func->getAttrOfType<StringAttr>("accelerator");
-      if (!accel_attr || accel_attr.getValue() != "neura") {
-        continue;
+      int columns = 4, rows = 4;
+      if (DictionaryAttr mi = func->getAttrOfType<DictionaryAttr>("mapping_info")) {
+        if (IntegerAttr xv = dyn_cast_or_null<IntegerAttr>(mi.get("x_tiles"))) columns = xv.getInt();
+        if (IntegerAttr yv = dyn_cast_or_null<IntegerAttr>(mi.get("y_tiles"))) rows   = yv.getInt();
       }
 
-      processFunction(func, functions_array);
-    }
+      opPlace.clear();
+      tileNextReg.clear();
+      localRegOf.clear();
 
-    // Sets generate both YAML and ASM output.
-    // Sets YAML output.
-    YamlNode root;
-    root.set("functions", functions_array);
+      // collect placements
+      func.walk([&](Operation *op){ opPlace[op] = getTilePlace(op); });
 
-    std::error_code ec;
-    llvm::raw_fd_ostream yaml_out("generated-instructions.yaml", ec);
-    if (ec) {
-        getOperation()->emitError("Failed to open 'generated-instructions.yaml' for writing: " + ec.message());
-        return signalPassFailure();
+      // tile -> time -> instructions
+      std::map<std::pair<int,int>, std::map<int, std::vector<Instruction>>> pe_time_insts;
+
+      std::function<std::vector<Instruction>&(int, int, int)> bucketOf = [&](int c, int r, int t) -> std::vector<Instruction>& {
+        return pe_time_insts[{c,r}][t];
+      };
+
+      DenseMap<Operation*, InstRef>            op2ref;
+      DenseMap<Operation*, SmallVector<Value>> op2Operands;
+
+      // 1) Materialize compute ops (incl. CONSTANT & GRANT_ONCE). Drop reserve/ctrl_mov/data_mov.
+      func.walk([&](Operation *op){
+        OpLocation p = opPlace[op];
+        if (!p.hasTile) return;
+        if (isReserve(op) || isCtrlMov(op) || isDataMov(op)) return;
+
+        std::string opc = mapOpcode(op);
+        Instruction inst(opc);
+        inst.time_step = p.time_step;
+
+        if (isConstant(op)) {
+          inst.src_operands.emplace_back(constantLiteral(op), "RED");
+        } else {
+          SmallVector<Value> operands; operands.reserve(op->getNumOperands());
+          for (Value in : op->getOperands()) {
+            operands.push_back(in);
+            inst.src_operands.emplace_back("UNRESOLVED", "RED");
+          }
+          op2Operands[op] = std::move(operands);
+        }
+
+        // If this op maps its result to a register, keep it (multiple dsts allowed later).
+        if (std::optional<int> mr = getMappedReg(op))
+          inst.dst_operands.emplace_back("$" + std::to_string(*mr), "RED");
+
+        std::vector<Instruction> &vec = bucketOf(p.col, p.row, p.time_step);
+        vec.push_back(std::move(inst));
+        op2ref[op] = InstRef{p.col, p.row, p.time_step, (int)vec.size() - 1};
+      });
+
+      std::function<Instruction*(Operation*)> getInstPtr = [&](Operation *op) -> Instruction* {
+        DenseMap<Operation*, InstRef>::iterator it = op2ref.find(op);
+        if (it == op2ref.end()) return nullptr;
+        auto [c,r,t,idx] = it->second; // 这是结构化绑定，保留auto
+        std::vector<Instruction> &vec = pe_time_insts[{c,r}][t];
+        if (idx < 0 || idx >= (int)vec.size()) return nullptr;
+        return &vec[idx];
+      };
+
+      std::function<void(Operation*, Value, const std::string&)> setConsumerSrcExact = [&](Operation *consumer, Value vAtConsumer, const std::string &text) {
+        Instruction *ci = getInstPtr(consumer);
+        if (!ci) return;
+        DenseMap<Operation*, SmallVector<Value>>::iterator itOps = op2Operands.find(consumer);
+        if (itOps == op2Operands.end()) return;
+        SmallVector<Value> &ops = itOps->second;
+        for (size_t i = 0; i < ops.size() && i < ci->src_operands.size(); ++i) {
+          if (ops[i] == vAtConsumer) { ci->src_operands[i].operand = text; return; }
+        }
+        for (Operand &s : ci->src_operands)
+          if (s.operand == "UNRESOLVED") { s.operand = text; return; }
+      };
+
+      std::function<void(Instruction*, const std::string&)> addUniqueDst = [](Instruction *inst, const std::string &text){
+        for (Operand &d : inst->dst_operands) if (d.operand == text) return;
+        inst->dst_operands.emplace_back(text, "RED");
+      };
+
+      std::function<void(Value, const std::string&)> stickRootReg = [&](Value vAtConsumer, const std::string &rn){
+        Value root = chaseBackToRootValue(vAtConsumer);
+        localRegOf[root] = rn;
+      };
+
+      // 2) Edges + producer summaries
+      DenseMap<Operation*, ProdSummary> prodSum;
+
+      func.walk([&](Operation *prod){
+        if (isReserve(prod) || isCtrlMov(prod)) return;
+        for (Value res : prod->getResults()) {
+          SmallVector<std::pair<Operation*, Value>, 8> consumers = findTiledConsumers(res, opPlace);
+          for (std::pair<Operation*, Value> &cc : consumers) {
+            Operation *cons = cc.first;
+            Value vAtCons   = cc.second;
+
+            Operation *tp = chaseToTiledProducer(prod, opPlace);
+            OpLocation pp = opPlace.lookup(tp);
+            OpLocation pc = opPlace.lookup(cons);
+            if (!pp.hasTile || !pc.hasTile) continue;
+
+            ProdSummary &sum = prodSum[prod];
+            if (pp.col == pc.col && pp.row == pc.row) {
+              // same tile: pick register with backward/producer hints
+              std::string rn = pickRegisterForEdge(prod, vAtCons, std::nullopt);
+              setConsumerSrcExact(cons, vAtCons, rn);
+              if (Instruction *pi = getInstPtr(prod)) addUniqueDst(pi, rn);
+              stickRootReg(vAtCons, rn);
+              sum.hasSameTileConsumer = true;
+            } else {
+              // cross tile: consumer reads "opposite direction"
+              std::string dir = dirFrom(pp.col, pp.row, pc.col, pc.row);
+              setConsumerSrcExact(cons, vAtCons, oppDir(dir));      // <-- key change
+              if (Instruction *pi = getInstPtr(prod)) {
+                addUniqueDst(pi, dir);                               // producer sends to "dir"
+                addRouteHintIfMultiHop(pi, pp.col, pp.row, pc.col, pc.row, dir);
+              }
+              sum.dirs.insert(dir);
+
+              // Attach destination register holds on the consumer if chain shows them
+              if (Instruction *ci = getInstPtr(cons)) {
+                SmallVector<int, 4> ids = regsOnForwarderChainTo(vAtCons);
+                for (int id : ids) addUniqueDst(ci, "$" + std::to_string(id));
+              }
+            }
+          }
+        }
+      });
+
+      // Map reserve -> phi for loop-carried
+      DenseMap<Value, Operation*> reserveToPhi;
+      func.walk([&](Operation *op){
+        if (isPhi(op) && op->getNumOperands() >= 1)
+          reserveToPhi[op->getOperand(0)] = op;
+      });
+
+      // 2.1) Handle ctrl_mov feeding reserve (loop-carried). Prefer ctrl_mov's register id.
+      func.walk([&](Operation *op){
+        if (!isCtrlMov(op) || op->getNumOperands() < 2) return;
+        Value src = op->getOperand(0);
+        Value reserve = op->getOperand(1);
+        Operation *phi = reserveToPhi.lookup(reserve);
+        if (!phi) return;
+        Operation *producer = src.getDefiningOp();
+        if (!producer) return;
+
+        Operation *tp = chaseToTiledProducer(producer, opPlace);
+        OpLocation pp = opPlace.lookup(tp);
+        OpLocation pc = opPlace.lookup(phi);
+        if (!pp.hasTile || !pc.hasTile) return;
+
+        std::optional<int> ctrlReg = getMappedReg(op);
+
+        ProdSummary &sum = prodSum[producer];
+        if (pp.col == pc.col && pp.row == pc.row) {
+          std::string rn = pickRegisterForEdge(producer, src, ctrlReg);
+          setConsumerSrcExact(phi, src, rn);
+          if (Instruction *pi = getInstPtr(producer)) addUniqueDst(pi, rn);
+          stickRootReg(src, rn);
+          sum.hasSameTileConsumer = true;
+        } else {
+          std::string dir = dirFrom(pp.col, pp.row, pc.col, pc.row);
+          setConsumerSrcExact(phi, src, oppDir(dir));                 // consumer src uses opposite
+          if (Instruction *pi = getInstPtr(producer)) {
+            addUniqueDst(pi, dir);
+            addRouteHintIfMultiHop(pi, pp.col, pp.row, pc.col, pc.row, dir);
+          }
+          sum.dirs.insert(dir);
+
+          // If ctrl_mov shows a reg id on dest, attach to phi (consumer)
+          if (Instruction *ci = getInstPtr(phi)) {
+            if (ctrlReg) addUniqueDst(ci, "$" + std::to_string(*ctrlReg));
+          }
+        }
+      });
+
+      // 3) PHI post-process (keep producer fanout dirs; clean stray $ if no same-tile consumer and no mapped reg)
+      for (std::pair<Operation*, ProdSummary> &kv : prodSum) {
+        Operation *op = kv.first;
+        if (!isPhi(op)) continue;
+        Instruction *pi = getInstPtr(op);
+        if (!pi) continue;
+
+        for (const std::string &d : kv.second.dirs) addUniqueDst(pi, d);
+
+        bool hasMappedReg = getMappedReg(op).has_value();
+        if (!kv.second.hasSameTileConsumer && !hasMappedReg) {
+          pi->dst_operands.erase(
+            std::remove_if(pi->dst_operands.begin(), pi->dst_operands.end(),
+              [](const Operand &o){ return !o.operand.empty() && o.operand[0] == '$'; }),
+            pi->dst_operands.end()
+          );
+        }
+      }
+
+      // 4) Keep UNRESOLVED and log them (color=YELLOW)
+      unsigned unresolvedSrc = 0, unresolvedDst = 0;
+      for (std::pair<const std::pair<int,int>, std::map<int, std::vector<Instruction>>> &tk : pe_time_insts) {
+        std::pair<int,int> key = tk.first;
+        int c = key.first, r = key.second;
+        for (std::pair<const int, std::vector<Instruction>> &tt : tk.second) {
+          int t = tt.first;
+          std::vector<Instruction> &vec = tt.second;
+
+          for (size_t i = 0; i < vec.size(); ++i) {
+            Instruction &ins = vec[i];
+
+            for (size_t k = 0; k < ins.src_operands.size(); ++k) {
+              Operand &s = ins.src_operands[k];
+              if (s.operand == "UNRESOLVED") {
+                s.color = "YELLOW";
+                ++unresolvedSrc;
+                llvm::errs() << "[UNRESOLVED SRC] tile("<<c<<","<<r<<") t="<<t
+                             << " inst#" << i << " op=" << ins.opcode
+                             << " src_idx=" << k << "\n";
+              }
+            }
+
+            ins.dst_operands.erase(
+              std::remove_if(ins.dst_operands.begin(), ins.dst_operands.end(),
+                [](const Operand &o){
+                  return o.operand.empty() || o.operand=="UNKNOWN";
+                }),
+              ins.dst_operands.end());
+
+            for (size_t k = 0; k < ins.dst_operands.size(); ++k) {
+              Operand &d = ins.dst_operands[k];
+              if (d.operand == "UNRESOLVED") {
+                d.color = "YELLOW";
+                ++unresolvedDst;
+                llvm::errs() << "[UNRESOLVED DST] tile("<<c<<","<<r<<") t="<<t
+                             << " inst#" << i << " op=" << ins.opcode
+                             << " dst_idx=" << k << "\n";
+              }
+            }
+          }
+        }
+      }
+      if (unresolvedSrc + unresolvedDst) {
+        InFlightDiagnostic diag = module.emitWarning("GenerateCodePass: UNRESOLVED operands kept for debugging");
+        diag << " (src=" << unresolvedSrc << ", dst=" << unresolvedDst
+             << "); they are highlighted with color=YELLOW in YAML.";
+      }
+
+      // 5) Assemble YAML (single entry0 per tile, time-ordered)
+      ArrayConfig config;
+      config.columns = columns;
+      config.rows = rows;
+
+      // flatten & sort
+      std::map<std::pair<int,int>, std::vector<Instruction>> tileInstrs;
+      for (std::pair<const std::pair<int,int>, std::map<int, std::vector<Instruction>>> &tileKV : pe_time_insts) {
+        std::pair<int,int> key = tileKV.first;
+        std::map<int, std::vector<Instruction>> &byT  = tileKV.second;
+        std::vector<Instruction> &flat = tileInstrs[key];
+        for (std::pair<const int, std::vector<Instruction>> &kv : byT) for (Instruction &ins : kv.second) flat.push_back(ins);
+        std::stable_sort(flat.begin(), flat.end(),
+          [](const Instruction &a, const Instruction &b){ return a.time_step < b.time_step; });
+      }
+
+      for (int r = 0; r < rows; ++r) {
+        for (int c = 0; c < columns; ++c) {
+          std::map<std::pair<int,int>, std::vector<Instruction>>::iterator it = tileInstrs.find({c,r});
+          if (it == tileInstrs.end()) continue;
+          Core core(c, r, r*columns + c);
+          for (Instruction &ins : it->second) core.entry.instructions.push_back(ins);
+          config.cores.push_back(std::move(core));
+        }
+      }
+
+      std::error_code ec;
+      llvm::raw_fd_ostream yaml_out("generated-instructions.yaml", ec);
+      if (ec) { module.emitError("open yaml failed: " + ec.message()); return; }
+
+      yaml_out << "array_config:\n";
+      yaml_out << "  columns: " << config.columns << "\n";
+      yaml_out << "  rows: " << config.rows << "\n";
+      yaml_out << "  cores:\n";
+      for (const Core &core : config.cores) {
+        yaml_out << "    - column: " << core.col << "\n";
+        yaml_out << "      row: " << core.row << "\n";
+        yaml_out << "      core_id: \"" << core.core_id << "\"\n";
+        yaml_out << "      entries:\n";
+        yaml_out << "        - entry_id: \"entry0\"\n";
+        yaml_out << "          type: \"loop\"\n";
+        yaml_out << "          instructions:\n";
+        for (const Instruction &inst : core.entry.instructions) {
+          yaml_out << "            - opcode: \"" << inst.opcode << "\"\n";
+          yaml_out << "              timestep: " << inst.time_step << "\n";
+          if (!inst.src_operands.empty()) {
+            yaml_out << "              src_operands:\n";
+            for (const Operand &opnd : inst.src_operands) {
+              yaml_out << "                - operand: \"" << opnd.operand << "\"\n";
+              yaml_out << "                  color: \"" << opnd.color << "\"\n";
+            }
+          }
+          if (!inst.dst_operands.empty()) {
+            yaml_out << "              dst_operands:\n";
+            for (const Operand &opnd : inst.dst_operands) {
+              yaml_out << "                - operand: \"" << opnd.operand << "\"\n";
+              yaml_out << "                  color: \"" << opnd.color << "\"\n";
+            }
+          }
+          // route_hints only when present (multi-hop producers)
+          if (!inst.route_hints.empty()) {
+            yaml_out << "              route_hints:\n";
+            for (const RouteHint &rh : inst.route_hints) {
+              yaml_out << "                - to: { x: " << rh.toX << ", y: " << rh.toY << " }\n";
+              yaml_out << "                  first_hop: \"" << rh.firstHop << "\"\n";
+              yaml_out << "                  hops: " << rh.hops << "\n";
+            }
+          }
+        }
+      }
+      yaml_out.close();
+
+      // Optional ASM
+      llvm::raw_fd_ostream asm_out("generated-instructions.asm", ec);
+      if (ec) { module.emitError("open asm failed: " + ec.message()); return; }
+      asm_out << "; ASM (opposite consumer ports; route_hints only on multi-hop producers; dest $regs attached on consumers when present; UNRESOLVED kept)\n\n";
+      for (const Core &core : config.cores) {
+        asm_out << "PE(" << core.col << "," << core.row << "):\n{\n";
+        asm_out << "  Entry => Loop {\n";
+        for (const Instruction &inst : core.entry.instructions) {
+          asm_out << "    {\n";
+          asm_out << "      " << inst.opcode;
+          
+          // Print source operands first
+          if (!inst.src_operands.empty()) {
+            // Check if first operand needs color (direction-based)
+            if (inst.src_operands[0].operand == "NORTH" || inst.src_operands[0].operand == "SOUTH" || 
+                inst.src_operands[0].operand == "EAST" || inst.src_operands[0].operand == "WEST" ||
+                inst.src_operands[0].operand == "NORTHEAST" || inst.src_operands[0].operand == "NORTHWEST" ||
+                inst.src_operands[0].operand == "SOUTHEAST" || inst.src_operands[0].operand == "SOUTHWEST") {
+              asm_out << ", [" << inst.src_operands[0].operand << ", R]";
+            } else {
+              asm_out << ", [" << inst.src_operands[0].operand << "]";
+            }
+            
+            for (size_t i=1;i<inst.src_operands.size();++i) {
+              if (inst.src_operands[i].operand == "NORTH" || inst.src_operands[i].operand == "SOUTH" || 
+                  inst.src_operands[i].operand == "EAST" || inst.src_operands[i].operand == "WEST" ||
+                  inst.src_operands[i].operand == "NORTHEAST" || inst.src_operands[i].operand == "NORTHWEST" ||
+                  inst.src_operands[i].operand == "SOUTHEAST" || inst.src_operands[i].operand == "SOUTHWEST") {
+                asm_out << ", [" << inst.src_operands[i].operand << ", R]";
+              } else {
+                asm_out << ", [" << inst.src_operands[i].operand << "]";
+              }
+            }
+          }
+          
+          // Add arrow if there are destination operands
+          if (!inst.dst_operands.empty()) {
+            asm_out << " -> ";
+            // Check if first destination operand needs color
+            if (inst.dst_operands[0].operand == "NORTH" || inst.dst_operands[0].operand == "SOUTH" || 
+                inst.dst_operands[0].operand == "EAST" || inst.dst_operands[0].operand == "WEST" ||
+                inst.dst_operands[0].operand == "NORTHEAST" || inst.dst_operands[0].operand == "NORTHWEST" ||
+                inst.dst_operands[0].operand == "SOUTHEAST" || inst.dst_operands[0].operand == "SOUTHWEST") {
+              asm_out << "[" << inst.dst_operands[0].operand << ", R]";
+            } else {
+              asm_out << "[" << inst.dst_operands[0].operand << "]";
+            }
+            
+            for (size_t i=1;i<inst.dst_operands.size();++i) {
+              if (inst.dst_operands[i].operand == "NORTH" || inst.dst_operands[i].operand == "SOUTH" || 
+                  inst.dst_operands[i].operand == "EAST" || inst.dst_operands[i].operand == "WEST" ||
+                  inst.dst_operands[i].operand == "NORTHEAST" || inst.dst_operands[i].operand == "NORTHWEST" ||
+                  inst.dst_operands[i].operand == "SOUTHEAST" || inst.dst_operands[i].operand == "SOUTHWEST") {
+                asm_out << ", [" << inst.dst_operands[i].operand << ", R]";
+              } else {
+                asm_out << ", [" << inst.dst_operands[i].operand << "]";
+              }
+            }
+          }
+          
+          // print route hints inline (for quick glance)
+          if (!inst.route_hints.empty()) {
+            asm_out << "  ; route_hints: ";
+            for (size_t i=0;i<inst.route_hints.size();++i) {
+              const RouteHint &rh = inst.route_hints[i];
+              if (i) asm_out << " | ";
+              asm_out << "to=("<<rh.toX<<","<<rh.toY<<"),first="<<rh.firstHop<<",hops="<<rh.hops;
+            }
+          }
+          asm_out << "\n    }\n";
+        }
+        asm_out << "  }\n}\n\n";
+      }
+      asm_out.close();
     }
-    yaml_out << root.toString() << "\n";
-    
-    // Sets generate ASM output.
-    generateASMOutput(module);
   }
 };
 
 } // namespace
 
 namespace mlir::neura {
-std::unique_ptr<mlir::Pass> createGenerateCodePass() {
+std::unique_ptr<Pass> createGenerateCodePass() {
   return std::make_unique<GenerateCodePass>();
 }
 } // namespace mlir::neura
-
-
