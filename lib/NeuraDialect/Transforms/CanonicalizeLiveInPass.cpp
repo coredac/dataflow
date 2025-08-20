@@ -8,7 +8,6 @@
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/SetVector.h"
-#include "llvm/Support/raw_ostream.h"
 #include <cassert>
 #include <string>
 
@@ -62,13 +61,13 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
     for (Operation &op : block.getOperations()) {
       for (Value operand : op.getOperands()) {
         // If the operand is defined in another block, it is a live-in value.
-        if (auto blockArg = dyn_cast<BlockArgument>(operand)) {
-          if (blockArg.getOwner() != &block) {
+        if (auto block_arg = dyn_cast<BlockArgument>(operand)) {
+          if (block_arg.getOwner() != &block) {
             live_ins.insert(operand);
           }
         } else {
-          Operation *defOp = operand.getDefiningOp();
-          if (defOp && defOp->getBlock() != &block) {
+          Operation *def_op = operand.getDefiningOp();
+          if (def_op && def_op->getBlock() != &block) {
             live_ins.insert(operand);
           }
         }
@@ -109,13 +108,14 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
         // Checks if the live-in value in successor block is defined in the
         // current block.
         for (Value live_in : succ_live_ins) {
-          // If it is defined in the current block, we skip it.
-          if (Operation *defOp = live_in.getDefiningOp()) {
-            if (defOp->getBlock() == &block) {
+          // If it is defined in the current block, that means it is not a
+          // live-in value for the block. We can skip it.
+          if (Operation *def_op = live_in.getDefiningOp()) {
+            if (def_op->getBlock() == &block) {
               continue;
             }
-          } else if (auto blockArg = dyn_cast<BlockArgument>(live_in)) {
-            if (blockArg.getOwner() == &block) {
+          } else if (auto block_arg = dyn_cast<BlockArgument>(live_in)) {
+            if (block_arg.getOwner() == &block) {
               continue;
             }
           }
