@@ -103,16 +103,33 @@ Value findOriginalConstant(Value val,
     return val;
   }
 
-  // Handle grant operations and add them to the removal list.
+  // Handles grant operations and adds them to the removal list.
   if (auto grant_once_op = dyn_cast<neura::GrantOnceOp>(def_op)) {
     ops_to_remove.insert(def_op);
     return findOriginalConstant(grant_once_op.getValue(), ops_to_remove);
   }
 
-  // For grant_predicate, only track value inputs and ignore condition inputs.
+  // For grant_predicate, only tracks value inputs and ignores condition inputs.
   if (auto grant_predicate_op = dyn_cast<neura::GrantPredicateOp>(def_op)) {
     ops_to_remove.insert(def_op);
     return findOriginalConstant(grant_predicate_op.getValue(), ops_to_remove);
+  }
+
+  // For phi operations, finds the original constant from inputs.
+  if (auto phi_op = dyn_cast<neura::PhiOp>(def_op)) {
+    ops_to_remove.insert(def_op);
+    for (Value input : phi_op.getInputs()) {
+      ops_to_remove.insert(input.getDefiningOp());
+      if (isa<neura::ReserveOp>(input.getDefiningOp())) {
+        for (Operation *user : input.getUsers()) {
+          if (auto ctrl_mov_op = dyn_cast<neura::CtrlMovOp>(user)) {
+            ops_to_remove.insert(ctrl_mov_op);
+          }
+        }
+        continue;
+      }
+      return findOriginalConstant(input, ops_to_remove);
+    }
   }
 
   return val;
