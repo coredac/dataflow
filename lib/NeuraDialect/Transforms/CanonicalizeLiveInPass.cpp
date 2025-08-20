@@ -93,7 +93,8 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
         continue;
       }
 
-      // Checks if the block has successors and if it has any live-ins.
+      // Checks if the predecessor block has successor blocks and if they have
+      // any live-ins.
       for (Block *succ_block : pred_block.getSuccessors()) {
         auto succ_live_in_iter = all_live_ins.find(succ_block);
         if (succ_live_in_iter == all_live_ins.end()) {
@@ -106,10 +107,10 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
         unsigned old_block_live_in_size = block_live_ins.size();
 
         // Checks if the live-in value in successor block is defined in the
-        // current block.
+        // predecessor block.
         for (Value live_in : succ_live_ins) {
-          // If it is defined in the current block, that means it is not a
-          // live-in value for the block. We can skip it.
+          // If it is defined in the predecessor block, that means it is not a
+          // live-in value for the predecessor block. We can skip it.
           if (Operation *def_op = live_in.getDefiningOp()) {
             if (def_op->getBlock() == &pred_block) {
               continue;
