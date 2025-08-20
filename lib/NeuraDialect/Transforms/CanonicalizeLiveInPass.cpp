@@ -88,20 +88,20 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
   while (changed) {
     changed = false;
 
-    for (Block &block : region.getBlocks()) {
-      if (&block == &region.front()) {
+    for (Block &pred_block : region.getBlocks()) {
+      if (&pred_block == &region.front()) {
         continue;
       }
 
       // Checks if the block has successors and if it has any live-ins.
-      for (Block *succ_block : block.getSuccessors()) {
+      for (Block *succ_block : pred_block.getSuccessors()) {
         auto succ_live_in_iter = all_live_ins.find(succ_block);
         if (succ_live_in_iter == all_live_ins.end()) {
           continue;
         }
 
         SetVector<Value> &succ_live_ins = succ_live_in_iter->second;
-        SetVector<Value> &block_live_ins = all_live_ins[&block];
+        SetVector<Value> &block_live_ins = all_live_ins[&pred_block];
 
         unsigned old_block_live_in_size = block_live_ins.size();
 
@@ -111,11 +111,11 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
           // If it is defined in the current block, that means it is not a
           // live-in value for the block. We can skip it.
           if (Operation *def_op = live_in.getDefiningOp()) {
-            if (def_op->getBlock() == &block) {
+            if (def_op->getBlock() == &pred_block) {
               continue;
             }
           } else if (auto block_arg = dyn_cast<BlockArgument>(live_in)) {
-            if (block_arg.getOwner() == &block) {
+            if (block_arg.getOwner() == &pred_block) {
               continue;
             }
           }
@@ -162,7 +162,7 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
 
   // Updates all operations in the region to use the new block arguments
   // instead of the live-in values.
-  for (auto &[block, liveIns] : all_live_ins) {
+  for (auto &[block, live_ins] : all_live_ins) {
     for (Operation &op : block->getOperations()) {
       for (unsigned i = 0; i < op.getNumOperands(); i++) {
         Value operand = op.getOperand(i);
@@ -176,12 +176,12 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
 
   // Updates the terminators of predecessor blocks to use the new block
   // arguments instead of the live-in values.
-  for (auto &[block, live_ins] : all_live_ins) {
-    for (Block *pred_block : block->getPredecessors()) {
+  for (auto &[succ_block, live_ins] : all_live_ins) {
+    for (Block *pred_block : succ_block->getPredecessors()) {
       Operation *term_op = pred_block->getTerminator();
 
       if (auto br_op = dyn_cast<neura::Br>(term_op)) {
-        if (br_op.getDest() == block) {
+        if (br_op.getDest() == succ_block) {
           SmallVector<Value> new_operands(br_op.getOperands().begin(),
                                           br_op.getOperands().end());
           for (Value live_in : live_ins) {
@@ -198,7 +198,7 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
             }
           }
           OpBuilder builder(br_op);
-          builder.create<neura::Br>(br_op.getLoc(), new_operands, block);
+          builder.create<neura::Br>(br_op.getLoc(), new_operands, succ_block);
           br_op.erase();
         }
       } else if (auto cond_br_op = dyn_cast<neura::CondBr>(term_op)) {
@@ -208,7 +208,7 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
         SmallVector<Value> false_operands(cond_br_op.getFalseArgs().begin(),
                                           cond_br_op.getFalseArgs().end());
         // Handles the true branch.
-        if (cond_br_op.getTrueDest() == block) {
+        if (cond_br_op.getTrueDest() == succ_block) {
           needs_update = true;
           for (Value live_in : live_ins) {
             Operation *def_op = live_in.getDefiningOp();
@@ -227,7 +227,7 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
         }
 
         // Handles the false branch.
-        if (cond_br_op.getFalseDest() == block) {
+        if (cond_br_op.getFalseDest() == succ_block) {
           needs_update = true;
           for (Value live_in : live_ins) {
             Operation *def_op = live_in.getDefiningOp();
