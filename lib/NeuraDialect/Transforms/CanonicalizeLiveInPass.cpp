@@ -139,9 +139,7 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
         }
 
         SetVector<Value> &succ_live_ins = succ_live_in_iter->second;
-        SetVector<Value> &block_live_ins = all_live_ins[&current_block];
-
-        unsigned old_block_live_in_size = block_live_ins.size();
+        SetVector<Value> &current_live_ins = all_live_ins[&current_block];
 
         // Checks if the live-in value in successor block is defined in the
         // current block.
@@ -158,11 +156,12 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
             }
           }
 
-          block_live_ins.insert(live_in);
-        }
-
-        if (block_live_ins.size() > old_block_live_in_size) {
-          changed = true;
+          // If current live-ins do not contain the live-in value,
+          // we add it to the current live-ins.
+          if (!current_live_ins.contains(live_in)) {
+            current_live_ins.insert(live_in);
+            changed = true;
+          }
         }
       }
     }
