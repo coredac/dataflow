@@ -1,4 +1,4 @@
-// RUN: neura-interpreter %s | FileCheck %s
+// RUN: neura-interpreter %s --verbose | FileCheck %s
 
 func.func @test_fdiv_positive() -> f32 {
   %a = arith.constant 10.0 : f32

@@ -1,4 +1,4 @@
-// RUN: neura-interpreter %s | FileCheck %s
+// RUN: neura-interpreter %s --verbose | FileCheck %s
 
 func.func @test_cond_br_true() {
   %cond = arith.constant 1 : i1 
