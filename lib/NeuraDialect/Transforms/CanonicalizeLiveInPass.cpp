@@ -4,14 +4,11 @@
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Operation.h"
-#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Region.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "llvm/ADT/MapVector.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/raw_ostream.h"
+#include "llvm/ADT/SetVector.h"
+#include <cassert>
 #include <string>
 
 using namespace mlir;
@@ -49,125 +46,250 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
   if (region.empty()) {
     return success();
   }
+  // Collects direct live-in values for each block in the region.
+  // Without considering the transitive dependencies.
+  DenseMap<Block *, SetVector<Value>> direct_live_ins;
 
+  Block &entry_block = region.front();
+  // Initializes the direct live-ins for each block.
   for (Block &block : region.getBlocks()) {
-    // Skips the entry block.
-    if (&block == &region.front())
+    if (&block == &entry_block) {
       continue;
+    }
 
-    // Identifies all the live-in values in the block.
-    llvm::SetVector<Value> live_ins;
-
-    // Iterates over each operation in the block and its operands.
+    SetVector<Value> live_ins;
     for (Operation &op : block.getOperations()) {
       for (Value operand : op.getOperands()) {
-        // If the operand is not a block argument and is defined outside the
-        // current block, it is a live-in value.
-        if (!dyn_cast<BlockArgument>(operand)) {
+        // If the operand is defined in another block, it is a live-in value.
+        if (auto block_arg = dyn_cast<BlockArgument>(operand)) {
+          if (block_arg.getOwner() != &block) {
+            live_ins.insert(operand);
+          }
+        } else {
           Operation *def_op = operand.getDefiningOp();
           if (def_op && def_op->getBlock() != &block) {
             live_ins.insert(operand);
           }
-        } else if (dyn_cast<BlockArgument>(operand).getOwner() != &block) {
-          // If it is a block argument but defined in another block,
-          // it is also considered a live-in value.
-          live_ins.insert(operand);
         }
       }
     }
 
-    if (live_ins.empty())
-      continue;
+    if (!live_ins.empty()) {
+      direct_live_ins[&block] = live_ins;
+    }
+  }
 
-    // Adds new block arguments for each live-in value.
-    unsigned original_num_args = block.getNumArguments();
+  // If we update a branch or conditional branch, we may introduce new live-ins
+  // for a block. So we need to propagate live-in values until a fixed point is
+  // reached.
+
+  // *************************************************************************
+  // For example, consider this control flow:
+  //
+  // Block A:
+  //   %0 = constant 1
+  //   %1 = constant 2
+  //   br B
+  //
+  // Block B:
+  //   br C
+  //
+  // Block C:
+  //   %2 = add %0, %1  // %0 and %1 are live-ins for block C
+  //   return
+  //
+  // Initial direct_live_ins analysis:
+  //   - Block C: {%0, %1} (directly used values defined outside C)
+  //   - Block B: {} (no direct use of external values)
+  //
+  // After propagation:
+  //   - Block C: {%0, %1}
+  //   - Block B: {%0, %1} (needs to pass these values to C)
+  //
+  // The transformation adds block arguments:
+  //   Block A:
+  //     %0 = constant 1
+  //     %1 = constant 2
+  //     br B(%0, %1)
+  //
+  //   Block B(%b0, %b1):
+  //     br C(%b0, %b1)
+  //
+  //   Block C(%c0, %c1):
+  //     %2 = add %c0, %c1
+  //     return
+  // *************************************************************************
+  DenseMap<Block *, SetVector<Value>> all_live_ins = direct_live_ins;
+  bool changed = true;
+
+  while (changed) {
+    changed = false;
+
+    for (Block &current_block : region.getBlocks()) {
+      if (&current_block == &region.front()) {
+        continue;
+      }
+
+      // Checks if current block has successor blocks and if they have
+      // any live-ins.
+      for (Block *succ_block : current_block.getSuccessors()) {
+        auto succ_live_in_iter = all_live_ins.find(succ_block);
+        if (succ_live_in_iter == all_live_ins.end()) {
+          continue;
+        }
+
+        SetVector<Value> &succ_live_ins = succ_live_in_iter->second;
+        SetVector<Value> &current_live_ins = all_live_ins[&current_block];
+
+        // Checks if the live-in value in successor block is defined in the
+        // current block.
+        for (Value live_in : succ_live_ins) {
+          // If it is defined in the current block, that means it is not a
+          // live-in value for the current block. We can skip it.
+          if (Operation *def_op = live_in.getDefiningOp()) {
+            if (def_op->getBlock() == &current_block) {
+              continue;
+            }
+          } else if (auto block_arg = dyn_cast<BlockArgument>(live_in)) {
+            if (block_arg.getOwner() == &current_block) {
+              continue;
+            }
+          }
+
+          // If current live-ins do not contain the live-in value,
+          // we add it to the current live-ins.
+          if (!current_live_ins.contains(live_in)) {
+            current_live_ins.insert(live_in);
+            changed = true;
+          }
+        }
+      }
+    }
+  }
+
+  // llvm::errs() << "All live-ins after propagation:\n";
+  // for (auto &[block, liveIns] : all_live_ins) {
+  //   llvm::errs() << "Block: " << *block << "\nLive-ins: ";
+  //   for (Value liveIn : liveIns) {
+  //     llvm::errs() << "   " << liveIn << "\n";
+  //   }
+  //   llvm::errs() << "\n";
+  // }
+
+  // Adds all live-in values as block arguments and updates the
+  // operations that use these live-in values.
+  DenseMap<std::pair<Block *, Value>, Value> block_value_to_arg;
+  DenseMap<Block *, unsigned> original_num_args;
+
+  for (auto &[block, live_ins] : all_live_ins) {
+    original_num_args[block] = block->getNumArguments();
+
+    // Adds all live-in values as block arguments.
     for (Value value : live_ins) {
-      block.addArgument(value.getType(), value.getLoc());
+      block->addArgument(value.getType(), value.getLoc());
     }
 
-    // Creates a mapping from live-in values to the new block arguments.
-    DenseMap<Value, Value> value_to_arg;
-    for (unsigned i = 0; i < live_ins.size(); ++i) {
-      value_to_arg[live_ins[i]] = block.getArgument(original_num_args + i);
+    // Constructs a mapping from live-in values to their corresponding
+    // block arguments.
+    unsigned index = original_num_args[block];
+    for (Value value : live_ins) {
+      block_value_to_arg[{block, value}] = block->getArgument(index++);
     }
+  }
 
-    // Updates all operations in the block to use the new block arguments
-    // instead of the live-in values.
-    for (Operation &op : block.getOperations()) {
-      for (unsigned i = 0; i < op.getNumOperands(); ++i) {
+  // Updates all operations in the region to use the new block arguments
+  // instead of the live-in values.
+  for (auto &[block, live_ins] : all_live_ins) {
+    for (Operation &op : block->getOperations()) {
+      for (unsigned i = 0; i < op.getNumOperands(); i++) {
         Value operand = op.getOperand(i);
-        auto it = value_to_arg.find(operand);
-        if (it != value_to_arg.end()) {
-          op.setOperand(i, it->second);
-        }
+        auto key = std::make_pair(block, operand);
+
+        if (block_value_to_arg.count(key))
+          op.setOperand(i, block_value_to_arg[key]);
       }
     }
+  }
 
-    // Updates the terminator of predecessor blocks to include the new block
-    // arguments.
-    for (Block *pred_block : block.getPredecessors()) {
-      Operation *pred_op = pred_block->getTerminator();
-      // Handles br operations.
-      if (auto br_op = dyn_cast<neura::Br>(pred_op)) {
-        if (br_op.getDest() == &block) {
-          // Creates a new operand list, including the original operands.
-          SmallVector<Value, 4> new_operands;
+  // Updates the terminators of predecessor blocks to use the new block
+  // arguments instead of the live-in values.
+  for (auto &[current_block, live_ins] : all_live_ins) {
+    for (Block *pred_block : current_block->getPredecessors()) {
+      Operation *term_op = pred_block->getTerminator();
 
-          for (Value operand : br_op.getOperands()) {
-            new_operands.push_back(operand);
-          }
-
-          // Adds live-in values as new operands.
+      if (auto br_op = dyn_cast<neura::Br>(term_op)) {
+        if (br_op.getDest() == current_block) {
+          SmallVector<Value> new_operands(br_op.getOperands().begin(),
+                                          br_op.getOperands().end());
           for (Value live_in : live_ins) {
-            new_operands.push_back(live_in);
+            Operation *def_op = live_in.getDefiningOp();
+            BlockArgument block_arg = dyn_cast<BlockArgument>(live_in);
+            if (def_op && def_op->getBlock() == pred_block) {
+              new_operands.push_back(live_in);
+            } else if (block_arg && block_arg.getOwner() == pred_block) {
+              new_operands.push_back(block_arg);
+            } else if (all_live_ins[pred_block].contains(live_in)) {
+              new_operands.push_back(block_value_to_arg[{pred_block, live_in}]);
+            } else {
+              assert(false && "Unexpected live-in value");
+            }
           }
-
-          // Creates a new branch operation with the updated operands.
           OpBuilder builder(br_op);
-          builder.create<neura::Br>(br_op.getLoc(), new_operands, &block);
-
-          // Erases the old branch operation.
+          builder.create<neura::Br>(br_op.getLoc(), new_operands,
+                                    current_block);
           br_op.erase();
         }
-      }
-      // Handles conditional branch operations.
-      else if (auto cond_br_op = dyn_cast<neura::CondBr>(pred_op)) {
-        OpBuilder builder(cond_br_op);
+      } else if (auto cond_br_op = dyn_cast<neura::CondBr>(term_op)) {
         bool needs_update = false;
-
-        SmallVector<Value, 4> true_operands, false_operands;
-        Block *true_dest = cond_br_op.getTrueDest();
-        Block *false_dest = cond_br_op.getFalseDest();
-
-        for (Value operand : cond_br_op.getTrueArgs()) {
-          true_operands.push_back(operand);
-        }
-        for (Value operand : cond_br_op.getFalseArgs()) {
-          false_operands.push_back(operand);
-        }
-
-        // Checks if the true branch destination is the current block.
-        if (true_dest == &block) {
+        SmallVector<Value> true_operands(cond_br_op.getTrueArgs().begin(),
+                                         cond_br_op.getTrueArgs().end());
+        SmallVector<Value> false_operands(cond_br_op.getFalseArgs().begin(),
+                                          cond_br_op.getFalseArgs().end());
+        // Handles the true branch.
+        if (cond_br_op.getTrueDest() == current_block) {
           needs_update = true;
           for (Value live_in : live_ins) {
-            true_operands.push_back(live_in);
+            Operation *def_op = live_in.getDefiningOp();
+            BlockArgument block_arg = dyn_cast<BlockArgument>(live_in);
+            if (def_op && def_op->getBlock() == pred_block) {
+              true_operands.push_back(live_in);
+            } else if (block_arg && block_arg.getOwner() == pred_block) {
+              true_operands.push_back(block_arg);
+            } else if (all_live_ins[pred_block].contains(live_in)) {
+              true_operands.push_back(
+                  block_value_to_arg[{pred_block, live_in}]);
+            } else {
+              assert(false && "Unexpected live-in value");
+            }
           }
         }
 
-        // Checks if the false branch destination is the current block.
-        if (false_dest == &block) {
+        // Handles the false branch.
+        if (cond_br_op.getFalseDest() == current_block) {
           needs_update = true;
           for (Value live_in : live_ins) {
-            false_operands.push_back(live_in);
+            Operation *def_op = live_in.getDefiningOp();
+            BlockArgument block_arg = dyn_cast<BlockArgument>(live_in);
+            if (def_op && def_op->getBlock() == pred_block) {
+              false_operands.push_back(live_in);
+            } else if (block_arg && block_arg.getOwner() == pred_block) {
+              false_operands.push_back(block_arg);
+            } else if (all_live_ins[pred_block].contains(live_in)) {
+              false_operands.push_back(
+                  block_value_to_arg[{pred_block, live_in}]);
+            } else {
+              assert(false && "Unexpected live-in value");
+            }
           }
         }
 
+        // If an update is needed, create a new conditional branch operation.
         if (needs_update) {
-          // Predicated bit defaults to null.
+          OpBuilder builder(cond_br_op);
           builder.create<neura::CondBr>(
               cond_br_op.getLoc(), cond_br_op.getCondition(), nullptr,
-              true_operands, false_operands, true_dest, false_dest);
-
+              true_operands, false_operands, cond_br_op.getTrueDest(),
+              cond_br_op.getFalseDest());
           cond_br_op.erase();
         }
       }
