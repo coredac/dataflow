@@ -167,16 +167,10 @@ struct MapToAcceleratorPass
       } else if (!longest) {
         rec_mii = 1; // No recurrence cycles found, set MII to 1.
       }
-      // IntegerAttr rec_mii_attr =
-      //     IntegerAttr::get(IntegerType::get(func.getContext(), 32), rec_mii);
-      // func->setAttr("RecMII", rec_mii_attr);
 
       // AcceleratorConfig config{/*numTiles=*/8}; // Example
       Architecture architecture(4, 4);
       int res_mii = calculateResMii(func, architecture);
-      // IntegerAttr res_mii_attr =
-      //     IntegerAttr::get(IntegerType::get(func.getContext(), 32), res_mii);
-      // func->setAttr("ResMII", res_mii_attr);
 
       const int possibleMinII = std::max(rec_mii, res_mii);
       constexpr int maxII = 10;
