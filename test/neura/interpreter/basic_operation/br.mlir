@@ -1,4 +1,4 @@
-// RUN: neura-interpreter %s | FileCheck %s
+// RUN: neura-interpreter %s --verbose | FileCheck %s
 
 func.func @test_br_with_args() -> i32 {
   %0 = "neura.constant"() {value = 42 : i32} : () -> i32
@@ -16,6 +16,6 @@ func.func @test_br_with_multi_args() {
   
   ^bb1(%a: i32, %b: f32):
   "neura.add"(%a, %a) : (i32, i32) -> i32
-  // CHECK-NEXT: [neura-interpreter]  → Output: (void)
+  // CHECK: [neura-interpreter]  → Output: (void)
   return
 }

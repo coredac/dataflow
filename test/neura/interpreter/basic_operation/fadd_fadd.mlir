@@ -1,4 +1,4 @@
-// RUN: neura-interpreter %s | FileCheck %s
+// RUN: neura-interpreter %s --verbose | FileCheck %s
 
 // Test basic fused fadd operation: (2.5 + 1.5) + 3.0 = 7.0
 func.func @test_fadd_fadd_basic() -> f32 {
