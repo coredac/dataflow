@@ -70,7 +70,7 @@ func.func @loop_sum() -> f32 {
 // DATAFLOW_IR-NEXT:     "neura.return"(%21) : (!neura.data<f32, i1>) -> ()
 // DATAFLOW_IR-NEXT:   }
 
-// INTERPRETER_OUTPUT: [neura-interpreter]  Iteration 36 | executable_ops: 3
+// INTERPRETER_OUTPUT: [neura-interpreter]  Iteration 36 | ready_to_execute_ops: 3
 // INTERPRETER_OUTPUT-NEXT: [neura-interpreter]  ========================================
 // INTERPRETER_OUTPUT-NEXT: [neura-interpreter]  Executing operation: "neura.return"(%21) : (!neura.data<f32, i1>) -> ()
 // INTERPRETER_OUTPUT-NEXT: [neura-interpreter]  Executing neura.return:
