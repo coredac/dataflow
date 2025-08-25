@@ -3367,18 +3367,28 @@ int run(func::FuncOp func,
     }
 
     bool should_terminate = false;
-    int iter_count = 0;
+    int topo_level = 0;
     int dfg_count = 0;
+
+    if (isVerboseMode()) {
+      llvm::outs() << "[neura-interpreter]  "
+                      "----------------------------------------\n";
+      llvm::outs() << "[neura-interpreter]  DFG Iteration " << dfg_count
+                   << " - Beginning\n";
+      llvm::outs() << "[neura-interpreter]  "
+                      "----------------------------------------\n";
+    }
 
     while (!ready_to_execute_ops.empty() ||
            dependency_graph.hasUnexecutedOperations()) {
-      iter_count++;
+      topo_level++;
 
       if (isVerboseMode()) {
         llvm::outs() << "[neura-interpreter]  "
                         "----------------------------------------\n";
-        llvm::outs() << "[neura-interpreter]  Iteration " << iter_count
-                     << " | ready_to_execute_ops: "
+        llvm::outs() << "[neura-interpreter]  DFG Iteration " << dfg_count
+                     << " | Topological Level " << topo_level
+                     << " | ready_to_execute_ops "
                      << ready_to_execute_ops.size() << "\n";
       }
 
@@ -3436,11 +3446,14 @@ int run(func::FuncOp func,
       if (ready_to_execute_ops.empty() &&
           !dependency_graph.hasUnexecutedOperations()) {
         dfg_count++;
+        topo_level = 0;
         if (isVerboseMode()) {
           llvm::outs() << "[neura-interpreter]  "
                           "----------------------------------------\n";
-          llvm::outs() << "[neura-interpreter]  DFG boundary crossing "
-                       << dfg_count << "\n";
+          llvm::outs() << "[neura-interpreter]  DFG Iteration " << dfg_count
+                       << " - Beginning\n";
+          llvm::outs() << "[neura-interpreter]  "
+                          "----------------------------------------\n";
         }
 
         // Saves the states of reserve values to restore after reset.
@@ -3473,9 +3486,7 @@ int run(func::FuncOp func,
         ready_to_execute_ops = dependency_graph.getReadyToExecuteOperations();
 
         if (isVerboseMode()) {
-          llvm::outs()
-              << "[neura-interpreter]  New ready to execute operations after "
-                 "DFG reset:\n";
+          llvm::outs() << "[neura-interpreter]  Initial ready operations:\n";
           for (auto *op : ready_to_execute_ops) {
             llvm::outs() << "[neura-interpreter]  │  ";
             op->print(llvm::outs());
@@ -3485,11 +3496,6 @@ int run(func::FuncOp func,
 
         continue;
       }
-    }
-
-    if (isVerboseMode()) {
-      llvm::outs() << "[neura-interpreter]  Total iterations: " << iter_count
-                   << "\n";
     }
   } else {
     // Control flow mode execution logic
