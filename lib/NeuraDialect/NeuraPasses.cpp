@@ -17,5 +17,6 @@ void mlir::neura::registerNeuraConversionPassPipeline() {
         // Convert all the other dialects into the Neura dialect
         pm.addPass(mlir::createLowerArithToNeuraPass());
         pm.addPass(mlir::createLowerLlvmToNeuraPass());
+        pm.addPass(mlir::createPrintOpGraphPass());
       });
 }
