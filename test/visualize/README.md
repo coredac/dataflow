@@ -16,3 +16,13 @@ dot -Tpng test.dot -o test.png
 It will generate a `test.png` file in the current directory, as shown below:
 
 ![test](test.png)
+
+If there are multiple graphs in one dot file, you can use the option `-O` to generate multiple DFGs from one dot file.
+
+Example:
+
+```bash
+dot -Tpng test.dot -O
+```
+
+It will generate `test.dot.png`, `test.dot.1.png`, `test.dot.2.png`, etc.
