@@ -13,9 +13,6 @@
 std::string filename = "opgraph.dot";
 std::error_code EC;
 llvm::raw_fd_ostream os(filename, EC, llvm::sys::fs::OF_Text);
-if (EC) {
-    llvm::errs() << "Cannot create dot file: " << EC.message() << "\n";
-}
 
 // This pass pipeline can convert all the other dialects into the Neura dialect
 void mlir::neura::registerNeuraConversionPassPipeline() {
