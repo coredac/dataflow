@@ -797,18 +797,17 @@ struct GenerateCodePass
         for (const auto &inst : core.entry.instructions) {
           asm_out << "{\n";
           asm_out << "  " << inst.opcode;
-          if (!inst.dst_operands.empty()) {
-            for (size_t i=0;i<inst.dst_operands.size();++i) {
-              asm_out << ", [" << inst.dst_operands[i].operand << "]";
+          if (!inst.src_operands.empty()) {
+            for (size_t i=0;i<inst.src_operands.size();++i) {
+              asm_out << ", [" << inst.src_operands[i].operand << "]";
             }
           }
-          if (!inst.src_operands.empty()) {
-            asm_out << " <- [";
-            for (size_t i=0;i<inst.src_operands.size();++i) {
+          if (!inst.dst_operands.empty()) {
+            asm_out << " -> ";
+            for (size_t i=0;i<inst.dst_operands.size();++i) {
               if (i > 0) asm_out << ", ";
-              asm_out << inst.src_operands[i].operand;
+              asm_out << "[" << inst.dst_operands[i].operand << "]";
             }
-            asm_out << "]";
           }
           asm_out << " (t=" << inst.time_step << ")\n";
           asm_out << "}\n";
