@@ -24,6 +24,7 @@ int main(int argc, char **argv) {
 
   mlir::neura::registerPasses();
   mlir::registerPasses();
+  mlir::registerViewOpGraphPass();
   
   // Runs the MLIR optimizer.
   return mlir::asMainReturnCode(
