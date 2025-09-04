@@ -1,20 +1,3 @@
-//===- GenerateCodePass.cpp -------------------------------------*- C++ -*-===//
-//
-// YAML/ASM generator for NEURA CGRA (multi-hop router materialization only).
-//
-// - Uses Architecture topology (tile/link IDs are globally consistent).
-// - Only materialize DATA_MOV on intermediate tiles when a single IR
-//   neura.data_mov / neura.ctrl_mov carries >= 2 link resources.
-// - Single-hop link paths DO NOT emit extra DATA_MOV; end-point ops are wired
-//   by direction/register as before.
-// - Consumer src direction for remote edges is computed from the *last* link
-//   (incoming side = invert of that link dir). Producer dst gets the *first*
-//   link direction.
-//
-// Keep YAML/ASM formats unchanged. No route_hints.
-//
-//===----------------------------------------------------------------------===//
-
 #include "mlir/Pass/Pass.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Operation.h"
@@ -36,7 +19,6 @@
 #include <vector>
 #include <unordered_set>
 
-// === Your architecture headers (IDs unified across passes) ===
 #include "NeuraDialect/Architecture/Architecture.h"
 
 using namespace mlir;
@@ -89,7 +71,8 @@ static bool isCtrlMov(Operation *op) { return op->getName().getStringRef() == "n
 static bool isPhi(Operation *op)     { return op->getName().getStringRef() == "neura.phi"; }
 static bool isReserve(Operation *op) { return op->getName().getStringRef() == "neura.reserve"; }
 static bool isConstant(Operation *op){ return op->getName().getStringRef() == "neura.constant"; }
-static bool isForwarder(Operation *op){ return isDataMov(op); } // only treat neura.data_mov as forwarder
+// Only neura.data_mov is treated as "forwarder" (pure routing step) for value chasing.
+static bool isForwarder(Operation *op){ return isDataMov(op); }
 
 // ----- placement helpers -----
 static OpLocation getTilePlace(Operation *op) {
@@ -194,32 +177,6 @@ static std::optional<int> regOnBackwardPath(Value vAtConsumer) {
   return std::nullopt;
 }
 
-// Collect register ids along forwarder chain (for consumer-side holds).
-static SmallVector<int, 4> regsOnForwarderChainTo(Value vAtConsumer) {
-  SmallVector<int, 4> ids;
-  Operation *d = vAtConsumer.getDefiningOp();
-  while (d && isForwarder(d)) {
-    if (auto arr = d->getAttrOfType<ArrayAttr>("mapping_locs")) {
-      for (Attribute a : arr) {
-        auto dict = dyn_cast<DictionaryAttr>(a);
-        if (!dict) continue;
-        auto res = dyn_cast_or_null<StringAttr>(dict.get("resource"));
-        if (res && (res.getValue() == "register" || res.getValue() == "reg")) {
-          if (auto id = dyn_cast_or_null<IntegerAttr>(dict.get("id"))) {
-            int v = id.getInt();
-            if (std::find(ids.begin(), ids.end(), v) == ids.end())
-              ids.push_back(v);
-          }
-        }
-      }
-    }
-    if (d->getNumOperands() == 0) break;
-    Value prev = d->getOperand(0);
-    d = prev.getDefiningOp();
-  }
-  return ids;
-}
-
 // ----- Topology built from Architecture -----
 
 struct Topology {
@@ -234,7 +191,7 @@ struct Topology {
     if (dc == -1 && dr == 0) return "WEST";
     if (dc == 0 && dr == 1) return "NORTH";
     if (dc == 0 && dr == -1) return "SOUTH";
-    return "LOCAL"; // non-Manhattan shouldn't happen for this arch
+    return "LOCAL";
   }
   StringRef dirFromLink(int linkId) const {
     auto it = linkEnds.find(linkId);
@@ -256,11 +213,9 @@ static Topology buildTopologyFromArchitecture(int columns, int rows) {
   Topology topo;
   mlir::neura::Architecture arch(columns, rows);
 
-  // Tiles
   for (auto *tile : arch.getAllTiles()) {
     topo.tileXY[tile->getId()] = {tile->getX(), tile->getY()};
   }
-  // Links
   for (auto *link : arch.getAllLinks()) {
     auto *s = link->getSrcTile();
     auto *d = link->getDstTile();
@@ -269,9 +224,10 @@ static Topology buildTopologyFromArchitecture(int columns, int rows) {
   return topo;
 }
 
-// ----- Extract link steps (sorted by time) from mapping_locs -----
+// ----- Extract mapping steps (sorted by time) from mapping_locs -----
 
 struct LinkStep { int linkId; int ts; };
+struct RegStep  { int regId;  int ts; };
 
 static SmallVector<LinkStep, 8> collectLinkSteps(Operation *op) {
   SmallVector<LinkStep, 8> steps;
@@ -284,12 +240,30 @@ static SmallVector<LinkStep, 8> collectLinkSteps(Operation *op) {
       auto id = dyn_cast_or_null<IntegerAttr>(d.get("id"));
       auto ts = dyn_cast_or_null<IntegerAttr>(d.get("time_step"));
       if (!id || !ts) continue;
-      steps.push_back({static_cast<int>(id.getInt()), static_cast<int>(ts.getInt())});
+      steps.push_back({(int)id.getInt(), (int)ts.getInt()});
     }
   }
-  llvm::sort(steps, [](const LinkStep &a, const LinkStep &b){
-    return a.ts < b.ts;
-  });
+  llvm::sort(steps, [](const LinkStep &a, const LinkStep &b){ return a.ts < b.ts; });
+  return steps;
+}
+
+static SmallVector<RegStep, 4> collectRegSteps(Operation *op) {
+  SmallVector<RegStep, 4> steps;
+  if (auto arr = op->getAttrOfType<ArrayAttr>("mapping_locs")) {
+    for (Attribute a : arr) {
+      auto d = dyn_cast<DictionaryAttr>(a);
+      if (!d) continue;
+      auto res = dyn_cast_or_null<StringAttr>(d.get("resource"));
+      if (!res) continue;
+      if (res.getValue() == "register" || res.getValue() == "reg") {
+        auto id = dyn_cast_or_null<IntegerAttr>(d.get("id"));
+        auto ts = dyn_cast_or_null<IntegerAttr>(d.get("time_step"));
+        if (!id || !ts) continue;
+        steps.push_back({(int)id.getInt(), (int)ts.getInt()});
+      }
+    }
+  }
+  llvm::sort(steps, [](const RegStep &a, const RegStep &b){ return a.ts < b.ts; });
   return steps;
 }
 
@@ -308,7 +282,7 @@ struct GenerateCodePass
 
   StringRef getArgument() const override { return "generate-code"; }
   StringRef getDescription() const override {
-    return "CGRA YAML gen (materialize ONLY multi-hop router hops; endpoint directions/regs via topology).";
+    return "CGRA YAML gen (multi-hop routers + endpoint register deposit + timing-aware rewiring, with CTRL_MOV kept).";
   }
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mlir::func::FuncDialect>();
@@ -358,9 +332,11 @@ struct GenerateCodePass
   DenseMap<Operation*, InstRef>            op2ref;
   DenseMap<Operation*, SmallVector<Value>> op2Operands;
 
-  // add hop on intermediate router tile (de-duplicated by (tile,ts,link))
-  std::unordered_set<uint64_t> hopSig;
+  // de-dup sets
+  std::unordered_set<uint64_t> hopSig;     // (midTileId, ts, linkId)
+  std::unordered_set<uint64_t> depositSig; // (dstTileId, ts, regId)
 
+  // ---------- helpers to place materialized instructions ----------
   void placeRouterHop(const Topology &topo, int tileId, int ts,
                       StringRef inDir, StringRef outDir) {
     auto [x,y] = topo.tileXY.lookup(tileId);
@@ -371,37 +347,43 @@ struct GenerateCodePass
     pe_time_insts[{x,y}][ts].push_back(std::move(inst));
   }
 
+  // endpoint deposit: on destination tile at earliest reg ts, move [incoming_dir] -> [$reg]
+  // If `asCtrlMov=true`, encode the deposit as "CTRL_MOV" instead of "DATA_MOV".
+  void placeDstDeposit(const Topology &topo, int dstTileId, int ts,
+                       StringRef incomingDir, int regId, bool asCtrlMov = false) {
+    uint64_t sig = (uint64_t)dstTileId << 32 ^ (uint64_t)ts << 16 ^ (uint64_t)regId;
+    if (!depositSig.insert(sig).second) return; // already placed
+    auto [x,y] = topo.tileXY.lookup(dstTileId);
+    Instruction inst(asCtrlMov ? "CTRL_MOV" : "DATA_MOV");
+    inst.time_step = ts;
+    inst.src_operands.emplace_back(incomingDir.str(), "RED");
+    inst.dst_operands.emplace_back("$" + std::to_string(regId), "RED");
+    pe_time_insts[{x,y}][ts].push_back(std::move(inst));
+  }
+
   void emitIntermediateRoutersForOp(Operation *op, const Topology &topo) {
     auto steps = collectLinkSteps(op);
-    if (steps.size() < 2) return; // 只为多跳链落地
-  
+    if (steps.size() < 2) return; // only multi-hop
     for (size_t i = 1; i < steps.size(); ++i) {
       int prevL = steps[i - 1].linkId;
       int curL  = steps[i].linkId;
       int ts    = steps[i].ts;
-  
-      // correct intermediate tile: the "source" of the next hop
+
       int midTile = topo.srcTileOfLink(curL);
-  
-      // continuous check (robustness, normally not triggered)
       int prevDst = topo.dstTileOfLink(prevL);
       if (prevDst != midTile) {
         op->emitWarning() << "discontinuous multi-link chain: dst(prev)="
                           << prevDst << ", src(cur)=" << midTile
                           << " (placing hop at src(cur))";
       }
-  
+
       StringRef inDir  = topo.invertDir(topo.dirFromLink(prevL));
       StringRef outDir = topo.dirFromLink(curL);
-  
-      // deduplication: (midTile, ts, curL) is stable enough as key
-      uint64_t sig = (uint64_t(midTile) << 32) ^ (uint64_t(ts) << 16) ^ uint64_t(curL);
-      if (hopSig.insert(sig).second) {
-        placeRouterHop(topo, midTile, ts, inDir, outDir);
-      }
+
+      uint64_t sig = (uint64_t)midTile << 32 ^ (uint64_t)ts << 16 ^ (uint64_t)curL;
+      if (hopSig.insert(sig).second) placeRouterHop(topo, midTile, ts, inDir, outDir);
     }
   }
-  
 
   // utilities to access instruction bucket and pointer
   std::vector<Instruction> &bucketOf(int c, int r, int t) {
@@ -434,6 +416,20 @@ struct GenerateCodePass
     inst->dst_operands.emplace_back(text, "RED");
   }
 
+  // Read link/reg steps sitting on the last forwarder (if any) before the consumer.
+  static SmallVector<LinkStep, 8> linkChainForValueAtConsumer(Value vAtCons) {
+    Operation *def = vAtCons.getDefiningOp();
+    if (!def) return {};
+    if (isDataMov(def) || isCtrlMov(def)) return collectLinkSteps(def);
+    return {};
+  }
+  static SmallVector<RegStep, 4> regStepsForValueAtConsumer(Value vAtCons) {
+    Operation *def = vAtCons.getDefiningOp();
+    if (!def) return {};
+    if (isDataMov(def) || isCtrlMov(def)) return collectRegSteps(def);
+    return {};
+  }
+
   void runOnOperation() override {
     ModuleOp module = getOperation();
 
@@ -447,7 +443,6 @@ struct GenerateCodePass
         if (auto yv = dyn_cast_or_null<IntegerAttr>(mi.get("y_tiles"))) rows   = yv.getInt();
       }
 
-      // Build topology once (IDs are unified globally).
       Topology topo = buildTopologyFromArchitecture(columns, rows);
 
       // clear state
@@ -458,12 +453,13 @@ struct GenerateCodePass
       op2ref.clear();
       op2Operands.clear();
       hopSig.clear();
+      depositSig.clear();
 
       // cache tile placements
       func.walk([&](Operation *op){ opPlace[op] = getTilePlace(op); });
 
       // 1) Materialize compute/logic ops (CONSTANT/ADD/FADD/PHI/ICMP/NOT/GRANT_* etc.)
-      //    Drop reserve/ctrl_mov/data_mov here; they will be used for wiring & router hops only.
+      //    Drop reserve/ctrl_mov/data_mov here; they are for wiring & router hops only.
       func.walk([&](Operation *op){
         auto p = opPlace[op];
         if (!p.hasTile) return;
@@ -501,26 +497,13 @@ struct GenerateCodePass
         localRegOf[root] = rn;
       };
 
-      // Helper: for an edge producer->consumer via vAtCons, get link chain info
-      auto linkChainForValueAtConsumer = [&](Value vAtCons) -> SmallVector<LinkStep, 8> {
-        Operation *def = vAtCons.getDefiningOp();
-        if (!def) return {};
-        // If the value used at consumer comes from a forwarder, read that op's link steps.
-        if (isDataMov(def) || isCtrlMov(def)) {
-          return collectLinkSteps(def);
-        }
-        // Else no link steps visible on the last hop into consumer.
-        return {};
-      };
-
-      // 2) Wire edges (same tile: $reg; cross tile: dir from link chain endpoints)
+      // 2) Wire edges (same tile: $reg; cross tile: direction, plus endpoint deposit if reg-steps exist)
       func.walk([&](Operation *prod){
         if (isReserve(prod) || isCtrlMov(prod)) return; // ctrl_mov handled later
         for (Value res : prod->getResults()) {
-          // Find real tiled consumers (skip forwarders)
+          // BFS to final tiled consumers, skipping neura.data_mov
           SmallVector<std::pair<Operation*, Value>, 8> consumers;
           {
-            // BFS skipping forwarders to final tiled users
             SmallPtrSet<Value, 32> seenV;
             std::queue<Value> q; q.push(res); seenV.insert(res);
             while (!q.empty()) {
@@ -548,8 +531,9 @@ struct GenerateCodePass
             auto pc = opPlace.lookup(cons);
             if (!pp.hasTile || !pc.hasTile) continue;
 
-            // read link chain on the last forwarder before consumer
+            // steps on the forwarder directly before consumer (if any)
             auto chain = linkChainForValueAtConsumer(vAtCons);
+            auto rsteps= regStepsForValueAtConsumer(vAtCons);
 
             if (pp.col == pc.col && pp.row == pc.row) {
               // same-tile: use $reg
@@ -559,60 +543,70 @@ struct GenerateCodePass
               stickRootReg(vAtCons, rn);
               prodSum[prod].hasSameTileConsumer = true;
             } else {
-              // cross-tile: compute directions from chain if available; otherwise fallback
+              // cross-tile: compute endpoint directions
               std::string prodDir = "LOCAL";
               std::string consDir = "LOCAL";
 
               if (!chain.empty()) {
-                // first hop direction at producer side (src->dst)
                 int firstLink = chain.front().linkId;
-                prodDir = topo.dirFromLink(firstLink).str();
-
-                // last hop into consumer: incoming port = invert(lastDir)
                 int lastLink  = chain.back().linkId;
+                prodDir = topo.dirFromLink(firstLink).str();
                 consDir = topo.invertDir(topo.dirFromLink(lastLink)).str();
               } else {
-                // fallback (should rarely happen if mapping is complete)
-                // producer side: direction roughly towards consumer tile
-                // consumer side: assume inverse (still better than LOCAL)
-                // Compute via tile coords delta (Manhattan).
                 int dc = pc.col - pp.col, dr = pc.row - pp.row;
                 if (dc > 0 && dr == 0) { prodDir = "EAST"; consDir = "WEST"; }
                 else if (dc < 0 && dr == 0) { prodDir = "WEST"; consDir = "EAST"; }
                 else if (dc == 0 && dr > 0) { prodDir = "NORTH"; consDir = "SOUTH"; }
                 else if (dc == 0 && dr < 0) { prodDir = "SOUTH"; consDir = "NORTH"; }
-                else { prodDir = "LOCAL"; consDir = "LOCAL"; } // unexpected
               }
 
-              // attach on endpoints
-              setConsumerSrcExact(cons, vAtCons, consDir);
+              // record producer endpoint directions
               if (Instruction *pi = getInstPtr(prod)) addUniqueDst(pi, prodDir);
               prodSum[prod].dirs.insert(prodDir);
 
-              // consumer-side register holds hinted by forwarder chain
-              if (Instruction *ci = getInstPtr(cons)) {
-                auto ids = regsOnForwarderChainTo(vAtCons);
-                for (int id : ids) addUniqueDst(ci, "$" + std::to_string(id));
+              // endpoint deposit if the forwarder before consumer contains register mapping
+              bool rewiredToReg = false;
+              if (!chain.empty() && !rsteps.empty()) {
+                int lastLink  = chain.back().linkId;
+                int dstTid    = topo.dstTileOfLink(lastLink);
+                auto itXY     = topo.tileXY.find(dstTid);
+                if (itXY != topo.tileXY.end()) {
+                  auto [dx,dy] = itXY->second;
+                  if (dx == pc.col && dy == pc.row) {
+                    const int earliestRegTs = rsteps.front().ts;
+                    const int rid = rsteps.back().regId; // ids are identical in your IR
+                    // For data_mov-origin edges, deposit as DATA_MOV.
+                    placeDstDeposit(topo, dstTid, earliestRegTs, consDir, rid, /*asCtrlMov=*/false);
+                    if (pc.time_step > earliestRegTs) {
+                      setConsumerSrcExact(cons, vAtCons, "$" + std::to_string(rid));
+                      rewiredToReg = true;
+                    }
+                  }
+                }
               }
+              if (!rewiredToReg) setConsumerSrcExact(cons, vAtCons, consDir);
             }
           }
         }
       });
 
-      // Map reserve -> phi for ctrl_mov loop-carried
+      // Map reserve -> phi for ctrl_mov loop-carried (IR invariant)
       DenseMap<Value, Operation*> reserveToPhi;
       func.walk([&](Operation *op){
         if (isPhi(op) && op->getNumOperands() >= 1)
           reserveToPhi[op->getOperand(0)] = op;
       });
 
-      // 2.1) ctrl_mov endpoints (give reg preference to ctrl_mov's mapped reg).
+      // 2.1) ctrl_mov endpoints: deposit to its declared register (CTRL_MOV), then timing-aware rewiring.
       func.walk([&](Operation *op){
         if (!isCtrlMov(op) || op->getNumOperands() < 2) return;
         Value src = op->getOperand(0);
         Value reserve = op->getOperand(1);
         Operation *phi = reserveToPhi.lookup(reserve);
-        if (!phi) return;
+        if (!phi) {
+          op->emitWarning("ctrl_mov dest is not consumed by a PHI operand#0; skipping ctrl_mov-specific wiring.");
+          return;
+        }
         Operation *producer = src.getDefiningOp();
         if (!producer) return;
 
@@ -620,48 +614,70 @@ struct GenerateCodePass
         auto pc = opPlace.lookup(phi);
         if (!pp.hasTile || !pc.hasTile) return;
 
-        auto chain = collectLinkSteps(op); // ctrl_mov itself carries the chain
-        std::optional<int> ctrlReg = getMappedReg(op);
+        auto chain  = collectLinkSteps(op);
+        auto rsteps = collectRegSteps(op);
 
+        // Same-tile ctrl_mov: no deposit; just honor reg if present.
         if (pp.col == pc.col && pp.row == pc.row) {
-          std::string rn = pickRegisterForEdge(producer, src, ctrlReg);
+          std::string rn;
+          if (!rsteps.empty()) rn = "$" + std::to_string(rsteps.back().regId);
+          else if (auto mr = getMappedReg(op)) rn = "$" + std::to_string(*mr);
+          else rn = pickRegisterForEdge(producer, src, std::nullopt);
           setConsumerSrcExact(phi, src, rn);
           if (Instruction *pi = getInstPtr(producer)) addUniqueDst(pi, rn);
-          stickRootReg(src, rn);
           prodSum[producer].hasSameTileConsumer = true;
-        } else {
-          std::string prodDir = "LOCAL";
-          std::string consDir = "LOCAL";
-          if (!chain.empty()) {
-            prodDir = topo.dirFromLink(chain.front().linkId).str();
-            consDir = topo.invertDir(topo.dirFromLink(chain.back().linkId)).str();
-          } else {
-            int dc = pc.col - pp.col, dr = pc.row - pp.row;
-            if (dc > 0 && dr == 0) { prodDir = "EAST"; consDir = "WEST"; }
-            else if (dc < 0 && dr == 0) { prodDir = "WEST"; consDir = "EAST"; }
-            else if (dc == 0 && dr > 0) { prodDir = "NORTH"; consDir = "SOUTH"; }
-            else if (dc == 0 && dr < 0) { prodDir = "SOUTH"; consDir = "NORTH"; }
-          }
-          setConsumerSrcExact(phi, src, consDir);
-          if (Instruction *pi = getInstPtr(producer)) addUniqueDst(pi, prodDir);
-          prodSum[producer].dirs.insert(prodDir);
+          return;
+        }
 
-          // ctrl_mov carries explicit reg holds on the consumer side if present
-          if (Instruction *ci = getInstPtr(phi)) {
-            if (ctrlReg) addUniqueDst(ci, "$" + std::to_string(*ctrlReg));
+        // Cross-tile ctrl_mov
+        std::string prodDir = "LOCAL";
+        std::string consDir = "LOCAL";
+        if (!chain.empty()) {
+          prodDir = topo.dirFromLink(chain.front().linkId).str();
+          consDir = topo.invertDir(topo.dirFromLink(chain.back().linkId)).str();
+        } else {
+          int dc = pc.col - pp.col, dr = pc.row - pp.row;
+          if (dc > 0 && dr == 0) { prodDir = "EAST"; consDir = "WEST"; }
+          else if (dc < 0 && dr == 0) { prodDir = "WEST"; consDir = "EAST"; }
+          else if (dc == 0 && dr > 0) { prodDir = "NORTH"; consDir = "SOUTH"; }
+          else if (dc == 0 && dr < 0) { prodDir = "SOUTH"; consDir = "NORTH"; }
+        }
+        if (Instruction *pi = getInstPtr(producer)) addUniqueDst(pi, prodDir);
+        prodSum[producer].dirs.insert(prodDir);
+
+        bool rewiredToReg = false;
+        if (!chain.empty() && !rsteps.empty()) {
+          int lastLink  = chain.back().linkId;
+          int dstTid    = topo.dstTileOfLink(lastLink);
+          auto itXY     = topo.tileXY.find(dstTid);
+          if (itXY != topo.tileXY.end()) {
+            auto [dx,dy] = itXY->second;
+            if (dx == pc.col && dy == pc.row) {
+              const int earliestRegTs = rsteps.front().ts;
+              const int rid = rsteps.back().regId;
+              // For ctrl_mov, encode the endpoint deposit as CTRL_MOV (not DATA_MOV).
+              placeDstDeposit(topo, dstTid, earliestRegTs, consDir, rid, /*asCtrlMov=*/true);
+              if (pc.time_step > earliestRegTs) {
+                setConsumerSrcExact(phi, src, "$" + std::to_string(rid));
+                rewiredToReg = true;
+              }
+            }
           }
         }
+        if (!rewiredToReg) setConsumerSrcExact(phi, src, consDir);
       });
 
-      // 3) PHI post-process (same as before)
+      // 3) Producer post-process (applies to ALL producers)
+      //    - Keep producer endpoint dirs recorded earlier.
+      //    - Remove any $ on producer dst IF it has NO same-tile consumers AND
+      //      the op itself does NOT have a mapped register.
       for (auto &kv : prodSum) {
         Operation *op = kv.first;
-        if (!isPhi(op)) continue;
         Instruction *pi = getInstPtr(op);
         if (!pi) continue;
         for (const auto &d : kv.second.dirs) addUniqueDst(pi, d);
 
-        bool hasMappedReg = getMappedReg(op).has_value();
+        const bool hasMappedReg = getMappedReg(op).has_value();
         if (!kv.second.hasSameTileConsumer && !hasMappedReg) {
           pi->dst_operands.erase(
             std::remove_if(pi->dst_operands.begin(), pi->dst_operands.end(),
@@ -673,9 +689,7 @@ struct GenerateCodePass
 
       // 4) MATERIALIZE routers ONLY for multi-link ops (no single-hop)
       func.walk([&](Operation *op){
-        if (isDataMov(op) || isCtrlMov(op)) {
-          emitIntermediateRoutersForOp(op, topo);
-        }
+        if (isDataMov(op) || isCtrlMov(op)) emitIntermediateRoutersForOp(op, topo);
       });
 
       // 5) Keep UNRESOLVED and log them (color=YELLOW)
@@ -765,7 +779,6 @@ struct GenerateCodePass
         int entry_id = 0;
         for (const auto &inst : core.entry.instructions) {
           yaml_out << "        - entry_id: \"entry" << entry_id << "\"\n";
-          //yaml_out << "          type: \"loop\"\n";
           yaml_out << "          instructions:\n";
           yaml_out << "            - opcode: \"" << inst.opcode << "\"\n";
           yaml_out << "              timestep: " << inst.time_step << "\n";
@@ -791,7 +804,7 @@ struct GenerateCodePass
       // Optional ASM output (human friendly)
       llvm::raw_fd_ostream asm_out("generated-instructions.asm", ec);
       if (ec) { module.emitError("open asm failed: " + ec.message()); return; }
-      asm_out << "; ASM (directions/reg operands; only multi-hop DATA_MOV materialized)\n\n";
+      asm_out << "; ASM (multi-hop routers + endpoint deposit (DATA/CTRL_MOV) + timing-aware src wiring)\n\n";
       for (const auto &core : config.cores) {
         asm_out << "PE(" << core.col << "," << core.row << "):\n";
         for (const auto &inst : core.entry.instructions) {
