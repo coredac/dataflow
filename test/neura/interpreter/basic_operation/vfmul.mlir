@@ -1,4 +1,4 @@
-// RUN: neura-interpreter %s | FileCheck %s
+// RUN: neura-interpreter %s --verbose | FileCheck %s
 
 func.func @test_vfmul_basic() -> vector<2xf32> {
   %a = "neura.constant"() {value = dense<[2.0, 3.0]> : vector<2xf32>} : () -> vector<2xf32>
