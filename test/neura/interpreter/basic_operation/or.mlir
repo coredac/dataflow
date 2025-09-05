@@ -1,38 +1,39 @@
-// RUN: neura-interpreter %s | FileCheck %s
+// RUN: neura-interpreter %s --verbose | FileCheck %s
 
-// ====== Bitwise OR Operation Tests ======
+// ====== Logical OR Operation Tests ======
 
-// Case 1: 42 | 5 = 47
-func.func @test_or_basic() -> i32 {
-  %a = arith.constant 42 : i32
-  %b = arith.constant 5 : i32
+// Case 1: true | true = true (1 || 1 = 1)
+func.func @test_or_basic_true_true() -> i32 {
+%a = arith.constant 1 : i32 // true (non-zero)
+  %b = arith.constant 1 : i32 // true (non-zero)
   %res = "neura.or"(%a, %b) : (i32, i32) -> i32
-  // CHECK: [neura-interpreter]  → Output: 47.000000
+  // CHECK: [neura-interpreter]  → Output: 1.000000
   return %res : i32
 }
 
-// Case 2: OR with zero, should return original number
-func.func @test_or_with_zero() -> i32 {
-  %a = arith.constant 123 : i32
-  %b = arith.constant 0 : i32
+// Case 2: true | false = true (1 || 0 = 1)
+func.func @test_or_true_false() -> i32 {
+  %a = arith.constant 1 : i32 // true
+  %b = arith.constant 0 : i32 // false
   %res = "neura.or"(%a, %b) : (i32, i32) -> i32
-  // CHECK: [neura-interpreter]  → Output: 123.000000
+  // CHECK: [neura-interpreter]  → Output: 1.000000
   return %res : i32
 }
 
-// Case 3: Self OR, result should equal input
-func.func @test_or_self() -> i32 {
-  %a = arith.constant 77 : i32
-  %res = "neura.or"(%a, %a) : (i32, i32) -> i32
-  // CHECK: [neura-interpreter]  → Output: 77.000000
+// Case 3: false | true = true (0 || 5 = 1)
+func.func @test_or_false_true() -> i32 {
+  %a = arith.constant 0 : i32 // false
+  %b = arith.constant 5 : i32 // true (non-zero)
+  %res = "neura.or"(%a, %b) : (i32, i32) -> i32
+  // CHECK: [neura-interpreter]  → Output: 1.000000
   return %res : i32
 }
 
-// Case 4: OR with -1 (all bits set), should return -1
-func.func @test_or_with_minus_one() -> i32 {
-  %a = arith.constant 123 : i32
-  %b = arith.constant -1 : i32
+// Case 4: false | false = false (0 || 0 = 0)
+func.func @test_or_false_false() -> i32 {
+  %a = arith.constant 0 : i32 // false
+  %b = arith.constant 0 : i32 // false
   %res = "neura.or"(%a, %b) : (i32, i32) -> i32
-  // CHECK: [neura-interpreter]  → Output: -1.000000
+  // CHECK: [neura-interpreter]  → Output: 0.000000
   return %res : i32
 }

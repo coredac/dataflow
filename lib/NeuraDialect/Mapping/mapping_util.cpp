@@ -417,6 +417,44 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
                                    std::vector<MappingLoc> &path_out) {
   // Specially handles the case where src and dst are the same tile.
   if (src_loc.resource == dst_loc.resource) {
+    // When the source and destination are on the same tile, we still need to
+    // allocate registers for data movement.
+    Tile *tile = dyn_cast<Tile>(src_loc.resource);
+    if (!tile) {
+      llvm::errs() << "[tryRouteDataMove] Source is not a tile\n";
+      return false;
+    }
+
+    // Defines the time window for the register allocation.
+    int start_time = src_loc.time_step;
+    int exclusive_end_time = dst_loc.time_step;
+
+    // For backward moves, we need to adjust the end time.
+    if (is_backward_move) {
+      exclusive_end_time += state.getII();
+    }
+
+    // Finds a register that is available during start_time to
+    // exclusive_end_time.
+    Register *reg =
+        getAvailableRegister(state, tile, start_time, exclusive_end_time);
+    if (!reg) {
+      llvm::errs() << "[tryRouteDataMove] No available register found for "
+                   << "tile: " << tile->getId()
+                   << " from time step: " << start_time
+                   << " to time step: " << exclusive_end_time << "\n";
+      return false;
+    }
+
+    // Adds the register locations to the path.
+    for (int t = start_time; t < exclusive_end_time; ++t) {
+      MappingLoc reg_loc{reg, t};
+      path_out.push_back(reg_loc);
+    }
+
+    llvm::errs() << "[tryRouteDataMove] Allocated register " << reg->getId()
+                 << " for same-tile data movement from t=" << start_time
+                 << " to t=" << exclusive_end_time << "\n";
     return true;
   }
   struct QueueEntry {

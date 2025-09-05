@@ -1,4 +1,4 @@
-// RUN: neura-interpreter %s | FileCheck %s
+// RUN: neura-interpreter %s --verbose | FileCheck %s
 
 // ====== Equal comparison (eq) ======
 func.func @test_fcmp_eq_true() -> i1 {

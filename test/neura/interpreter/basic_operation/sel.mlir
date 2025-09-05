@@ -1,4 +1,4 @@
-// RUN: neura-interpreter %s | FileCheck %s
+// RUN: neura-interpreter %s --verbose | FileCheck %s
 
 func.func @test_sel_with_comparison() -> f32 {
   %a = arith.constant 5.0 : f32

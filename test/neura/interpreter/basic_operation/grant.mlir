@@ -1,4 +1,4 @@
-// RUN: neura-interpreter %s | FileCheck %s
+// RUN: neura-interpreter %s --verbose | FileCheck %s
 
 func.func @test_grant_predicate() -> vector<4xf32> {
   %val = "neura.constant"() {

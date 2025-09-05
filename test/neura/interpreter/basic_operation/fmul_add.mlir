@@ -1,4 +1,4 @@
-// RUN: neura-interpreter %s | FileCheck %s
+// RUN: neura-interpreter %s --verbose | FileCheck %s
 
 // (2.0 * 3.0) + 4.0 = 10.0
 func.func @test_fmul_fadd_basic() -> f32 {
