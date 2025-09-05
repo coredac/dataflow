@@ -4,24 +4,27 @@
 #include "mlir/IR/Value.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/SetVector.h"
-#include "llvm/Support/FileSystem.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <algorithm>
+#include <cassert>
 #include <map>
 #include <optional>
 #include <queue>
 #include <set>
 #include <string>
-#include <tuple>
 #include <vector>
 #include <unordered_set>
 
 #include "NeuraDialect/Architecture/Architecture.h"
+#include "NeuraDialect/NeuraOps.h"
 
 using namespace mlir;
+using namespace neura;
 
 namespace {
 
@@ -40,6 +43,7 @@ struct Instruction {
   Instruction(const std::string &op) : opcode(op) {}
 };
 
+// Entry represents a basic block or execution context within a tile.
 struct Entry {
   std::string entry_id;
   std::string type;
@@ -48,61 +52,76 @@ struct Entry {
       : entry_id(id), type(t) {}
 };
 
-struct Core {
-  int col, row;
+struct Tile {
+  int col_idx, row_idx;
   int core_id;
   Entry entry; // single entry per tile
-  Core(int c, int r, int id) : col(c), row(r), core_id(id), entry("entry0", "loop") {}
+  Tile(int c, int r, int id) : col_idx(c), row_idx(r), core_id(id), entry("entry0", "loop") {}
 };
 
 struct ArrayConfig {
   int columns;
   int rows;
-  std::vector<Core> cores;
+  std::vector<Tile> cores;
 };
 
-struct OpLocation {
-  int col = -1, row = -1, time_step = -1;
+struct TileLocation {
+  int col_idx = -1, row_idx = -1, time_step = -1;
   bool hasTile = false;
 };
 
-static bool isDataMov(Operation *op) { return op->getName().getStringRef() == "neura.data_mov"; }
-static bool isCtrlMov(Operation *op) { return op->getName().getStringRef() == "neura.ctrl_mov"; }
-static bool isPhi(Operation *op)     { return op->getName().getStringRef() == "neura.phi"; }
-static bool isReserve(Operation *op) { return op->getName().getStringRef() == "neura.reserve"; }
-static bool isConstant(Operation *op){ return op->getName().getStringRef() == "neura.constant"; }
+// Use dyn_cast for more efficient and type-safe operation checking
+static bool isDataMov(Operation *op) { 
+  return dyn_cast<DataMovOp>(op) != nullptr; 
+}
+static bool isCtrlMov(Operation *op) { 
+  return dyn_cast<CtrlMovOp>(op) != nullptr; 
+}
+static bool isPhi(Operation *op) { 
+  return dyn_cast<PhiOp>(op) != nullptr; 
+}
+static bool isReserve(Operation *op) { 
+  return dyn_cast<ReserveOp>(op) != nullptr; 
+}
+static bool isConstant(Operation *op) { 
+  return dyn_cast<ConstantOp>(op) != nullptr; 
+}
 // Only neura.data_mov is treated as "forwarder" (pure routing step) for value chasing.
-static bool isForwarder(Operation *op){ return isDataMov(op); }
+static bool isForwarder(Operation *op) { 
+  return isDataMov(op); 
+}
 
 // ----- placement helpers -----
-static OpLocation getTilePlace(Operation *op) {
-  OpLocation p;
+static TileLocation getTileLocation(Operation *op) {
+  TileLocation tile_location;
   if (auto arr = op->getAttrOfType<ArrayAttr>("mapping_locs")) {
     for (Attribute a : arr) {
       auto d = dyn_cast<DictionaryAttr>(a);
       if (!d) continue;
       auto res = dyn_cast_or_null<StringAttr>(d.get("resource"));
       if (!res || res.getValue() != "tile") continue;
-      if (auto x = dyn_cast_or_null<IntegerAttr>(d.get("x"))) p.col = x.getInt();
-      if (auto y = dyn_cast_or_null<IntegerAttr>(d.get("y"))) p.row = y.getInt();
-      if (auto ts = dyn_cast_or_null<IntegerAttr>(d.get("time_step"))) p.time_step = ts.getInt();
-      p.hasTile = true;
+      if (auto x = dyn_cast_or_null<IntegerAttr>(d.get("x"))) tile_location.col_idx = x.getInt();
+      if (auto y = dyn_cast_or_null<IntegerAttr>(d.get("y"))) tile_location.row_idx = y.getInt();
+      if (auto ts = dyn_cast_or_null<IntegerAttr>(d.get("time_step"))) tile_location.time_step = ts.getInt();
+      tile_location.hasTile = true;
       break;
     }
   }
-  return p;
+  // Assert that tile_location was properly assigned if we found tile mapping
+  assert(!tile_location.hasTile || (tile_location.col_idx >= 0 && tile_location.row_idx >= 0));
+  return tile_location;
 }
 
-static std::optional<int> getMappedReg(Operation *op) {
-  if (auto arr = op->getAttrOfType<ArrayAttr>("mapping_locs")) {
-    for (Attribute a : arr) {
-      auto d = dyn_cast<DictionaryAttr>(a);
-      if (!d) continue;
-      auto res = dyn_cast_or_null<StringAttr>(d.get("resource"));
-      if (!res) continue;
-      if (res.getValue() == "register" || res.getValue() == "reg") {
-        if (auto id = dyn_cast_or_null<IntegerAttr>(d.get("id")))
-          return id.getInt();
+static std::optional<int> getMappedRegId(Operation *op) {
+  if (auto mapping_locations = op->getAttrOfType<ArrayAttr>("mapping_locs")) {
+    for (Attribute location_attr : mapping_locations) {
+      auto location_dict = dyn_cast<DictionaryAttr>(location_attr);
+      if (!location_dict) continue;
+      auto resource_attr = dyn_cast_or_null<StringAttr>(location_dict.get("resource"));
+      if (!resource_attr) continue;
+      if (resource_attr.getValue() == "register" || resource_attr.getValue() == "reg") {
+        if (auto register_id = dyn_cast_or_null<IntegerAttr>(location_dict.get("id")))
+          return register_id.getInt();
       }
     }
   }
@@ -118,85 +137,50 @@ static std::string mapOpcode(Operation *op) {
 }
 
 // Literal for CONSTANT's source: "#10" / "#0" / "#3.0"
-static std::string constantLiteral(Operation *op) {
+static std::string getConstantLiteral(Operation *op) {
   if (!isConstant(op)) return "";
-  if (auto valAttr = op->getAttr("value")) {
-    if (auto ia = dyn_cast<IntegerAttr>(valAttr))
-      return "#" + std::to_string(ia.getInt());
-    if (auto fa = dyn_cast<FloatAttr>(valAttr))
-      return "#" + std::to_string(fa.getValueAsDouble());
+  if (auto value_attr = op->getAttr("value")) {
+    if (auto integer_attr = dyn_cast<IntegerAttr>(value_attr))
+      return "#" + std::to_string(integer_attr.getInt());
+    if (auto float_attr = dyn_cast<FloatAttr>(value_attr))
+      return "#" + std::to_string(float_attr.getValueAsDouble());
   }
   return "#0";
 }
 
-// Chase through forwarders backwards to root producer value.
-static Value chaseBackToRootValue(Value v) {
-  Operation *d = v.getDefiningOp();
-  while (d && isForwarder(d)) {
-    if (d->getNumOperands() == 0) break;
-    v = d->getOperand(0);
-    d = v.getDefiningOp();
-  }
-  return v;
-}
-
-// nearest tiled ancestor on the input chain if producer is not tiled.
+// Chase up the operation chain to find the nearest ancestor that has been assigned to a tile.
 static Operation *chaseToTiledProducer(Operation *op,
-                                       const DenseMap<Operation*, OpLocation> &opPlace) {
-  SmallPtrSet<Operation*, 32> vis;
-  Operation *cur = op;
-  while (cur && !opPlace.lookup(cur).hasTile && !vis.count(cur)) {
-    vis.insert(cur);
-    if (cur->getNumOperands() == 0) break;
-    cur = cur->getOperand(0).getDefiningOp();
+                                       const DenseMap<Operation*, TileLocation> &opPlace) {
+  SmallPtrSet<Operation*, 32> visited_ops;  // Prevent infinite loops in cyclic graphs
+  Operation *current_op = op;
+  while (current_op && !opPlace.lookup(current_op).hasTile && !visited_ops.count(current_op)) {
+    visited_ops.insert(current_op);
+    if (current_op->getNumOperands() == 0) break;  // No more operands to follow
+    current_op = current_op->getOperand(0).getDefiningOp();  // Follow the first operand
   }
-  return (cur && opPlace.lookup(cur).hasTile) ? cur : op;
-}
-
-// Use chain scanning to find a preferred register id for same-tile case.
-static std::optional<int> regOnBackwardPath(Value vAtConsumer) {
-  Operation *d = vAtConsumer.getDefiningOp();
-  while (d) {
-    if (auto r = getMappedReg(d)) return r;
-    if (!isForwarder(d)) break;
-    if (auto arr = d->getAttrOfType<ArrayAttr>("mapping_locs")) {
-      for (Attribute a : arr) {
-        auto dict = dyn_cast<DictionaryAttr>(a);
-        if (!dict) continue;
-        auto res = dyn_cast_or_null<StringAttr>(dict.get("resource"));
-        if (res && (res.getValue() == "register" || res.getValue() == "reg")) {
-          if (auto id = dyn_cast_or_null<IntegerAttr>(dict.get("id")))
-            return id.getInt();
-        }
-      }
-    }
-    if (d->getNumOperands() == 0) break;
-    vAtConsumer = d->getOperand(0);
-    d = vAtConsumer.getDefiningOp();
-  }
-  return std::nullopt;
+  return (current_op && opPlace.lookup(current_op).hasTile) ? current_op : op;
 }
 
 // ----- Topology built from Architecture -----
 
 struct Topology {
-  DenseMap<int, std::pair<int,int>> linkEnds;   // linkId -> (srcTileId, dstTileId)
-  DenseMap<int, std::pair<int,int>> tileXY;     // tileId -> (x,y)
+  DenseMap<int, std::pair<int,int>> link_ends;      // link_id -> (srcTileId, dstTileId)
+  DenseMap<int, std::pair<int,int>> tile_location;  // tileId -> (x,y)
 
-  StringRef dirBetween(int srcTid, int dstTid) const {
-    auto [x0,y0] = tileXY.lookup(srcTid);
-    auto [x1,y1] = tileXY.lookup(dstTid);
-    int dc = x1 - x0, dr = y1 - y0;
-    if (dc == 1 && dr == 0) return "EAST";
-    if (dc == -1 && dr == 0) return "WEST";
-    if (dc == 0 && dr == 1) return "NORTH";
-    if (dc == 0 && dr == -1) return "SOUTH";
+  StringRef getDirBetween(int srcTid, int dstTid) const {
+    auto [src_x, src_y] = tile_location.lookup(srcTid);
+    auto [dst_x, dst_y] = tile_location.lookup(dstTid);
+    int dist_cols = dst_x - src_x, dist_rows = dst_y - src_y;
+    if (dist_cols == 1 && dist_rows == 0) return "EAST";
+    if (dist_cols == -1 && dist_rows == 0) return "WEST";
+    if (dist_cols == 0 && dist_rows == 1) return "NORTH";
+    if (dist_cols == 0 && dist_rows == -1) return "SOUTH";
     return "LOCAL";
   }
-  StringRef dirFromLink(int linkId) const {
-    auto it = linkEnds.find(linkId);
-    if (it == linkEnds.end()) return "LOCAL";
-    return dirBetween(it->second.first, it->second.second);
+  StringRef dirFromLink(int link_id) const {
+    auto it = link_ends.find(link_id);
+    if (it == link_ends.end()) return "LOCAL";
+    return getDirBetween(it->second.first, it->second.second);
   }
   StringRef invertDir(StringRef d) const {
     if (d == "EAST") return "WEST";
@@ -205,8 +189,8 @@ struct Topology {
     if (d == "SOUTH") return "NORTH";
     return "LOCAL";
   }
-  int srcTileOfLink(int linkId) const { return linkEnds.lookup(linkId).first; }
-  int dstTileOfLink(int linkId) const { return linkEnds.lookup(linkId).second; }
+  int srcTileOfLink(int link_id) const { return link_ends.lookup(link_id).first; }
+  int dstTileOfLink(int link_id) const { return link_ends.lookup(link_id).second; }
 };
 
 static Topology buildTopologyFromArchitecture(int columns, int rows) {
@@ -214,33 +198,33 @@ static Topology buildTopologyFromArchitecture(int columns, int rows) {
   mlir::neura::Architecture arch(columns, rows);
 
   for (auto *tile : arch.getAllTiles()) {
-    topo.tileXY[tile->getId()] = {tile->getX(), tile->getY()};
+    topo.tile_location[tile->getId()] = {tile->getX(), tile->getY()};
   }
   for (auto *link : arch.getAllLinks()) {
-    auto *s = link->getSrcTile();
-    auto *d = link->getDstTile();
-    topo.linkEnds[link->getId()] = {s->getId(), d->getId()};
+    auto *src_tile = link->getSrcTile();
+    auto *dst_tile = link->getDstTile();
+    topo.link_ends[link->getId()] = {src_tile->getId(), dst_tile->getId()};
   }
   return topo;
 }
 
 // ----- Extract mapping steps (sorted by time) from mapping_locs -----
 
-struct LinkStep { int linkId; int ts; };
+struct LinkStep { int link_id; int ts; };
 struct RegStep  { int regId;  int ts; };
 
 static SmallVector<LinkStep, 8> collectLinkSteps(Operation *op) {
   SmallVector<LinkStep, 8> steps;
-  if (auto arr = op->getAttrOfType<ArrayAttr>("mapping_locs")) {
-    for (Attribute a : arr) {
-      auto d = dyn_cast<DictionaryAttr>(a);
-      if (!d) continue;
-      auto res = dyn_cast_or_null<StringAttr>(d.get("resource"));
-      if (!res || res.getValue() != "link") continue;
-      auto id = dyn_cast_or_null<IntegerAttr>(d.get("id"));
-      auto ts = dyn_cast_or_null<IntegerAttr>(d.get("time_step"));
-      if (!id || !ts) continue;
-      steps.push_back({(int)id.getInt(), (int)ts.getInt()});
+  if (auto mapping_locations = op->getAttrOfType<ArrayAttr>("mapping_locs")) {
+    for (Attribute location_attr : mapping_locations) {
+      auto location_dict = dyn_cast<DictionaryAttr>(location_attr);
+      if (!location_dict) continue;
+      auto resource_attr = dyn_cast_or_null<StringAttr>(location_dict.get("resource"));
+      if (!resource_attr || resource_attr.getValue() != "link") continue;
+      auto link_id = dyn_cast_or_null<IntegerAttr>(location_dict.get("id"));
+      auto time_step = dyn_cast_or_null<IntegerAttr>(location_dict.get("time_step"));
+      if (!link_id || !time_step) continue;
+      steps.push_back({(int)link_id.getInt(), (int)time_step.getInt()});
     }
   }
   llvm::sort(steps, [](const LinkStep &a, const LinkStep &b){ return a.ts < b.ts; });
@@ -249,17 +233,17 @@ static SmallVector<LinkStep, 8> collectLinkSteps(Operation *op) {
 
 static SmallVector<RegStep, 4> collectRegSteps(Operation *op) {
   SmallVector<RegStep, 4> steps;
-  if (auto arr = op->getAttrOfType<ArrayAttr>("mapping_locs")) {
-    for (Attribute a : arr) {
-      auto d = dyn_cast<DictionaryAttr>(a);
-      if (!d) continue;
-      auto res = dyn_cast_or_null<StringAttr>(d.get("resource"));
-      if (!res) continue;
-      if (res.getValue() == "register" || res.getValue() == "reg") {
-        auto id = dyn_cast_or_null<IntegerAttr>(d.get("id"));
-        auto ts = dyn_cast_or_null<IntegerAttr>(d.get("time_step"));
-        if (!id || !ts) continue;
-        steps.push_back({(int)id.getInt(), (int)ts.getInt()});
+  if (auto mapping_locations = op->getAttrOfType<ArrayAttr>("mapping_locs")) {
+    for (Attribute location_attr : mapping_locations) {
+      auto location_dict = dyn_cast<DictionaryAttr>(location_attr);
+      if (!location_dict) continue;
+      auto resource_attr = dyn_cast_or_null<StringAttr>(location_dict.get("resource"));
+      if (!resource_attr) continue;
+      if (resource_attr.getValue() == "register" || resource_attr.getValue() == "reg") {
+        auto register_id = dyn_cast_or_null<IntegerAttr>(location_dict.get("id"));
+        auto time_step = dyn_cast_or_null<IntegerAttr>(location_dict.get("time_step"));
+        if (!register_id || !time_step) continue;
+        steps.push_back({(int)register_id.getInt(), (int)time_step.getInt()});
       }
     }
   }
@@ -267,9 +251,32 @@ static SmallVector<RegStep, 4> collectRegSteps(Operation *op) {
   return steps;
 }
 
+// Only check for register id on the last forwarder(op) at consumer side or on op itself.
+static std::optional<int> regOnBackwardPath(Value vAtConsumer) {
+  Operation *def = vAtConsumer.getDefiningOp();
+  if (!def) return std::nullopt;
+  if (isDataMov(def) || isCtrlMov(def)) {
+    if (auto steps = collectRegSteps(def); !steps.empty())
+      return steps.back().regId; // In your IR, ids are identical, so take the last one
+  }
+  return getMappedRegId(def);
+}
+
+// Mandatory requirement: same-tile cross-step must have assigned register; otherwise error and assert.
+static std::string pickAssignedRegisterOrDie(Value vAtConsumer, Operation *producer) {
+  if (auto id = regOnBackwardPath(vAtConsumer))
+    return "$" + std::to_string(*id);
+  if (auto id = getMappedRegId(producer))
+    return "$" + std::to_string(*id);
+
+  producer->emitError("same-tile cross-step edge without assigned register id (mapping pass must assign one).");
+  assert(false && "register id must be assigned by mapping pass for same-tile cross-step");
+  return "$0"; // unreachable, silences compiler warning
+}
+
 // ----- Pass -----
 
-struct InstRef { int col, row, t, idx; };
+struct InstRef { int col_idx, row_idx, t, idx; };
 
 struct ProdSummary {
   std::set<std::string> dirs;   // directions to remote consumers (keep for dst operands)
@@ -282,91 +289,56 @@ struct GenerateCodePass
 
   StringRef getArgument() const override { return "generate-code"; }
   StringRef getDescription() const override {
-    return "CGRA YAML gen (multi-hop routers + endpoint register deposit + timing-aware rewiring, with CTRL_MOV kept).";
+    return "CGRA YAML/ASM gen (multi-hop routers + endpoint register deposit + timing-aware rewiring, with CTRL_MOV kept).";
   }
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mlir::func::FuncDialect>();
   }
 
-  // per-tile round-robin $1..$32
-  DenseMap<std::pair<int,int>, int> tileNextReg;
-  // root SSA value -> chosen $N (sticky across same-tile uses)
-  DenseMap<Value, std::string>       localRegOf;
-  DenseMap<Operation*, OpLocation>   opPlace;
+  DenseMap<Operation*, TileLocation>   opPlace;
 
-  std::string allocTileReg(std::pair<int,int> tileKey) {
-    int &n = tileNextReg[tileKey];
-    if (n <= 0) n = 1;
-    std::string name = "$" + std::to_string(n);
-    n = (n % 32) + 1;
-    return name;
-  }
-
-  // choose register for same-tile edges honoring provided ids.
-  std::string pickRegisterForEdge(Operation *producer, Value vAtConsumer,
-                                  std::optional<int> preferredId = std::nullopt) {
-    Value root = chaseBackToRootValue(vAtConsumer);
-    auto it = localRegOf.find(root);
-    if (it != localRegOf.end()) return it->second;
-
-    std::string rn;
-    if (preferredId) {
-      rn = "$" + std::to_string(*preferredId);
-    } else if (auto id = regOnBackwardPath(vAtConsumer)) {
-      rn = "$" + std::to_string(*id);
-    } else if (auto mr = getMappedReg(producer)) {
-      rn = "$" + std::to_string(*mr);
-    } else {
-      Operation *tp = chaseToTiledProducer(producer, opPlace);
-      auto pp = opPlace.lookup(tp);
-      rn = allocTileReg({pp.col, pp.row});
-    }
-    localRegOf[root] = rn;
-    return rn;
-  }
-
-  // map of tile(x,y) -> time_step -> vector<Instruction>
-  std::map<std::pair<int,int>, std::map<int, std::vector<Instruction>>> pe_time_insts;
+  // Map of tile coordinates (x,y) -> time_step -> vector of Instructions
+  std::map<std::pair<int,int>, std::map<int, std::vector<Instruction>>> tile_time_insts;
 
   // to get Instruction* back when wiring operands
   DenseMap<Operation*, InstRef>            op2ref;
   DenseMap<Operation*, SmallVector<Value>> op2Operands;
 
   // de-dup sets
-  std::unordered_set<uint64_t> hopSig;     // (midTileId, ts, linkId)
+  std::unordered_set<uint64_t> hopSig;     // (midTileId, ts, link_id)
   std::unordered_set<uint64_t> depositSig; // (dstTileId, ts, regId)
 
   // ---------- helpers to place materialized instructions ----------
   void placeRouterHop(const Topology &topo, int tileId, int ts,
                       StringRef inDir, StringRef outDir) {
-    auto [x,y] = topo.tileXY.lookup(tileId);
+    auto [tile_x, tile_y] = topo.tile_location.lookup(tileId);
     Instruction inst("DATA_MOV");
     inst.time_step = ts;
     inst.src_operands.emplace_back(inDir.str(), "RED");
     inst.dst_operands.emplace_back(outDir.str(), "RED");
-    pe_time_insts[{x,y}][ts].push_back(std::move(inst));
+    tile_time_insts[{tile_x, tile_y}][ts].push_back(std::move(inst));
   }
 
   // endpoint deposit: on destination tile at earliest reg ts, move [incoming_dir] -> [$reg]
   // If `asCtrlMov=true`, encode the deposit as "CTRL_MOV" instead of "DATA_MOV".
   void placeDstDeposit(const Topology &topo, int dstTileId, int ts,
                        StringRef incomingDir, int regId, bool asCtrlMov = false) {
-    uint64_t sig = (uint64_t)dstTileId << 32 ^ (uint64_t)ts << 16 ^ (uint64_t)regId;
-    if (!depositSig.insert(sig).second) return; // already placed
-    auto [x,y] = topo.tileXY.lookup(dstTileId);
+    uint64_t signature = (uint64_t)dstTileId << 32 ^ (uint64_t)ts << 16 ^ (uint64_t)regId;
+    if (!depositSig.insert(signature).second) return; // already placed
+    auto [tile_x, tile_y] = topo.tile_location.lookup(dstTileId);
     Instruction inst(asCtrlMov ? "CTRL_MOV" : "DATA_MOV");
     inst.time_step = ts;
     inst.src_operands.emplace_back(incomingDir.str(), "RED");
     inst.dst_operands.emplace_back("$" + std::to_string(regId), "RED");
-    pe_time_insts[{x,y}][ts].push_back(std::move(inst));
+    tile_time_insts[{tile_x, tile_y}][ts].push_back(std::move(inst));
   }
 
   void emitIntermediateRoutersForOp(Operation *op, const Topology &topo) {
     auto steps = collectLinkSteps(op);
     if (steps.size() < 2) return; // only multi-hop
     for (size_t i = 1; i < steps.size(); ++i) {
-      int prevL = steps[i - 1].linkId;
-      int curL  = steps[i].linkId;
+      int prevL = steps[i - 1].link_id;
+      int curL  = steps[i].link_id;
       int ts    = steps[i].ts;
 
       int midTile = topo.srcTileOfLink(curL);
@@ -387,13 +359,13 @@ struct GenerateCodePass
 
   // utilities to access instruction bucket and pointer
   std::vector<Instruction> &bucketOf(int c, int r, int t) {
-    return pe_time_insts[{c,r}][t];
+    return tile_time_insts[{c,r}][t];
   }
   Instruction* getInstPtr(Operation *op) {
     auto it = op2ref.find(op);
     if (it == op2ref.end()) return nullptr;
     auto [c,r,t,idx] = it->second;
-    auto &vec = pe_time_insts[{c,r}][t];
+    auto &vec = tile_time_insts[{c,r}][t];
     if (idx < 0 || idx >= (int)vec.size()) return nullptr;
     return &vec[idx];
   }
@@ -447,19 +419,16 @@ struct GenerateCodePass
 
       // clear state
       opPlace.clear();
-      tileNextReg.clear();
-      localRegOf.clear();
-      pe_time_insts.clear();
+      tile_time_insts.clear();
       op2ref.clear();
       op2Operands.clear();
       hopSig.clear();
       depositSig.clear();
 
       // cache tile placements
-      func.walk([&](Operation *op){ opPlace[op] = getTilePlace(op); });
+      func.walk([&](Operation *op){ opPlace[op] = getTileLocation(op); });
 
       // 1) Materialize compute/logic ops (CONSTANT/ADD/FADD/PHI/ICMP/NOT/GRANT_* etc.)
-      //    Drop reserve/ctrl_mov/data_mov here; they are for wiring & router hops only.
       func.walk([&](Operation *op){
         auto p = opPlace[op];
         if (!p.hasTile) return;
@@ -470,7 +439,7 @@ struct GenerateCodePass
         inst.time_step = p.time_step;
 
         if (isConstant(op)) {
-          inst.src_operands.emplace_back(constantLiteral(op), "RED");
+          inst.src_operands.emplace_back(getConstantLiteral(op), "RED");
         } else {
           SmallVector<Value> operands; operands.reserve(op->getNumOperands());
           for (Value in : op->getOperands()) {
@@ -481,21 +450,16 @@ struct GenerateCodePass
         }
 
         // If op itself mapped a register (rare), keep as dst reg.
-        if (auto mr = getMappedReg(op))
+        if (auto mr = getMappedRegId(op))
           inst.dst_operands.emplace_back("$" + std::to_string(*mr), "RED");
 
-        auto &vec = bucketOf(p.col, p.row, p.time_step);
+        auto &vec = bucketOf(p.col_idx, p.row_idx, p.time_step);
         vec.push_back(std::move(inst));
-        op2ref[op] = InstRef{p.col, p.row, p.time_step, (int)vec.size() - 1};
+        op2ref[op] = InstRef{p.col_idx, p.row_idx, p.time_step, (int)vec.size() - 1};
       });
 
       // Summaries for producers
       DenseMap<Operation*, ProdSummary> prodSum;
-
-      auto stickRootReg = [&](Value vAtConsumer, const std::string &rn){
-        Value root = chaseBackToRootValue(vAtConsumer);
-        localRegOf[root] = rn;
-      };
 
       // 2) Wire edges (same tile: $reg; cross tile: direction, plus endpoint deposit if reg-steps exist)
       func.walk([&](Operation *prod){
@@ -535,12 +499,11 @@ struct GenerateCodePass
             auto chain = linkChainForValueAtConsumer(vAtCons);
             auto rsteps= regStepsForValueAtConsumer(vAtCons);
 
-            if (pp.col == pc.col && pp.row == pc.row) {
-              // same-tile: use $reg
-              std::string rn = pickRegisterForEdge(prod, vAtCons, std::nullopt);
+            if (pp.col_idx == pc.col_idx && pp.row_idx == pc.row_idx) {
+              // same-tile: MUST use assigned register id
+              std::string rn = pickAssignedRegisterOrDie(vAtCons, prod);
               setConsumerSrcExact(cons, vAtCons, rn);
               if (Instruction *pi = getInstPtr(prod)) addUniqueDst(pi, rn);
-              stickRootReg(vAtCons, rn);
               prodSum[prod].hasSameTileConsumer = true;
             } else {
               // cross-tile: compute endpoint directions
@@ -548,12 +511,12 @@ struct GenerateCodePass
               std::string consDir = "LOCAL";
 
               if (!chain.empty()) {
-                int firstLink = chain.front().linkId;
-                int lastLink  = chain.back().linkId;
+                int firstLink = chain.front().link_id;
+                int lastLink  = chain.back().link_id;
                 prodDir = topo.dirFromLink(firstLink).str();
                 consDir = topo.invertDir(topo.dirFromLink(lastLink)).str();
               } else {
-                int dc = pc.col - pp.col, dr = pc.row - pp.row;
+                int dc = pc.col_idx - pp.col_idx, dr = pc.row_idx - pp.row_idx;
                 if (dc > 0 && dr == 0) { prodDir = "EAST"; consDir = "WEST"; }
                 else if (dc < 0 && dr == 0) { prodDir = "WEST"; consDir = "EAST"; }
                 else if (dc == 0 && dr > 0) { prodDir = "NORTH"; consDir = "SOUTH"; }
@@ -567,12 +530,12 @@ struct GenerateCodePass
               // endpoint deposit if the forwarder before consumer contains register mapping
               bool rewiredToReg = false;
               if (!chain.empty() && !rsteps.empty()) {
-                int lastLink  = chain.back().linkId;
+                int lastLink  = chain.back().link_id;
                 int dstTid    = topo.dstTileOfLink(lastLink);
-                auto itXY     = topo.tileXY.find(dstTid);
-                if (itXY != topo.tileXY.end()) {
-                  auto [dx,dy] = itXY->second;
-                  if (dx == pc.col && dy == pc.row) {
+                auto tile_location_iter = topo.tile_location.find(dstTid);
+                if (tile_location_iter != topo.tile_location.end()) {
+                  auto [dst_tile_x, dst_tile_y] = tile_location_iter->second;
+                  if (dst_tile_x == pc.col_idx && dst_tile_y == pc.row_idx) {
                     const int earliestRegTs = rsteps.front().ts;
                     const int rid = rsteps.back().regId; // ids are identical in your IR
                     // For data_mov-origin edges, deposit as DATA_MOV.
@@ -617,12 +580,15 @@ struct GenerateCodePass
         auto chain  = collectLinkSteps(op);
         auto rsteps = collectRegSteps(op);
 
-        // Same-tile ctrl_mov: no deposit; just honor reg if present.
-        if (pp.col == pc.col && pp.row == pc.row) {
+        // Same-tile ctrl_mov: no deposit; just honor reg if present, else die.
+        if (pp.col_idx == pc.col_idx && pp.row_idx == pc.row_idx) {
           std::string rn;
           if (!rsteps.empty()) rn = "$" + std::to_string(rsteps.back().regId);
-          else if (auto mr = getMappedReg(op)) rn = "$" + std::to_string(*mr);
-          else rn = pickRegisterForEdge(producer, src, std::nullopt);
+          else if (auto mr = getMappedRegId(op)) rn = "$" + std::to_string(*mr);
+          else {
+            op->emitError("same-tile ctrl_mov without assigned register id (mapping pass must assign one).");
+            assert(false && "register id must be assigned by mapping pass for same-tile ctrl_mov");
+          }
           setConsumerSrcExact(phi, src, rn);
           if (Instruction *pi = getInstPtr(producer)) addUniqueDst(pi, rn);
           prodSum[producer].hasSameTileConsumer = true;
@@ -633,10 +599,10 @@ struct GenerateCodePass
         std::string prodDir = "LOCAL";
         std::string consDir = "LOCAL";
         if (!chain.empty()) {
-          prodDir = topo.dirFromLink(chain.front().linkId).str();
-          consDir = topo.invertDir(topo.dirFromLink(chain.back().linkId)).str();
+          prodDir = topo.dirFromLink(chain.front().link_id).str();
+          consDir = topo.invertDir(topo.dirFromLink(chain.back().link_id)).str();
         } else {
-          int dc = pc.col - pp.col, dr = pc.row - pp.row;
+          int dc = pc.col_idx - pp.col_idx, dr = pc.row_idx - pp.row_idx;
           if (dc > 0 && dr == 0) { prodDir = "EAST"; consDir = "WEST"; }
           else if (dc < 0 && dr == 0) { prodDir = "WEST"; consDir = "EAST"; }
           else if (dc == 0 && dr > 0) { prodDir = "NORTH"; consDir = "SOUTH"; }
@@ -647,12 +613,12 @@ struct GenerateCodePass
 
         bool rewiredToReg = false;
         if (!chain.empty() && !rsteps.empty()) {
-          int lastLink  = chain.back().linkId;
+          int lastLink  = chain.back().link_id;
           int dstTid    = topo.dstTileOfLink(lastLink);
-          auto itXY     = topo.tileXY.find(dstTid);
-          if (itXY != topo.tileXY.end()) {
-            auto [dx,dy] = itXY->second;
-            if (dx == pc.col && dy == pc.row) {
+          auto tile_location_iter = topo.tile_location.find(dstTid);
+          if (tile_location_iter != topo.tile_location.end()) {
+            auto [dst_tile_x, dst_tile_y] = tile_location_iter->second;
+            if (dst_tile_x == pc.col_idx && dst_tile_y == pc.row_idx) {
               const int earliestRegTs = rsteps.front().ts;
               const int rid = rsteps.back().regId;
               // For ctrl_mov, encode the endpoint deposit as CTRL_MOV (not DATA_MOV).
@@ -668,16 +634,13 @@ struct GenerateCodePass
       });
 
       // 3) Producer post-process (applies to ALL producers)
-      //    - Keep producer endpoint dirs recorded earlier.
-      //    - Remove any $ on producer dst IF it has NO same-tile consumers AND
-      //      the op itself does NOT have a mapped register.
       for (auto &kv : prodSum) {
         Operation *op = kv.first;
         Instruction *pi = getInstPtr(op);
         if (!pi) continue;
         for (const auto &d : kv.second.dirs) addUniqueDst(pi, d);
 
-        const bool hasMappedReg = getMappedReg(op).has_value();
+        const bool hasMappedReg = getMappedRegId(op).has_value();
         if (!kv.second.hasSameTileConsumer && !hasMappedReg) {
           pi->dst_operands.erase(
             std::remove_if(pi->dst_operands.begin(), pi->dst_operands.end(),
@@ -694,7 +657,7 @@ struct GenerateCodePass
 
       // 5) Keep UNRESOLVED and log them (color=YELLOW)
       unsigned unresolvedSrc = 0, unresolvedDst = 0;
-      for (auto &tk : pe_time_insts) {
+      for (auto &tk : tile_time_insts) {
         auto key = tk.first;
         int c = key.first, r = key.second;
         for (auto &tt : tk.second) {
@@ -744,7 +707,7 @@ struct GenerateCodePass
 
       // flatten & sort by timestep
       std::map<std::pair<int,int>, std::vector<Instruction>> tileInstrs;
-      for (auto &tileKV : pe_time_insts) {
+      for (auto &tileKV : tile_time_insts) {
         auto key = tileKV.first;
         auto &byT  = tileKV.second;
         auto &flat = tileInstrs[key];
@@ -757,9 +720,9 @@ struct GenerateCodePass
         for (int c = 0; c < columns; ++c) {
           auto it = tileInstrs.find({c,r});
           if (it == tileInstrs.end()) continue;
-          Core core(c, r, r*columns + c);
-          for (auto &ins : it->second) core.entry.instructions.push_back(ins);
-          config.cores.push_back(std::move(core));
+          Tile tile(c, r, r*columns + c);
+          for (auto &ins : it->second) tile.entry.instructions.push_back(ins);
+          config.cores.push_back(std::move(tile));
         }
       }
 
@@ -772,8 +735,8 @@ struct GenerateCodePass
       yaml_out << "  rows: " << config.rows << "\n";
       yaml_out << "  cores:\n";
       for (const auto &core : config.cores) {
-        yaml_out << "    - column: " << core.col << "\n";
-        yaml_out << "      row: " << core.row << "\n";
+        yaml_out << "    - column: " << core.col_idx << "\n";
+        yaml_out << "      row: " << core.row_idx << "\n";
         yaml_out << "      core_id: \"" << core.core_id << "\"\n";
         yaml_out << "      entries:\n";
         int entry_id = 0;
@@ -801,12 +764,11 @@ struct GenerateCodePass
       }
       yaml_out.close();
 
-      // Optional ASM output (human friendly)
+      // Optional ASM output
       llvm::raw_fd_ostream asm_out("generated-instructions.asm", ec);
       if (ec) { module.emitError("open asm failed: " + ec.message()); return; }
-      asm_out << "; ASM (multi-hop routers + endpoint deposit (DATA/CTRL_MOV) + timing-aware src wiring)\n\n";
       for (const auto &core : config.cores) {
-        asm_out << "PE(" << core.col << "," << core.row << "):\n";
+        asm_out << "PE(" << core.col_idx << "," << core.row_idx << "):\n";
         for (const auto &inst : core.entry.instructions) {
           asm_out << "{\n";
           asm_out << "  " << inst.opcode;
