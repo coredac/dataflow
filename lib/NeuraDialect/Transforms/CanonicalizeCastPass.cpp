@@ -54,8 +54,9 @@ LogicalResult canonicalizeCast(Region &region) {
     if (neura::CastOp cast_op = dyn_cast<neura::CastOp>(op)) {
       StringAttr cast_type_attr =
           cast_op->getAttrOfType<StringAttr>("cast_type");
-      if (!cast_type_attr)
+      if (!cast_type_attr) {
         return;
+      }
       StringRef cast_type = cast_type_attr.getValue();
 
       Type src_type = cast_op->getOperand(0).getType();

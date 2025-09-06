@@ -1,7 +1,6 @@
 #include "NeuraDialect/Mapping/HeuristicMapping/HeuristicMapping.h"
 #include "NeuraDialect/Mapping/MappingState.h"
 #include "NeuraDialect/Mapping/mapping_util.h"
-#include "NeuraDialect/NeuraOps.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace mlir {

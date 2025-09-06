@@ -66,8 +66,9 @@ void GrantPredicateInEntryBlock(Block *entry_block, OpBuilder &builder) {
   // Inserts grant_once.
   for (Value val : live_out_arg_values) {
     Operation *def_op = val.getDefiningOp();
-    if (!def_op)
+    if (!def_op) {
       continue;
+    }
 
     builder.setInsertionPointAfter(def_op);
     auto granted = builder.create<neura::GrantOnceOp>(def_op->getLoc(),
@@ -133,8 +134,9 @@ void assertLiveOutValuesDominatedByBlockArgs(Region &region) {
     }
 
     // Skips blocks with no live-out values.
-    if (live_out_values.empty())
+    if (live_out_values.empty()) {
       continue;
+    }
 
     DenseSet<Value> dominated_values;
 
@@ -152,8 +154,9 @@ void assertLiveOutValuesDominatedByBlockArgs(Region &region) {
       changed = false;
       for (Operation &op : block) {
         for (Value result : op.getResults()) {
-          if (dominated_values.count(result))
+          if (dominated_values.count(result)) {
             continue;
+          }
 
           for (Value operand : op.getOperands()) {
             if (dominated_values.count(operand)) {
@@ -485,8 +488,9 @@ void transformControlFlowToDataFlow(Region &region, ControlFlowInfo &ctrl_info,
   Block *entryBlock = &region.front();
   SmallVector<Block *> blocks_to_flatten;
   for (Block &block : region) {
-    if (&block != entryBlock)
+    if (&block != entryBlock) {
       blocks_to_flatten.push_back(&block);
+    }
   }
 
   // Erases terminators before moving ops into entry block.

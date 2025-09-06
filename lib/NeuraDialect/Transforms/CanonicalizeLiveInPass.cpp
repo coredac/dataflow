@@ -205,8 +205,9 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
         Value operand = op.getOperand(i);
         auto key = std::make_pair(block, operand);
 
-        if (block_value_to_arg.count(key))
+        if (block_value_to_arg.count(key)) {
           op.setOperand(i, block_value_to_arg[key]);
+        }
       }
     }
   }
