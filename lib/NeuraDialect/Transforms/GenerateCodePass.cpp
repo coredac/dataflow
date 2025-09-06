@@ -533,7 +533,7 @@ struct GenerateCodePass
     }
     if (unsrc + undst) {
       auto diag = module.emitWarning("GenerateCodePass: UNRESOLVED operands kept for debugging");
-      diag << " (src=" << unsrc << ", dst=" << undst << "); they are highlighted with color=YELLOW in YAML.";
+      diag << " (src=" << unsrc << ", dst=" << undst << "); they are highlighted with color=ERROR in YAML.";
     }
   }
 
