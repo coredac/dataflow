@@ -30,7 +30,6 @@ func.func @loop_test() -> f32 {
   return %result : f32
 }
 
-
 // YAML: array_config:
 // YAML-NEXT:   columns: 4
 // YAML-NEXT:   rows: 4
@@ -103,9 +102,9 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:                 - operand: "$4"
 // YAML-NEXT:                   color: "RED"
 // YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "$4"
-// YAML-NEXT:                   color: "RED"
 // YAML-NEXT:                 - operand: "NORTH"
+// YAML-NEXT:                   color: "RED"
+// YAML-NEXT:                 - operand: "$4"
 // YAML-NEXT:                   color: "RED"
 // YAML-NEXT:         - entry_id: "entry3"
 // YAML-NEXT:           instructions:
@@ -163,9 +162,9 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:                 - operand: "$8"
 // YAML-NEXT:                   color: "RED"
 // YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "WEST"
-// YAML-NEXT:                   color: "RED"
 // YAML-NEXT:                 - operand: "NORTH"
+// YAML-NEXT:                   color: "RED"
+// YAML-NEXT:                 - operand: "WEST"
 // YAML-NEXT:                   color: "RED"
 // YAML-NEXT:     - column: 3
 // YAML-NEXT:       row: 0
@@ -218,17 +217,17 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:                 - operand: "SOUTH"
 // YAML-NEXT:                   color: "RED"
 // YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "$20"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:                 - operand: "SOUTH"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:                 - operand: "$21"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:                 - operand: "$22"
+// YAML-NEXT:                 - operand: "EAST"
 // YAML-NEXT:                   color: "RED"
 // YAML-NEXT:                 - operand: "NORTH"
 // YAML-NEXT:                   color: "RED"
-// YAML-NEXT:                 - operand: "EAST"
+// YAML-NEXT:                 - operand: "$22"
+// YAML-NEXT:                   color: "RED"
+// YAML-NEXT:                 - operand: "$21"
+// YAML-NEXT:                   color: "RED"
+// YAML-NEXT:                 - operand: "SOUTH"
+// YAML-NEXT:                   color: "RED"
+// YAML-NEXT:                 - operand: "$20"
 // YAML-NEXT:                   color: "RED"
 // YAML-NEXT:         - entry_id: "entry2"
 // YAML-NEXT:           instructions:
@@ -257,7 +256,7 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:             - opcode: "DATA_MOV"
 // YAML-NEXT:               timestep: 6
 // YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "NORTH"
+// YAML-NEXT:                 - operand: "SOUTH"
 // YAML-NEXT:                   color: "RED"
 // YAML-NEXT:               dst_operands:
 // YAML-NEXT:                 - operand: "$20"
@@ -279,7 +278,7 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:             - opcode: "CTRL_MOV"
 // YAML-NEXT:               timestep: 7
 // YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "EAST"
+// YAML-NEXT:                 - operand: "WEST"
 // YAML-NEXT:                   color: "RED"
 // YAML-NEXT:               dst_operands:
 // YAML-NEXT:                 - operand: "$20"
@@ -298,9 +297,9 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:                 - operand: "SOUTH"
 // YAML-NEXT:                   color: "RED"
 // YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "$25"
-// YAML-NEXT:                   color: "RED"
 // YAML-NEXT:                 - operand: "WEST"
+// YAML-NEXT:                   color: "RED"
+// YAML-NEXT:                 - operand: "$25"
 // YAML-NEXT:                   color: "RED"
 // YAML-NEXT:         - entry_id: "entry1"
 // YAML-NEXT:           instructions:
@@ -324,16 +323,16 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:                 - operand: "NORTH"
 // YAML-NEXT:                   color: "RED"
 // YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "EAST"
-// YAML-NEXT:                   color: "RED"
 // YAML-NEXT:                 - operand: "$26"
+// YAML-NEXT:                   color: "RED"
+// YAML-NEXT:                 - operand: "EAST"
 // YAML-NEXT:                   color: "RED"
 // YAML-NEXT:         - entry_id: "entry3"
 // YAML-NEXT:           instructions:
 // YAML-NEXT:             - opcode: "DATA_MOV"
 // YAML-NEXT:               timestep: 5
 // YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "WEST"
+// YAML-NEXT:                 - operand: "EAST"
 // YAML-NEXT:                   color: "RED"
 // YAML-NEXT:               dst_operands:
 // YAML-NEXT:                 - operand: "$24"
@@ -374,7 +373,7 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:                   color: "RED"
 // YAML-NEXT:         - entry_id: "entry7"
 // YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "DATA_MOV"
+// YAML-NEXT:             - opcode: "CTRL_MOV"
 // YAML-NEXT:               timestep: 7
 // YAML-NEXT:               src_operands:
 // YAML-NEXT:                 - operand: "WEST"
@@ -384,7 +383,7 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:                   color: "RED"
 // YAML-NEXT:         - entry_id: "entry8"
 // YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "DATA_MOV"
+// YAML-NEXT:             - opcode: "CTRL_MOV"
 // YAML-NEXT:               timestep: 8
 // YAML-NEXT:               src_operands:
 // YAML-NEXT:                 - operand: "WEST"
@@ -411,7 +410,7 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:             - opcode: "DATA_MOV"
 // YAML-NEXT:               timestep: 6
 // YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "WEST"
+// YAML-NEXT:                 - operand: "EAST"
 // YAML-NEXT:                   color: "RED"
 // YAML-NEXT:               dst_operands:
 // YAML-NEXT:                 - operand: "$28"
@@ -476,9 +475,9 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:                 - operand: "$40"
 // YAML-NEXT:                   color: "RED"
 // YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "WEST"
-// YAML-NEXT:                   color: "RED"
 // YAML-NEXT:                 - operand: "SOUTH"
+// YAML-NEXT:                   color: "RED"
+// YAML-NEXT:                 - operand: "WEST"
 // YAML-NEXT:                   color: "RED"
 // YAML-NEXT:         - entry_id: "entry2"
 // YAML-NEXT:           instructions:
@@ -495,7 +494,7 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:             - opcode: "CTRL_MOV"
 // YAML-NEXT:               timestep: 9
 // YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "SOUTH"
+// YAML-NEXT:                 - operand: "NORTH"
 // YAML-NEXT:                   color: "RED"
 // YAML-NEXT:               dst_operands:
 // YAML-NEXT:                 - operand: "$41"
@@ -530,67 +529,68 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:                   color: "RED"
 
 // ASM-LABEL: PE(0,0):
-// ASM: CONSTANT, [#0] -> [EAST] (t=0)
-// ASM: CONSTANT, [#10] -> [EAST] (t=1)
-// ASM: DATA_MOV, [EAST] -> [NORTH] (t=4)
+// ASM: CONSTANT, [#0] -> [EAST, RED] (t=0)
+// ASM: CONSTANT, [#10] -> [EAST, RED] (t=1)
+// ASM: DATA_MOV, [EAST, RED] -> [NORTH, RED] (t=4)
 
 // ASM-LABEL: PE(1,0):
-// ASM: GRANT_ONCE, [WEST] -> [NORTH] (t=1)
-// ASM: GRANT_ONCE, [WEST] -> [$4] (t=2)
-// ASM: PHI, [$5], [$4] -> [$4], [NORTH] (t=3)
-// ASM: DATA_MOV, [EAST] -> [WEST] (t=3)
-// ASM: GRANT_PREDICATE, [$4], [NORTH] -> [$5] (t=5)
+// ASM: GRANT_ONCE, [WEST, RED] -> [NORTH, RED] (t=1)
+// ASM: GRANT_ONCE, [WEST, RED] -> [$4] (t=2)
+// ASM: PHI, [$5], [$4] -> [NORTH, RED], [$4] (t=3)
+// ASM: DATA_MOV, [EAST, RED] -> [WEST, RED] (t=3)
+// ASM: GRANT_PREDICATE, [$4], [NORTH, RED] -> [$5] (t=5)
 
 // ASM-LABEL: PE(2,0):
 // ASM: CONSTANT, [#1] -> [$8] (t=0)
 // ASM: GRANT_ONCE, [$8] -> [$8] (t=1)
-// ASM: PHI, [NORTH], [$8] -> [WEST], [NORTH] (t=2)
+// ASM: PHI, [NORTH, RED], [$8] -> [NORTH, RED], [WEST, RED] (t=2)
 
 // ASM-LABEL: PE(3,0):
-// ASM: RETURN, [NORTH] (t=8)
+// ASM: RETURN, [NORTH, RED] (t=8)
 
 // ASM-LABEL: PE(0,1):
-// ASM: DATA_MOV, [SOUTH] -> [EAST] (t=5)
+// ASM: DATA_MOV, [SOUTH, RED] -> [EAST, RED] (t=5)
 
 // ASM-LABEL: PE(1,1):
-// ASM: PHI, [EAST], [SOUTH] -> [EAST] (t=2)
-// ASM: ICMP, [EAST], [SOUTH] -> [$20], [SOUTH], [$21], [$22], [NORTH], [EAST] (t=4)
-// ASM: NOT, [$20] -> [EAST] (t=5)
-// ASM: GRANT_PREDICATE, [WEST], [$21] -> [EAST] (t=6)
-// ASM: DATA_MOV, [NORTH] -> [$20] (t=6)
-// ASM: GRANT_PREDICATE, [$20], [$22] -> [EAST] (t=7)
-// ASM: CTRL_MOV, [EAST] -> [$20] (t=7)
+// ASM: PHI, [EAST, RED], [SOUTH, RED] -> [EAST, RED] (t=2)
+// ASM: ICMP, [EAST, RED], [SOUTH, RED] -> [EAST, RED], [NORTH, RED], [$22], [$21], [SOUTH, RED], [$20] (t=4)
+// ASM: NOT, [$20] -> [EAST, RED] (t=5)
+// ASM: GRANT_PREDICATE, [WEST, RED], [$21] -> [EAST, RED] (t=6)
+// ASM: DATA_MOV, [SOUTH, RED] -> [$20] (t=6)
+// ASM: GRANT_PREDICATE, [$20], [$22] -> [EAST, RED] (t=7)
+// ASM: CTRL_MOV, [WEST, RED] -> [$20] (t=7)
 
 // ASM-LABEL: PE(2,1):
-// ASM: ADD, [WEST], [SOUTH] -> [$25], [WEST] (t=3)
-// ASM: PHI, [$24], [EAST] -> [$24] (t=4)
-// ASM: FADD, [$24], [NORTH] -> [EAST], [$26] (t=5)
-// ASM: DATA_MOV, [WEST] -> [$24] (t=5)
-// ASM: GRANT_PREDICATE, [$25], [$24] -> [WEST] (t=6)
-// ASM: DATA_MOV, [WEST] -> [EAST] (t=6)
-// ASM: GRANT_PREDICATE, [$26], [NORTH] -> [$24] (t=7)
-// ASM: DATA_MOV, [WEST] -> [SOUTH] (t=7)
-// ASM: DATA_MOV, [WEST] -> [NORTH] (t=8)
+// ASM: ADD, [WEST, RED], [SOUTH, RED] -> [WEST, RED], [$25] (t=3)
+// ASM: PHI, [$24], [EAST, RED] -> [$24] (t=4)
+// ASM: FADD, [$24], [NORTH, RED] -> [$26], [EAST, RED] (t=5)
+// ASM: DATA_MOV, [EAST, RED] -> [$24] (t=5)
+// ASM: GRANT_PREDICATE, [$25], [$24] -> [WEST, RED] (t=6)
+// ASM: DATA_MOV, [WEST, RED] -> [EAST, RED] (t=6)
+// ASM: GRANT_PREDICATE, [$26], [NORTH, RED] -> [$24] (t=7)
+// ASM: CTRL_MOV, [WEST, RED] -> [SOUTH, RED] (t=7)
+// ASM: CTRL_MOV, [WEST, RED] -> [NORTH, RED] (t=8)
 
 // ASM-LABEL: PE(3,1):
-// ASM: GRANT_ONCE, [NORTH] -> [WEST] (t=3)
-// ASM: DATA_MOV, [WEST] -> [$28] (t=6)
-// ASM: GRANT_PREDICATE, [$28], [WEST] -> [SOUTH] (t=7)
+// ASM: GRANT_ONCE, [NORTH, RED] -> [WEST, RED] (t=3)
+// ASM: DATA_MOV, [EAST, RED] -> [$28] (t=6)
+// ASM: GRANT_PREDICATE, [$28], [WEST, RED] -> [SOUTH, RED] (t=7)
 
 // ASM-LABEL: PE(1,2):
-// ASM: DATA_MOV, [SOUTH] -> [EAST] (t=5)
-// ASM: DATA_MOV, [EAST] -> [SOUTH] (t=5)
+// ASM: DATA_MOV, [SOUTH, RED] -> [EAST, RED] (t=5)
+// ASM: DATA_MOV, [EAST, RED] -> [SOUTH, RED] (t=5)
 
 // ASM-LABEL: PE(2,2):
-// ASM: GRANT_ONCE, [NORTH] -> [$40] (t=3)
-// ASM: PHI, [SOUTH], [$40] -> [WEST], [SOUTH] (t=4)
-// ASM: DATA_MOV, [WEST] -> [SOUTH] (t=6)
-// ASM: CTRL_MOV, [SOUTH] -> [$41] (t=9)
+// ASM: GRANT_ONCE, [NORTH, RED] -> [$40] (t=3)
+// ASM: PHI, [SOUTH, RED], [$40] -> [SOUTH, RED], [WEST, RED] (t=4)
+// ASM: DATA_MOV, [WEST, RED] -> [SOUTH, RED] (t=6)
+// ASM: CTRL_MOV, [NORTH, RED] -> [$41] (t=9)
 
 // ASM-LABEL: PE(3,2):
-// ASM: CONSTANT, [#0.000000] -> [SOUTH] (t=2)
+// ASM: CONSTANT, [#0.000000] -> [SOUTH, RED] (t=2)
 
 // ASM-LABEL: PE(2,3):
-// ASM: CONSTANT, [#3.000000] -> [SOUTH] (t=2)
+// ASM: CONSTANT, [#3.000000] -> [SOUTH, RED] (t=2)
+
 
 
