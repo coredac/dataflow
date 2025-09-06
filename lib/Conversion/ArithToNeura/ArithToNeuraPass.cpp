@@ -2,7 +2,6 @@
 #include "Conversion/ConversionPasses.h"
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraOps.h"
-#include "NeuraDialect/NeuraPasses.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"

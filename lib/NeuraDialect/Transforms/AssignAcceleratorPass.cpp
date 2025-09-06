@@ -1,8 +1,8 @@
 #include "Common/AcceleratorAttrs.h"
-#include "mlir/IR/Builders.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
 
 using namespace mlir;
@@ -11,11 +11,14 @@ using namespace mlir;
 #include "NeuraDialect/NeuraPasses.h.inc"
 
 namespace {
-struct AssignAcceleratorPass : public PassWrapper<AssignAcceleratorPass, OperationPass<ModuleOp>> {
+struct AssignAcceleratorPass
+    : public PassWrapper<AssignAcceleratorPass, OperationPass<ModuleOp>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(AssignAcceleratorPass)
 
   StringRef getArgument() const override { return "assign-accelerator"; }
-  StringRef getDescription() const override { return "Tags non-main functions as neura.kernel."; }
+  StringRef getDescription() const override {
+    return "Tags non-main functions as neura.kernel.";
+  }
 
   void runOnOperation() override {
     ModuleOp module = getOperation();
@@ -23,10 +26,10 @@ struct AssignAcceleratorPass : public PassWrapper<AssignAcceleratorPass, Operati
 
     module.walk([&](Operation *op) {
       if (auto func = dyn_cast<FunctionOpInterface>(op)) {
-        if (func.getName() != "main" &&
-            !func.isExternal() &&
+        if (func.getName() != "main" && !func.isExternal() &&
             !func->hasAttr(mlir::accel::kAcceleratorAttr)) {
-          func->setAttr(mlir::accel::kAcceleratorAttr, builder.getStringAttr(mlir::accel::kNeuraTarget));
+          func->setAttr(mlir::accel::kAcceleratorAttr,
+                        builder.getStringAttr(mlir::accel::kNeuraTarget));
         }
       }
     });
@@ -42,4 +45,3 @@ std::unique_ptr<Pass> createAssignAcceleratorPass() {
 }
 } // namespace neura
 } // namespace mlir
-

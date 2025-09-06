@@ -7,7 +7,7 @@ Build LLVM & Neura
  - Clone this repo.
 
  - Build LLVM:
-   - Check out to commit `6146a88` (a stable version randomly picked, will sync to the latest version).
+   - Check out to commit `6146a88` (Our project is based on this version of LLVM).
    - Build:
 ```sh
  $ mkdir build && cd build
@@ -52,6 +52,6 @@ Build LLVM & Neura
  $ ../build/tools/mlir-neura-opt/mlir-neura-opt --debug test.mlir
 
  # Or test with lit:
- $ /workspace/llvm-project/build/bin/llvm-lit *
+ $ /workspace/llvm-project/build/bin/llvm-lit . -v
 ```
 
