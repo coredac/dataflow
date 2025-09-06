@@ -95,8 +95,13 @@ static TileLocation getTileLocation(Operation *op) {
   return tile_location;
 }
 
+// Helper to get mapping_locations array
+static ArrayAttr getMappingLocations(Operation *op) {
+  return op->getAttrOfType<ArrayAttr>("mapping_locs");
+}
+
 static std::optional<int> getMappedRegId(Operation *op) {
-  if (auto mapping_locations = op->getAttrOfType<ArrayAttr>("mapping_locs")) {
+  if (auto mapping_locations = getMappingLocations(op)) {
     for (Attribute location_attr : mapping_locations) {
       auto location_dict = dyn_cast<DictionaryAttr>(location_attr);
       if (!location_dict) continue;
@@ -189,7 +194,7 @@ struct RegStep  { int regId;  int ts; };
 
 static SmallVector<LinkStep, 8> collectLinkSteps(Operation *op) {
   SmallVector<LinkStep, 8> steps;
-  if (auto mapping_locations = op->getAttrOfType<ArrayAttr>("mapping_locs")) {
+  if (auto mapping_locations = getMappingLocations(op)) {
     for (Attribute location_attr : mapping_locations) {
       auto location_dict = dyn_cast<DictionaryAttr>(location_attr);
       if (!location_dict) continue;
@@ -207,7 +212,7 @@ static SmallVector<LinkStep, 8> collectLinkSteps(Operation *op) {
 
 static SmallVector<RegStep, 4> collectRegSteps(Operation *op) {
   SmallVector<RegStep, 4> steps;
-  if (auto mapping_locations = op->getAttrOfType<ArrayAttr>("mapping_locs")) {
+  if (auto mapping_locations = getMappingLocations(op)) {
     for (Attribute location_attr : mapping_locations) {
       auto location_dict = dyn_cast<DictionaryAttr>(location_attr);
       if (!location_dict) continue;
@@ -444,7 +449,6 @@ struct GenerateCodePass
     return false;
   }
 
-  // If not using a register, wire the consumer to the final incoming direction.
   template<bool IsCtrl>
   void handleDirectionRewiring(Operation *consOp, Value atVal, StringRef consumer_direction,
                                const SmallVector<LinkStep, 8> &links, Operation *forwarder) {
@@ -490,15 +494,6 @@ struct GenerateCodePass
     }
   }
 
-  // Thin wrappers to keep the original interface (still available if external callers rely on them)
-  void expandDataMov(Operation *forwarder, const Topology &topology) {
-    static const DenseMap<Value, Operation*> kEmpty;
-    expandMovImpl<false>(forwarder, topology, kEmpty);
-  }
-  void expandCtrlMov(Operation *forwarder, const Topology &topology,
-                     const DenseMap<Value, Operation*> &reserve_to_phi_map) {
-    expandMovImpl<true>(forwarder, topology, reserve_to_phi_map);
-  }
 
   // ---------- output generation ----------
   void logUnresolvedOperands(ModuleOp module) {
