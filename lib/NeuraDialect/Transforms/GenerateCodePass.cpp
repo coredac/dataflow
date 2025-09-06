@@ -8,6 +8,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
+
 #include <algorithm>
 #include <cassert>
 #include <map>
@@ -15,6 +16,7 @@
 #include <string>
 #include <vector>
 #include <unordered_set>
+
 #include "NeuraDialect/Architecture/Architecture.h"
 #include "NeuraDialect/NeuraOps.h"
 
@@ -38,7 +40,7 @@ struct Instruction {
   Instruction(const std::string &op) : opcode(op) {}
 };
 
-// Entry represents a basic block or execution context within a tile.
+// A single-entry model per tile for now. Can be extended later.
 struct Entry {
   std::string entry_id;
   std::string type;
@@ -117,7 +119,7 @@ static std::string getOpcode(Operation *op) {
   return opcode;
 }
 
-// Literal for CONSTANT's source
+// Literal for CONSTANT's source, e.g. "#10" / "#0" / "#3.0".
 static std::string getConstantLiteral(Operation *op) {
   if (!isConstant(op)) return "";
   if (auto value_attr = op->getAttr("value")) {
@@ -272,12 +274,8 @@ struct GenerateCodePass
     deposit_signatures.clear();
   }
 
-  void setTilePlacements(func::FuncOp function) {
-    function.walk([&](Operation *operation){ operation_placements[operation] = getTileLocation(operation); });
-  }
-
   std::pair<int, int> getArrayDimensions(func::FuncOp function) {
-    int columns = 4, rows = 4; // Default 4x4 CGRA configuration
+    int columns = 4, rows = 4; // default 4x4 CGRA
     if (auto mapping_info = function->getAttrOfType<DictionaryAttr>("mapping_info")) {
       if (auto x_tiles = dyn_cast_or_null<IntegerAttr>(mapping_info.get("x_tiles"))) columns = x_tiles.getInt();
       if (auto y_tiles = dyn_cast_or_null<IntegerAttr>(mapping_info.get("y_tiles"))) rows   = y_tiles.getInt();
@@ -285,41 +283,63 @@ struct GenerateCodePass
     return {columns, rows};
   }
 
-  // ---------- compute operations materialization ----------
-  void materializeComputeOps(func::FuncOp function) {
-    function.walk([&](Operation *operation){
-      auto placement = operation_placements[operation];
-      if (!placement.has_tile) return;
-      if (isReserve(operation) || isCtrlMov(operation) || isDataMov(operation)) return;
+  // ---------- Single-walk indexing ----------
+  // Do everything that needs a walk in a single pass:
+  //   - record operation_placements
+  //   - materialize compute/phi/const instructions
+  //   - collect DATA_MOV and CTRL_MOV ops
+  //   - collect reserve_to_phi_map (PHI's operand#0 is the reserve)
+  void indexIR(func::FuncOp function,
+               SmallVector<Operation*> &dataMovs,
+               SmallVector<Operation*> &ctrlMovs,
+               DenseMap<Value, Operation*> &reserve_to_phi_map) {
+    function.walk([&](Operation *op) {
+      // placement for every op (even for mov/reserve)
+      operation_placements[op] = getTileLocation(op);
 
-      std::string opcode = getOpcode(operation);
-      Instruction instruction(opcode);
-      instruction.time_step = placement.time_step;
-
-      if (isConstant(operation)) {
-        instruction.src_operands.emplace_back(getConstantLiteral(operation), "RED");
-      } else {
-        SmallVector<Value> operands; operands.reserve(operation->getNumOperands());
-        for (Value input_value : operation->getOperands()) {
-          operands.push_back(input_value);
-          instruction.src_operands.emplace_back("UNRESOLVED", "RED");
-        }
-        operation_to_operands[operation] = std::move(operands);
+      // build reserve -> phi mapping
+      if (isPhi(op) && op->getNumOperands() >= 1) {
+        reserve_to_phi_map[op->getOperand(0)] = op;
       }
 
-      // If an op maps a register by itself, keep it as a destination.
-      if (auto mapped_register_id = getMappedRegId(operation))
-        instruction.dst_operands.emplace_back("$" + std::to_string(*mapped_register_id), "RED");
+      // collect forwarders
+      if (isDataMov(op)) { dataMovs.push_back(op); return; }
+      if (isCtrlMov(op)) { ctrlMovs.push_back(op); return; }
+
+      // skip Reserve from materialization
+      if (isReserve(op)) return;
+
+      // materialize all other ops placed on tiles (compute/phi/const/etc.)
+      auto placement = operation_placements[op];
+      if (!placement.has_tile) return;
+
+      std::string opcode = getOpcode(op);
+      Instruction inst(opcode);
+      inst.time_step = placement.time_step;
+
+      if (isConstant(op)) {
+        inst.src_operands.emplace_back(getConstantLiteral(op), "RED");
+      } else {
+        SmallVector<Value> operands; operands.reserve(op->getNumOperands());
+        for (Value v : op->getOperands()) {
+          operands.push_back(v);
+          inst.src_operands.emplace_back("UNRESOLVED", "RED");
+        }
+        operation_to_operands[op] = std::move(operands);
+      }
+
+      if (auto mapped_register_id = getMappedRegId(op))
+        inst.dst_operands.emplace_back("$" + std::to_string(*mapped_register_id), "RED");
 
       auto &bucket = getInstructionBucket(placement.col_idx, placement.row_idx, placement.time_step);
-      bucket.push_back(std::move(instruction));
-      operation_to_instruction_reference[operation] =
+      bucket.push_back(std::move(inst));
+      operation_to_instruction_reference[op] =
           InstructionReference{placement.col_idx, placement.row_idx, placement.time_step,
                                (int)bucket.size() - 1};
     });
   }
 
-  // ---------- wiring via unified forwarder expansion ----------
+  // ---------- unified forwarder expansion helpers ----------
   static SmallVector<LinkStep, 8> getLinkChain(Operation *forwarder) { return collectLinkSteps(forwarder); }
   static SmallVector<RegStep, 4>  getRegisterSteps(Operation *forwarder) { return collectRegSteps(forwarder); }
 
@@ -382,8 +402,7 @@ struct GenerateCodePass
     return consumers;
   }
 
-  // Consumers for CTRL_MOV: PHI found by reserve->phi map, but we must wire the PHI's *data* input.
-  // So we pair {phi, source}, not {phi, reserve}.
+  // Consumers for CTRL_MOV: find PHI via reserve->phi map; wire the PHI's *data* input (source).
   SmallVector<std::pair<Operation*, Value>, 2> collectCtrlMovConsumers(Operation *forwarder,
                                                                       const DenseMap<Value, Operation*> &reserve2phi) {
     SmallVector<std::pair<Operation*, Value>, 2> consumers;
@@ -396,7 +415,7 @@ struct GenerateCodePass
     return consumers;
   }
 
-  // Try register-based rewiring. If cross-tile, emits a deposit [incoming_dir]->[$reg] at earliest reg ts.
+  // Try register-based rewiring. If cross-tile, emit a deposit [incoming_dir]->[$reg] at earliest reg ts.
   // Returns true if rewiring to $reg was applied to the consumer.
   template<bool IsCtrl>
   bool handleRegisterRewiring(Operation *consOp, Value atVal, const SmallVector<RegStep, 4> &regs,
@@ -433,15 +452,12 @@ struct GenerateCodePass
       setConsumerSourceExact(consOp, atVal, consumer_direction.str());
     } else {
       forwarder->emitError(IsCtrl
-          ? "same-tile ctrl_mov without register mapping is illegal (LOCAL forbidden). Provide a register in mapping_locs."
-          : "same-tile data_mov without register mapping is illegal (LOCAL forbidden). Provide a register in mapping_locs.");
+          ? "same-tile ctrl_mov without register mapping is illegal. Provide a register in mapping_locs."
+          : "same-tile data_mov without register mapping is illegal. Provide a register in mapping_locs.");
       assert(false && "same-tile mov without register mapping");
     }
   }
 
-  // Core implementation:
-  //   IsCtrl=false -> DATA_MOV
-  //   IsCtrl=true  -> CTRL_MOV (uses CTRL_MOV for hops/deposits and targets PHI's data input)
   template<bool IsCtrl>
   void expandMovImpl(Operation *forwarder, const Topology &topo,
                      const DenseMap<Value, Operation*> &reserve2phi) {
@@ -474,12 +490,11 @@ struct GenerateCodePass
     }
   }
 
-  // Thin wrappers to keep the original interface
+  // Thin wrappers to keep the original interface (still available if external callers rely on them)
   void expandDataMov(Operation *forwarder, const Topology &topology) {
     static const DenseMap<Value, Operation*> kEmpty;
     expandMovImpl<false>(forwarder, topology, kEmpty);
   }
-
   void expandCtrlMov(Operation *forwarder, const Topology &topology,
                      const DenseMap<Value, Operation*> &reserve_to_phi_map) {
     expandMovImpl<true>(forwarder, topology, reserve_to_phi_map);
@@ -499,7 +514,7 @@ struct GenerateCodePass
           for (size_t si = 0; si < inst.src_operands.size(); ++si) {
             Operand &s = inst.src_operands[si];
             if (s.operand == "UNRESOLVED") {
-              s.color = "YELLOW"; ++unsrc;
+              s.color = "ERROR"; ++unsrc;
               llvm::errs() << "[UNRESOLVED SRC] tile("<<column<<","<<row<<") t="<<ts
                            << " inst#" << i << " op=" << inst.opcode
                            << " src_idx=" << si << "\n";
@@ -530,12 +545,13 @@ struct GenerateCodePass
   ArrayConfig buildArrayConfig(int columns, int rows) {
     ArrayConfig config{columns, rows, {}};
     std::map<std::pair<int,int>, std::vector<Instruction>> tile_insts;
-    
+
     // Flatten and sort by timestep
     for (auto &[tile_key, tsmap] : tile_time_instructions) {
       auto &flat = tile_insts[tile_key];
       for (auto &[ts, vec] : tsmap) for (Instruction &inst : vec) flat.push_back(inst);
-      std::stable_sort(flat.begin(), flat.end(), [](const Instruction &a, const Instruction &b){ return a.time_step < b.time_step; });
+      std::stable_sort(flat.begin(), flat.end(),
+        [](const Instruction &a, const Instruction &b){ return a.time_step < b.time_step; });
     }
 
     for (int r = 0; r < rows; ++r) {
@@ -557,32 +573,36 @@ struct GenerateCodePass
 
     yaml_out << "array_config:\n  columns: " << config.columns << "\n  rows: " << config.rows << "\n  cores:\n";
     for (const Tile &core : config.cores) {
-      yaml_out << "    - column: " << core.col_idx << "\n      row: " << core.row_idx 
+      yaml_out << "    - column: " << core.col_idx << "\n      row: " << core.row_idx
                << "\n      core_id: \"" << core.core_id << "\"\n      entries:\n";
       int entry_id = 0;
       for (const Instruction &inst : core.entry.instructions) {
         yaml_out << "        - entry_id: \"entry" << entry_id++ << "\"\n          instructions:\n"
                  << "            - opcode: \"" << inst.opcode << "\"\n              timestep: " << inst.time_step << "\n";
-        for (const auto &[operands, prefix] : {std::make_pair(inst.src_operands, "src_operands"), 
-                                               std::make_pair(inst.dst_operands, "dst_operands")}) {
-          if (!operands.empty()) {
-            yaml_out << "              " << prefix << ":\n";
-            for (const Operand &opnd : operands)
-              yaml_out << "                - operand: \"" << opnd.operand << "\"\n                  color: \"" << opnd.color << "\"\n";
-          }
+        // sources
+        if (!inst.src_operands.empty()) {
+          yaml_out << "              src_operands:\n";
+          for (const Operand &opnd : inst.src_operands)
+            yaml_out << "                - operand: \"" << opnd.operand << "\"\n                  color: \"" << opnd.color << "\"\n";
+        }
+        // destinations
+        if (!inst.dst_operands.empty()) {
+          yaml_out << "              dst_operands:\n";
+          for (const Operand &opnd : inst.dst_operands)
+            yaml_out << "                - operand: \"" << opnd.operand << "\"\n                  color: \"" << opnd.color << "\"\n";
         }
       }
     }
     yaml_out.close();
   }
 
-  // Check if an operand token is a direction (vs constant/register)
+  // Direction vs const/reg helper
   static bool isDirectionalOperand(const std::string &operand) {
     // Only non-directional operands start with $ (registers) or # (constants)
     return !operand.empty() && operand[0] != '$' && operand[0] != '#';
   }
 
-  // Print one operand as [TOKEN, COLOR] (omit color for non-directionals in YAML; in ASM we keep it)
+  // Render [TOKEN, COLOR] (keep color only for directional tokens)
   static std::string formatOperand(const Operand &operand) {
     std::string result = "[" + operand.operand;
     if (isDirectionalOperand(operand.operand)) {
@@ -664,27 +684,7 @@ struct GenerateCodePass
     inst->dst_operands.emplace_back(text, "RED");
   }
 
-  // ---------- ctrl_mov helpers ----------
-  // Build mapping from reserve SSA value -> PHI op (PHI operand#0 = reserve)
-  DenseMap<Value, Operation*> buildReserveToPhiMap(func::FuncOp function) {
-    DenseMap<Value, Operation*> m;
-    function.walk([&](Operation *op){
-      if (isPhi(op) && op->getNumOperands() >= 1)
-        m[op->getOperand(0)] = op;
-    });
-    return m;
-  }
-
-  // ---------- entry points ----------
-  void wireEdges(func::FuncOp function, const Topology &topology) {
-    function.walk([&](Operation *op){ if (isDataMov(op)) expandDataMov(op, topology); });
-  }
-
-  void handleCtrlMov(func::FuncOp function, const Topology &topology) {
-    auto reserve_to_phi_map = buildReserveToPhiMap(function);
-    function.walk([&](Operation *op){ if (isCtrlMov(op)) expandCtrlMov(op, topology, reserve_to_phi_map); });
-  }
-
+  // ---------- entry point ----------
   void runOnOperation() override {
     ModuleOp module = getOperation();
 
@@ -696,19 +696,22 @@ struct GenerateCodePass
       Topology topo = getTopologyFromArchitecture(columns, rows);
 
       clearState();
-      setTilePlacements(func);
 
-      // 1) Materialize compute/logic ops
-      materializeComputeOps(func);
+      // Single function-level walk: index + materialize + collect.
+      SmallVector<Operation*> dataMovs;
+      SmallVector<Operation*> ctrlMovs;
+      DenseMap<Value, Operation*> reserve_to_phi_map;
+      indexIR(func, dataMovs, ctrlMovs, reserve_to_phi_map);
 
-      // 2) Wire by expanding forwarders (data/control mov)
-      wireEdges(func, topo);
-      handleCtrlMov(func, topo);
+      // Expand forwarders without re-walking IR.
+      for (Operation *op : dataMovs)
+        expandMovImpl<false>(op, topo, /*unused*/reserve_to_phi_map);
+      for (Operation *op : ctrlMovs)
+        expandMovImpl<true>(op,  topo, reserve_to_phi_map);
 
-      // 3) Log unresolved operands
+      // Debug unresolveds, then dump outputs.
       logUnresolvedOperands(module);
 
-      // 4) Generate outputs
       ArrayConfig config = buildArrayConfig(columns, rows);
       writeYAMLOutput(config);
       writeASMOutput(config);
