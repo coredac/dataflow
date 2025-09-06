@@ -3,9 +3,7 @@
 
 #include "NeuraDialect/Mapping/Mapping.h"
 #include "NeuraDialect/Mapping/MappingState.h"
-#include "NeuraDialect/Mapping/mapping_util.h"
 #include <climits>
-#include <map>
 #include <set>
 
 namespace mlir {
