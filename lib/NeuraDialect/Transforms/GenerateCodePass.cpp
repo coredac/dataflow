@@ -522,7 +522,7 @@ struct GenerateCodePass
           for (size_t di = 0; di < inst.dst_operands.size(); ++di) {
             Operand &d = inst.dst_operands[di];
             if (d.operand == "UNRESOLVED") {
-              d.color = "YELLOW"; ++undst;
+              d.color = "ERROR"; ++undst;
               llvm::errs() << "[UNRESOLVED DST] tile("<<column<<","<<row<<") t="<< ts
                            << " inst#" << i << " op=" << inst.opcode
                            << " dst_idx=" << di << "\n";
@@ -597,7 +597,6 @@ struct GenerateCodePass
     return !operand.empty() && operand[0] != '$' && operand[0] != '#';
   }
 
-  // Render [TOKEN, COLOR] (keep color only for directional tokens)
   static std::string formatOperand(const Operand &operand) {
     std::string result = "[" + operand.operand;
     if (isDirectionalOperand(operand.operand)) {
