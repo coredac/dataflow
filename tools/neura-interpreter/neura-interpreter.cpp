@@ -7,10 +7,6 @@
 
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraOps.h"
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/Support/Format.h"
-#include "llvm/Support/SourceMgr.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/AsmState.h"
@@ -19,6 +15,10 @@
 #include "mlir/IR/Operation.h"
 #include "mlir/Parser/Parser.h"
 #include "mlir/Support/FileUtilities.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/Support/Format.h"
+#include "llvm/Support/SourceMgr.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace mlir;
 
@@ -48,12 +48,8 @@ struct PredicatedData {
    * false.
    */
   PredicatedData()
-      : value{0.0f},
-        predicate{true},
-        is_vector{false},
-        vector_data{},
-        is_reserve{false},
-        is_updated{false} {}
+      : value{0.0f}, predicate{true}, is_vector{false}, vector_data{},
+        is_reserve{false}, is_updated{false} {}
 
   /**
    * @brief Compares this PredicatedData instance with another to check for
@@ -72,10 +68,18 @@ struct PredicatedData {
 };
 
 bool PredicatedData::isUpdatedComparedTo(const PredicatedData &other) const {
-  if (value != other.value) return true;
-  if (predicate != other.predicate) return true;
-  if (is_vector != other.is_vector) return true;
-  if (is_vector && vector_data != other.vector_data) return true;
+  if (value != other.value) {
+    return true;
+  }
+  if (predicate != other.predicate) {
+    return true;
+  }
+  if (is_vector != other.is_vector) {
+    return true;
+  }
+  if (is_vector && vector_data != other.vector_data) {
+    return true;
+  }
   return false;
 }
 
@@ -220,8 +224,8 @@ std::vector<Operation *> DependencyGraph::getReadyToExecuteOperations() {
   return executable_ops;
 }
 
-std::vector<Operation *> DependencyGraph::getReadyToExecuteConsumerOperations(
-    Operation *op) {
+std::vector<Operation *>
+DependencyGraph::getReadyToExecuteConsumerOperations(Operation *op) {
   std::vector<Operation *> dependent_ops;
   for (Value result : op->getResults()) {
     for (Operation *user : result.getUsers()) {
@@ -948,7 +952,9 @@ bool handleVFMulOp(
     llvm::outs() << "[";
     for (size_t i = 0; i < vec.size(); ++i) {
       llvm::outs() << vec[i];
-      if (i != vec.size() - 1) llvm::outs() << ", ";
+      if (i != vec.size() - 1) {
+        llvm::outs() << ", ";
+      }
     }
     llvm::outs() << "]";
   };
@@ -1230,7 +1236,9 @@ bool handleFuncReturnOp(
     for (size_t i = 0; i < result.vector_data.size(); ++i) {
       float val = result.predicate ? result.vector_data[i] : 0.0f;
       llvm::outs() << llvm::format("%.6f", val);
-      if (i != result.vector_data.size() - 1) llvm::outs() << ", ";
+      if (i != result.vector_data.size() - 1) {
+        llvm::outs() << ", ";
+      }
     }
     llvm::outs() << "]\n";
   } else {
@@ -1435,15 +1443,15 @@ bool handleICmpOp(
   } else if (cmp_type == "ne") {
     icmp_result = (s_lhs != s_rhs);
   } else if (cmp_type.starts_with("s")) {
-    if (cmp_type == "slt")
+    if (cmp_type == "slt") {
       icmp_result = (s_lhs < s_rhs);
-    else if (cmp_type == "sle")
+    } else if (cmp_type == "sle") {
       icmp_result = (s_lhs <= s_rhs);
-    else if (cmp_type == "sgt")
+    } else if (cmp_type == "sgt") {
       icmp_result = (s_lhs > s_rhs);
-    else if (cmp_type == "sge")
+    } else if (cmp_type == "sge") {
       icmp_result = (s_lhs >= s_rhs);
-    else {
+    } else {
       if (isVerboseMode()) {
         llvm::errs()
             << "[neura-interpreter]  └─ Unsupported signed comparison type: "
@@ -1454,15 +1462,15 @@ bool handleICmpOp(
   }
   // Handles unsigned comparisons.
   else if (cmp_type.starts_with("u")) {
-    if (cmp_type == "ult")
+    if (cmp_type == "ult") {
       icmp_result = (u_lhs < u_rhs);
-    else if (cmp_type == "ule")
+    } else if (cmp_type == "ule") {
       icmp_result = (u_lhs <= u_rhs);
-    else if (cmp_type == "ugt")
+    } else if (cmp_type == "ugt") {
       icmp_result = (u_lhs > u_rhs);
-    else if (cmp_type == "uge")
+    } else if (cmp_type == "uge") {
       icmp_result = (u_lhs >= u_rhs);
-    else {
+    } else {
       if (isVerboseMode()) {
         llvm::errs() << "[neura-interpreter]  └─ Unsupported unsigned "
                         "comparison type: "
@@ -2255,12 +2263,13 @@ bool handleCondBrOp(
                  << current_block << "\n";
     llvm::outs() << "[neura-interpreter]  ├─ Branch Targets\n";
     for (unsigned int i = 0; i < succ_blocks.size(); ++i) {
-      if (i < succ_blocks.size() - 1)
+      if (i < succ_blocks.size() - 1) {
         llvm::outs() << "[neura-interpreter]  │  ├─ True block    : Block@"
                      << succ_blocks[i] << "\n";
-      else
+      } else {
         llvm::outs() << "[neura-interpreter]  │  └─ False block   : Block@"
                      << succ_blocks[i] << "\n";
+      }
     }
   }
 
@@ -2387,7 +2396,7 @@ bool handlePhiOp(
       llvm::errs() << "[neura-interpreter]  └─ Error: No inputs provided "
                       "(execution failed)\n";
     }
-    return false;  // No inputs is a failure in both modes.
+    return false; // No inputs is a failure in both modes.
   }
 
   // Stores the finally selected input data.
@@ -2488,7 +2497,7 @@ bool handlePhiOp(
       }
     }
 
-  } else {  // DataFlow mode
+  } else { // DataFlow mode
     // DataFlow mode: Selects first valid input (with true predicate).
     bool found_valid_input = false;
     for (size_t i = 0; i < input_count; ++i) {
@@ -2535,7 +2544,7 @@ bool handlePhiOp(
       }
     }
     selection_success =
-        true;  // DataFlow mode always considers selection successful.
+        true; // DataFlow mode always considers selection successful.
 
     // DataFlow mode: Logs input values.
     if (isVerboseMode()) {
@@ -2801,7 +2810,7 @@ bool handleNeuraReturnOp(
     results.push_back(value_to_predicated_data_map[val]);
     if (!value_to_predicated_data_map[val].predicate) {
       has_valid_result = false;
-      break;  // If any return value is invalid, do not terminate.
+      break; // If any return value is invalid, do not terminate.
     }
   }
 
@@ -2816,7 +2825,8 @@ bool handleNeuraReturnOp(
         for (size_t j = 0; j < data.vector_data.size(); ++j) {
           float val = data.predicate ? data.vector_data[j] : 0.0f;
           llvm::outs() << llvm::format("%.6f", val);
-          if (j != data.vector_data.size() - 1) llvm::outs() << ", ";
+          if (j != data.vector_data.size() - 1)
+            llvm::outs() << ", ";
         }
         llvm::outs() << "]";
       } else {
@@ -3163,7 +3173,7 @@ OperationHandleResult handleOperation(
     if (current_block && last_visited_block) {
       result.success = handleBrOp(br_op, value_to_predicated_data_map,
                                   *current_block, *last_visited_block);
-      result.is_branch = true;  // Marks as branch to reset index.
+      result.is_branch = true; // Marks as branch to reset index.
     } else {
       result.success = false;
     }
@@ -3507,14 +3517,17 @@ int run(func::FuncOp func,
     // Main loop: processes operations sequentially through blocks.
     while (!is_terminated && current_block) {
       auto &operations = current_block->getOperations();
-      if (op_index >= operations.size()) break;
+      if (op_index >= operations.size())
+        break;
 
       Operation &op = *std::next(operations.begin(), op_index);
       // Processes operation with block information for control flow handling.
       auto handle_result = handleOperation(&op, value_to_predicated_data_map,
                                            &current_block, &last_visited_block);
 
-      if (!handle_result.success) return EXIT_FAILURE;
+      if (!handle_result.success) {
+        return EXIT_FAILURE;
+      }
       if (handle_result.is_terminated) {
         is_terminated = true;
         op_index++;

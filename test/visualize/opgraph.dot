@@ -1,0 +1,88 @@
+digraph G {
+  compound = true;
+  subgraph cluster_1 {
+    v2 [label = " ", shape = plain];
+    label = "builtin.module : ()\n";
+    subgraph cluster_3 {
+      v4 [label = " ", shape = plain];
+      label = "";
+      subgraph cluster_5 {
+        v6 [label = " ", shape = plain];
+        label = "func.func : ()\n\naccelerator: \"neura\"\nfunction_type: (f32, f32) -> f32\nsym_name: \"test_print_op_graph...";
+        subgraph cluster_7 {
+          v8 [label = " ", shape = plain];
+          label = "";
+          v9 [label = "arg0", shape = ellipse];
+          v10 [label = "arg1", shape = ellipse];
+          v11 [fillcolor = "0.000000 1.0 1.0", label = "neura.fadd : (f32)\n", shape = ellipse, style = filled];
+          v12 [fillcolor = "0.250000 1.0 1.0", label = "neura.return : ()\n", shape = ellipse, style = filled];
+        }
+      }
+    }
+  }
+  v9 -> v11 [label = "0", style = solid];
+  v10 -> v11 [label = "1", style = solid];
+  v11 -> v12 [label = "", style = solid];
+}
+digraph G {
+  compound = true;
+  subgraph cluster_1 {
+    v2 [label = " ", shape = plain];
+    label = "builtin.module : ()\n";
+    subgraph cluster_3 {
+      v4 [label = " ", shape = plain];
+      label = "";
+      subgraph cluster_5 {
+        v6 [label = " ", shape = plain];
+        label = "func.func : ()\n\naccelerator: \"neura\"\nfunction_type: (f32, f32) -> f32\nsym_name: \"test_print_op_graph...";
+        subgraph cluster_7 {
+          v8 [label = " ", shape = plain];
+          label = "";
+          v9 [label = "arg0", shape = ellipse];
+          v10 [label = "arg1", shape = ellipse];
+          v11 [fillcolor = "0.000000 1.0 1.0", label = "neura.constant : (!neura.data<f32, i1>)\n\npredicate: true\nvalue: \"%arg0\"", shape = ellipse, style = filled];
+          v12 [fillcolor = "0.000000 1.0 1.0", label = "neura.constant : (!neura.data<f32, i1>)\n\npredicate: true\nvalue: \"%arg1\"", shape = ellipse, style = filled];
+          v13 [fillcolor = "0.200000 1.0 1.0", label = "neura.fadd : (!neura.data<f32, i1>)\n", shape = ellipse, style = filled];
+          v14 [fillcolor = "0.400000 1.0 1.0", label = "neura.return : ()\n", shape = ellipse, style = filled];
+        }
+      }
+    }
+  }
+  v11 -> v13 [label = "0", style = solid];
+  v12 -> v13 [label = "1", style = solid];
+  v13 -> v14 [label = "", style = solid];
+}
+digraph G {
+  compound = true;
+  subgraph cluster_1 {
+    v2 [label = " ", shape = plain];
+    label = "builtin.module : ()\n";
+    subgraph cluster_3 {
+      v4 [label = " ", shape = plain];
+      label = "";
+      subgraph cluster_5 {
+        v6 [label = " ", shape = plain];
+        label = "func.func : ()\n\naccelerator: \"neura\"\nfunction_type: (f32, f32) -> f32\nsym_name: \"test_print_op_graph...";
+        subgraph cluster_7 {
+          v8 [label = " ", shape = plain];
+          label = "";
+          v9 [label = "arg0", shape = ellipse];
+          v10 [label = "arg1", shape = ellipse];
+          v11 [fillcolor = "0.000000 1.0 1.0", label = "neura.constant : (!neura.data<f32, i1>)\n\npredicate: true\nvalue: \"%arg0\"", shape = ellipse, style = filled];
+          v12 [fillcolor = "0.000000 1.0 1.0", label = "neura.constant : (!neura.data<f32, i1>)\n\npredicate: true\nvalue: \"%arg1\"", shape = ellipse, style = filled];
+          v13 [fillcolor = "0.166667 1.0 1.0", label = "neura.data_mov : (!neura.data<f32, i1>)\n", shape = ellipse, style = filled];
+          v14 [fillcolor = "0.166667 1.0 1.0", label = "neura.data_mov : (!neura.data<f32, i1>)\n", shape = ellipse, style = filled];
+          v15 [fillcolor = "0.333333 1.0 1.0", label = "neura.fadd : (!neura.data<f32, i1>)\n", shape = ellipse, style = filled];
+          v16 [fillcolor = "0.166667 1.0 1.0", label = "neura.data_mov : (!neura.data<f32, i1>)\n", shape = ellipse, style = filled];
+          v17 [fillcolor = "0.500000 1.0 1.0", label = "neura.return : ()\n", shape = ellipse, style = filled];
+        }
+      }
+    }
+  }
+  v11 -> v13 [label = "", style = solid];
+  v12 -> v14 [label = "", style = solid];
+  v13 -> v15 [label = "0", style = solid];
+  v14 -> v15 [label = "1", style = solid];
+  v15 -> v16 [label = "", style = solid];
+  v16 -> v17 [label = "", style = solid];
+}

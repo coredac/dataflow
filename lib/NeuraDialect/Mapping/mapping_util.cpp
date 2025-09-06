@@ -68,11 +68,10 @@ void traverseAlongPath(Operation *op, Value reserve_value,
           ++effective_length;
         }
       }
-      collected_paths.push_back(RecurrenceCycle{
-        operations :
-            SmallVector<Operation *>(current_path.begin(), current_path.end()),
-        length : static_cast<int>(effective_length)
-      });
+      collected_paths.push_back(
+          RecurrenceCycle{/* operations = */ SmallVector<Operation *>(
+                              current_path.begin(), current_path.end()),
+                          /* length = */ static_cast<int>(effective_length)});
 
       if (res_op) {
         current_path.pop_front();
@@ -159,10 +158,11 @@ mlir::neura::getTopologicallySortedOps(Operation *func_op) {
   // Collects recurrence cycle ops.
   auto recurrence_cycles = collectRecurrenceCycles(func_op);
   llvm::DenseSet<Operation *> recurrence_ops;
-  for (const auto &cycle : recurrence_cycles)
-    for (Operation *op : cycle.operations)
+  for (const auto &cycle : recurrence_cycles) {
+    for (Operation *op : cycle.operations) {
       recurrence_ops.insert(op);
-
+    }
+  }
   // Counts unresolved dependencies for each op.
   func_op->walk([&](Operation *op) {
     if (op == func_op) {
@@ -225,8 +225,9 @@ mlir::neura::getOpsInAlapLevels(const std::vector<Operation *> &sorted_ops,
     int level = 0;
     for (Value result : op->getResults()) {
       for (Operation *user : result.getUsers()) {
-        if (!op_level.count(user))
+        if (!op_level.count(user)) {
           continue;
+        }
 
         int user_level = op_level[user];
 
