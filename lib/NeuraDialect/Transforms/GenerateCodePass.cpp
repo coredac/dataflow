@@ -36,7 +36,7 @@ struct Instruction {
   std::string opcode;
   std::vector<Operand> src_operands;
   std::vector<Operand> dst_operands;
-  int time_step = -1; // for ordering
+  int time_step = -1; // for ordering.
   Instruction(const std::string &op) : opcode(op) {}
 };
 
@@ -52,7 +52,7 @@ struct Entry {
 struct Tile {
   int col_idx, row_idx;
   int core_id;
-  Entry entry; // single entry per tile
+  Entry entry; // single entry per tile.
   Tile(int c, int r, int id) : col_idx(c), row_idx(r), core_id(id), entry("entry0", "loop") {}
 };
 
@@ -67,35 +67,35 @@ struct TileLocation {
   bool has_tile = false;
 };
 
-// ---- Operation kind helpers ----
+// ---- Operation kind helpers ----.
 static bool isDataMov(Operation *op) { return dyn_cast<DataMovOp>(op) != nullptr; }
 static bool isCtrlMov(Operation *op) { return dyn_cast<CtrlMovOp>(op) != nullptr; }
 static bool isPhi(Operation *op) { return dyn_cast<PhiOp>(op) != nullptr; }
 static bool isReserve(Operation *op) { return dyn_cast<ReserveOp>(op) != nullptr; }
 static bool isConstant(Operation *op) { return dyn_cast<ConstantOp>(op) != nullptr; }
 
-// ----- placement helpers -----
+// ----- placement helpers -----.
 static TileLocation getTileLocation(Operation *op) {
   TileLocation tile_location;
   if (auto arr = op->getAttrOfType<ArrayAttr>("mapping_locs")) {
     for (Attribute a : arr) {
       auto d = dyn_cast<DictionaryAttr>(a);
       if (!d) continue;
-      auto res = dyn_cast_or_null<StringAttr>(d.get("resource"));
-      if (!res || res.getValue() != "tile") continue;
-      if (auto x = dyn_cast_or_null<IntegerAttr>(d.get("x"))) tile_location.col_idx = x.getInt();
-      if (auto y = dyn_cast_or_null<IntegerAttr>(d.get("y"))) tile_location.row_idx = y.getInt();
-      if (auto ts = dyn_cast_or_null<IntegerAttr>(d.get("time_step"))) tile_location.time_step = ts.getInt();
+      auto resource = dyn_cast_or_null<StringAttr>(d.get("resource"));
+      if (!resource || resource.getValue() != "tile") continue;
+      if (auto x_coord = dyn_cast_or_null<IntegerAttr>(d.get("x"))) tile_location.col_idx = x_coord.getInt();
+      if (auto y_coord = dyn_cast_or_null<IntegerAttr>(d.get("y"))) tile_location.row_idx = y_coord.getInt();
+      if (auto timestep = dyn_cast_or_null<IntegerAttr>(d.get("time_step"))) tile_location.time_step = timestep.getInt();
       tile_location.has_tile = true;
       break;
     }
   }
-  // If tile mapping exists, x/y must be valid.
+  // If tile mappings exist, x/y must be valid.
   assert(!tile_location.has_tile || (tile_location.col_idx >= 0 && tile_location.row_idx >= 0));
   return tile_location;
 }
 
-// Helper to get mapping_locations array
+// Helper to get mapping_locations arrays.
 static ArrayAttr getMappingLocations(Operation *op) {
   return op->getAttrOfType<ArrayAttr>("mapping_locs");
 }
@@ -124,7 +124,7 @@ static std::string getOpcode(Operation *op) {
   return opcode;
 }
 
-// Literal for CONSTANT's source, e.g. "#10" / "#0" / "#3.0".
+// Literals for CONSTANT's sources, e.g. "#10" / "#0" / "#3.0".
 static std::string getConstantLiteral(Operation *op) {
   if (!isConstant(op)) return "";
   if (auto value_attr = op->getAttr("value")) {
@@ -136,11 +136,11 @@ static std::string getConstantLiteral(Operation *op) {
   return "#0";
 }
 
-// ----- Topology from Architecture -----
+// ----- Topology from Architecture -----.
 struct Topology {
-  DenseMap<int, std::pair<int,int>> link_ends;      // link_id -> (srcTileId, dstTileId)
-  DenseMap<int, std::pair<int,int>> tile_location;  // tileId -> (x,y)
-  DenseMap<std::pair<int,int>, int> coord_to_tile;  // (x,y) -> tileId
+  DenseMap<int, std::pair<int,int>> link_ends;      // link_id -> (srcTileId, dstTileId).
+  DenseMap<int, std::pair<int,int>> tile_location;  // tileId -> (x,y).
+  DenseMap<std::pair<int,int>, int> coord_to_tile;  // (x,y) -> tileId.
 
   StringRef getDirBetween(int srcTid, int dstTid) const {
     auto [src_x, src_y] = tile_location.lookup(srcTid);
@@ -188,7 +188,7 @@ static Topology getTopologyFromArchitecture(int columns, int rows) {
   return topo;
 }
 
-// ----- Extract mapping steps (sorted by time) -----
+// ----- Extract mapping steps (sorted by time) -----.
 struct LinkStep { int link_id; int ts; };
 struct RegStep  { int regId;  int ts; };
 
@@ -230,7 +230,7 @@ static SmallVector<RegStep, 4> collectRegSteps(Operation *op) {
   return steps;
 }
 
-// ----- Pass -----
+// ----- Pass -----.
 struct InstructionReference { int col_idx, row_idx, t, idx; };
 
 struct GenerateCodePass
@@ -247,18 +247,18 @@ struct GenerateCodePass
 
   DenseMap<Operation*, TileLocation>   operation_placements;
 
-  // Map of tile coordinates (x,y) -> time_step -> vector of Instructions
+  // Maps of tile coordinates (x,y) -> time_step -> vector of Instructions.
   std::map<std::pair<int,int>, std::map<int, std::vector<Instruction>>> tile_time_instructions;
 
-  // Back references from IR operation to emitted instruction
+  // Back references from IR operations to emitted instructions.
   DenseMap<Operation*, InstructionReference>    operation_to_instruction_reference;
   DenseMap<Operation*, SmallVector<Value>>      operation_to_operands;
 
-  // De-dup sets
-  std::unordered_set<uint64_t> hop_signatures;     // (midTileId, ts, link_id)
-  std::unordered_set<uint64_t> deposit_signatures; // (dstTileId, ts, regId)
+  // De-dup sets.
+  std::unordered_set<uint64_t> hop_signatures;     // (midTileId, ts, link_id).
+  std::unordered_set<uint64_t> deposit_signatures; // (dstTileId, ts, regId).
 
-  // ---------- helpers to place materialized instructions ----------
+  // ---------- helpers to place materialized instructions ----------.
   void placeRouterHop(const Topology &topology, int tile_id, int time_step,
                       StringRef input_direction, StringRef output_direction, bool asCtrlMov = false) {
     auto [tile_x, tile_y] = topology.tile_location.lookup(tile_id);
@@ -269,7 +269,7 @@ struct GenerateCodePass
     tile_time_instructions[{tile_x, tile_y}][time_step].push_back(std::move(instruction));
   }
 
-  // ---------- initialization helpers ----------
+  // ---------- initialization helpers ----------.
   void clearState() {
     operation_placements.clear();
     tile_time_instructions.clear();
@@ -280,7 +280,7 @@ struct GenerateCodePass
   }
 
   std::pair<int, int> getArrayDimensions(func::FuncOp function) {
-    int columns = 4, rows = 4; // default 4x4 CGRA
+    int columns = 4, rows = 4; // default 4x4 CGRA.
     if (auto mapping_info = function->getAttrOfType<DictionaryAttr>("mapping_info")) {
       if (auto x_tiles = dyn_cast_or_null<IntegerAttr>(mapping_info.get("x_tiles"))) columns = x_tiles.getInt();
       if (auto y_tiles = dyn_cast_or_null<IntegerAttr>(mapping_info.get("y_tiles"))) rows   = y_tiles.getInt();
@@ -288,33 +288,33 @@ struct GenerateCodePass
     return {columns, rows};
   }
 
-  // ---------- Single-walk indexing ----------
-  // Do everything that needs a walk in a single pass:
-  //   - record operation_placements
-  //   - materialize compute/phi/const instructions
-  //   - collect DATA_MOV and CTRL_MOV ops
-  //   - collect reserve_to_phi_map (PHI's operand#0 is the reserve)
+  // ---------- Single-walk indexing ----------.
+  // Do everything that needs walks in a single pass:.
+  //   - record operation_placements.
+  //   - materialize compute/phi/const instructions.
+  //   - collect DATA_MOV and CTRL_MOV ops.
+  //   - collect reserve_to_phi_maps (PHI's operand#0 is the reserve).
   void indexIR(func::FuncOp function,
                SmallVector<Operation*> &dataMovs,
                SmallVector<Operation*> &ctrlMovs,
                DenseMap<Value, Operation*> &reserve_to_phi_map) {
     function.walk([&](Operation *op) {
-      // placement for every op (even for mov/reserve)
+      // placement for every op (even for mov/reserve).
       operation_placements[op] = getTileLocation(op);
 
-      // build reserve -> phi mapping
+      // build reserve -> phi mapping.
       if (isPhi(op) && op->getNumOperands() >= 1) {
         reserve_to_phi_map[op->getOperand(0)] = op;
       }
 
-      // collect forwarders
+      // collect forwarders.
       if (isDataMov(op)) { dataMovs.push_back(op); return; }
       if (isCtrlMov(op)) { ctrlMovs.push_back(op); return; }
 
-      // skip Reserve from materialization
+      // skip Reserve from materialization.
       if (isReserve(op)) return;
 
-      // materialize all other ops placed on tiles (compute/phi/const/etc.)
+      // materialize all other ops placed on tiles (compute/phi/const/etc.).
       auto placement = operation_placements[op];
       if (!placement.has_tile) return;
 
@@ -344,11 +344,11 @@ struct GenerateCodePass
     });
   }
 
-  // ---------- unified forwarder expansion helpers ----------
+  // ---------- unified forwarder expansion helpers ----------.
   static SmallVector<LinkStep, 8> getLinkChain(Operation *forwarder) { return collectLinkSteps(forwarder); }
   static SmallVector<RegStep, 4>  getRegisterSteps(Operation *forwarder) { return collectRegSteps(forwarder); }
 
-  // Validate forwarder op arity: DATA_MOV: at least 1 in/1 out; CTRL_MOV: at least 2 inputs (src,reserve)
+  // Validate forwarder op arities: DATA_MOV: at least 1 in/1 out; CTRL_MOV: at least 2 inputs (src,reserve).
   template<bool IsCtrl>
   bool validateForwarderShape(Operation *forwarder) {
     if constexpr (!IsCtrl) {
@@ -358,7 +358,7 @@ struct GenerateCodePass
     }
   }
 
-  // Compute producer first-hop direction and consumer last-hop direction (or LOCAL if link-less)
+  // Compute producer first-hop directions and consumer last-hop directions (or LOCAL if link-less).
   std::pair<StringRef, StringRef> computeDirections(const SmallVector<LinkStep, 8> &links, const Topology &topo) {
     StringRef producer_direction("LOCAL");
     StringRef consumer_direction("LOCAL");
@@ -369,7 +369,7 @@ struct GenerateCodePass
     return {producer_direction, consumer_direction};
   }
 
-  // Add producer endpoint (first-hop direction or local $reg when using same-tile register path)
+  // Add producer endpoints (first-hop directions or local $reg when using same-tile register paths).
   void setProducerDestination(Operation *producer, StringRef producer_direction, const SmallVector<RegStep, 4> &regs) {
     if (auto *pi = getInstructionPointer(producer)) {
       if (!producer_direction.empty() && producer_direction != "LOCAL") {
@@ -380,7 +380,7 @@ struct GenerateCodePass
     }
   }
 
-  // Emit router hops for multi-hop path (from the second hop onwards). CTRL_MOV emits CTRL_MOV hops.
+  // Emit router hops for multi-hop paths (from the second hop onwards). CTRL_MOV emits CTRL_MOV hops.
   template<bool IsCtrl>
   void generateIntermediateHops(const SmallVector<LinkStep, 8> &links, const Topology &topo) {
     for (size_t i = 1; i < links.size(); ++i) {
@@ -398,7 +398,7 @@ struct GenerateCodePass
     }
   }
 
-  // Consumers for DATA_MOV: all users of forwarder result(0)
+  // Consumers for DATA_MOV: all users of forwarder results(0).
   SmallVector<std::pair<Operation*, Value>, 2> collectDataMovConsumers(Operation *forwarder) {
     SmallVector<std::pair<Operation*, Value>, 2> consumers;
     Value out = forwarder->getResult(0);
@@ -407,7 +407,7 @@ struct GenerateCodePass
     return consumers;
   }
 
-  // Consumers for CTRL_MOV: find PHI via reserve->phi map; wire the PHI's *data* input (source).
+  // Consumers for CTRL_MOV: find PHI via reserve->phi maps; wire the PHI's *data* inputs (sources).
   SmallVector<std::pair<Operation*, Value>, 2> collectCtrlMovConsumers(Operation *forwarder,
                                                                       const DenseMap<Value, Operation*> &reserve2phi) {
     SmallVector<std::pair<Operation*, Value>, 2> consumers;
@@ -420,30 +420,30 @@ struct GenerateCodePass
     return consumers;
   }
 
-  // Try register-based rewiring. If cross-tile, emit a deposit [incoming_dir]->[$reg] at earliest reg ts.
-  // Returns true if rewiring to $reg was applied to the consumer.
+  // Try register-based rewiring. If cross-tile, emit deposits [incoming_dir]->[$reg] at earliest reg ts.
+  // Returns true if rewiring to $reg was applied to consumers.
   template<bool IsCtrl>
   bool handleRegisterRewiring(Operation *consOp, Value atVal, const SmallVector<RegStep, 4> &regs,
                               const SmallVector<LinkStep, 8> &links, const Topology &topo) {
     if (regs.empty()) return false;
 
-    int ts0 = regs.front().ts;
-    int rId = regs.back().regId;
+    int timestep_0 = regs.front().ts;
+    int register_id = regs.back().regId;
 
     if (!links.empty()) {
       // Cross-tile: deposit on destination tile at earliest register ts.
       int dst_tile = topo.dstTileOfLink(links.back().link_id);
       StringRef incoming_dir = topo.dirFromLink(links.back().link_id);
-      placeDstDeposit(topo, dst_tile, ts0, incoming_dir, rId, /*asCtrlMov=*/IsCtrl);
+      placeDstDeposit(topo, dst_tile, timestep_0, incoming_dir, register_id, /*asCtrlMov=*/IsCtrl);
 
       auto cp = operation_placements.lookup(consOp);
-      if (cp.has_tile && cp.time_step > ts0) {
-        setConsumerSourceExact(consOp, atVal, "$" + std::to_string(rId));
+      if (cp.has_tile && cp.time_step > timestep_0) {
+        setConsumerSourceExact(consOp, atVal, "$" + std::to_string(register_id));
         return true;
       }
     } else {
-      // Same-tile: must go via register
-      setConsumerSourceExact(consOp, atVal, "$" + std::to_string(rId));
+      // Same-tile: must go via register.
+      setConsumerSourceExact(consOp, atVal, "$" + std::to_string(register_id));
       return true;
     }
     return false;
@@ -467,18 +467,18 @@ struct GenerateCodePass
                      const DenseMap<Value, Operation*> &reserve2phi) {
     if (!validateForwarderShape<IsCtrl>(forwarder)) return;
 
-    // Basic info from forwarder
+    // Basic info from forwarders.
     Value source = forwarder->getOperand(0);
     Operation *producer = source.getDefiningOp();
     auto links = getLinkChain(forwarder);
     auto regs  = getRegisterSteps(forwarder);
     auto [producer_direction, consumer_direction] = computeDirections(links, topo);
 
-    // Producer endpoint & intermediate hops
+    // Producer endpoints & intermediate hops.
     setProducerDestination(producer, producer_direction, regs);
     generateIntermediateHops<IsCtrl>(links, topo);
 
-    // Gather consumers
+    // Gather consumers.
     SmallVector<std::pair<Operation*, Value>, 2> consumers;
     if constexpr (IsCtrl) {
       consumers = collectCtrlMovConsumers(forwarder, reserve2phi);
@@ -487,7 +487,7 @@ struct GenerateCodePass
       consumers = collectDataMovConsumers(forwarder);
     }
 
-    // Wire each consumer: prefer register rewiring; fallback to direction rewiring
+    // Wire each consumer: prefer register rewiring; fallback to direction rewiring.
     for (auto &[consOp, atVal] : consumers) {
       if (!handleRegisterRewiring<IsCtrl>(consOp, atVal, regs, links, topo))
         handleDirectionRewiring<IsCtrl>(consOp, atVal, consumer_direction, links, forwarder);
@@ -495,15 +495,15 @@ struct GenerateCodePass
   }
 
 
-  // ---------- output generation ----------
-  void logUnresolvedOperands(ModuleOp module) {
+  // ---------- output generation ----------.
+  void logUnresolvedOperands() {
     unsigned unsrc = 0, undst = 0;
-    for (auto &tileKV : tile_time_instructions) {
-      std::pair<int,int> tile_key = tileKV.first;
+    for (auto &tile_entry : tile_time_instructions) {
+      std::pair<int,int> tile_key = tile_entry.first;
       int column = tile_key.first, row = tile_key.second;
-      for (auto &tsKV : tileKV.second) {
-        int ts = tsKV.first;
-        std::vector<Instruction> &vec = tsKV.second;
+      for (auto &timestep_entry : tile_entry.second) {
+        int ts = timestep_entry.first;
+        std::vector<Instruction> &vec = timestep_entry.second;
         for (size_t i = 0; i < vec.size(); ++i) {
           Instruction &inst = vec[i];
           for (size_t si = 0; si < inst.src_operands.size(); ++si) {
@@ -532,6 +532,7 @@ struct GenerateCodePass
       }
     }
     if (unsrc + undst) {
+      ModuleOp module = getOperation();
       auto diag = module.emitWarning("GenerateCodePass: UNRESOLVED operands kept for debugging");
       diag << " (src=" << unsrc << ", dst=" << undst << "); they are highlighted with color=ERROR in YAML.";
     }
@@ -541,10 +542,10 @@ struct GenerateCodePass
     ArrayConfig config{columns, rows, {}};
     std::map<std::pair<int,int>, std::vector<Instruction>> tile_insts;
 
-    // Flatten and sort by timestep
-    for (auto &[tile_key, tsmap] : tile_time_instructions) {
+    // Flatten and sort by timesteps.
+    for (auto &[tile_key, timestep_map] : tile_time_instructions) {
       auto &flat = tile_insts[tile_key];
-      for (auto &[ts, vec] : tsmap) for (Instruction &inst : vec) flat.push_back(inst);
+      for (auto &[timestep, instruction_vec] : timestep_map) for (Instruction &inst : instruction_vec) flat.push_back(inst);
       std::stable_sort(flat.begin(), flat.end(),
         [](const Instruction &a, const Instruction &b){ return a.time_step < b.time_step; });
     }
@@ -563,7 +564,7 @@ struct GenerateCodePass
 
   void writeYAMLOutput(const ArrayConfig &config) {
     std::error_code ec;
-    llvm::raw_fd_ostream yaml_out("generated-instructions.yaml", ec);
+    llvm::raw_fd_ostream yaml_out("tmp-generated-instructions.yaml", ec);
     if (ec) return;
 
     yaml_out << "array_config:\n  columns: " << config.columns << "\n  rows: " << config.rows << "\n  cores:\n";
@@ -574,13 +575,13 @@ struct GenerateCodePass
       for (const Instruction &inst : core.entry.instructions) {
         yaml_out << "        - entry_id: \"entry" << entry_id++ << "\"\n          instructions:\n"
                  << "            - opcode: \"" << inst.opcode << "\"\n              timestep: " << inst.time_step << "\n";
-        // sources
+        // sources.
         if (!inst.src_operands.empty()) {
           yaml_out << "              src_operands:\n";
           for (const Operand &opnd : inst.src_operands)
             yaml_out << "                - operand: \"" << opnd.operand << "\"\n                  color: \"" << opnd.color << "\"\n";
         }
-        // destinations
+        // destinations.
         if (!inst.dst_operands.empty()) {
           yaml_out << "              dst_operands:\n";
           for (const Operand &opnd : inst.dst_operands)
@@ -591,9 +592,9 @@ struct GenerateCodePass
     yaml_out.close();
   }
 
-  // Direction vs const/reg helper
+  // Direction vs const/reg helpers.
   static bool isDirectionalOperand(const std::string &operand) {
-    // Only non-directional operands start with $ (registers) or # (constants)
+    // Only non-directional operands start with $ (registers) or # (constants).
     return !operand.empty() && operand[0] != '$' && operand[0] != '#';
   }
 
@@ -608,7 +609,7 @@ struct GenerateCodePass
 
   void writeASMOutput(const ArrayConfig &config) {
     std::error_code ec;
-    llvm::raw_fd_ostream asm_out("generated-instructions.asm", ec);
+    llvm::raw_fd_ostream asm_out("tmp-generated-instructions.asm", ec);
     if (ec) return;
 
     for (const Tile &core : config.cores) {
@@ -630,12 +631,12 @@ struct GenerateCodePass
     asm_out.close();
   }
 
-  // Endpoint deposit: on destination tile at earliest reg ts, move [incoming_dir] -> [$reg].
-  // CTRL_MOV path emits a CTRL_MOV deposit; DATA_MOV path emits a DATA_MOV deposit.
+  // Endpoint deposits: on destination tiles at earliest reg ts, move [incoming_dir] -> [$reg].
+  // CTRL_MOV paths emit CTRL_MOV deposits; DATA_MOV paths emit DATA_MOV deposits.
   void placeDstDeposit(const Topology &topo, int dstTileId, int ts,
                        StringRef incomingDir, int regId, bool asCtrlMov = false) {
     uint64_t signature = (uint64_t)dstTileId << 32 ^ (uint64_t)ts << 16 ^ (uint64_t)regId;
-    if (!deposit_signatures.insert(signature).second) return; // already placed
+    if (!deposit_signatures.insert(signature).second) return; // already placed.
     auto [tile_x, tile_y] = topo.tile_location.lookup(dstTileId);
     Instruction inst(asCtrlMov ? "CTRL_MOV" : "DATA_MOV");
     inst.time_step = ts;
@@ -644,7 +645,7 @@ struct GenerateCodePass
     tile_time_instructions[{tile_x, tile_y}][ts].push_back(std::move(inst));
   }
 
-  // Utilities to access instruction buckets/pointers
+  // Utilities to access instruction buckets/pointers.
   std::vector<Instruction> &getInstructionBucket(int column, int row, int time_step) {
     return tile_time_instructions[{column,row}][time_step];
   }
@@ -657,7 +658,7 @@ struct GenerateCodePass
     return &vec[idx];
   }
 
-  // Replace the exact source slot in the consumer that corresponds to `value_at_consumer`,
+  // Replace the exact source slots in consumers that correspond to `value_at_consumer`,
   // or fill the first UNRESOLVED placeholder if a 1:1 match wasn't found.
   void setConsumerSourceExact(Operation *consumer, Value value_at_consumer, const std::string &text) {
     Instruction *ci = getInstructionPointer(consumer);
@@ -672,13 +673,13 @@ struct GenerateCodePass
       if (src.operand == "UNRESOLVED") { src.operand = text; return; }
   }
 
-  // Append a destination only once.
+  // Appends a destination only once.
   static void setUniqueDestination(Instruction *inst, const std::string &text){
     for (Operand &d : inst->dst_operands) if (d.operand == text) return;
     inst->dst_operands.emplace_back(text, "RED");
   }
 
-  // ---------- entry point ----------
+  // ---------- entry point ----------.
   void runOnOperation() override {
     ModuleOp module = getOperation();
 
@@ -691,7 +692,7 @@ struct GenerateCodePass
 
       clearState();
 
-      // Single function-level walk: index + materialize + collect.
+      // Single function-level walks: index + materialize + collect.
       SmallVector<Operation*> dataMovs;
       SmallVector<Operation*> ctrlMovs;
       DenseMap<Value, Operation*> reserve_to_phi_map;
@@ -704,7 +705,7 @@ struct GenerateCodePass
         expandMovImpl<true>(op,  topo, reserve_to_phi_map);
 
       // Debug unresolveds, then dump outputs.
-      logUnresolvedOperands(module);
+      logUnresolvedOperands();
 
       ArrayConfig config = buildArrayConfig(columns, rows);
       writeYAMLOutput(config);
@@ -713,10 +714,10 @@ struct GenerateCodePass
   }
 };
 
-} // namespace
+} // namespace.
 
 namespace mlir::neura {
 std::unique_ptr<Pass> createGenerateCodePass() {
   return std::make_unique<GenerateCodePass>();
 }
-} // namespace mlir::neura
+} // namespace mlir::neura.
