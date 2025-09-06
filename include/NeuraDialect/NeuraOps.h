@@ -2,10 +2,10 @@
 #ifndef NEURA_OPS_H
 #define NEURA_OPS_H
 
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/OpDefinition.h"
-#include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/OpDefinition.h"
 
 // First includes the interface declarations.
 #define GET_OP_INTERFACE_CLASSES

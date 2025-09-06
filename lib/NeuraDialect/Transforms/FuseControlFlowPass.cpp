@@ -93,8 +93,9 @@ private:
 // Finds the original parameter for start value.
 Value findOriginalConstant(Value val,
                            llvm::SetVector<Operation *> &ops_to_remove) {
-  if (!val || !val.getDefiningOp())
+  if (!val || !val.getDefiningOp()) {
     return val;
+  }
 
   Operation *def_op = val.getDefiningOp();
 
@@ -348,10 +349,12 @@ LogicalResult replaceWithLoopController(LoopInfo *loop_info,
 
   // Compares the defining operations to find the latest one.
   auto updateLatestOp = [&](Operation *op1, Operation *op2) -> Operation * {
-    if (!op1)
+    if (!op1) {
       return op2;
-    if (!op2)
+    }
+    if (!op2) {
       return op1;
+    }
     // Returns the later operation in the block.
     return op2->isBeforeInBlock(op1) ? op1 : op2;
   };
