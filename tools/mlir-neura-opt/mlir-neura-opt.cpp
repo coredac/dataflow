@@ -8,9 +8,9 @@
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 
+#include "Conversion/ConversionPasses.h"
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraPasses.h"
-#include "Conversion/ConversionPasses.h"
 
 int main(int argc, char **argv) {
   // Registers MLIR dialects.
@@ -25,7 +25,7 @@ int main(int argc, char **argv) {
   mlir::neura::registerPasses();
   mlir::registerPasses();
   mlir::registerViewOpGraphPass();
-  
+
   // Runs the MLIR optimizer.
   return mlir::asMainReturnCode(
       mlir::MlirOptMain(argc, argv, "Neura Dialect Optimizer", registry));

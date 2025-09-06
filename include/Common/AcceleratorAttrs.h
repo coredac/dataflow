@@ -11,8 +11,8 @@ constexpr llvm::StringRef kAcceleratorAttr = "accelerator";
 
 // Common accelerator targets.
 constexpr llvm::StringRef kNeuraTarget = "neura";
-constexpr llvm::StringRef kGpuTarget   = "gpu";
-constexpr llvm::StringRef kTpuTarget   = "tpu";
+constexpr llvm::StringRef kGpuTarget = "gpu";
+constexpr llvm::StringRef kTpuTarget = "tpu";
 
 } // namespace accel
 } // namespace mlir
