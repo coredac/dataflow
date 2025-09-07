@@ -41,7 +41,7 @@ Operands encode:
 - `$N` — local register (e.g., `$22`)
 - `EAST | WEST | NORTH | SOUTH` — directional ports for inter-tile communication
 
-Each operand also has a `color` field. Colors are primarily meaningful for **directional** operands (to visualize/track routing); for registers and immediates, the color can be ignored by consumers.
+Each operand also has a `color` field. Colors are primarily meaningful for **directional** operands (to visualize/track routing), rather than register operands
 
 ### YAML Example
 
