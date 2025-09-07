@@ -198,6 +198,6 @@ The ASM format is a human-readable assembly-style view per tile.
 ## Notes / Known Limitations
 
 ### Current Implementation Constraints
-- **One instruction per entry**: Multiple operations within a tile are currently emitted as separate entries to satisfy the simulator requirements
+- **One instruction per entry**: Multiple operations within a tile are currently emitted as separate entries to satisfy the simulator requirements. We will allow multiple instructions per entry in the future.
 - **Default color scheme**: You'll typically see "RED" as the default virtual channel color in the YAML output
 - **Entry-based scheduling**: Each execution context (entry) can only contain one instruction at a time
