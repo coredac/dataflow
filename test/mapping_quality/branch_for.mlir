@@ -58,7 +58,8 @@
 // RUN:   --insert-data-mov \
 // RUN:   --map-to-accelerator="mapping-strategy=heuristic backtrack-config=customized" \
 // RUN:   --generate-code
-// RUN: FileCheck %s --input-file=generated-instructions.json -check-prefix=INST
+// RUN: FileCheck %s --input-file=tmp-generated-instructions.yaml -check-prefix=YAML
+// RUN: FileCheck %s --input-file=tmp-generated-instructions.asm --check-prefix=ASM
 
 func.func @loop_test() -> f32 {
   %n = llvm.mlir.constant(10 : i64) : i64
@@ -302,11 +303,30 @@ func.func @loop_test() -> f32 {
 // MAPPING-NEXT:     "neura.return"(%49) {mapping_locs = [{id = 13 : i32, resource = "tile", time_step = 7 : i32, x = 1 : i32, y = 3 : i32}]} : (!neura.data<f32, i1>) -> ()
 // MAPPING-NEXT:   }
 
-// INST:        "name": "neura.fadd",
-// INST-NEXT:   "operands": [
-// INST-NEXT:     "neura.data_mov",
-// INST-NEXT:     "neura.data_mov"
-// INST-NEXT:   ],
-// INST-NEXT:   "result_types": [
-// INST-NEXT:     "!neura.data<f32, i1>"
-// INST-NEXT:   ]
+// YAML:        array_config:
+// YAML-NEXT:   columns: 4
+// YAML-NEXT:   rows: 4
+// YAML-NEXT:   cores:
+// YAML-NEXT:   - column: 0
+// YAML-NEXT:   row: 1
+// YAML-NEXT:   core_id: "4"
+// YAML-NEXT:   entries:
+// YAML-NEXT:   - entry_id: "entry0"
+// YAML-NEXT:   instructions:
+// YAML-NEXT:   - opcode: "GRANT_ONCE"
+// YAML-NEXT:   timestep: 2
+// YAML-NEXT:   dst_operands:
+// YAML-NEXT:   - operand: "EAST"
+// YAML-NEXT:   color: "RED"
+
+
+// ASM-LABEL: PE(0,1):
+// ASM: GRANT_ONCE -> [EAST, RED] (t=2)
+
+// ASM-LABEL: PE(1,1):
+// ASM: DATA_MOV, [NORTH, RED] -> [EAST, RED] (t=2)
+// ASM: PHI, [$20], [WEST, RED] -> [NORTH, RED], [$20] (t=3)
+// ASM: DATA_MOV, [NORTH, RED] -> [EAST, RED] (t=3)
+// ASM: DATA_MOV, [SOUTH, RED] -> [$21] (t=5)
+// ASM: CTRL_MOV, [EAST, RED] -> [NORTH, RED] (t=5)
+// ASM: GRANT_PREDICATE, [$20], [$21] -> [$20] (t=6)
