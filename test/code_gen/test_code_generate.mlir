@@ -145,557 +145,593 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:       entries:
 // YAML-NEXT:         - entry_id: "entry0"
 // YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "CONSTANT"
-// YAML-NEXT:               timestep: 0
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "#0"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "EAST"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:         - entry_id: "entry1"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "CONSTANT"
-// YAML-NEXT:               timestep: 1
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "#10"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "EAST"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:         - entry_id: "entry2"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "DATA_MOV"
-// YAML-NEXT:               timestep: 4
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "EAST"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "NORTH"
-// YAML-NEXT:                   color: "RED"
+// YAML-NEXT:             - timestep: 0
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "CONSTANT"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "#0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - timestep: 1
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "CONSTANT"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "#10"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - timestep: 4
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "DATA_MOV"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
 // YAML-NEXT:     - column: 1
 // YAML-NEXT:       row: 0
 // YAML-NEXT:       core_id: "1"
 // YAML-NEXT:       entries:
 // YAML-NEXT:         - entry_id: "entry0"
 // YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "GRANT_ONCE"
-// YAML-NEXT:               timestep: 1
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "WEST"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "NORTH"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:         - entry_id: "entry1"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "GRANT_ONCE"
-// YAML-NEXT:               timestep: 2
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "WEST"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "$4"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:         - entry_id: "entry2"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "PHI"
-// YAML-NEXT:               timestep: 3
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "$5"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:                 - operand: "$4"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "NORTH"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:                 - operand: "$4"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:         - entry_id: "entry3"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "DATA_MOV"
-// YAML-NEXT:               timestep: 3
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "EAST"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "WEST"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:         - entry_id: "entry4"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "GRANT_PREDICATE"
-// YAML-NEXT:               timestep: 5
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "$4"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:                 - operand: "NORTH"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "$5"
-// YAML-NEXT:                   color: "RED"
+// YAML-NEXT:             - timestep: 1
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "GRANT_ONCE"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "#0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - timestep: 2
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "GRANT_ONCE"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "#0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$4"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - timestep: 3
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "PHI"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "$5"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "$4"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "$4"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                 - opcode: "DATA_MOV"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "WEST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - timestep: 5
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "GRANT_PREDICATE"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "$4"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$5"
+// YAML-NEXT:                       color: "RED"
 // YAML-NEXT:     - column: 2
 // YAML-NEXT:       row: 0
 // YAML-NEXT:       core_id: "2"
 // YAML-NEXT:       entries:
 // YAML-NEXT:         - entry_id: "entry0"
 // YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "CONSTANT"
-// YAML-NEXT:               timestep: 0
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "#1"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "$8"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:         - entry_id: "entry1"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "GRANT_ONCE"
-// YAML-NEXT:               timestep: 1
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "$8"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "$8"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:         - entry_id: "entry2"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "PHI"
-// YAML-NEXT:               timestep: 2
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "NORTH"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:                 - operand: "$8"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "NORTH"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:                 - operand: "WEST"
-// YAML-NEXT:                   color: "RED"
+// YAML-NEXT:             - timestep: 0
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "CONSTANT"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "#1"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$8"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - timestep: 1
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "GRANT_ONCE"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "#0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$8"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - timestep: 2
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "PHI"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "$8"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "WEST"
+// YAML-NEXT:                       color: "RED"
 // YAML-NEXT:     - column: 3
 // YAML-NEXT:       row: 0
 // YAML-NEXT:       core_id: "3"
 // YAML-NEXT:       entries:
 // YAML-NEXT:         - entry_id: "entry0"
 // YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "RETURN"
-// YAML-NEXT:               timestep: 8
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "NORTH"
-// YAML-NEXT:                   color: "RED"
+// YAML-NEXT:             - timestep: 8
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "RETURN"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
 // YAML-NEXT:     - column: 0
 // YAML-NEXT:       row: 1
 // YAML-NEXT:       core_id: "4"
 // YAML-NEXT:       entries:
 // YAML-NEXT:         - entry_id: "entry0"
 // YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "DATA_MOV"
-// YAML-NEXT:               timestep: 5
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "SOUTH"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "EAST"
-// YAML-NEXT:                   color: "RED"
+// YAML-NEXT:             - timestep: 5
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "DATA_MOV"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "SOUTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
 // YAML-NEXT:     - column: 1
 // YAML-NEXT:       row: 1
 // YAML-NEXT:       core_id: "5"
 // YAML-NEXT:       entries:
 // YAML-NEXT:         - entry_id: "entry0"
 // YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "PHI"
-// YAML-NEXT:               timestep: 2
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "EAST"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:                 - operand: "SOUTH"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "EAST"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:         - entry_id: "entry1"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "ICMP"
-// YAML-NEXT:               timestep: 4
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "EAST"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:                 - operand: "SOUTH"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "EAST"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:                 - operand: "NORTH"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:                 - operand: "$22"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:                 - operand: "$21"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:                 - operand: "SOUTH"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:                 - operand: "$20"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:         - entry_id: "entry2"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "NOT"
-// YAML-NEXT:               timestep: 5
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "$20"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "EAST"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:         - entry_id: "entry3"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "GRANT_PREDICATE"
-// YAML-NEXT:               timestep: 6
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "WEST"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:                 - operand: "$21"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "EAST"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:         - entry_id: "entry4"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "DATA_MOV"
-// YAML-NEXT:               timestep: 6
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "SOUTH"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "$20"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:         - entry_id: "entry5"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "GRANT_PREDICATE"
-// YAML-NEXT:               timestep: 7
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "$20"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:                 - operand: "$22"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "EAST"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:         - entry_id: "entry6"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "CTRL_MOV"
-// YAML-NEXT:               timestep: 7
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "WEST"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "$20"
-// YAML-NEXT:                   color: "RED"
+// YAML-NEXT:             - timestep: 2
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "PHI"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "SOUTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - timestep: 4
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "ICMP"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "SOUTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "$22"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "$21"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "SOUTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "$20"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - timestep: 5
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "NOT"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "$20"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - timestep: 6
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "GRANT_PREDICATE"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "WEST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "$21"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                 - opcode: "DATA_MOV"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "SOUTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$20"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - timestep: 7
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "GRANT_PREDICATE"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "$20"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "$22"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                 - opcode: "CTRL_MOV"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "WEST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$20"
+// YAML-NEXT:                       color: "RED"
 // YAML-NEXT:     - column: 2
 // YAML-NEXT:       row: 1
 // YAML-NEXT:       core_id: "6"
 // YAML-NEXT:       entries:
 // YAML-NEXT:         - entry_id: "entry0"
 // YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "ADD"
-// YAML-NEXT:               timestep: 3
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "WEST"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:                 - operand: "SOUTH"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "WEST"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:                 - operand: "$25"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:         - entry_id: "entry1"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "PHI"
-// YAML-NEXT:               timestep: 4
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "$24"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:                 - operand: "EAST"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "$24"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:         - entry_id: "entry2"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "FADD"
-// YAML-NEXT:               timestep: 5
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "$24"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:                 - operand: "NORTH"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "$26"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:                 - operand: "EAST"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:         - entry_id: "entry3"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "DATA_MOV"
-// YAML-NEXT:               timestep: 5
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "EAST"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "$24"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:         - entry_id: "entry4"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "GRANT_PREDICATE"
-// YAML-NEXT:               timestep: 6
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "$25"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:                 - operand: "$24"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "WEST"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:         - entry_id: "entry5"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "DATA_MOV"
-// YAML-NEXT:               timestep: 6
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "WEST"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "EAST"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:         - entry_id: "entry6"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "GRANT_PREDICATE"
-// YAML-NEXT:               timestep: 7
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "$26"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:                 - operand: "NORTH"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "$24"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:         - entry_id: "entry7"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "CTRL_MOV"
-// YAML-NEXT:               timestep: 7
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "WEST"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "SOUTH"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:         - entry_id: "entry8"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "CTRL_MOV"
-// YAML-NEXT:               timestep: 8
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "WEST"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "NORTH"
-// YAML-NEXT:                   color: "RED"
+// YAML-NEXT:             - timestep: 3
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "ADD"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "WEST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "SOUTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "WEST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "$25"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - timestep: 4
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "PHI"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "$24"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$24"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - timestep: 5
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "FADD"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "$24"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$26"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                 - opcode: "DATA_MOV"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$24"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - timestep: 6
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "GRANT_PREDICATE"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "$25"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "$24"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "WEST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                 - opcode: "DATA_MOV"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "WEST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - timestep: 7
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "GRANT_PREDICATE"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "$26"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$24"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                 - opcode: "CTRL_MOV"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "WEST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "SOUTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - timestep: 8
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "CTRL_MOV"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "WEST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
 // YAML-NEXT:     - column: 3
 // YAML-NEXT:       row: 1
 // YAML-NEXT:       core_id: "7"
 // YAML-NEXT:       entries:
 // YAML-NEXT:         - entry_id: "entry0"
 // YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "GRANT_ONCE"
-// YAML-NEXT:               timestep: 3
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "NORTH"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "WEST"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:         - entry_id: "entry1"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "DATA_MOV"
-// YAML-NEXT:               timestep: 6
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "EAST"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "$28"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:         - entry_id: "entry2"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "GRANT_PREDICATE"
-// YAML-NEXT:               timestep: 7
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "$28"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:                 - operand: "WEST"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "SOUTH"
-// YAML-NEXT:                   color: "RED"
+// YAML-NEXT:             - timestep: 3
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "GRANT_ONCE"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "#0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "WEST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - timestep: 6
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "DATA_MOV"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$28"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - timestep: 7
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "GRANT_PREDICATE"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "$28"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "WEST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "SOUTH"
+// YAML-NEXT:                       color: "RED"
 // YAML-NEXT:     - column: 1
 // YAML-NEXT:       row: 2
 // YAML-NEXT:       core_id: "9"
 // YAML-NEXT:       entries:
 // YAML-NEXT:         - entry_id: "entry0"
 // YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "DATA_MOV"
-// YAML-NEXT:               timestep: 5
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "SOUTH"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "EAST"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:         - entry_id: "entry1"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "DATA_MOV"
-// YAML-NEXT:               timestep: 5
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "EAST"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "SOUTH"
-// YAML-NEXT:                   color: "RED"
+// YAML-NEXT:             - timestep: 5
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "DATA_MOV"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "SOUTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                 - opcode: "DATA_MOV"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "SOUTH"
+// YAML-NEXT:                       color: "RED"
 // YAML-NEXT:     - column: 2
 // YAML-NEXT:       row: 2
 // YAML-NEXT:       core_id: "10"
 // YAML-NEXT:       entries:
 // YAML-NEXT:         - entry_id: "entry0"
 // YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "GRANT_ONCE"
-// YAML-NEXT:               timestep: 3
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "NORTH"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "$40"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:         - entry_id: "entry1"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "PHI"
-// YAML-NEXT:               timestep: 4
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "SOUTH"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:                 - operand: "$40"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "SOUTH"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:                 - operand: "WEST"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:         - entry_id: "entry2"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "DATA_MOV"
-// YAML-NEXT:               timestep: 6
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "WEST"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "SOUTH"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:         - entry_id: "entry3"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "CTRL_MOV"
-// YAML-NEXT:               timestep: 9
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "NORTH"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "$41"
-// YAML-NEXT:                   color: "RED"
+// YAML-NEXT:             - timestep: 3
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "GRANT_ONCE"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "#0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$40"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - timestep: 4
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "PHI"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "SOUTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "$40"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "SOUTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "WEST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - timestep: 6
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "DATA_MOV"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "WEST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "SOUTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - timestep: 9
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "CTRL_MOV"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$41"
+// YAML-NEXT:                       color: "RED"
 // YAML-NEXT:     - column: 3
 // YAML-NEXT:       row: 2
 // YAML-NEXT:       core_id: "11"
 // YAML-NEXT:       entries:
 // YAML-NEXT:         - entry_id: "entry0"
 // YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "CONSTANT"
-// YAML-NEXT:               timestep: 2
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "#0.000000"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "SOUTH"
-// YAML-NEXT:                   color: "RED"
+// YAML-NEXT:             - timestep: 2
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "CONSTANT"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "#0.000000"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "SOUTH"
+// YAML-NEXT:                       color: "RED"
 // YAML-NEXT:     - column: 2
 // YAML-NEXT:       row: 3
 // YAML-NEXT:       core_id: "14"
 // YAML-NEXT:       entries:
 // YAML-NEXT:         - entry_id: "entry0"
 // YAML-NEXT:           instructions:
-// YAML-NEXT:             - opcode: "CONSTANT"
-// YAML-NEXT:               timestep: 2
-// YAML-NEXT:               src_operands:
-// YAML-NEXT:                 - operand: "#3.000000"
-// YAML-NEXT:                   color: "RED"
-// YAML-NEXT:               dst_operands:
-// YAML-NEXT:                 - operand: "SOUTH"
-// YAML-NEXT:                   color: "RED"
+// YAML-NEXT:             - timestep: 2
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "CONSTANT"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "#3.000000"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "SOUTH"
+// YAML-NEXT:                       color: "RED"
 
 // ASM-LABEL: PE(0,0):
-// ASM: CONSTANT, [#0] -> [EAST, RED] (t=0)
-// ASM: CONSTANT, [#10] -> [EAST, RED] (t=1)
-// ASM: DATA_MOV, [EAST, RED] -> [NORTH, RED] (t=4)
+// ASM: {
+// ASM:   CONSTANT, [#0] -> [EAST, RED]
+// ASM: } (t=0)
+// ASM: {
+// ASM:   CONSTANT, [#10] -> [EAST, RED]
+// ASM: } (t=1)
+// ASM: {
+// ASM:   DATA_MOV, [EAST, RED] -> [NORTH, RED]
+// ASM: } (t=4)
 
 // ASM-LABEL: PE(1,0):
-// ASM: GRANT_ONCE, [WEST, RED] -> [NORTH, RED] (t=1)
-// ASM: GRANT_ONCE, [WEST, RED] -> [$4] (t=2)
-// ASM: PHI, [$5], [$4] -> [NORTH, RED], [$4] (t=3)
-// ASM: DATA_MOV, [EAST, RED] -> [WEST, RED] (t=3)
-// ASM: GRANT_PREDICATE, [$4], [NORTH, RED] -> [$5] (t=5)
+// ASM: {
+// ASM:   GRANT_ONCE, [#0] -> [NORTH, RED]
+// ASM: } (t=1)
+// ASM: {
+// ASM:   GRANT_ONCE, [#0] -> [$4]
+// ASM: } (t=2)
+// ASM: {
+// ASM:   PHI, [$5], [$4] -> [NORTH, RED], [$4]
+// ASM:   DATA_MOV, [EAST, RED] -> [WEST, RED]
+// ASM: } (t=3)
+// ASM: {
+// ASM:   GRANT_PREDICATE, [$4], [NORTH, RED] -> [$5]
+// ASM: } (t=5)
 
 // ASM-LABEL: PE(2,0):
-// ASM: CONSTANT, [#1] -> [$8] (t=0)
-// ASM: GRANT_ONCE, [$8] -> [$8] (t=1)
-// ASM: PHI, [NORTH, RED], [$8] -> [NORTH, RED], [WEST, RED] (t=2)
+// ASM: {
+// ASM:   CONSTANT, [#1] -> [$8]
+// ASM: } (t=0)
+// ASM: {
+// ASM:   GRANT_ONCE, [#0] -> [$8]
+// ASM: } (t=1)
+// ASM: {
+// ASM:   PHI, [NORTH, RED], [$8] -> [NORTH, RED], [WEST, RED]
+// ASM: } (t=2)
 
 // ASM-LABEL: PE(3,0):
-// ASM: RETURN, [NORTH, RED] (t=8)
+// ASM: {
+// ASM:   RETURN, [NORTH, RED]
+// ASM: } (t=8)
 
 // ASM-LABEL: PE(0,1):
-// ASM: DATA_MOV, [SOUTH, RED] -> [EAST, RED] (t=5)
+// ASM: {
+// ASM:   DATA_MOV, [SOUTH, RED] -> [EAST, RED]
+// ASM: } (t=5)
 
 // ASM-LABEL: PE(1,1):
-// ASM: PHI, [EAST, RED], [SOUTH, RED] -> [EAST, RED] (t=2)
-// ASM: ICMP, [EAST, RED], [SOUTH, RED] -> [EAST, RED], [NORTH, RED], [$22], [$21], [SOUTH, RED], [$20] (t=4)
-// ASM: NOT, [$20] -> [EAST, RED] (t=5)
-// ASM: GRANT_PREDICATE, [WEST, RED], [$21] -> [EAST, RED] (t=6)
-// ASM: DATA_MOV, [SOUTH, RED] -> [$20] (t=6)
-// ASM: GRANT_PREDICATE, [$20], [$22] -> [EAST, RED] (t=7)
-// ASM: CTRL_MOV, [WEST, RED] -> [$20] (t=7)
+// ASM: {
+// ASM:   PHI, [EAST, RED], [SOUTH, RED] -> [EAST, RED]
+// ASM: } (t=2)
+// ASM: {
+// ASM:   ICMP, [EAST, RED], [SOUTH, RED] -> [EAST, RED], [NORTH, RED], [$22], [$21], [SOUTH, RED], [$20]
+// ASM: } (t=4)
+// ASM: {
+// ASM:   NOT, [$20] -> [EAST, RED]
+// ASM: } (t=5)
+// ASM: {
+// ASM:   GRANT_PREDICATE, [WEST, RED], [$21] -> [EAST, RED]
+// ASM:   DATA_MOV, [SOUTH, RED] -> [$20]
+// ASM: } (t=6)
+// ASM: {
+// ASM:   GRANT_PREDICATE, [$20], [$22] -> [EAST, RED]
+// ASM:   CTRL_MOV, [WEST, RED] -> [$20]
+// ASM: } (t=7)
 
 // ASM-LABEL: PE(2,1):
-// ASM: ADD, [WEST, RED], [SOUTH, RED] -> [WEST, RED], [$25] (t=3)
-// ASM: PHI, [$24], [EAST, RED] -> [$24] (t=4)
-// ASM: FADD, [$24], [NORTH, RED] -> [$26], [EAST, RED] (t=5)
-// ASM: DATA_MOV, [EAST, RED] -> [$24] (t=5)
-// ASM: GRANT_PREDICATE, [$25], [$24] -> [WEST, RED] (t=6)
-// ASM: DATA_MOV, [WEST, RED] -> [EAST, RED] (t=6)
-// ASM: GRANT_PREDICATE, [$26], [NORTH, RED] -> [$24] (t=7)
-// ASM: CTRL_MOV, [WEST, RED] -> [SOUTH, RED] (t=7)
-// ASM: CTRL_MOV, [WEST, RED] -> [NORTH, RED] (t=8)
+// ASM: {
+// ASM:   ADD, [WEST, RED], [SOUTH, RED] -> [WEST, RED], [$25]
+// ASM: } (t=3)
+// ASM: {
+// ASM:   PHI, [$24], [EAST, RED] -> [$24]
+// ASM: } (t=4)
+// ASM: {
+// ASM:   FADD, [$24], [NORTH, RED] -> [$26], [EAST, RED]
+// ASM:   DATA_MOV, [EAST, RED] -> [$24]
+// ASM: } (t=5)
+// ASM: {
+// ASM:   GRANT_PREDICATE, [$25], [$24] -> [WEST, RED]
+// ASM:   DATA_MOV, [WEST, RED] -> [EAST, RED]
+// ASM: } (t=6)
+// ASM: {
+// ASM:   GRANT_PREDICATE, [$26], [NORTH, RED] -> [$24]
+// ASM:   CTRL_MOV, [WEST, RED] -> [SOUTH, RED]
+// ASM: } (t=7)
+// ASM: {
+// ASM:   CTRL_MOV, [WEST, RED] -> [NORTH, RED]
+// ASM: } (t=8)
 
 // ASM-LABEL: PE(3,1):
-// ASM: GRANT_ONCE, [NORTH, RED] -> [WEST, RED] (t=3)
-// ASM: DATA_MOV, [EAST, RED] -> [$28] (t=6)
-// ASM: GRANT_PREDICATE, [$28], [WEST, RED] -> [SOUTH, RED] (t=7)
+// ASM: {
+// ASM:   GRANT_ONCE, [#0] -> [WEST, RED]
+// ASM: } (t=3)
+// ASM: {
+// ASM:   DATA_MOV, [EAST, RED] -> [$28]
+// ASM: } (t=6)
+// ASM: {
+// ASM:   GRANT_PREDICATE, [$28], [WEST, RED] -> [SOUTH, RED]
+// ASM: } (t=7)
 
 // ASM-LABEL: PE(1,2):
-// ASM: DATA_MOV, [SOUTH, RED] -> [EAST, RED] (t=5)
-// ASM: DATA_MOV, [EAST, RED] -> [SOUTH, RED] (t=5)
+// ASM: {
+// ASM:   DATA_MOV, [SOUTH, RED] -> [EAST, RED]
+// ASM:   DATA_MOV, [EAST, RED] -> [SOUTH, RED]
+// ASM: } (t=5)
 
 // ASM-LABEL: PE(2,2):
-// ASM: GRANT_ONCE, [NORTH, RED] -> [$40] (t=3)
-// ASM: PHI, [SOUTH, RED], [$40] -> [SOUTH, RED], [WEST, RED] (t=4)
-// ASM: DATA_MOV, [WEST, RED] -> [SOUTH, RED] (t=6)
-// ASM: CTRL_MOV, [NORTH, RED] -> [$41] (t=9)
+// ASM: {
+// ASM:   GRANT_ONCE, [#0] -> [$40]
+// ASM: } (t=3)
+// ASM: {
+// ASM:   PHI, [SOUTH, RED], [$40] -> [SOUTH, RED], [WEST, RED]
+// ASM: } (t=4)
+// ASM: {
+// ASM:   DATA_MOV, [WEST, RED] -> [SOUTH, RED]
+// ASM: } (t=6)
+// ASM: {
+// ASM:   CTRL_MOV, [NORTH, RED] -> [$41]
+// ASM: } (t=9)
 
 // ASM-LABEL: PE(3,2):
-// ASM: CONSTANT, [#0.000000] -> [SOUTH, RED] (t=2)
+// ASM: {
+// ASM:   CONSTANT, [#0.000000] -> [SOUTH, RED]
+// ASM: } (t=2)
 
 // ASM-LABEL: PE(2,3):
-// ASM: CONSTANT, [#3.000000] -> [SOUTH, RED] (t=2)
+// ASM: {
+// ASM:   CONSTANT, [#3.000000] -> [SOUTH, RED]
+// ASM: } (t=2)
 
 
 
