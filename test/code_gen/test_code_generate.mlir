@@ -182,7 +182,7 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:               operations:
 // YAML-NEXT:                 - opcode: "GRANT_ONCE"
 // YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "#0"
+// YAML-NEXT:                     - operand: "WEST"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                   dst_operands:
 // YAML-NEXT:                     - operand: "NORTH"
@@ -191,7 +191,7 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:               operations:
 // YAML-NEXT:                 - opcode: "GRANT_ONCE"
 // YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "#0"
+// YAML-NEXT:                     - operand: "WEST"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                   dst_operands:
 // YAML-NEXT:                     - operand: "$4"
@@ -246,7 +246,7 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:               operations:
 // YAML-NEXT:                 - opcode: "GRANT_ONCE"
 // YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "#0"
+// YAML-NEXT:                     - operand: "$8"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                   dst_operands:
 // YAML-NEXT:                     - operand: "$8"
@@ -479,7 +479,7 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:               operations:
 // YAML-NEXT:                 - opcode: "GRANT_ONCE"
 // YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "#0"
+// YAML-NEXT:                     - operand: "NORTH"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                   dst_operands:
 // YAML-NEXT:                     - operand: "WEST"
@@ -536,7 +536,7 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:               operations:
 // YAML-NEXT:                 - opcode: "GRANT_ONCE"
 // YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "#0"
+// YAML-NEXT:                     - operand: "NORTH"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                   dst_operands:
 // YAML-NEXT:                     - operand: "$40"
@@ -616,10 +616,10 @@ func.func @loop_test() -> f32 {
 
 // ASM-LABEL: PE(1,0):
 // ASM: {
-// ASM:   GRANT_ONCE, [#0] -> [NORTH, RED]
+// ASM:   GRANT_ONCE, [WEST, RED] -> [NORTH, RED]
 // ASM: } (t=1)
 // ASM: {
-// ASM:   GRANT_ONCE, [#0] -> [$4]
+// ASM:   GRANT_ONCE, [WEST, RED] -> [$4]
 // ASM: } (t=2)
 // ASM: {
 // ASM:   PHI, [$5], [$4] -> [NORTH, RED], [$4]
@@ -634,7 +634,7 @@ func.func @loop_test() -> f32 {
 // ASM:   CONSTANT, [#1] -> [$8]
 // ASM: } (t=0)
 // ASM: {
-// ASM:   GRANT_ONCE, [#0] -> [$8]
+// ASM:   GRANT_ONCE, [$8] -> [$8]
 // ASM: } (t=1)
 // ASM: {
 // ASM:   PHI, [NORTH, RED], [$8] -> [NORTH, RED], [WEST, RED]
@@ -694,7 +694,7 @@ func.func @loop_test() -> f32 {
 
 // ASM-LABEL: PE(3,1):
 // ASM: {
-// ASM:   GRANT_ONCE, [#0] -> [WEST, RED]
+// ASM:   GRANT_ONCE, [NORTH, RED] -> [WEST, RED]
 // ASM: } (t=3)
 // ASM: {
 // ASM:   DATA_MOV, [EAST, RED] -> [$28]
@@ -711,7 +711,7 @@ func.func @loop_test() -> f32 {
 
 // ASM-LABEL: PE(2,2):
 // ASM: {
-// ASM:   GRANT_ONCE, [#0] -> [$40]
+// ASM:   GRANT_ONCE, [NORTH, RED] -> [$40]
 // ASM: } (t=3)
 // ASM: {
 // ASM:   PHI, [SOUTH, RED], [$40] -> [SOUTH, RED], [WEST, RED]
