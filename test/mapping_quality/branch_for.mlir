@@ -316,6 +316,9 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:       - timestep: 2
 // YAML-NEXT:         operations:
 // YAML-NEXT:         - opcode: "GRANT_ONCE"
+// YAML-NEXT:           src_operands:
+// YAML-NEXT:           - operand: "#3.000000"
+// YAML-NEXT:             color: "RED"
 // YAML-NEXT:           dst_operands:
 // YAML-NEXT:           - operand: "EAST"
 // YAML-NEXT:             color: "RED"
@@ -323,7 +326,7 @@ func.func @loop_test() -> f32 {
 
 // ASM-LABEL: PE(0,1):
 // ASM: {
-// ASM:   GRANT_ONCE -> [EAST, RED]
+// ASM:   GRANT_ONCE, [#3.000000] -> [EAST, RED]
 // ASM: } (t=2)
 
 // ASM-LABEL: PE(1,1):
