@@ -73,7 +73,6 @@ static bool isCtrlMov(Operation *op) { return dyn_cast<CtrlMovOp>(op) != nullptr
 static bool isPhi(Operation *op) { return dyn_cast<PhiOp>(op) != nullptr; }
 static bool isReserve(Operation *op) { return dyn_cast<ReserveOp>(op) != nullptr; }
 static bool isConstant(Operation *op) { return dyn_cast<ConstantOp>(op) != nullptr; }
-static bool isGrantOnce(Operation *op) { return dyn_cast<GrantOnceOp>(op) != nullptr; }
 
 // ----- placement helpers -----.
 static TileLocation getTileLocation(Operation *op) {
@@ -121,12 +120,11 @@ static std::string getOpcode(Operation *op) {
   std::string opcode = op->getName().getStringRef().str();
   if (opcode.rfind("neura.", 0) == 0) opcode = opcode.substr(6);
   if (isConstant(op)) return "CONSTANT";
-  if (isGrantOnce(op)) return "GRANT_ONCE";
   std::transform(opcode.begin(), opcode.end(), opcode.begin(), ::toupper);
   return opcode;
 }
 
-// Literals for CONSTANT and GRANT_ONCE's constant values, e.g. "#10" / "#0" / "#3.0".
+// Literals for CONSTANT operations, e.g. "#10" / "#0" / "#3.0".
 static std::string getConstantLiteral(Operation *op) {
   if (isConstant(op)) {
     if (auto value_attr = op->getAttr("value")) {
@@ -134,18 +132,6 @@ static std::string getConstantLiteral(Operation *op) {
         return "#" + std::to_string(integer_attr.getInt());
       if (auto float_attr = dyn_cast<FloatAttr>(value_attr))
         return "#" + std::to_string(float_attr.getValueAsDouble());
-    }
-    return "#0";
-  }
-  
-  if (isGrantOnce(op)) {
-    if (auto grant_once_op = dyn_cast<GrantOnceOp>(op)) {
-      if (auto constant_value = grant_once_op.getConstantValue()) {
-        if (auto integer_attr = dyn_cast<IntegerAttr>(*constant_value))
-          return "#" + std::to_string(integer_attr.getInt());
-        if (auto float_attr = dyn_cast<FloatAttr>(*constant_value))
-          return "#" + std::to_string(float_attr.getValueAsDouble());
-      }
     }
     return "#0";
   }
@@ -339,7 +325,7 @@ struct GenerateCodePass
       Instruction inst(opcode);
       inst.time_step = placement.time_step;
 
-      if (isConstant(op) || isGrantOnce(op)) {
+      if (isConstant(op)) {
         inst.src_operands.emplace_back(getConstantLiteral(op), "RED");
       } else {
         SmallVector<Value> operands; operands.reserve(op->getNumOperands());
