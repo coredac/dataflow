@@ -136,6 +136,14 @@ static std::string getConstantLiteral(Operation *op) {
     return "#0";
   }
   
+  // Check for constant_value attribute in non-CONSTANT operations
+  if (auto constant_value_attr = op->getAttr("constant_value")) {
+    if (auto integer_attr = dyn_cast<IntegerAttr>(constant_value_attr))
+      return "#" + std::to_string(integer_attr.getInt());
+    if (auto float_attr = dyn_cast<FloatAttr>(constant_value_attr))
+      return "#" + std::to_string(float_attr.getValueAsDouble());
+  }
+  
   return "";
 }
 
@@ -327,7 +335,11 @@ struct GenerateCodePass
 
       if (isConstant(op)) {
         inst.src_operands.emplace_back(getConstantLiteral(op), "RED");
+      } else if (op->getAttr("constant_value")) {
+        // Check if operation has constant_value attribute (for non-CONSTANT operations)
+        inst.src_operands.emplace_back(getConstantLiteral(op), "RED");
       } else {
+        // Handle normal operands
         SmallVector<Value> operands; operands.reserve(op->getNumOperands());
         for (Value v : op->getOperands()) {
           operands.push_back(v);
