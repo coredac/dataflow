@@ -308,25 +308,39 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:   rows: 4
 // YAML-NEXT:   cores:
 // YAML-NEXT:   - column: 0
-// YAML-NEXT:   row: 1
-// YAML-NEXT:   core_id: "4"
-// YAML-NEXT:   entries:
-// YAML-NEXT:   - entry_id: "entry0"
-// YAML-NEXT:   instructions:
-// YAML-NEXT:   - opcode: "GRANT_ONCE"
-// YAML-NEXT:   timestep: 2
-// YAML-NEXT:   dst_operands:
-// YAML-NEXT:   - operand: "EAST"
-// YAML-NEXT:   color: "RED"
+// YAML-NEXT:     row: 1
+// YAML-NEXT:     core_id: "4"
+// YAML-NEXT:     entries:
+// YAML-NEXT:     - entry_id: "entry0"
+// YAML-NEXT:       instructions:
+// YAML-NEXT:       - timestep: 2
+// YAML-NEXT:         operations:
+// YAML-NEXT:         - opcode: "GRANT_ONCE"
+// YAML-NEXT:           src_operands:
+// YAML-NEXT:           - operand: "#3.000000"
+// YAML-NEXT:             color: "RED"
+// YAML-NEXT:           dst_operands:
+// YAML-NEXT:           - operand: "EAST"
+// YAML-NEXT:             color: "RED"
 
 
 // ASM-LABEL: PE(0,1):
-// ASM: GRANT_ONCE -> [EAST, RED] (t=2)
+// ASM: {
+// ASM:   GRANT_ONCE, [#3.000000] -> [EAST, RED]
+// ASM: } (t=2)
 
 // ASM-LABEL: PE(1,1):
-// ASM: DATA_MOV, [NORTH, RED] -> [EAST, RED] (t=2)
-// ASM: PHI, [$20], [WEST, RED] -> [NORTH, RED], [$20] (t=3)
-// ASM: DATA_MOV, [NORTH, RED] -> [EAST, RED] (t=3)
-// ASM: DATA_MOV, [SOUTH, RED] -> [$21] (t=5)
-// ASM: CTRL_MOV, [EAST, RED] -> [NORTH, RED] (t=5)
-// ASM: GRANT_PREDICATE, [$20], [$21] -> [$20] (t=6)
+// ASM: {
+// ASM:   DATA_MOV, [NORTH, RED] -> [EAST, RED]
+// ASM: } (t=2)
+// ASM: {
+// ASM:   PHI, [$20], [WEST, RED] -> [NORTH, RED], [$20]
+// ASM:   DATA_MOV, [NORTH, RED] -> [EAST, RED]
+// ASM: } (t=3)
+// ASM: {
+// ASM:   DATA_MOV, [SOUTH, RED] -> [$21]
+// ASM:   CTRL_MOV, [EAST, RED] -> [NORTH, RED]
+// ASM: } (t=5)
+// ASM: {
+// ASM:   GRANT_PREDICATE, [$20], [$21] -> [$20]
+// ASM: } (t=6)
