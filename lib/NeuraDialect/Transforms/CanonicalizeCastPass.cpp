@@ -11,6 +11,9 @@
 
 using namespace mlir;
 
+#define GEN_PASS_DEF_CANONICALIZECAST
+#include "NeuraDialect/NeuraPasses.h.inc"
+
 namespace {
 
 LogicalResult canonicalizeCast(Region &region) {

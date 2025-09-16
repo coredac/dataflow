@@ -67,12 +67,12 @@ def GenerateCode : Pass<"generate-code", "ModuleOp"> {
   let constructor = "neura::createGenerateCodePass()";
 }
 
-def FuseControlFlow: Pass<"fuse-control-flow", "ModuleOp">{
-  let summary = "Fuses control flow operations in the Neura dialect";
+def FuseLoopControl: Pass<"fuse-loop-control", "ModuleOp">{
+  let summary = "Fuses loop control operations in the Neura dialect";
   let description = [{
-    This pass fuses control flow operations.
+    This pass fuses loop control operations.
   }];
-  let constructor = "neura::createFuseControlFlowPass()";
+  let constructor = "neura::createFuseLoopControlPass()";
 }
 
 def CanonicalizeLiveIn : Pass<"canonicalize-live-in", "ModuleOp"> {
@@ -84,6 +84,14 @@ def CanonicalizeLiveIn : Pass<"canonicalize-live-in", "ModuleOp"> {
     2. Promoting function arguments to neura constant operations.
   }];
   let constructor = "neura::createCanonicalizeLiveInPass()";
+}
+
+def PromoteFuncArgToConst : Pass<"promote-func-arg-to-const", "ModuleOp"> {
+  let summary = "Promotes function arguments to neura constant operations";
+  let description = [{
+    This pass promotes function arguments to neura constant operations.
+  }];
+  let constructor = "neura::createPromoteFuncArgToConstPass()";
 }
 
 def CanonicalizeCast : Pass<"canonicalize-cast", "ModuleOp"> {
