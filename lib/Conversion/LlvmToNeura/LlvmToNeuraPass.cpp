@@ -34,7 +34,7 @@ struct LlvmAddToNeuraAdd : public OpRewritePattern<mlir::LLVM::AddOp> {
   LogicalResult matchAndRewrite(mlir::LLVM::AddOp op,
                                 PatternRewriter &rewriter) const override {
     rewriter.replaceOpWithNewOp<neura::AddOp>(op, op.getType(), op.getLhs(),
-                                              op.getRhs(), Value());
+                                              op.getRhs());
     return success();
   }
 };
@@ -52,9 +52,7 @@ struct LlvmFAddToNeuraFAdd : public OpRewritePattern<mlir::LLVM::FAddOp> {
     if (!mlir::isa<FloatType>(result_type))
       return failure();
 
-    // Optional predicate: default to 'none'
-    rewriter.replaceOpWithNewOp<neura::FAddOp>(op, result_type, lhs, rhs,
-                                               Value());
+    rewriter.replaceOpWithNewOp<neura::FAddOp>(op, result_type, lhs, rhs);
     return success();
   }
 };
@@ -73,9 +71,7 @@ struct LlvmFSubToNeuraFSub : public OpRewritePattern<mlir::LLVM::FSubOp> {
       return failure();
     }
 
-    // Optional predicate: default to 'none'.
-    rewriter.replaceOpWithNewOp<neura::FSubOp>(op, result_type, lhs, rhs,
-                                               Value());
+    rewriter.replaceOpWithNewOp<neura::FSubOp>(op, result_type, lhs, rhs);
     return success();
   }
 };
@@ -86,7 +82,7 @@ struct LlvmOrToNeuraOr : public OpRewritePattern<mlir::LLVM::OrOp> {
   LogicalResult matchAndRewrite(mlir::LLVM::OrOp op,
                                 PatternRewriter &rewriter) const override {
     rewriter.replaceOpWithNewOp<neura::OrOp>(op, op.getType(), op.getLhs(),
-                                             op.getRhs(), Value());
+                                             op.getRhs());
     return success();
   }
 };
@@ -104,8 +100,7 @@ struct LlvmFMulToNeuraFMul : public OpRewritePattern<mlir::LLVM::FMulOp> {
     if (!mlir::isa<FloatType>(result_type))
       return failure();
 
-    rewriter.replaceOpWithNewOp<neura::FMulOp>(op, result_type, lhs, rhs,
-                                               Value());
+    rewriter.replaceOpWithNewOp<neura::FMulOp>(op, result_type, lhs, rhs);
     return success();
   }
 };
@@ -124,8 +119,7 @@ struct LlvmVFMulToNeuraVFMul : public OpRewritePattern<mlir::LLVM::FMulOp> {
     if (!vecTy || !mlir::isa<FloatType>(vecTy.getElementType()))
       return failure();
 
-    rewriter.replaceOpWithNewOp<neura::VFMulOp>(op, result_type, lhs, rhs,
-                                                Value());
+    rewriter.replaceOpWithNewOp<neura::VFMulOp>(op, result_type, lhs, rhs);
     return success();
   }
 };
@@ -141,7 +135,7 @@ struct LlvmICmpToNeuraICmp : public OpRewritePattern<LLVM::ICmpOp> {
     auto resultType = op.getType();
 
     rewriter.replaceOpWithNewOp<neura::ICmpOp>(
-        op, resultType, lhs, rhs, Value(),
+        op, resultType, lhs, rhs,
         rewriter.getStringAttr(LLVM::stringifyICmpPredicate(pred)));
     return success();
   }
@@ -158,7 +152,7 @@ struct LlvmFCmpToNeuraFCmp : public OpRewritePattern<LLVM::FCmpOp> {
     auto resultType = op.getType();
 
     rewriter.replaceOpWithNewOp<neura::FCmpOp>(
-        op, resultType, lhs, rhs, Value(),
+        op, resultType, lhs, rhs,
         rewriter.getStringAttr(LLVM::stringifyFCmpPredicate(pred)));
     return success();
   }
@@ -180,7 +174,6 @@ struct LlvmGEPToNeuraGEP : public OpRewritePattern<mlir::LLVM::GEPOp> {
         OperationState state(op.getLoc(),
                              neura::ConstantOp::getOperationName());
         state.addAttribute("value", intAttr);
-        state.addAttribute("predicate", rewriter.getBoolAttr(true));
         state.addTypes(rewriter.getIndexType());
         Value cst = rewriter.create(state)->getResult(0);
         indexValues.push_back(cst);
@@ -202,7 +195,7 @@ struct LlvmLoadToNeuraLoad : public OpRewritePattern<mlir::LLVM::LoadOp> {
                                 PatternRewriter &rewriter) const override {
     Value ptr = op.getAddr(); // getPointer() is deprecated.
     Type resultType = op.getResult().getType();
-    rewriter.replaceOpWithNewOp<neura::LoadOp>(op, resultType, ptr, Value());
+    rewriter.replaceOpWithNewOp<neura::LoadOp>(op, resultType, ptr);
     return success();
   }
 };
@@ -214,7 +207,7 @@ struct LlvmStoreToNeuraStore : public OpRewritePattern<mlir::LLVM::StoreOp> {
                                 PatternRewriter &rewriter) const override {
     Value value = op.getValue();
     Value addr = op.getAddr(); // getPointer() is deprecated
-    rewriter.replaceOpWithNewOp<neura::StoreOp>(op, value, addr, Value());
+    rewriter.replaceOpWithNewOp<neura::StoreOp>(op, value, addr);
     return success();
   }
 };
@@ -235,7 +228,6 @@ struct LlvmCondBrToNeuraCondBr : public OpRewritePattern<LLVM::CondBrOp> {
     auto newOp = rewriter.create<neura::CondBr>(
         op.getLoc(),       // Location
         op.getCondition(), // Condition
-        Value(),           // Optional predicate, default to 'none'
         trueOperands,      // True destination operands
         falseOperands,     // False destination operands
         trueDest,          // True destination block

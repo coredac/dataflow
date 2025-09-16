@@ -35,9 +35,8 @@ struct BuiltinUnrealizedConversionCastToNeuraCast
         return rewriter.notifyMatchFailure(op, "unsupported cast");
       }
 
-      // Optional predicate: default to null.
       rewriter.replaceOpWithNewOp<neura::CastOp>(
-          op, result_type, input, rewriter.getStringAttr(cast_type), nullptr);
+          op, result_type, input, rewriter.getStringAttr(cast_type));
       return success();
     }
     return failure();

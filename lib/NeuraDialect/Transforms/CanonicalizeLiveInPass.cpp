@@ -31,11 +31,9 @@ LogicalResult promoteFunctionArgsToConstants(Region &region) {
 
   // Creates a constant operation for each function argument.
   for (auto [idx, arg] : llvm::enumerate(args)) {
-    // For constant operation, the default predicate is true.
     auto const_op = builder.create<neura::ConstantOp>(
         arg.getLoc(), arg.getType(),
-        builder.getStringAttr("\%arg" + std::to_string(idx)),
-        builder.getBoolAttr(true));
+        builder.getStringAttr("\%arg" + std::to_string(idx)));
     arg.replaceAllUsesWith(const_op.getResult());
   }
 
@@ -288,7 +286,7 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
         if (needs_update) {
           OpBuilder builder(cond_br_op);
           builder.create<neura::CondBr>(
-              cond_br_op.getLoc(), cond_br_op.getCondition(), nullptr,
+              cond_br_op.getLoc(), cond_br_op.getCondition(),
               true_operands, false_operands, cond_br_op.getTrueDest(),
               cond_br_op.getFalseDest());
           cond_br_op.erase();

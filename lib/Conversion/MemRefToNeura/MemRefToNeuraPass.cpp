@@ -23,9 +23,8 @@ struct MemRefLoadLowering : public OpRewritePattern<memref::LoadOp> {
     Type result_type = load_op.getType();
     Value memref = load_op.getMemRef();
     ValueRange indices = load_op.getIndices();
-    // Optiional predicate: default to null
     rewriter.replaceOpWithNewOp<neura::LoadIndexedOp>(load_op, result_type,
-                                                      memref, indices, nullptr);
+                                                      memref, indices);
     return success();
   }
 };
@@ -39,9 +38,8 @@ struct MemRefStoreLowering : public OpRewritePattern<memref::StoreOp> {
     Value value = store_op.getValueToStore();
     Value memref = store_op.getMemRef();
     ValueRange indices = store_op.getIndices();
-    // Optional predicate: default to null.
     rewriter.replaceOpWithNewOp<neura::StoreIndexedOp>(store_op, value, memref,
-                                                       indices, nullptr);
+                                                       indices);
     return success();
   }
 };
