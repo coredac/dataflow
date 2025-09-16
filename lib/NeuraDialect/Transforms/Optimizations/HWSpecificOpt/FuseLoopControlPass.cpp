@@ -18,7 +18,7 @@
 
 using namespace mlir;
 
-#define GEN_PASS_DEF_FUSECONTROLFLOW
+#define GEN_PASS_DEF_FUSELOOPCONTROL
 #include "NeuraDialect/NeuraPasses.h.inc"
 
 namespace {
@@ -565,13 +565,13 @@ struct FuseLoopControlFlowPattern : public OpRewritePattern<func::FuncOp> {
   }
 };
 
-struct FuseControlFlowPass
-    : public PassWrapper<FuseControlFlowPass, OperationPass<ModuleOp>> {
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(FuseControlFlowPass)
+struct FuseLoopControlPass
+    : public PassWrapper<FuseLoopControlPass, OperationPass<ModuleOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(FuseLoopControlPass)
 
-  StringRef getArgument() const override { return "fuse-control-flow"; }
+  StringRef getArgument() const override { return "fuse-loop-control"; }
   StringRef getDescription() const override {
-    return "Fuses control flow operations into optimized neura dialect "
+    return "Fuses loop control operations into optimized neura dialect "
            "operations";
   }
 
@@ -589,7 +589,7 @@ struct FuseControlFlowPass
 } // namespace
 
 namespace mlir::neura {
-std::unique_ptr<Pass> createFuseControlFlowPass() {
-  return std::make_unique<FuseControlFlowPass>();
+std::unique_ptr<Pass> createFuseLoopControlPass() {
+  return std::make_unique<FuseLoopControlPass>();
 }
 } // namespace mlir::neura

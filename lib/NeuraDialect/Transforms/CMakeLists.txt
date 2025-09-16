@@ -10,10 +10,9 @@ add_mlir_library(
     LeveragePredicatedValuePass.cpp
     MapToAcceleratorPass.cpp
     GenerateCodePass.cpp
-    FuseControlFlowPass.cpp
     CanonicalizeLiveInPass.cpp
     CanonicalizeCastPass.cpp
-    FoldConstantPass.cpp
+    PromoteFuncArgToConstPass.cpp
 
     DEPENDS
     MLIRNeuraTransformsIncGen
@@ -27,3 +26,5 @@ add_mlir_library(
       ${dialect_libs}
       LLVMSupport
 )
+
+add_subdirectory(Optimizations)
