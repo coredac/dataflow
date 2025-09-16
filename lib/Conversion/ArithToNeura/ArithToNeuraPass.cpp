@@ -36,9 +36,8 @@ struct ArithConstantToNeuraConstant
     // Converts arith constant to Neura constant.
     Type result_type = op.getType();
     Attribute value = op.getValue();
-    // Optional predicate parameter can be null.
-    rewriter.replaceOpWithNewOp<neura::ConstantOp>(op, result_type, value,
-                                                   rewriter.getBoolAttr(true));
+
+    rewriter.replaceOpWithNewOp<neura::ConstantOp>(op, result_type, value);
     return success();
   }
 };
@@ -52,9 +51,8 @@ struct ArithAddIToNeuraAdd : public OpRewritePattern<mlir::arith::AddIOp> {
     Value rhs = op.getRhs();
     Type result_type = op.getType();
 
-    // Optional predicate: default to null.
-    rewriter.replaceOpWithNewOp<neura::AddOp>(op, result_type, lhs, rhs,
-                                              nullptr);
+
+    rewriter.replaceOpWithNewOp<neura::AddOp>(op, result_type, lhs, rhs);
     return success();
   }
 };
@@ -68,9 +66,8 @@ struct ArithFAddToNeuraFAdd : public OpRewritePattern<mlir::arith::AddFOp> {
     Value rhs = op.getRhs();
     Type result_type = op.getType();
 
-    // Optional predicate: default to null.
-    rewriter.replaceOpWithNewOp<neura::FAddOp>(op, result_type, lhs, rhs,
-                                               nullptr);
+
+    rewriter.replaceOpWithNewOp<neura::FAddOp>(op, result_type, lhs, rhs);
     return success();
   }
 };
@@ -84,9 +81,8 @@ struct ArithSubIToNeuraSub : public OpRewritePattern<mlir::arith::SubIOp> {
     Value rhs = op.getRhs();
     Type result_type = op.getType();
 
-    // Optional predicate: default to null.
-    rewriter.replaceOpWithNewOp<neura::SubOp>(op, result_type, lhs, rhs,
-                                              nullptr);
+
+    rewriter.replaceOpWithNewOp<neura::SubOp>(op, result_type, lhs, rhs);
     return success();
   }
 };
@@ -100,9 +96,8 @@ struct ArithSubFToNeuraFSub : public OpRewritePattern<mlir::arith::SubFOp> {
     Value rhs = op.getRhs();
     Type result_type = op.getType();
 
-    // Optional predicate: default to null.
-    rewriter.replaceOpWithNewOp<neura::FSubOp>(op, result_type, lhs, rhs,
-                                               nullptr);
+
+    rewriter.replaceOpWithNewOp<neura::FSubOp>(op, result_type, lhs, rhs);
     return success();
   }
 };
@@ -116,9 +111,8 @@ struct ArithMulIToNeuraMul : public OpRewritePattern<mlir::arith::MulIOp> {
     Value rhs = op.getRhs();
     Type result_type = op.getType();
 
-    // Optional predicate: default to null.
-    rewriter.replaceOpWithNewOp<neura::MulOp>(op, result_type, lhs, rhs,
-                                              nullptr);
+
+    rewriter.replaceOpWithNewOp<neura::MulOp>(op, result_type, lhs, rhs);
     return success();
   }
 };
@@ -132,9 +126,8 @@ struct ArithMulFToNeuraFMul : public OpRewritePattern<mlir::arith::MulFOp> {
     Value rhs = op.getRhs();
     Type result_type = op.getType();
 
-    // Optional predicate: default to null.
-    rewriter.replaceOpWithNewOp<neura::FMulOp>(op, result_type, lhs, rhs,
-                                               nullptr);
+
+    rewriter.replaceOpWithNewOp<neura::FMulOp>(op, result_type, lhs, rhs);
     return success();
   }
 };
@@ -147,9 +140,7 @@ struct ArithDivSIToNeuraDiv : public OpRewritePattern<mlir::arith::DivSIOp> {
     Value rhs = op.getRhs();
     Type result_type = op.getType();
     // Converts arith DivSIOp to Neura DivOp.
-    // Optional predicate: default to null.
-    rewriter.replaceOpWithNewOp<neura::DivOp>(op, result_type, lhs, rhs,
-                                              nullptr);
+    rewriter.replaceOpWithNewOp<neura::DivOp>(op, result_type, lhs, rhs);
     return success();
   }
 };
@@ -163,9 +154,8 @@ struct ArithFDivToNeuraFDiv : public OpRewritePattern<mlir::arith::DivFOp> {
     Value rhs = op.getRhs();
     Type result_type = op.getType();
 
-    // Optional predicate: default to null.
-    rewriter.replaceOpWithNewOp<neura::FDivOp>(op, result_type, lhs, rhs,
-                                               nullptr);
+
+    rewriter.replaceOpWithNewOp<neura::FDivOp>(op, result_type, lhs, rhs);
     return success();
   }
 };
@@ -180,13 +170,13 @@ struct ArithRemSIToNeuraOp : public OpRewritePattern<mlir::arith::RemSIOp> {
     Type result_type = op.getType();
     Location loc = op.getLoc();
     // Converts arith RemSIOp to basic Neura Op.
-    // Optional predicate: default to null.
+
     Value div =
-        rewriter.create<neura::DivOp>(loc, result_type, lhs, rhs, nullptr);
+        rewriter.create<neura::DivOp>(loc, result_type, lhs, rhs);
     Value mul =
-        rewriter.create<neura::MulOp>(loc, result_type, rhs, div, nullptr);
+        rewriter.create<neura::MulOp>(loc, result_type, rhs, div);
     Value rem =
-        rewriter.create<neura::SubOp>(loc, result_type, lhs, mul, nullptr);
+        rewriter.create<neura::SubOp>(loc, result_type, lhs, mul);
 
     rewriter.replaceOp(op, rem);
     return success();
@@ -239,9 +229,9 @@ struct ArithCmpiToNeuraICmp : public OpRewritePattern<mlir::arith::CmpIOp> {
     }
 
     // Converts arith CmpIOp to Neura ICmpOp.
-    // Optional predicate: default to null.
+
     rewriter.replaceOpWithNewOp<neura::ICmpOp>(
-        op, result_type, lhs, rhs, nullptr, rewriter.getStringAttr(cmp_type));
+        op, result_type, lhs, rhs, rewriter.getStringAttr(cmp_type));
     return success();
   }
 };
@@ -272,9 +262,9 @@ struct ArithExtUIToNeuraCast : public OpRewritePattern<mlir::arith::ExtUIOp> {
     Type result_type = op.getType();
 
     // Converts arith ExtUIOp to Neura cast operation.
-    // Optional predicate: default to null.
+
     rewriter.replaceOpWithNewOp<neura::CastOp>(
-        op, result_type, input, rewriter.getStringAttr("extui"), nullptr);
+        op, result_type, input, rewriter.getStringAttr("extui"));
     return success();
   }
 };
@@ -288,9 +278,9 @@ struct ArithExtfToNeuraCast : public OpRewritePattern<mlir::arith::ExtFOp> {
     Type result_type = op.getType();
 
     // Converts arith ExtFOp to Neura cast operation.
-    // Optional predicate: default to null.
+
     rewriter.replaceOpWithNewOp<neura::CastOp>(
-        op, result_type, input, rewriter.getStringAttr("extf"), nullptr);
+        op, result_type, input, rewriter.getStringAttr("extf"));
     return success();
   }
 };
@@ -317,9 +307,9 @@ struct ArithIndexCastToNeuraCast
     }
 
     // Converts arith IndexCastOp to Neura cast operation.
-    // Optional predicate: default to null.
+
     rewriter.replaceOpWithNewOp<neura::CastOp>(
-        op, result_type, input, rewriter.getStringAttr(cast_string), nullptr);
+        op, result_type, input, rewriter.getStringAttr(cast_string));
     return success();
   }
 };

@@ -320,8 +320,7 @@ Value createConstantPredicate(PatternRewriter &rewriter, Location loc,
   auto predicated_type = rewriter.getType<neura::PredicatedValue>(
       rewriter.getI1Type(), rewriter.getI1Type());
   return rewriter.create<neura::ConstantOp>(loc, predicated_type,
-                                            rewriter.getBoolAttr(value),
-                                            rewriter.getBoolAttr(true));
+                                            rewriter.getBoolAttr(value));
 }
 
 Operation *findDefiningOp(Value value) {
