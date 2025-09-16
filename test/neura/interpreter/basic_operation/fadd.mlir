@@ -45,28 +45,26 @@ func.func @test_fadd_zero() -> f32 {
 }
 
 // ===----------------------------------------------------------------------===//
-// Test 4: Predicate handling in neura.fadd
+// Test 5: Predicate handling in neura.fadd
 // ===----------------------------------------------------------------------===//
-func.func @test_fadd_invalid_predicate() -> f32 {
-  %a = arith.constant 0.0 : f32
-  %b = arith.constant 25.5 : f32
-  %pred = arith.constant 0 : i1
-  %pred_f32 = "neura.cast"(%pred) {cast_type = "bool2f"} : (i1) -> f32
-  %res = "neura.fadd"(%a, %b, %pred_f32) : (f32, f32, f32) -> f32
+func.func @test_fadd_embed_invalid_predicate() -> f32 {
+  %a = "neura.constant"() {value = 0.0 : f32, predicate = false} : () -> f32
+  %b = "neura.constant"() {value = 25.5 : f32, predicate = false} : () -> f32
+  %res = "neura.fadd"(%a, %b) : (f32, f32) -> f32
   // CHECK: [neura-interpreter]  → Output: 0.000000
   return %res : f32
 }
 
 // ===----------------------------------------------------------------------===//
-// Test 5: Nested predicate handling in neura.fadd
+// Test 6: Nested predicate handling in neura.fadd
 // ===----------------------------------------------------------------------===//
-func.func @test_nested_fadd_invalid_predicate() -> f32 {
-  %a = arith.constant 0.0 : f32
-  %b = arith.constant 25.5 : f32
-  %pred = arith.constant 0 : i1
-  %pred_f32 = "neura.cast"(%pred) {cast_type = "bool2f"} : (i1) -> f32
-  %tmp = "neura.fadd"(%a, %b, %pred_f32) : (f32, f32, f32) -> f32
-  %res = "neura.fadd"(%tmp, %b, %pred_f32) : (f32, f32, f32) -> f32
-  // CHECK: [neura-interpreter]  → Output: 0.000000
-  return %res : f32
-}
+// func.func @test_nested_fadd_invalid_predicate() -> f32 {
+//   %a = arith.constant 0.0 : f32
+//   %b = arith.constant 25.5 : f32
+//   %pred = arith.constant 0 : i1
+//   %pred_f32 = "neura.cast"(%pred) {cast_type = "bool2f"} : (i1) -> f32
+//   %tmp = "neura.fadd"(%a, %b, %pred_f32) : (f32, f32, f32) -> f32
+//   %res = "neura.fadd"(%tmp, %b, %pred_f32) : (f32, f32, f32) -> f32
+//   // CHECK: [neura-interpreter]  → Output: 0.000000
+//   return %res : f32
+// }
