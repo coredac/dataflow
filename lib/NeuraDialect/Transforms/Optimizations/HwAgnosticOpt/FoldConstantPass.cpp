@@ -225,6 +225,7 @@ struct FoldConstantPass
     patterns.add<FuseSubRhsConstantPattern>(&getContext());
     patterns.add<FuseMulRhsConstantPattern>(&getContext());
     patterns.add<FuseICmpRhsConstantPattern>(&getContext());
+    patterns.add<FuseFAddRhsConstantPattern>(&getContext());
 
     patterns.add<FuseConstantAndGrantPattern>(&getContext());
     FrozenRewritePatternSet frozen(std::move(patterns));
