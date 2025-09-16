@@ -1,6 +1,6 @@
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
-add_mlir_conversion_library(MLIRNeuraHWSpecificOpt 
+add_mlir_conversion_library(MLIRNeuraHwSpecificOpt 
   FuseLoopControlPass.cpp
 
   DEPENDS

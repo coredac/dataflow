@@ -1,7 +1,7 @@
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 
-add_subdirectory(HWAgnosticOpt)
-add_subdirectory(HWSpecificOpt)
+add_subdirectory(HwAgnosticOpt)
+add_subdirectory(HwSpecificOpt)
 
 add_library(MLIRNUERAOptimization INTERFACE)
 
@@ -13,7 +13,7 @@ target_link_libraries(MLIRNUERAOptimization INTERFACE
   MLIRSupport
   MLIRTransforms
   MLIRNeura
-  MLIRNeuraHWSpecificOpt
-  MLIRNeuraHWAgnosticOpt
+  MLIRNeuraHwSpecificOpt
+  MLIRNeuraHwAgnosticOpt
   ${dialect_libs}
 )

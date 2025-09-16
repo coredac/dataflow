@@ -20,7 +20,7 @@ func.func @test_sub_negative() -> i32 {
   return %res : i32
 }
 
-// Remove tests with predicate input because we plan to remove the predicate attribute in
+// TODO: Remove tests with predicate input because we plan to remove the predicate attribute in
 // https://github.com/coredac/dataflow/issues/116
 
 // Test subtraction with predicate=true

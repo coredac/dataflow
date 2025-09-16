@@ -1,6 +1,6 @@
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
-add_mlir_conversion_library(MLIRNeuraHWAgnosticOpt
+add_mlir_conversion_library(MLIRNeuraHwAgnosticOpt
   FoldConstantPass.cpp
 
   DEPENDS
