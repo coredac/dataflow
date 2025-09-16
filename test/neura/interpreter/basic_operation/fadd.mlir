@@ -44,7 +44,7 @@ func.func @test_fadd_zero() -> f32 {
   return %res : f32
 }
 
-// Remove tests with predicate handling because we plan to remove the predicate attribute in
+// TODO: Remove tests with predicate handling because we plan to remove the predicate attribute in
 // https://github.com/coredac/dataflow/issues/116
 
 // ===----------------------------------------------------------------------===//

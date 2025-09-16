@@ -46,7 +46,7 @@ func.func @test_add_zero() -> f32 {
 
 // RUN: neura-interpreter %s | FileCheck %s
 
-// Remove Test 5 because we plan to remove the predicate attribute in
+// TODO: Remove Test 5 because we plan to remove the predicate attribute in
 // https://github.com/coredac/dataflow/issues/116
 
 // ===----------------------------------------------------------------------===//

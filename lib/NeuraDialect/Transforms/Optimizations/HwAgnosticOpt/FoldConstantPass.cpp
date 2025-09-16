@@ -96,7 +96,7 @@ void addConstantAttribute(Operation *op, StringRef attr_name,
 }
 
 // A template pattern to fuse binary operations with a constant on the
-// right-hand side.
+// right-hand side operand.
 template <typename OpType>
 struct FuseRhsConstantPattern : public OpRewritePattern<OpType> {
   using OpRewritePattern<OpType>::OpRewritePattern;
