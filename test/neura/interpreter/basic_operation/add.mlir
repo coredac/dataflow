@@ -44,17 +44,13 @@ func.func @test_add_zero() -> f32 {
   return %res : f32
 }
 
-// RUN: neura-interpreter %s | FileCheck %s
-
 // ===----------------------------------------------------------------------===//
-// Test 5: Add with operation predicate 0
+// Test 5: Add with operation embed predicate 0
 // ===----------------------------------------------------------------------===//
-func.func @test_add_predicate_zero() -> f32 {
-  %a = arith.constant 10.0 : f32
-  %b = arith.constant 32.0 : f32
-  %pred = arith.constant 0 : i1
-  %pred_f32 = "neura.cast"(%pred) {cast_type = "bool2f"} : (i1) -> f32
-  %res = "neura.add"(%a, %b, %pred_f32) : (f32, f32, f32) -> f32
+func.func @test_add__embed_predicate_zero() -> f32 {
+  %a = "neura.constant"() {value = 10.0 : f32, predicate = false} : () -> f32
+  %b = "neura.constant"() {value = 32.0 : f32, predicate = false} : () -> f32
+  %res = "neura.add"(%a, %b) : (f32, f32) -> f32
   // CHECK: [neura-interpreter]  → Output: 0.000000
   return %res : f32
 }
