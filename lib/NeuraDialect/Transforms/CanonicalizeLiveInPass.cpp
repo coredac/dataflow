@@ -13,7 +13,7 @@
 
 using namespace mlir;
 
-#define GEN_PASS_DEF_NEURACANONICALIZE
+#define GEN_PASS_DEF_CANONICALIZELIVEIN
 #include "NeuraDialect/NeuraPasses.h.inc"
 
 namespace {

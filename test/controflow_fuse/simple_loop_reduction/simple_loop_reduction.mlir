@@ -42,7 +42,7 @@
 // RUN: --canonicalize-live-in \
 // RUN: --leverage-predicated-value \
 // RUN: --transform-ctrl-to-data-flow \
-// RUN: --fuse-control-flow \
+// RUN: --fuse-loop-control \
 // RUN: --fold-constant \
 // RUN: | FileCheck %s -check-prefix=FUSE
 
@@ -56,7 +56,7 @@
 // RUN: --canonicalize-live-in \
 // RUN: --leverage-predicated-value \
 // RUN: --transform-ctrl-to-data-flow \
-// RUN: --fuse-control-flow \
+// RUN: --fuse-loop-control \
 // RUN: --fold-constant \
 // RUN: --insert-data-mov \
 // RUN: --map-to-accelerator="mapping-strategy=heuristic backtrack-config=customized=4,5" | FileCheck %s -check-prefix=FUSE-MAPPING

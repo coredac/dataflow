@@ -10,7 +10,7 @@
 
 using namespace mlir;
 
-#define GEN_PASS_DEF_LeveragePredicatedValue
+#define GEN_PASS_DEF_LEVERAGEPREDICATEDVALUE
 #include "NeuraDialect/NeuraPasses.h.inc"
 
 namespace {

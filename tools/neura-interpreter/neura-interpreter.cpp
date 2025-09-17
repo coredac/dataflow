@@ -1295,17 +1295,18 @@ bool handleFCmpOp(
                  << rhs.value << ", [pred = " << rhs.predicate << "]\n";
   }
 
+  // TODO: Support comparison with a constant value.
   bool pred = true;
-  if (op.getNumOperands() > 2) {
-    auto pred_data = value_to_predicated_data_map[op.getPredicate()];
-    pred = pred_data.predicate && (pred_data.value != 0.0f);
-    if (isVerboseMode()) {
-      llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
-      llvm::outs() << "[neura-interpreter]  │  └─ Pred           : value = "
-                   << pred_data.value << ", [pred = " << pred_data.predicate
-                   << "]\n";
-    }
-  }
+  // if (op.getNumOperands() > 2) {
+  //   auto pred_data = value_to_predicated_data_map[op.getPredicate()];
+  //   pred = pred_data.predicate && (pred_data.value != 0.0f);
+  //   if (isVerboseMode()) {
+  //     llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
+  //     llvm::outs() << "[neura-interpreter]  │  └─ Pred           : value = "
+  //                  << pred_data.value << ", [pred = " << pred_data.predicate
+  //                  << "]\n";
+  //   }
+  // }
 
   bool fcmp_result = false;
   StringRef cmp_type = op.getCmpType();
@@ -1400,17 +1401,18 @@ bool handleICmpOp(
                  << rhs.value << ", [pred = " << rhs.predicate << "]\n";
   }
 
+  // TODO: Support comparison with a constant value.
   bool pred = true;
-  if (op.getNumOperands() > 2) {
-    auto pred_data = value_to_predicated_data_map[op.getPredicate()];
-    pred = pred_data.predicate && (pred_data.value != 0.0f);
-    if (isVerboseMode()) {
-      llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
-      llvm::outs() << "[neura-interpreter]  │  └─ Pred           : value = "
-                   << pred_data.value << ", [pred = " << pred_data.predicate
-                   << "]\n";
-    }
-  }
+  // if (op.getNumOperands() > 2) {
+  //   auto pred_data = value_to_predicated_data_map[op.getPredicate()];
+  //   pred = pred_data.predicate && (pred_data.value != 0.0f);
+  //   if (isVerboseMode()) {
+  //     llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
+  //     llvm::outs() << "[neura-interpreter]  │  └─ Pred           : value = "
+  //                  << pred_data.value << ", [pred = " << pred_data.predicate
+  //                  << "]\n";
+  //   }
+  // }
   // Converts stored floating-point values to signed integers (rounded to
   // nearest integer).
   int64_t s_lhs = static_cast<int64_t>(std::round(lhs.value));

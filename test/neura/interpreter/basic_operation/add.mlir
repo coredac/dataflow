@@ -46,15 +46,17 @@ func.func @test_add_zero() -> f32 {
 
 // RUN: neura-interpreter %s | FileCheck %s
 
+// TODO: Remove Test 5 because we plan to remove the predicate attribute in
+// https://github.com/coredac/dataflow/issues/116
+
 // ===----------------------------------------------------------------------===//
 // Test 5: Add with operation predicate 0
 // ===----------------------------------------------------------------------===//
-func.func @test_add_predicate_zero() -> f32 {
-  %a = arith.constant 10.0 : f32
-  %b = arith.constant 32.0 : f32
-  %pred = arith.constant 0 : i1
-  %pred_f32 = "neura.cast"(%pred) {cast_type = "bool2f"} : (i1) -> f32
-  %res = "neura.add"(%a, %b, %pred_f32) : (f32, f32, f32) -> f32
-  // CHECK: [neura-interpreter]  → Output: 0.000000
-  return %res : f32
-}
+// func.func @test_add_predicate_zero() -> f32 {
+//   %a = arith.constant 10.0 : f32
+//   %b = arith.constant 32.0 : f32
+//   %pred = arith.constant 0 : i1
+//   %pred_f32 = "neura.cast"(%pred) {cast_type = "bool2f"} : (i1) -> f32
+//   %res = "neura.add"(%a, %b, %pred_f32) : (f32, f32, f32) -> f32
+//   return %res : f32
+// }
