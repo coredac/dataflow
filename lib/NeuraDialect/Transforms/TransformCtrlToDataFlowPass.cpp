@@ -19,7 +19,7 @@
 
 using namespace mlir;
 
-#define GEN_PASS_DEF_TransformCtrlToDataFlow
+#define GEN_PASS_DEF_TRANSFORMCTRLTODATAFLOW
 #include "NeuraDialect/NeuraPasses.h.inc"
 
 // Inserts `grant_once` for every predicated value defined in the entry block

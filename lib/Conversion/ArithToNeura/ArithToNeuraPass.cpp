@@ -53,8 +53,7 @@ struct ArithAddIToNeuraAdd : public OpRewritePattern<mlir::arith::AddIOp> {
     Type result_type = op.getType();
 
     // Optional predicate: default to null.
-    rewriter.replaceOpWithNewOp<neura::AddOp>(op, result_type, lhs, rhs,
-                                              nullptr);
+    rewriter.replaceOpWithNewOp<neura::AddOp>(op, result_type, lhs, rhs);
     return success();
   }
 };
@@ -69,8 +68,7 @@ struct ArithFAddToNeuraFAdd : public OpRewritePattern<mlir::arith::AddFOp> {
     Type result_type = op.getType();
 
     // Optional predicate: default to null.
-    rewriter.replaceOpWithNewOp<neura::FAddOp>(op, result_type, lhs, rhs,
-                                               nullptr);
+    rewriter.replaceOpWithNewOp<neura::FAddOp>(op, result_type, lhs, rhs);
     return success();
   }
 };
@@ -85,8 +83,7 @@ struct ArithSubIToNeuraSub : public OpRewritePattern<mlir::arith::SubIOp> {
     Type result_type = op.getType();
 
     // Optional predicate: default to null.
-    rewriter.replaceOpWithNewOp<neura::SubOp>(op, result_type, lhs, rhs,
-                                              nullptr);
+    rewriter.replaceOpWithNewOp<neura::SubOp>(op, result_type, lhs, rhs);
     return success();
   }
 };
@@ -117,8 +114,7 @@ struct ArithMulIToNeuraMul : public OpRewritePattern<mlir::arith::MulIOp> {
     Type result_type = op.getType();
 
     // Optional predicate: default to null.
-    rewriter.replaceOpWithNewOp<neura::MulOp>(op, result_type, lhs, rhs,
-                                              nullptr);
+    rewriter.replaceOpWithNewOp<neura::MulOp>(op, result_type, lhs, rhs);
     return success();
   }
 };
@@ -183,10 +179,8 @@ struct ArithRemSIToNeuraOp : public OpRewritePattern<mlir::arith::RemSIOp> {
     // Optional predicate: default to null.
     Value div =
         rewriter.create<neura::DivOp>(loc, result_type, lhs, rhs, nullptr);
-    Value mul =
-        rewriter.create<neura::MulOp>(loc, result_type, rhs, div, nullptr);
-    Value rem =
-        rewriter.create<neura::SubOp>(loc, result_type, lhs, mul, nullptr);
+    Value mul = rewriter.create<neura::MulOp>(loc, result_type, rhs, div);
+    Value rem = rewriter.create<neura::SubOp>(loc, result_type, lhs, mul);
 
     rewriter.replaceOp(op, rem);
     return success();
@@ -241,7 +235,7 @@ struct ArithCmpiToNeuraICmp : public OpRewritePattern<mlir::arith::CmpIOp> {
     // Converts arith CmpIOp to Neura ICmpOp.
     // Optional predicate: default to null.
     rewriter.replaceOpWithNewOp<neura::ICmpOp>(
-        op, result_type, lhs, rhs, nullptr, rewriter.getStringAttr(cmp_type));
+        op, result_type, lhs, rhs, rewriter.getStringAttr(cmp_type));
     return success();
   }
 };

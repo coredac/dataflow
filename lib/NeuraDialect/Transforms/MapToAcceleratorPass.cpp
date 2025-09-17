@@ -20,7 +20,7 @@
 using namespace mlir;
 using namespace mlir::neura;
 
-#define GEN_PASS_DEF_MapToAccelerator
+#define GEN_PASS_DEF_MAPTOACCELERATOR
 #include "NeuraDialect/NeuraPasses.h.inc"
 
 namespace {
