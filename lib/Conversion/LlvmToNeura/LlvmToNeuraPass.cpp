@@ -356,7 +356,7 @@ struct LlvmMulToNeuraMul : public OpRewritePattern<LLVM::MulOp> {
     Value rhs = op.getRhs();
     Type resultType = op.getType();
     
-    rewriter.replaceOpWithNewOp<neura::MulOp>(op, resultType, lhs, rhs, Value());
+    rewriter.replaceOpWithNewOp<neura::MulOp>(op, resultType, lhs, rhs);
     return success();
   }
 };
