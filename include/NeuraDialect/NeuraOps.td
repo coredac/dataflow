@@ -81,8 +81,8 @@ def Neura_FMulOp : Op<NeuraDialect, "fmul"> {
 
 def Neura_FDivOp : Op<NeuraDialect, "fdiv"> {
   let summary = "Floating division operation";
-  let arguments = (ins AnyFloat:$lhs, AnyFloat:$rhs, Optional<AnyType>:$predicate);
-  let results = (outs AnyFloat:$result);
+  let arguments = (ins AnyType:$lhs, AnyType:$rhs, Optional<AnyType>:$predicate);
+  let results = (outs AnyType:$result);
   // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
 }
 
@@ -210,6 +210,54 @@ def Neura_CastOp : Op<NeuraDialect, "cast">{
   let arguments = (ins AnyType:$input, StrAttr:$cast_type, Optional<AnyType>:$predicate);
   let results = (outs AnyType:$result);
   // let assemblyFormat = "$input type($input) `->` type($output) `,` $predicate attr-dict";
+}
+
+// Defines an alloca operation for memory allocation.
+def Neura_AllocaOp : Op<NeuraDialect, "alloca"> {
+  let summary = "Memory allocation operation";
+  let description = [{
+    Allocates memory on the stack, similar to llvm.alloca.
+    Takes a predicated size value and returns a pointer to the allocated memory.
+    
+    Example:
+      %ptr = neura.alloca %size : !neura.data<i32, i1> -> !llvm.ptr
+  }];
+  
+  let arguments = (ins AnyType:$size);
+  let results = (outs AnyType:$result);
+  let assemblyFormat = "$size attr-dict `:` type($size) `->` type($result)";
+}
+
+// Defines a sign extension operation.
+def Neura_SExtOp : Op<NeuraDialect, "sext"> {
+  let summary = "Sign extension operation";
+  let description = [{
+    Sign extends a value from a smaller integer type to a larger integer type.
+    Similar to llvm.sext, but works with predicated values.
+    
+    Example:
+      %extended = neura.sext %value : !neura.data<i8, i1> -> !neura.data<i32, i1>
+  }];
+  
+  let arguments = (ins AnyType:$value);
+  let results = (outs AnyType:$result);
+  let assemblyFormat = "$value attr-dict `:` type($value) `->` type($result)";
+}
+
+// Defines a zero extension operation.
+def Neura_ZExtOp : Op<NeuraDialect, "zext"> {
+  let summary = "Zero extension operation";
+  let description = [{
+    Zero extends a value from a smaller integer type to a larger integer type.
+    Similar to llvm.zext, but works with predicated values.
+    
+    Example:
+      %extended = neura.zext %value : !neura.data<i8, i1> -> !neura.data<i32, i1>
+  }];
+  
+  let arguments = (ins AnyType:$value);
+  let results = (outs AnyType:$result);
+  let assemblyFormat = "$value attr-dict `:` type($value) `->` type($result)";
 }
 
 // ----------------------------------------------------
