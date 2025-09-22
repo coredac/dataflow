@@ -18,7 +18,7 @@ def Neura_ConstantOp : Op<NeuraDialect, "constant"> {
 def Neura_AddOp : Op<NeuraDialect, "add"> {
   let summary = "Integer addition operation";
   let opName = "add";
-  let arguments = (ins AnyType:$lhs, AnyType:$rhs, Optional<AnyType>:$predicate);
+  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs);
   let results = (outs AnyType:$result);
   // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
   let traits = [SameOperandsAndResultElementType];
@@ -26,7 +26,7 @@ def Neura_AddOp : Op<NeuraDialect, "add"> {
 
 def Neura_SubOp : Op<NeuraDialect, "sub"> {
   let summary = "Integer substraction operation";
-  let arguments = (ins AnyType:$lhs, AnyType:$rhs, Optional<AnyType>:$predicate);
+  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs);
   let results = (outs AnyType:$result);
   // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
   let traits = [SameOperandsAndResultElementType];
@@ -35,7 +35,7 @@ def Neura_SubOp : Op<NeuraDialect, "sub"> {
 def Neura_MulOp : Op<NeuraDialect, "mul"> {
   let summary = "Integer multiplication operation";
   let opName = "mul";
-  let arguments = (ins AnyType:$lhs, AnyType:$rhs, Optional<AnyType>:$predicate);
+  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs);
   let results = (outs AnyType:$result);
   // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
   let traits = [SameOperandsAndResultElementType];
@@ -53,10 +53,10 @@ def Neura_DivOp : Op<NeuraDialect, "div"> {
 def Neura_FAddOp : Op<NeuraDialect, "fadd"> {
   let summary = "Floating addition operation";
   let opName = "fadd";
-  let arguments = (ins AnyType:$lhs, AnyType:$rhs, Optional<AnyType>:$predicate);
+  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs);
   let results = (outs AnyType:$result);
   // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
-  // let traits = [SameOperandsAndResultElementType];
+  let traits = [SameOperandsAndResultElementType];
 }
 
 // Defines a floating-point substraction operation.
@@ -99,7 +99,7 @@ def Neura_OrOp : Op<NeuraDialect, "or"> {
 def Neura_ICmpOp : Op<NeuraDialect, "icmp"> {
   let summary = "Integer compare operation";
   let opName = "icmp";
-  let arguments = (ins AnyType:$lhs, AnyType:$rhs, Optional<AnyType>:$predicate,
+  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs,
                    StrAttr:$cmpType);
   let results = (outs AnyType:$result);
   // let assemblyFormat = "$lhs `,` $rhs `,` $cmpTypeAttr `,` $cmp_type attr-dict `:` type($result)";
@@ -111,8 +111,7 @@ def Neura_FCmpOp : Op<NeuraDialect, "fcmp"> {
   let summary = "Floating-point compare operation";
   let opName = "fcmp";
   let arguments = (ins AnyType:$lhs,
-                   AnyType:$rhs,
-                   Optional<AnyType>:$predicate,
+                   Optional<AnyType>:$rhs,
                    StrAttr:$cmpType);
   let results = (outs AnyType:$result);
   // let assemblyFormat = "$lhs `,` $rhs `,` $cmpType attr-dict `:` type($result)";

@@ -18,7 +18,7 @@
 
 using namespace mlir;
 
-#define GEN_PASS_DEF_FUSECONTROLFLOW
+#define GEN_PASS_DEF_FUSELOOPCONTROL
 #include "NeuraDialect/NeuraPasses.h.inc"
 
 namespace {
@@ -93,8 +93,9 @@ private:
 // Finds the original parameter for start value.
 Value findOriginalConstant(Value val,
                            llvm::SetVector<Operation *> &ops_to_remove) {
-  if (!val || !val.getDefiningOp())
+  if (!val || !val.getDefiningOp()) {
     return val;
+  }
 
   Operation *def_op = val.getDefiningOp();
 
@@ -103,16 +104,33 @@ Value findOriginalConstant(Value val,
     return val;
   }
 
-  // Handle grant operations and add them to the removal list.
+  // Handles grant operations and adds them to the removal list.
   if (auto grant_once_op = dyn_cast<neura::GrantOnceOp>(def_op)) {
     ops_to_remove.insert(def_op);
     return findOriginalConstant(grant_once_op.getValue(), ops_to_remove);
   }
 
-  // For grant_predicate, only track value inputs and ignore condition inputs.
+  // For grant_predicate, only tracks value inputs and ignores condition inputs.
   if (auto grant_predicate_op = dyn_cast<neura::GrantPredicateOp>(def_op)) {
     ops_to_remove.insert(def_op);
     return findOriginalConstant(grant_predicate_op.getValue(), ops_to_remove);
+  }
+
+  // For phi operations, finds the original constant from inputs.
+  if (auto phi_op = dyn_cast<neura::PhiOp>(def_op)) {
+    ops_to_remove.insert(def_op);
+    for (Value input : phi_op.getInputs()) {
+      ops_to_remove.insert(input.getDefiningOp());
+      if (isa<neura::ReserveOp>(input.getDefiningOp())) {
+        for (Operation *user : input.getUsers()) {
+          if (auto ctrl_mov_op = dyn_cast<neura::CtrlMovOp>(user)) {
+            ops_to_remove.insert(ctrl_mov_op);
+          }
+        }
+        continue;
+      }
+      return findOriginalConstant(input, ops_to_remove);
+    }
   }
 
   return val;
@@ -331,10 +349,12 @@ LogicalResult replaceWithLoopController(LoopInfo *loop_info,
 
   // Compares the defining operations to find the latest one.
   auto updateLatestOp = [&](Operation *op1, Operation *op2) -> Operation * {
-    if (!op1)
+    if (!op1) {
       return op2;
-    if (!op2)
+    }
+    if (!op2) {
       return op1;
+    }
     // Returns the later operation in the block.
     return op2->isBeforeInBlock(op1) ? op1 : op2;
   };
@@ -545,13 +565,13 @@ struct FuseLoopControlFlowPattern : public OpRewritePattern<func::FuncOp> {
   }
 };
 
-struct FuseControlFlowPass
-    : public PassWrapper<FuseControlFlowPass, OperationPass<ModuleOp>> {
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(FuseControlFlowPass)
+struct FuseLoopControlPass
+    : public PassWrapper<FuseLoopControlPass, OperationPass<ModuleOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(FuseLoopControlPass)
 
-  StringRef getArgument() const override { return "fuse-control-flow"; }
+  StringRef getArgument() const override { return "fuse-loop-control"; }
   StringRef getDescription() const override {
-    return "Fuses control flow operations into optimized neura dialect "
+    return "Fuses loop control operations into optimized neura dialect "
            "operations";
   }
 
@@ -569,7 +589,7 @@ struct FuseControlFlowPass
 } // namespace
 
 namespace mlir::neura {
-std::unique_ptr<Pass> createFuseControlFlowPass() {
-  return std::make_unique<FuseControlFlowPass>();
+std::unique_ptr<Pass> createFuseLoopControlPass() {
+  return std::make_unique<FuseLoopControlPass>();
 }
 } // namespace mlir::neura

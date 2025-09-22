@@ -9,28 +9,32 @@
 
 using namespace mlir;
 
-#define GEN_PASS_DEF_InsertDataMov
+#define GEN_PASS_DEF_INSERTDATAMOV
 #include "NeuraDialect/NeuraPasses.h.inc"
 
 namespace {
 struct InsertDataMovForNeuraOps : public RewritePattern {
   InsertDataMovForNeuraOps(MLIRContext *context)
-      : RewritePattern(/*matchAnyOpTypeTag=*/MatchAnyOpTypeTag(), /*benefit=*/1, context) {}
+      : RewritePattern(/*matchAnyOpTypeTag=*/MatchAnyOpTypeTag(), /*benefit=*/1,
+                       context) {}
 
-  LogicalResult matchAndRewrite(Operation *op, PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
     if (op->getDialect()->getNamespace() != "neura" ||
         isa<neura::DataMovOp>(op)) {
       return failure();
     }
 
-    bool all_inputs_are_mov_except_reserve = llvm::all_of(op->getOperands(), [](Value v) {
-      Operation *def_op = v.getDefiningOp();
-      return isa_and_nonnull<neura::DataMovOp>(def_op) ||
-            isa_and_nonnull<neura::ReserveOp>(def_op);
-    });
+    bool all_inputs_are_mov_except_reserve =
+        llvm::all_of(op->getOperands(), [](Value v) {
+          Operation *def_op = v.getDefiningOp();
+          return isa_and_nonnull<neura::DataMovOp>(def_op) ||
+                 isa_and_nonnull<neura::ReserveOp>(def_op);
+        });
 
-    if (all_inputs_are_mov_except_reserve)
+    if (all_inputs_are_mov_except_reserve) {
       return failure(); // All operands are already handled
+    }
 
     // // Skips ops that already being inserted mov on the operands.
     // bool all_inputs_are_mov = llvm::all_of(op->getOperands(), [](Value v) {
@@ -42,7 +46,8 @@ struct InsertDataMovForNeuraOps : public RewritePattern {
 
     // // Special case: skips rewriting phi if any operand is from reserve.
     // if (isa<neura::PhiOp>(op)) {
-    //   bool has_reserved_input = llvm::any_of(op->getOperands(), [](Value v) {
+    //   bool has_reserved_input = llvm::any_of(op->getOperands(), [](Value v)
+    //   {
     //     return isa_and_nonnull<neura::ReserveOp>(v.getDefiningOp());
     //   });
 
@@ -54,9 +59,12 @@ struct InsertDataMovForNeuraOps : public RewritePattern {
     bool has_any_mov_input = llvm::any_of(op->getOperands(), [](Value v) {
       return isa_and_nonnull<neura::DataMovOp>(v.getDefiningOp());
     });
-    if (has_any_mov_input)
-      llvm::errs() << "Warning: Operand already wrapped in neura.data_mov: " << *op << "\n";
-    assert(!has_any_mov_input && "Unexpected: operand already wrapped in neura.mov");
+    if (has_any_mov_input) {
+      llvm::errs() << "Warning: Operand already wrapped in neura.data_mov: "
+                   << *op << "\n";
+    }
+    assert(!has_any_mov_input &&
+           "Unexpected: operand already wrapped in neura.mov");
 
     Location loc = op->getLoc();
 
@@ -70,12 +78,14 @@ struct InsertDataMovForNeuraOps : public RewritePattern {
     for (Value operand : op->getOperands()) {
       Operation *producer = operand.getDefiningOp();
       // Skips adding mov for neura.reserve -> neura.phi.
-      if (isa<neura::PhiOp>(op) && producer && isa<neura::ReserveOp>(producer)) {
+      if (isa<neura::PhiOp>(op) && producer &&
+          isa<neura::ReserveOp>(producer)) {
         new_operands.push_back(operand);
         continue;
       }
 
-      auto mov = rewriter.create<neura::DataMovOp>(loc, operand.getType(), operand);
+      auto mov =
+          rewriter.create<neura::DataMovOp>(loc, operand.getType(), operand);
       new_operands.push_back(mov);
     }
 

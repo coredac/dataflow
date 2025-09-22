@@ -5,11 +5,9 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
-#include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "llvm/Support/raw_ostream.h"
 
 namespace mlir {
 namespace neura {
@@ -36,7 +34,7 @@ struct LlvmAddToNeuraAdd : public OpRewritePattern<mlir::LLVM::AddOp> {
   LogicalResult matchAndRewrite(mlir::LLVM::AddOp op,
                                 PatternRewriter &rewriter) const override {
     rewriter.replaceOpWithNewOp<neura::AddOp>(op, op.getType(), op.getLhs(),
-                                              op.getRhs(), Value());
+                                              op.getRhs());
     return success();
   }
 };
@@ -55,8 +53,7 @@ struct LlvmFAddToNeuraFAdd : public OpRewritePattern<mlir::LLVM::FAddOp> {
       return failure();
 
     // Optional predicate: default to 'none'
-    rewriter.replaceOpWithNewOp<neura::FAddOp>(op, result_type, lhs, rhs,
-                                               Value());
+    rewriter.replaceOpWithNewOp<neura::FAddOp>(op, result_type, lhs, rhs);
     return success();
   }
 };
@@ -143,7 +140,7 @@ struct LlvmICmpToNeuraICmp : public OpRewritePattern<LLVM::ICmpOp> {
     auto resultType = op.getType();
 
     rewriter.replaceOpWithNewOp<neura::ICmpOp>(
-        op, resultType, lhs, rhs, Value(),
+        op, resultType, lhs, rhs,
         rewriter.getStringAttr(LLVM::stringifyICmpPredicate(pred)));
     return success();
   }
@@ -160,7 +157,7 @@ struct LlvmFCmpToNeuraFCmp : public OpRewritePattern<LLVM::FCmpOp> {
     auto resultType = op.getType();
 
     rewriter.replaceOpWithNewOp<neura::FCmpOp>(
-        op, resultType, lhs, rhs, Value(),
+        op, resultType, lhs, rhs,
         rewriter.getStringAttr(LLVM::stringifyFCmpPredicate(pred)));
     return success();
   }

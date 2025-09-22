@@ -5,8 +5,6 @@
 #include "mlir/IR/Operation.h"
 #include "llvm/Support/raw_ostream.h"
 #include <optional>
-#include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 namespace mlir {

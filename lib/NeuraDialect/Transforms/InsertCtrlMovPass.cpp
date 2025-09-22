@@ -9,15 +9,17 @@
 
 using namespace mlir;
 
-#define GEN_PASS_DEF_InsertCtrlMov
+#define GEN_PASS_DEF_INSERTCTRLMOV
 #include "NeuraDialect/NeuraPasses.h.inc"
 
 namespace {
 struct InsertCtrlMovForNeuraOps : public RewritePattern {
   InsertCtrlMovForNeuraOps(MLIRContext *context)
-      : RewritePattern(/*matchAnyOpTypeTag=*/MatchAnyOpTypeTag(), /*benefit=*/1, context) {}
+      : RewritePattern(/*matchAnyOpTypeTag=*/MatchAnyOpTypeTag(), /*benefit=*/1,
+                       context) {}
 
-  LogicalResult matchAndRewrite(Operation *op, PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
     if (op->getDialect()->getNamespace() != "neura" ||
         isa<neura::CtrlMovOp>(op)) {
       return failure();
@@ -35,15 +37,16 @@ struct InsertCtrlMovForNeuraOps : public RewritePattern {
     bool hasAnyMovInput = llvm::any_of(op->getOperands(), [](Value v) {
       return isa_and_nonnull<neura::CtrlMovOp>(v.getDefiningOp());
     });
-    assert(!hasAnyMovInput && "Unexpected: operand already wrapped in neura.mov");
+    assert(!hasAnyMovInput &&
+           "Unexpected: operand already wrapped in neura.mov");
 
     Location loc = op->getLoc();
 
     // Wraps operands in mov.
     SmallVector<Value> newOperands;
     // for (Value operand : op->getOperands()) {
-    //   auto mov = rewriter.create<neura::CtrlMovOp>(loc, operand.getType(), operand);
-    //   newOperands.push_back(mov);
+    //   auto mov = rewriter.create<neura::CtrlMovOp>(loc, operand.getType(),
+    //   operand); newOperands.push_back(mov);
     // }
 
     // Clones op with new operands.
