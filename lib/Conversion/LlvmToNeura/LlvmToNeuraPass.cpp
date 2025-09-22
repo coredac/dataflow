@@ -307,6 +307,63 @@ struct LlvmConstantToNeuraConstant : public OpRewritePattern<LLVM::ConstantOp> {
   }
 };
 
+struct LlvmAllocaToNeuraAlloca : public OpRewritePattern<LLVM::AllocaOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::AllocaOp op,
+                                PatternRewriter &rewriter) const override {
+    Value size = op.getArraySize();
+    Type resultType = op.getType();
+    
+    // Convert the size to neura.data<i32, i1> if it's not already
+    // For simplicity, we'll assume the size is already in the right format
+    // In practice, you might need to handle type conversion here
+    
+    rewriter.replaceOpWithNewOp<neura::AllocaOp>(op, resultType, size);
+    return success();
+  }
+};
+
+struct LlvmSExtToNeuraSExt : public OpRewritePattern<LLVM::SExtOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::SExtOp op,
+                                PatternRewriter &rewriter) const override {
+    Value input = op.getArg();
+    Type resultType = op.getType();
+    
+    rewriter.replaceOpWithNewOp<neura::SExtOp>(op, resultType, input);
+    return success();
+  }
+};
+
+struct LlvmZExtToNeuraZExt : public OpRewritePattern<LLVM::ZExtOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::ZExtOp op,
+                                PatternRewriter &rewriter) const override {
+    Value input = op.getArg();
+    Type resultType = op.getType();
+    
+    rewriter.replaceOpWithNewOp<neura::ZExtOp>(op, resultType, input);
+    return success();
+  }
+};
+
+struct LlvmMulToNeuraMul : public OpRewritePattern<LLVM::MulOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::MulOp op,
+                                PatternRewriter &rewriter) const override {
+    Value lhs = op.getLhs();
+    Value rhs = op.getRhs();
+    Type resultType = op.getType();
+    
+    rewriter.replaceOpWithNewOp<neura::MulOp>(op, resultType, lhs, rhs, Value());
+    return success();
+  }
+};
+
 struct LowerLlvmToNeuraPass
     : public PassWrapper<LowerLlvmToNeuraPass, OperationPass<ModuleOp>> {
 
@@ -341,6 +398,10 @@ struct LowerLlvmToNeuraPass
     patterns.add<LlvmReturnToNeuraReturn>(&getContext());
     patterns.add<FuncReturnToNeuraReturn>(&getContext());
     patterns.add<LlvmFSubToNeuraFSub>(&getContext());
+    patterns.add<LlvmAllocaToNeuraAlloca>(&getContext());
+    patterns.add<LlvmSExtToNeuraSExt>(&getContext());
+    patterns.add<LlvmZExtToNeuraZExt>(&getContext());
+    patterns.add<LlvmMulToNeuraMul>(&getContext());
 
     FrozenRewritePatternSet frozen(std::move(patterns));
 
