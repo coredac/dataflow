@@ -35,12 +35,14 @@ struct FuseFAddFAddPattern : public OpRewritePattern<neura::FAddOp> {
       tail = second.getLhs();
     }
 
-    if (!first)
+    if (!first) {
       return failure();
+    }
 
     // Only fuses if the first fadd is not reused elsewhere.
-    if (!first->hasOneUse())
+    if (!first->hasOneUse()) {
       return failure();
+    }
 
     Location loc = second.getLoc();
     Type type = second.getType();
@@ -76,12 +78,14 @@ struct FuseFMulFAddPattern : public OpRewritePattern<neura::FAddOp> {
       other = add.getLhs();
     }
 
-    if (!fmul)
+    if (!fmul) {
       return failure();
+    }
 
     // Optional: only fuses if fmul has a single use.
-    if (!fmul->hasOneUse())
+    if (!fmul->hasOneUse()) {
       return failure();
+    }
 
     Location loc = add.getLoc();
     Type type = add.getType();

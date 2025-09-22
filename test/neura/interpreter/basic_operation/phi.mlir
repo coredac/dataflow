@@ -1,4 +1,4 @@
-// RUN: neura-interpreter %s | FileCheck %s
+// RUN: neura-interpreter %s --verbose | FileCheck %s
 
 //===----------------------------------------------------------------------===//
 // Test 1: Basic Phi node with control flow

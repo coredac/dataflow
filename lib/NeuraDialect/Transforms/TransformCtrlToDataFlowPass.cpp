@@ -1,4 +1,3 @@
-#include "Common/AcceleratorAttrs.h"
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraOps.h"
 #include "NeuraDialect/NeuraPasses.h"
@@ -8,23 +7,19 @@
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Dominance.h"
-#include "mlir/IR/Location.h"
 #include "mlir/IR/OpDefinition.h"
-#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cassert>
 #include <memory>
 
 using namespace mlir;
 
-#define GEN_PASS_DEF_TransformCtrlToDataFlow
+#define GEN_PASS_DEF_TRANSFORMCTRLTODATAFLOW
 #include "NeuraDialect/NeuraPasses.h.inc"
 
 // Inserts `grant_once` for every predicated value defined in the entry block
@@ -71,8 +66,9 @@ void GrantPredicateInEntryBlock(Block *entry_block, OpBuilder &builder) {
   // Inserts grant_once.
   for (Value val : live_out_arg_values) {
     Operation *def_op = val.getDefiningOp();
-    if (!def_op)
+    if (!def_op) {
       continue;
+    }
 
     builder.setInsertionPointAfter(def_op);
     auto granted = builder.create<neura::GrantOnceOp>(def_op->getLoc(),
@@ -138,8 +134,9 @@ void assertLiveOutValuesDominatedByBlockArgs(Region &region) {
     }
 
     // Skips blocks with no live-out values.
-    if (live_out_values.empty())
+    if (live_out_values.empty()) {
       continue;
+    }
 
     DenseSet<Value> dominated_values;
 
@@ -157,8 +154,9 @@ void assertLiveOutValuesDominatedByBlockArgs(Region &region) {
       changed = false;
       for (Operation &op : block) {
         for (Value result : op.getResults()) {
-          if (dominated_values.count(result))
+          if (dominated_values.count(result)) {
             continue;
+          }
 
           for (Value operand : op.getOperands()) {
             if (dominated_values.count(operand)) {
@@ -301,13 +299,22 @@ void createReserveAndPhiOps(
   // ================================================
   // Step 1: Categorizes edges into six types.
   // ================================================
-  // Type 1: Backward cond_br edges with arguments.
+  // Type 1: Backward cond_br edges with values.
   // Type 2: Backward br edges with values.
   // Type 3: Forward cond_br edges with values.
   // Type 4: Forward br edges with values.
   // Type 5: Forward cond_br edges without values.
   // Type 6: Forward br edges without values.
-  // For Backward edges without values, they can be transformed into type 1 or 2
+  // Type 7: Backward cond_br edges without values.
+  // Type 8: Backward br edges without values.
+
+  // After --canonicalize-live-in pass, all live-in values are promoted to block
+  // arguments. This means that any edge without values can now be
+  // treated as a edge with values.
+
+  // ***************************************************************************
+  // * So we only need to handle edges with values, i.e., Type 1, 2, 3, and 4. *
+  // ***************************************************************************
 
   // Uses llvm::MapVector instead of DenseMap to maintain insertion order.
   llvm::MapVector<BlockArgument, SmallVector<ControlFlowInfo::Edge *>>
@@ -350,109 +357,6 @@ void createReserveAndPhiOps(
       }
       for (BlockArgument arg : target->getArguments()) {
         forward_value_edges[arg].push_back(edge.get());
-      }
-    }
-    // Type 5 & 6: Forward cond_br/br edges without values.
-    else if (!edge->is_back_edge && edge->passed_values.empty()) {
-      if (edge->condition) {
-        // Only Type 5 needs to be processed here.
-        // If the edge has a condition, store it for later use.
-        block_conditional_edges[target].push_back(edge.get());
-      }
-    }
-  }
-
-  // ================================================
-  // Step 2: Handles Forward cond_br edges without values.
-  // ================================================
-  // Handles Type 5 edges.
-  for (auto &condition_pair : block_conditional_edges) {
-    Block *target = condition_pair.first;
-    auto &edges = condition_pair.second;
-
-    if (edges.empty()) {
-      continue;
-    }
-
-    // Collects all conditions for the target block.
-    SmallVector<Value> conditions;
-    for (ControlFlowInfo::Edge *edge : edges) {
-      Value condition = getPrecessedCondition(
-          edge->condition, edge->is_not_condition, condition_cache, builder);
-      conditions.push_back(condition);
-    }
-
-    // Unsupported case: multiple conditions for a single block.
-    // TODO: Adds support if needed.
-    if (conditions.size() > 1) {
-      llvm::errs() << "[ctrl2data] Unsupported case: multiple conditions for a "
-                      "single block: "
-                   << *target << "\n";
-      assert(false);
-    }
-
-    if (target->getArguments().empty()) {
-      // Grants predicate for all the live-in values in the target block.
-      // Uses SetVector instead of DenseSet to maintain insertion order.
-      SetVector<Value> live_in_values;
-      for (Operation &op : target->getOperations()) {
-        for (Value operand : op.getOperands()) {
-          if (operand.getDefiningOp() &&
-              operand.getDefiningOp()->getBlock() != target &&
-              !isa<neura::ReserveOp>(operand.getDefiningOp())) {
-            live_in_values.insert(operand);
-          }
-        }
-      }
-
-      // Applies grant_predicate for each live-in value.
-      for (Value live_in_value : live_in_values) {
-        // Finds the earliest use of the live-in value.
-        Operation *earliest_use = nullptr;
-        for (Operation &op : target->getOperations()) {
-          for (Value operand : op.getOperands()) {
-            if (operand == live_in_value) {
-              earliest_use = &op;
-              break;
-            }
-          }
-          if (earliest_use) {
-            break;
-          }
-        }
-
-        if (earliest_use) {
-          builder.setInsertionPoint(earliest_use);
-        } else {
-          builder.setInsertionPointToStart(target);
-        }
-
-        // Creates predicated version of the live-in value.
-        Value predicated_value = builder.create<neura::GrantPredicateOp>(
-            live_in_value.getLoc(), live_in_value.getType(), live_in_value,
-            conditions[0]);
-
-        value_to_predicated_value[live_in_value] = predicated_value;
-
-        // Replace uses of the live-in value within this block only.
-        for (OpOperand &use :
-             llvm::make_early_inc_range(live_in_value.getUses())) {
-          if (use.getOwner()->getBlock() == target &&
-              use.getOwner() != predicated_value.getDefiningOp()) {
-            use.set(predicated_value);
-          }
-        }
-      }
-    }
-  }
-
-  // Updates the passed values in edges with predicated values.
-  for (auto &edge_ptr : ctrl_info.all_edges) {
-    ControlFlowInfo::Edge *edge = edge_ptr.get();
-    for (size_t i = 0; i < edge->passed_values.size(); ++i) {
-      Value val = edge->passed_values[i];
-      if (value_to_predicated_value.count(val)) {
-        edge->passed_values[i] = value_to_predicated_value[val];
       }
     }
   }
@@ -535,7 +439,7 @@ void createReserveAndPhiOps(
       continue;
     }
 
-    // Handles the blcockargument with/without reserve seperately (different
+    // Handles the blockargument with/without reserve separately (different
     // insertion points).
     if (arg_to_reserve.count(arg)) {
       Value reserve_value = arg_to_reserve[arg];
@@ -584,8 +488,9 @@ void transformControlFlowToDataFlow(Region &region, ControlFlowInfo &ctrl_info,
   Block *entryBlock = &region.front();
   SmallVector<Block *> blocks_to_flatten;
   for (Block &block : region) {
-    if (&block != entryBlock)
+    if (&block != entryBlock) {
       blocks_to_flatten.push_back(&block);
+    }
   }
 
   // Erases terminators before moving ops into entry block.

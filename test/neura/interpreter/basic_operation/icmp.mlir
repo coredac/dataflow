@@ -1,4 +1,4 @@
-// RUN: neura-interpreter %s | FileCheck %s
+// RUN: neura-interpreter %s --verbose | FileCheck %s
 
 // ====== Equal comparison (eq) ======
 // Positive case: Equal numbers

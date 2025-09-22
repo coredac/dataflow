@@ -2,9 +2,6 @@
 
 #ifndef CONVERSION_PASSES_H
 #define CONVERSION_PASSES_H
-
-#include "NeuraDialect/NeuraDialect.h"
-#include "NeuraDialect/NeuraOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassRegistry.h"
