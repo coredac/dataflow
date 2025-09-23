@@ -361,6 +361,98 @@ struct LlvmMulToNeuraMul : public OpRewritePattern<LLVM::MulOp> {
   }
 };
 
+struct LlvmFuncToNeuraFunc : public OpRewritePattern<LLVM::LLVMFuncOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::LLVMFuncOp op,
+                                PatternRewriter &rewriter) const override {
+
+    
+    auto target = op->getAttrOfType<StringAttr>(mlir::accel::kAcceleratorAttr);
+    if (!target || target.getValue() != mlir::accel::kNeuraTarget) {
+      return failure();
+    }
+
+    // Convert LLVMFunctionType to FunctionType
+    auto llvmFuncType = op.getFunctionType();
+    auto funcType = rewriter.getFunctionType(
+        llvmFuncType.getParams(),
+        llvmFuncType.getReturnType()
+    );
+
+    // Create the new func.func operation using OperationState to have full control
+    OperationState state(op.getLoc(), func::FuncOp::getOperationName());
+    state.addAttribute("sym_name", rewriter.getStringAttr(op.getName()));
+    state.addAttribute("function_type", TypeAttr::get(funcType));
+    
+    // Copy ALL attributes from the original llvm.func exactly as they are
+    // Skip function type and name attributes as they are handled separately
+    SmallVector<NamedAttribute> attrs;
+    for (auto attr : op->getAttrs()) {
+      if (attr.getName() == "function_type" || attr.getName() == "sym_name") {
+        continue;
+      }
+      attrs.push_back(attr);
+    }
+    state.addAttributes(attrs);
+    
+    // Add the function body region
+    state.addRegion();
+    
+    auto newFunc = cast<func::FuncOp>(rewriter.create(state));
+
+    // Move the function body
+    rewriter.inlineRegionBefore(op.getBody(), newFunc.getBody(), newFunc.getBody().end());
+    
+    // Replace the old function
+    rewriter.replaceOp(op, newFunc);
+    return success();
+  }
+};
+
+struct LlvmCallToFuncCall : public OpRewritePattern<LLVM::CallOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::CallOp op,
+                                PatternRewriter &rewriter) const override {
+    // Get the callee name
+    auto callee = op.getCallee();
+    if (!callee) {
+      return failure();
+    }
+
+    // Check if the callee function exists as func.func in the module
+    ModuleOp module = op->getParentOfType<ModuleOp>();
+    if (!module) {
+      return failure();
+    }
+
+    // Look for a func.func with the same name
+    func::FuncOp funcOp = module.lookupSymbol<func::FuncOp>(callee.value());
+    if (!funcOp) {
+      return failure();
+    }
+
+    // Get the result types from the function signature
+    auto resultTypes = funcOp.getFunctionType().getResults();
+    
+    // Convert the call to func.call
+    auto newCall = rewriter.create<func::CallOp>(
+        op.getLoc(), resultTypes, callee.value(), op.getArgOperands()
+    );
+    
+    // Replace the old call with the new one
+    // Handle both cases: calls with results and calls without results
+    if (op.getNumResults() == 0) {
+      rewriter.eraseOp(op);
+    } else {
+      rewriter.replaceOp(op, newCall->getResults());
+    }
+    
+    return success();
+  }
+};
+
 struct LowerLlvmToNeuraPass
     : public PassWrapper<LowerLlvmToNeuraPass, OperationPass<ModuleOp>> {
 
@@ -373,6 +465,7 @@ struct LowerLlvmToNeuraPass
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mlir::neura::NeuraDialect>();
+    registry.insert<mlir::func::FuncDialect>();
   }
 
   void runOnOperation() override {
@@ -399,11 +492,20 @@ struct LowerLlvmToNeuraPass
     patterns.add<LlvmSExtToNeuraSExt>(&getContext());
     patterns.add<LlvmZExtToNeuraZExt>(&getContext());
     patterns.add<LlvmMulToNeuraMul>(&getContext());
+    patterns.add<LlvmFuncToNeuraFunc>(&getContext());
+    patterns.add<LlvmCallToFuncCall>(&getContext());
 
     FrozenRewritePatternSet frozen(std::move(patterns));
 
     ModuleOp module_op = getOperation();
 
+    // function-level conversions
+    if (failed(applyPatternsGreedily(module_op, frozen))) {
+      signalPassFailure();
+      return;
+    }
+
+    // operation-level conversions
     // Applies to every region inside the module (regardless of func type,
     // e.g., mlir func or llvm func).
     module_op.walk([&](FunctionOpInterface func) {
