@@ -43,7 +43,7 @@ def Neura_MulOp : Op<NeuraDialect, "mul"> {
 
 def Neura_DivOp : Op<NeuraDialect, "div"> {
   let summary = "Integer division operation";
-  let arguments = (ins AnyType:$lhs, AnyType:$rhs, Optional<AnyType>:$predicate);
+  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs);
   let results = (outs AnyType:$result);
   // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
   let traits = [SameOperandsAndResultElementType];
@@ -73,7 +73,7 @@ def Neura_FSubOp: Op<NeuraDialect, "fsub"> {
 def Neura_FMulOp : Op<NeuraDialect, "fmul"> {
   let summary = "Floating multiplication operation";
   let opName = "fmul";
-  let arguments = (ins AnyType:$lhs, AnyType:$rhs, Optional<AnyType>:$predicate);
+  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs);
   let results = (outs AnyType:$result);
   // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
   // let traits = [SameOperandsAndResultElementType];
@@ -81,7 +81,7 @@ def Neura_FMulOp : Op<NeuraDialect, "fmul"> {
 
 def Neura_FDivOp : Op<NeuraDialect, "fdiv"> {
   let summary = "Floating division operation";
-  let arguments = (ins AnyType:$lhs, AnyType:$rhs, Optional<AnyType>:$predicate);
+  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs);
   let results = (outs AnyType:$result);
   // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
 }
