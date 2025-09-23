@@ -160,8 +160,7 @@ struct ArithFDivToNeuraFDiv : public OpRewritePattern<mlir::arith::DivFOp> {
     Type result_type = op.getType();
 
     // Optional predicate: default to null.
-    rewriter.replaceOpWithNewOp<neura::FDivOp>(op, result_type, lhs, rhs,
-                                               nullptr);
+    rewriter.replaceOpWithNewOp<neura::FDivOp>(op, result_type, lhs, rhs);
     return success();
   }
 };
