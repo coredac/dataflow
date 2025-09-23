@@ -10,6 +10,7 @@
 // RUN:   --map-to-accelerator="mapping-strategy=heuristic backtrack-config=simple" \
 // RUN:   --generate-code kernel2.mlir | FileCheck %s --check-prefix=CHECK-LLVM2NEURA
 
+// CHECK-LLVM2NEURA: accelerator = "neura"
 // CHECK-LLVM2NEURA: %25 = neura.alloca %24 : !neura.data<i32, i1> -> !neura.data<!llvm.ptr, i1>
 // CHECK-LLVM2NEURA: %38 = "neura.phi"(%36, %37) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
 // CHECK-LLVM2NEURA: %175 = neura.sext %174 : !neura.data<i32, i1> -> !neura.data<i64, i1>
