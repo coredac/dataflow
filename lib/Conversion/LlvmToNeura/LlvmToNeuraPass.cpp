@@ -421,7 +421,7 @@ struct LlvmCallToFuncCall : public OpRewritePattern<LLVM::CallOp> {
       return failure();
     }
 
-    // Check if the callee function exists as func.func in the module
+    // Checks if the callee function exists as func.func in the module.
     ModuleOp module = op->getParentOfType<ModuleOp>();
     if (!module) {
       return failure();
