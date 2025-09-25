@@ -52,7 +52,7 @@ struct LlvmFAddToNeuraFAdd : public OpRewritePattern<mlir::LLVM::FAddOp> {
     if (!mlir::isa<FloatType>(result_type))
       return failure();
 
-    // Optional predicate: default to 'none'
+    // Sets optional predicate: default to 'none'.
     rewriter.replaceOpWithNewOp<neura::FAddOp>(op, result_type, lhs, rhs);
     return success();
   }
@@ -72,7 +72,7 @@ struct LlvmFSubToNeuraFSub : public OpRewritePattern<mlir::LLVM::FSubOp> {
       return failure();
     }
 
-    // Optional predicate: default to 'none'.
+    // Sets optional predicate: default to 'none'.
     rewriter.replaceOpWithNewOp<neura::FSubOp>(op, result_type, lhs, rhs,
                                                Value());
     return success();
@@ -291,13 +291,13 @@ struct LlvmConstantToNeuraConstant : public OpRewritePattern<LLVM::ConstantOp> {
                                 PatternRewriter &rewriter) const override {
     auto attr = op.getValue();
 
-    // Creates operation state manually
+    // Creates operation state manually.
     OperationState state(op.getLoc(), neura::ConstantOp::getOperationName());
     state.addAttribute("value", attr);
     state.addAttribute("predicate", rewriter.getBoolAttr(true));
     state.addTypes(op.getType());
 
-    // Creates the operation and replace
+    // Creates the operation and replaces.
     Operation *newOp = rewriter.create(state);
     rewriter.replaceOp(op, newOp->getResults());
     return success();
@@ -312,9 +312,9 @@ struct LlvmAllocaToNeuraAlloca : public OpRewritePattern<LLVM::AllocaOp> {
     Value size = op.getArraySize();
     Type resultType = op.getType();
     
-    // Convert the size to neura.data<i32, i1> if it's not already
-    // For simplicity, we'll assume the size is already in the right format
-    // In practice, you might need to handle type conversion here
+    // Converts the size to neura.data<i32, i1> if it's not already.
+    // Assumes the size is already in the right format.
+    // Handles type conversion here.
     
     rewriter.replaceOpWithNewOp<neura::AllocaOp>(op, resultType, size);
     return success();
@@ -373,20 +373,20 @@ struct LlvmFuncToNeuraFunc : public OpRewritePattern<LLVM::LLVMFuncOp> {
       return failure();
     }
 
-    // Convert LLVMFunctionType to FunctionType
+    // Converts LLVMFunctionType to FunctionType.
     auto llvmFuncType = op.getFunctionType();
     auto funcType = rewriter.getFunctionType(
         llvmFuncType.getParams(),
         llvmFuncType.getReturnType()
     );
 
-    // Create the new func.func operation using OperationState to have full control
+    // Creates the new func.func operation using OperationState to have full control.
     OperationState state(op.getLoc(), func::FuncOp::getOperationName());
     state.addAttribute("sym_name", rewriter.getStringAttr(op.getName()));
     state.addAttribute("function_type", TypeAttr::get(funcType));
     
-    // Copy ALL attributes from the original llvm.func exactly as they are
-    // Skip function type and name attributes as they are handled separately
+    // Copies ALL attributes from the original llvm.func exactly as they are.
+    // Skips function type and name attributes as they are handled separately.
     SmallVector<NamedAttribute> attrs;
     for (auto attr : op->getAttrs()) {
       if (attr.getName() == "function_type" || attr.getName() == "sym_name") {
@@ -396,15 +396,15 @@ struct LlvmFuncToNeuraFunc : public OpRewritePattern<LLVM::LLVMFuncOp> {
     }
     state.addAttributes(attrs);
     
-    // Add the function body region
+    // Adds the function body region.
     state.addRegion();
     
     auto newFunc = cast<func::FuncOp>(rewriter.create(state));
 
-    // Move the function body
+    // Moves the function body.
     rewriter.inlineRegionBefore(op.getBody(), newFunc.getBody(), newFunc.getBody().end());
     
-    // Replace the old function
+    // Replaces the old function.
     rewriter.replaceOp(op, newFunc);
     return success();
   }
@@ -415,7 +415,7 @@ struct LlvmCallToFuncCall : public OpRewritePattern<LLVM::CallOp> {
 
   LogicalResult matchAndRewrite(LLVM::CallOp op,
                                 PatternRewriter &rewriter) const override {
-    // Get the callee name
+    // Gets the callee name.
     auto callee = op.getCallee();
     if (!callee) {
       return failure();
@@ -427,22 +427,22 @@ struct LlvmCallToFuncCall : public OpRewritePattern<LLVM::CallOp> {
       return failure();
     }
 
-    // Look for a func.func with the same name
+    // Looks for a func.func with the same name.
     func::FuncOp funcOp = module.lookupSymbol<func::FuncOp>(callee.value());
     if (!funcOp) {
       return failure();
     }
 
-    // Get the result types from the function signature
+    // Gets the result types from the function signature.
     auto resultTypes = funcOp.getFunctionType().getResults();
     
-    // Convert the call to func.call
+    // Converts the call to func.call.
     auto newCall = rewriter.create<func::CallOp>(
         op.getLoc(), resultTypes, callee.value(), op.getArgOperands()
     );
     
-    // Replace the old call with the new one
-    // Handle both cases: calls with results and calls without results
+    // Replaces the old call with the new one.
+    // Handles both cases: calls with results and calls without results.
     if (op.getNumResults() == 0) {
       rewriter.eraseOp(op);
     } else {
@@ -499,13 +499,13 @@ struct LowerLlvmToNeuraPass
 
     ModuleOp module_op = getOperation();
 
-    // function-level conversions
+    // Performs function-level conversions.
     if (failed(applyPatternsGreedily(module_op, frozen))) {
       signalPassFailure();
       return;
     }
 
-    // operation-level conversions
+    // Performs operation-level conversions.
     // Applies to every region inside the module (regardless of func type,
     // e.g., mlir func or llvm func).
     module_op.walk([&](FunctionOpInterface func) {

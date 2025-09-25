@@ -312,7 +312,7 @@ def Neura_DataMovOp : Op<NeuraDialect, "data_mov"> {
 // ----------------------------------------------------
 // Defines ctrl-related operations.
 
-// Phi operation for merging values in dataflow form
+// Defines phi operation for merging values in dataflow form.
 def Neura_PhiOp : Op<NeuraDialect, "phi"> {
   let summary = "Phi node in dataflow form";
   let description = [{
@@ -328,11 +328,11 @@ def Neura_PhiOp : Op<NeuraDialect, "phi"> {
   let arguments = (ins Variadic<AnyType>:$inputs);
   let results = (outs AnyType:$result);
 
-  // Explicitly specify types for operands in the assembly format
+  // Explicitly specifies types for operands in the assembly format.
   // let assemblyFormat = "$init_val `:` type($init_val) `,` $loop_val `:` type($loop_val) attr-dict `,` type($result)";
 }
 
-// Control movement extending base move but with different signature.
+// Defines control movement extending base move but with different signature.
 def Neura_CtrlMovOp : Op<NeuraDialect, "ctrl_mov"> {
   let summary = "Control movement operation";
   let description = [{
@@ -343,15 +343,15 @@ def Neura_CtrlMovOp : Op<NeuraDialect, "ctrl_mov"> {
       ctrl_mov %value to %placeholder : f32  // Connect value to placeholder
   }];
 
-  // Add type constraints for both operands
+  // Adds type constraints for both operands.
   let arguments = (ins AnyType:$value, AnyType:$target);
   let results = (outs);
 
-  // Correct assembly format - types must be space-separated
+  // Corrects assembly format - types must be space-separated.
   let assemblyFormat = "$value `->` $target attr-dict `:` type($value) type($target)";
 }
 
-// Reserve operation for control flow values.
+// Defines reserve operation for control flow values.
 def Neura_ReserveOp : Op<NeuraDialect, "reserve"> {
   let summary = "Creates a placeholder for control flow values";
   let description = [{
@@ -438,7 +438,7 @@ def Neura_LoopControlOp : Op<NeuraDialect, "loop_control">{
     predicate bit is initially 0, while the start value's predicate bit is 1.
     
     Example:
-      // Loop control that calculates next index and validity in one step
+      // Shows loop control that calculates next index and validity in one step.
       %next_idx, %loop_valid = neura.loop_control(
         parent_valid = %parent_valid,
         start = %start_val,
