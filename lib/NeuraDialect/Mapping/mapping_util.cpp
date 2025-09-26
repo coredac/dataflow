@@ -417,47 +417,45 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
                                    MappingLoc dst_loc, bool is_backward_move,
                                    const MappingState &state,
                                    std::vector<MappingLoc> &path_out) {
-  // Clears the output path.
-  path_out.clear();
+  assert(path_out.empty() && "Output path should be empty");
 
   // Gets the source tile and destination tile.
   Tile *src_tile = dyn_cast<Tile>(src_loc.resource);
   Tile *dst_tile = dyn_cast<Tile>(dst_loc.resource);
 
-  if (!src_tile || !dst_tile) {
-    llvm::outs() << "[tryRouteDataMove] Source or destination is not a tile\n ";
-    return false;
-  }
+  assert(src_tile && dst_tile &&
+         "Source and destination locations must be tiles");
 
   // Calculates the deadline time step (adds II for backward moves).
-  int deadline_step = dst_loc.time_step;
+  int exclusive_deadline_step = dst_loc.time_step;
   if (is_backward_move) {
-    deadline_step += state.getII();
+    exclusive_deadline_step += state.getII();
   }
 
   llvm::outs() << "[tryRouteDataMove] Routing from Tile#" << src_tile->getId()
                << " @t=" << src_loc.time_step << " to Tile#"
-               << dst_tile->getId() << " @t=" << deadline_step << "\n";
+               << dst_tile->getId() << " @t=" << exclusive_deadline_step
+               << "\n";
 
   // Special case: source tile and destination tile are the same.
   if (src_tile == dst_tile) {
     // Uses register as routing resource within the same tile.
     int start_time = src_loc.time_step;
-    int end_time = deadline_step;
+    int exclusive_end_time = exclusive_deadline_step;
 
     // Finds an available register to store the data.
     Register *available_reg =
-        getAvailableRegister(state, src_tile, start_time, end_time);
+        getAvailableRegister(state, src_tile, start_time, exclusive_end_time);
     if (!available_reg) {
       llvm::outs()
           << "[tryRouteDataMove] Cannot find available register on Tile#"
           << src_tile->getId() << " for time range: t=" << start_time
-          << " to t=" << end_time << "\n";
+          << " to t=" << exclusive_end_time << "\n";
       return false;
     }
 
     // Builds path: uses register to store data for the specified time period.
-    for (int t = start_time; t < end_time; ++t) {
+    for (int t = start_time; t < exclusive_end_time; ++t) {
       path_out.push_back({available_reg, t});
     }
 
@@ -491,15 +489,16 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
 
     // Checks if destination tile is reached with appropriate timing.
     if (current_state.current_tile == dst_tile) {
-      if (current_state.current_time <= deadline_step) {
-        if (current_state.current_time == deadline_step) {
+      if (current_state.current_time <= exclusive_deadline_step) {
+        if (current_state.current_time == exclusive_deadline_step) {
           // Arrives exactly at deadline, no additional register needed.
           path_out = current_state.path;
           return true;
         } else {
           // Arrives early, needs register on destination tile to wait.
-          Register *wait_reg = getAvailableRegister(
-              state, dst_tile, current_state.current_time, deadline_step);
+          Register *wait_reg =
+              getAvailableRegister(state, dst_tile, current_state.current_time,
+                                   exclusive_deadline_step);
           if (!wait_reg) {
             llvm::outs() << "[tryRouteDataMove] Cannot find available waiting"
                             "register on destination Tile#"
@@ -509,7 +508,8 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
 
           // Builds complete path.
           path_out = current_state.path;
-          for (int t = current_state.current_time; t < deadline_step; ++t) {
+          for (int t = current_state.current_time; t < exclusive_deadline_step;
+               ++t) {
             path_out.push_back({wait_reg, t});
           }
           return true;
@@ -521,27 +521,13 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
     }
 
     // Skips if current time already exceeds deadline.
-    if (current_state.current_time >= deadline_step) {
+    if (current_state.current_time >= exclusive_deadline_step) {
       continue;
     }
 
     // Explores two routing options from current tile:
 
-    // Option 1: Uses register on current tile to wait one time step.
-    Register *wait_register = getAvailableRegister(
-        state, current_state.current_tile, current_state.current_time,
-        current_state.current_time + 1);
-    if (wait_register) {
-      int next_time = current_state.current_time + 1;
-      if (visited.insert({current_state.current_tile, next_time}).second) {
-        std::vector<MappingLoc> new_path = current_state.path;
-        new_path.push_back({wait_register, current_state.current_time});
-
-        search_queue.push({current_state.current_tile, next_time, new_path});
-      }
-    }
-
-    // Option 2: Moves to adjacent tile through link.
+    // Option 1: Moves to adjacent tile through link.
     for (Link *out_link : current_state.current_tile->getOutLinks()) {
       MappingLoc link_loc = {out_link, current_state.current_time};
 
@@ -561,13 +547,28 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
         search_queue.push({next_tile, next_time, new_path});
       }
     }
+
+    // Option 2: Uses register on current tile to wait one time step.
+    Register *wait_register = getAvailableRegister(
+        state, current_state.current_tile, current_state.current_time,
+        current_state.current_time + 1);
+    if (wait_register) {
+      int next_time = current_state.current_time + 1;
+      // Checks if this (tile, time) combination has been visited.
+      if (visited.insert({current_state.current_tile, next_time}).second) {
+        std::vector<MappingLoc> new_path = current_state.path;
+        new_path.push_back({wait_register, current_state.current_time});
+
+        search_queue.push({current_state.current_tile, next_time, new_path});
+      }
+    }
   }
 
   // Search failed.
   llvm::outs() << "[tryRouteDataMove] Cannot find routing path from Tile#"
                << src_tile->getId() << " @t=" << src_loc.time_step
-               << " to Tile#" << dst_tile->getId() << " @t=" << deadline_step
-               << "\n";
+               << " to Tile#" << dst_tile->getId()
+               << " @t=" << exclusive_deadline_step << "\n";
   return false;
 }
 
