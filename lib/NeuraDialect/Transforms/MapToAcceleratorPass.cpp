@@ -169,7 +169,7 @@ struct MapToAcceleratorPass
       }
 
       // AcceleratorConfig config{/*numTiles=*/8}; // Example
-      Architecture architecture(4, 4);
+      Architecture architecture(6, 6);
       int res_mii = calculateResMii(func, architecture);
 
       const int possibleMinII = std::max(rec_mii, res_mii);

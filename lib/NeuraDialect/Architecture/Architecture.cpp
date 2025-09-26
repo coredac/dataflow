@@ -215,16 +215,24 @@ Architecture::Architecture(int width, int height) {
       // cannot distinguish between different register files..
       Register *register_0 = new Register(reg_id++);
       Register *register_1 = new Register(reg_id++);
+      Register *register_2 = new Register(reg_id++);
+      Register *register_3 = new Register(reg_id++);
       RegisterFile *register_file_0 = new RegisterFile(0);
       register_file_0->addRegister(register_0);
       register_file_0->addRegister(register_1);
+      register_file_0->addRegister(register_2);
+      register_file_0->addRegister(register_3);
 
       // Creates registers as a register file.
-      Register *register_2 = new Register(reg_id++);
-      Register *register_3 = new Register(reg_id++);
+      Register *register_4 = new Register(reg_id++);
+      Register *register_5 = new Register(reg_id++);
+      Register *register_6 = new Register(reg_id++);
+      Register *register_7 = new Register(reg_id++);
       RegisterFile *register_file_1 = new RegisterFile(1);
-      register_file_1->addRegister(register_2);
-      register_file_1->addRegister(register_3);
+      register_file_1->addRegister(register_4);
+      register_file_1->addRegister(register_5);
+      register_file_1->addRegister(register_6);
+      register_file_1->addRegister(register_7);
 
       // Assembles register files into a cluster.
       RegisterFileCluster *register_file_cluster =
