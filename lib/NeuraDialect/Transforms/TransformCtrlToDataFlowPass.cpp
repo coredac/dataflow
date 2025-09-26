@@ -485,10 +485,10 @@ void transformControlFlowToDataFlow(Region &region, ControlFlowInfo &ctrl_info,
   }
 
   // Flattens blocks into the entry block.
-  Block *entryBlock = &region.front();
+  Block *entry_block = &region.front();
   SmallVector<Block *> blocks_to_flatten;
   for (Block &block : region) {
-    if (&block != entryBlock) {
+    if (&block != entry_block) {
       blocks_to_flatten.push_back(&block);
     }
   }
@@ -508,12 +508,12 @@ void transformControlFlowToDataFlow(Region &region, ControlFlowInfo &ctrl_info,
     auto &ops = block->getOperations();
     while (!ops.empty()) {
       Operation &op = ops.front();
-      op.moveBefore(&entryBlock->back());
+      op.moveBefore(&entry_block->back());
     }
   }
 
   // Erases any remaining br/cond_br that were moved into the entry block.
-  for (Operation &op : llvm::make_early_inc_range(*entryBlock)) {
+  for (Operation &op : llvm::make_early_inc_range(*entry_block)) {
     if (isa<neura::Br>(op) || isa<neura::CondBr>(op)) {
       op.erase();
     }
@@ -522,6 +522,28 @@ void transformControlFlowToDataFlow(Region &region, ControlFlowInfo &ctrl_info,
   // Erases now-empty blocks
   for (Block *block : blocks_to_flatten) {
     block->erase();
+  }
+
+  // Handles return operations in the entry block.
+  SmallVector<neura::ReturnOp> return_ops;
+  for (Operation &op : *entry_block) {
+    if (neura::ReturnOp return_op = dyn_cast<neura::ReturnOp>(op)) {
+      return_ops.push_back(return_op);
+    }
+  }
+
+  if (return_ops.size() > 1) {
+    llvm::errs() << "[ctrl2data] Error: Multiple ReturnOps found in the entry "
+                    "block after flattening.\n";
+    assert(false &&
+           "Multiple ReturnOps found in the entry block after flattening.");
+  } else if (return_ops.size() == 1) {
+    neura::ReturnOp last_return = return_ops.back();
+    last_return->moveAfter(&entry_block->back());
+  } else {
+    llvm::errs() << "[ctrl2data] Error: No ReturnOp found in the entry "
+                    "block after flattening.\n";
+    assert(false && "No ReturnOp found in the entry block after flattening.");
   }
 }
 
