@@ -440,22 +440,19 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
   // Special case: source tile and destination tile are the same.
   if (src_tile == dst_tile) {
     // Uses register as routing resource within the same tile.
-    int start_time = src_loc.time_step;
-    int exclusive_end_time = exclusive_deadline_step;
-
     // Finds an available register to store the data.
-    Register *available_reg =
-        getAvailableRegister(state, src_tile, start_time, exclusive_end_time);
+    Register *available_reg = getAvailableRegister(
+        state, src_tile, src_loc.time_step, exclusive_deadline_step);
     if (!available_reg) {
       llvm::outs()
           << "[tryRouteDataMove] Cannot find available register on Tile#"
-          << src_tile->getId() << " for time range: t=" << start_time
-          << " to t=" << exclusive_end_time << "\n";
+          << src_tile->getId() << " for time range: t=" << src_loc.time_step
+          << " to t=" << exclusive_deadline_step << "\n";
       return false;
     }
 
     // Builds path: uses register to store data for the specified time period.
-    for (int t = start_time; t < exclusive_end_time; ++t) {
+    for (int t = src_loc.time_step; t < exclusive_deadline_step; ++t) {
       path_out.push_back({available_reg, t});
     }
 
@@ -489,6 +486,8 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
 
     // Checks if destination tile is reached with appropriate timing.
     if (current_state.current_tile == dst_tile) {
+      // The link/register between producer tile and consumer tile is belonging
+      // to the producer tile with same time step.
       if (current_state.current_time <= exclusive_deadline_step) {
         if (current_state.current_time == exclusive_deadline_step) {
           // Arrives exactly at deadline, no additional register needed.
@@ -554,7 +553,11 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
         current_state.current_time + 1);
     if (wait_register) {
       int next_time = current_state.current_time + 1;
-      // Checks if this (tile, time) combination has been visited.
+      // Checks if this(tile, time) combination has been visited.
+      // Though theoretically we can revisit a tile at different time steps
+      // to explore alternative routing paths, we disallow this during the
+      // routing search to prevent exponential search complexity and ensure
+      // algorithm termination within reasonable time bounds.
       if (visited.insert({current_state.current_tile, next_time}).second) {
         std::vector<MappingLoc> new_path = current_state.path;
         new_path.push_back({wait_register, current_state.current_time});
