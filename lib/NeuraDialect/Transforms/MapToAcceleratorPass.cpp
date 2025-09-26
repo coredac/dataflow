@@ -173,7 +173,7 @@ struct MapToAcceleratorPass
       int res_mii = calculateResMii(func, architecture);
 
       const int possibleMinII = std::max(rec_mii, res_mii);
-      constexpr int maxII = 10;
+      constexpr int maxII = 15;
       std::vector<Operation *> topologically_sorted_ops =
           getTopologicallySortedOps(func);
       if (topologically_sorted_ops.empty()) {
