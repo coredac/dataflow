@@ -211,23 +211,6 @@ def Neura_CastOp : Op<NeuraDialect, "cast">{
   // let assemblyFormat = "$input type($input) `->` type($output) `,` $predicate attr-dict";
 }
 
-
-// Defines an alloca operation for memory allocation.
-def Neura_AllocaOp : Op<NeuraDialect, "alloca"> {
-  let summary = "Memory allocation operation";
-  let description = [{
-    Allocates memory on the stack, similar to llvm.alloca.
-    Takes a predicated size value and returns a pointer to the allocated memory.
-
-    Example:
-      %ptr = neura.alloca %size : !neura.data<i32, i1> -> !llvm.ptr
-  }];
-
-  let arguments = (ins AnyType:$size);
-  let results = (outs AnyType:$result);
-  let assemblyFormat = "$size attr-dict `:` type($size) `->` type($result)";
-}
-
 // ----------------------------------------------------
 // Defines vector operations.
 
