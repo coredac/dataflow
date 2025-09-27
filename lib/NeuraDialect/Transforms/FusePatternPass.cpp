@@ -29,12 +29,12 @@ struct FuseFAddFAddPattern : public OpRewritePattern<neura::FAddOp> {
     neura::FAddOp first = nullptr;
     Value tail;
 
-    // Case 1: LHS is another fadd..
+    // Case 1: LHS is another fadd.
     if (lhs_op && second.getRhs()) {
       first = lhs_op;
       tail = second.getRhs();
     }
-    // Case 2: RHS is another fadd..
+    // Case 2: RHS is another fadd.
     else if (rhs_op && second.getLhs()) {
       first = rhs_op;
       tail = second.getLhs();
@@ -44,7 +44,7 @@ struct FuseFAddFAddPattern : public OpRewritePattern<neura::FAddOp> {
       return failure();
     }
 
-    // Only fuses if the first fadd is not reused elsewhere..
+    // Only fuses if the first fadd is not reused elsewhere.
     if (!first->hasOneUse()) {
       return failure();
     }
@@ -120,7 +120,7 @@ struct FuseGEPLoadPattern : public OpRewritePattern<neura::LoadOp> {
     if (!gep_op)
       return failure();
 
-    // Only fuses if the gep has a single use..
+    // Only fuses if the gep has a single use.
     if (!gep_op->hasOneUse())
       return failure();
 
@@ -205,7 +205,7 @@ struct FuseMulAddPattern : public OpRewritePattern<neura::AddOp> {
       return failure();
     }
 
-    // Only fuses if mul has a single use..
+    // Only fuses if mul has a single use.
     if (!mul->hasOneUse()) {
       return failure();
     }
