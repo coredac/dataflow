@@ -81,8 +81,8 @@ def Neura_FMulOp : Op<NeuraDialect, "fmul"> {
 
 def Neura_FDivOp : Op<NeuraDialect, "fdiv"> {
   let summary = "Floating division operation";
-  let arguments = (ins AnyFloat:$lhs, AnyFloat:$rhs, Optional<AnyType>:$predicate);
-  let results = (outs AnyFloat:$result);
+  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs);
+  let results = (outs AnyType:$result);
   // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
 }
 
@@ -211,6 +211,54 @@ def Neura_CastOp : Op<NeuraDialect, "cast">{
   // let assemblyFormat = "$input type($input) `->` type($output) `,` $predicate attr-dict";
 }
 
+// Defines an alloca operation for memory allocation.
+def Neura_AllocaOp : Op<NeuraDialect, "alloca"> {
+  let summary = "Memory allocation operation";
+  let description = [{
+    Allocates memory on the stack, similar to llvm.alloca.
+    Takes a predicated size value and returns a pointer to the allocated memory.
+    
+    Example:
+      %ptr = neura.alloca %size : !neura.data<i32, i1> -> !llvm.ptr
+  }];
+  
+  let arguments = (ins AnyType:$size);
+  let results = (outs AnyType:$result);
+  let assemblyFormat = "$size attr-dict `:` type($size) `->` type($result)";
+}
+
+// Defines a sign extension operation.
+def Neura_SExtOp : Op<NeuraDialect, "sext"> {
+  let summary = "Sign extension operation";
+  let description = [{
+    Sign extends a value from a smaller integer type to a larger integer type.
+    Similar to llvm.sext, but works with predicated values.
+    
+    Example:
+      %extended = neura.sext %value : !neura.data<i8, i1> -> !neura.data<i32, i1>
+  }];
+  
+  let arguments = (ins AnyType:$value);
+  let results = (outs AnyType:$result);
+  let assemblyFormat = "$value attr-dict `:` type($value) `->` type($result)";
+}
+
+// Defines a zero extension operation.
+def Neura_ZExtOp : Op<NeuraDialect, "zext"> {
+  let summary = "Zero extension operation";
+  let description = [{
+    Zero extends a value from a smaller integer type to a larger integer type.
+    Similar to llvm.zext, but works with predicated values.
+    
+    Example:
+      %extended = neura.zext %value : !neura.data<i8, i1> -> !neura.data<i32, i1>
+  }];
+  
+  let arguments = (ins AnyType:$value);
+  let results = (outs AnyType:$result);
+  let assemblyFormat = "$value attr-dict `:` type($value) `->` type($result)";
+}
+
 // ----------------------------------------------------
 // Defines vector operations.
 
@@ -264,7 +312,7 @@ def Neura_DataMovOp : Op<NeuraDialect, "data_mov"> {
 // ----------------------------------------------------
 // Defines ctrl-related operations.
 
-// Phi operation for merging values in dataflow form
+// Defines phi operation for merging values in dataflow form.
 def Neura_PhiOp : Op<NeuraDialect, "phi"> {
   let summary = "Phi node in dataflow form";
   let description = [{
@@ -280,11 +328,11 @@ def Neura_PhiOp : Op<NeuraDialect, "phi"> {
   let arguments = (ins Variadic<AnyType>:$inputs);
   let results = (outs AnyType:$result);
 
-  // Explicitly specify types for operands in the assembly format
+  // Explicitly specifies types for operands in the assembly format.
   // let assemblyFormat = "$init_val `:` type($init_val) `,` $loop_val `:` type($loop_val) attr-dict `,` type($result)";
 }
 
-// Control movement extending base move but with different signature.
+// Defines control movement extending base move but with different signature.
 def Neura_CtrlMovOp : Op<NeuraDialect, "ctrl_mov"> {
   let summary = "Control movement operation";
   let description = [{
@@ -295,15 +343,15 @@ def Neura_CtrlMovOp : Op<NeuraDialect, "ctrl_mov"> {
       ctrl_mov %value to %placeholder : f32  // Connect value to placeholder
   }];
 
-  // Add type constraints for both operands
+  // Adds type constraints for both operands.
   let arguments = (ins AnyType:$value, AnyType:$target);
   let results = (outs);
 
-  // Correct assembly format - types must be space-separated
+  // Corrects assembly format - types must be space-separated.
   let assemblyFormat = "$value `->` $target attr-dict `:` type($value) type($target)";
 }
 
-// Reserve operation for control flow values.
+// Defines reserve operation for control flow values.
 def Neura_ReserveOp : Op<NeuraDialect, "reserve"> {
   let summary = "Creates a placeholder for control flow values";
   let description = [{
@@ -390,7 +438,7 @@ def Neura_LoopControlOp : Op<NeuraDialect, "loop_control">{
     predicate bit is initially 0, while the start value's predicate bit is 1.
     
     Example:
-      // Loop control that calculates next index and validity in one step
+      // Shows loop control that calculates next index and validity in one step.
       %next_idx, %loop_valid = neura.loop_control(
         parent_valid = %parent_valid,
         start = %start_val,
