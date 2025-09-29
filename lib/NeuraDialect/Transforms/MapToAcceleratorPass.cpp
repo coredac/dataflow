@@ -20,7 +20,7 @@
 using namespace mlir;
 using namespace mlir::neura;
 
-#define GEN_PASS_DEF_MapToAccelerator
+#define GEN_PASS_DEF_MAPTOACCELERATOR
 #include "NeuraDialect/NeuraPasses.h.inc"
 
 namespace {
@@ -173,7 +173,7 @@ struct MapToAcceleratorPass
       int res_mii = calculateResMii(func, architecture);
 
       const int possibleMinII = std::max(rec_mii, res_mii);
-      constexpr int maxII = 10;
+      constexpr int maxII = 15;
       std::vector<Operation *> topologically_sorted_ops =
           getTopologicallySortedOps(func);
       if (topologically_sorted_ops.empty()) {

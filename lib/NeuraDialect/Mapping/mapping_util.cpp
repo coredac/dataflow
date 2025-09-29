@@ -7,6 +7,7 @@
 #include "mlir/IR/Operation.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cassert>
 
@@ -416,143 +417,161 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
                                    MappingLoc dst_loc, bool is_backward_move,
                                    const MappingState &state,
                                    std::vector<MappingLoc> &path_out) {
-  // Specially handles the case where src and dst are the same tile.
-  if (src_loc.resource == dst_loc.resource) {
-    // When the source and destination are on the same tile, we still need to
-    // allocate registers for data movement.
-    Tile *tile = dyn_cast<Tile>(src_loc.resource);
-    if (!tile) {
-      llvm::errs() << "[tryRouteDataMove] Source is not a tile\n";
-      return false;
-    }
+  assert(path_out.empty() && "Output path should be empty");
 
-    // Defines the time window for the register allocation.
-    int start_time = src_loc.time_step;
-    int exclusive_end_time = dst_loc.time_step;
-
-    // For backward moves, we need to adjust the end time.
-    if (is_backward_move) {
-      exclusive_end_time += state.getII();
-    }
-
-    // Finds a register that is available during start_time to
-    // exclusive_end_time.
-    Register *reg =
-        getAvailableRegister(state, tile, start_time, exclusive_end_time);
-    if (!reg) {
-      llvm::errs() << "[tryRouteDataMove] No available register found for "
-                   << "tile: " << tile->getId()
-                   << " from time step: " << start_time
-                   << " to time step: " << exclusive_end_time << "\n";
-      return false;
-    }
-
-    // Adds the register locations to the path.
-    for (int t = start_time; t < exclusive_end_time; ++t) {
-      MappingLoc reg_loc{reg, t};
-      path_out.push_back(reg_loc);
-    }
-
-    llvm::errs() << "[tryRouteDataMove] Allocated register " << reg->getId()
-                 << " for same-tile data movement from t=" << start_time
-                 << " to t=" << exclusive_end_time << "\n";
-    return true;
-  }
-  struct QueueEntry {
-    Tile *tile;
-    int time;
-    std::vector<MappingLoc> path;
-  };
-
+  // Gets the source tile and destination tile.
   Tile *src_tile = dyn_cast<Tile>(src_loc.resource);
   Tile *dst_tile = dyn_cast<Tile>(dst_loc.resource);
 
-  std::queue<QueueEntry> queue;
-  std::set<Tile *> visited;
+  assert(src_tile && dst_tile &&
+         "Source and destination locations must be tiles");
 
-  queue.push({src_tile, src_loc.time_step, {}});
-  visited.insert(src_tile);
+  // Calculates the deadline time step (adds II for backward moves).
+  int exclusive_deadline_step = dst_loc.time_step;
+  if (is_backward_move) {
+    exclusive_deadline_step += state.getII();
+  }
 
-  // Tolerates the deadline step by II for backward moves (as the data should
-  // arrive at the next iteration).
-  const int deadline_step =
-      dst_loc.time_step + (is_backward_move ? state.getII() : 0);
+  llvm::outs() << "[tryRouteDataMove] Routing from Tile#" << src_tile->getId()
+               << " @t=" << src_loc.time_step << " to Tile#"
+               << dst_tile->getId() << " @t=" << exclusive_deadline_step
+               << "\n";
 
-  // BFS-style search for a path from src_tile to dst_tile.
-  while (!queue.empty()) {
-    auto [current_tile, current_step, current_path] = queue.front();
-    queue.pop();
+  // Special case: source tile and destination tile are the same.
+  if (src_tile == dst_tile) {
+    // Uses register as routing resource within the same tile.
+    // Finds an available register to store the data.
+    Register *available_reg = getAvailableRegister(
+        state, src_tile, src_loc.time_step, exclusive_deadline_step);
+    if (!available_reg) {
+      llvm::outs()
+          << "[tryRouteDataMove] Cannot find available register on Tile#"
+          << src_tile->getId() << " for time range: t=" << src_loc.time_step
+          << " to t=" << exclusive_deadline_step << "\n";
+      return false;
+    }
 
-    if (current_tile == dst_tile) {
-      // Confirms path reaches the target tile no later than deadline step.
-      if (current_step <= deadline_step) {
-        // Either arrives exactly right before the dst starts computation.
-        // So the current_step on the target tile is the same as deadline step.
-        if (current_step == deadline_step) {
-          path_out = current_path;
+    // Builds path: uses register to store data for the specified time period.
+    for (int t = src_loc.time_step; t < exclusive_deadline_step; ++t) {
+      path_out.push_back({available_reg, t});
+    }
+
+    llvm::outs() << "[tryRouteDataMove] Successfully routed on same tile using "
+                    "Register #"
+                 << available_reg->getId() << "\n";
+    return true;
+  }
+
+  // Search state: records current tile, time step, and path to reach this
+  // state.
+  struct SearchState {
+    Tile *current_tile; // Current tile location.
+    int current_time;   // Current time step.
+    std::vector<MappingLoc>
+        path; // Routing resource path to reach current state.
+  };
+
+  // BFS search.
+  std::queue<SearchState> search_queue;
+  std::set<std::pair<Tile *, int>>
+      visited; // Records visited (tile, time) combinations.
+
+  // Initial state: starts from source tile.
+  search_queue.push({src_tile, src_loc.time_step, {}});
+  visited.insert({src_tile, src_loc.time_step});
+
+  while (!search_queue.empty()) {
+    SearchState current_state = search_queue.front();
+    search_queue.pop();
+
+    // Checks if destination tile is reached with appropriate timing.
+    if (current_state.current_tile == dst_tile) {
+      // The link/register between producer tile and consumer tile is belonging
+      // to the producer tile with same time step.
+      if (current_state.current_time <= exclusive_deadline_step) {
+        if (current_state.current_time == exclusive_deadline_step) {
+          // Arrives exactly at deadline, no additional register needed.
+          path_out = current_state.path;
+          return true;
+        } else {
+          // Arrives early, needs register on destination tile to wait.
+          Register *wait_reg =
+              getAvailableRegister(state, dst_tile, current_state.current_time,
+                                   exclusive_deadline_step);
+          if (!wait_reg) {
+            llvm::outs() << "[tryRouteDataMove] Cannot find available waiting"
+                            "register on destination Tile#"
+                         << dst_tile->getId() << "\n";
+            continue; // Tries other paths.
+          }
+
+          // Builds complete path.
+          path_out = current_state.path;
+          for (int t = current_state.current_time; t < exclusive_deadline_step;
+               ++t) {
+            path_out.push_back({wait_reg, t});
+          }
           return true;
         }
-
-        assert(!current_path.empty() &&
-               "Path should not be empty when checking last link");
-
-        Register *available_register =
-            getAvailableRegister(state, dst_tile, current_step, deadline_step);
-        if (!available_register) {
-          llvm::errs() << "[tryRouteDataMove] No available register found for "
-                       << "dst_tile: " << dst_tile->getId()
-                       << " from time step: " << current_step
-                       << " till deadline step: " << deadline_step << "\n";
-          // None of the register is available, skip this route and try others.
-          continue;
-        }
-        // llvm::errs() << "[tryRouteDataMove] Found available register: "
-        //          << available_register->getId()
-        //          << " in register_file: "
-        //          << available_register->getRegisterFile()->getId()
-        //          << " at tile: " << dst_tile->getId()
-        //          << " from time step: " << current_step
-        //          << " till deadline step: " << deadline_step << "\n";
-        // Register is available, so we can occupy the specific register across
-        // remaining time steps.
-        std::vector<MappingLoc> register_occupyings;
-        for (int t = current_step; t < deadline_step; ++t) {
-          MappingLoc register_loc{available_register, t};
-          register_occupyings.push_back(register_loc);
-          // Double-checks if the register is available across the time steps.
-          assert(state.isAvailableAcrossTime(register_loc));
-        }
-
-        path_out = current_path;
-        path_out.insert(path_out.end(), register_occupyings.begin(),
-                        register_occupyings.end());
-        return true;
-
       } else {
-        // Arrives too late, not schedulable.
+        // Arrives too late, skips this path.
         continue;
       }
     }
 
-    for (MappingLoc current_step_next_link :
-         state.getCurrentStepLinks({current_tile, current_step})) {
-      if (!state.isAvailableAcrossTime(current_step_next_link)) {
+    // Skips if current time already exceeds deadline.
+    if (current_state.current_time >= exclusive_deadline_step) {
+      continue;
+    }
+
+    // Explores two routing options from current tile:
+
+    // Option 1: Moves to adjacent tile through link.
+    for (Link *out_link : current_state.current_tile->getOutLinks()) {
+      MappingLoc link_loc = {out_link, current_state.current_time};
+
+      // Checks if link is available at current time step.
+      if (!state.isAvailableAcrossTime(link_loc)) {
         continue;
       }
-      Link *next_link = dyn_cast<Link>(current_step_next_link.resource);
-      Tile *next_tile = next_link->getDstTile();
-      int next_step = current_step + 1;
 
-      if (!visited.insert(next_tile).second) {
-        continue;
+      Tile *next_tile = out_link->getDstTile();
+      int next_time = current_state.current_time + 1;
+
+      // Checks if this (tile, time) combination has been visited.
+      if (visited.insert({next_tile, next_time}).second) {
+        std::vector<MappingLoc> new_path = current_state.path;
+        new_path.push_back(link_loc);
+
+        search_queue.push({next_tile, next_time, new_path});
       }
+    }
 
-      std::vector<MappingLoc> extended_path = current_path;
-      extended_path.push_back(current_step_next_link);
-      queue.push({next_tile, next_step, std::move(extended_path)});
+    // Option 2: Uses register on current tile to wait one time step.
+    Register *wait_register = getAvailableRegister(
+        state, current_state.current_tile, current_state.current_time,
+        current_state.current_time + 1);
+    if (wait_register) {
+      int next_time = current_state.current_time + 1;
+      // Checks if this(tile, time) combination has been visited.
+      // Though theoretically we can revisit a tile at different time steps
+      // to explore alternative routing paths, we disallow this during the
+      // routing search to prevent exponential search complexity and ensure
+      // algorithm termination within reasonable time bounds.
+      if (visited.insert({current_state.current_tile, next_time}).second) {
+        std::vector<MappingLoc> new_path = current_state.path;
+        new_path.push_back({wait_register, current_state.current_time});
+
+        search_queue.push({current_state.current_tile, next_time, new_path});
+      }
     }
   }
 
+  // Search failed.
+  llvm::outs() << "[tryRouteDataMove] Cannot find routing path from Tile#"
+               << src_tile->getId() << " @t=" << src_loc.time_step
+               << " to Tile#" << dst_tile->getId()
+               << " @t=" << exclusive_deadline_step << "\n";
   return false;
 }
 

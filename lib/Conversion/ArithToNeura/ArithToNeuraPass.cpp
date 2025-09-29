@@ -51,7 +51,7 @@ struct ArithAddIToNeuraAdd : public OpRewritePattern<mlir::arith::AddIOp> {
     Value rhs = op.getRhs();
     Type result_type = op.getType();
 
-
+    // Optional predicate: default to null.
     rewriter.replaceOpWithNewOp<neura::AddOp>(op, result_type, lhs, rhs);
     return success();
   }
@@ -66,7 +66,7 @@ struct ArithFAddToNeuraFAdd : public OpRewritePattern<mlir::arith::AddFOp> {
     Value rhs = op.getRhs();
     Type result_type = op.getType();
 
-
+    // Optional predicate: default to null.
     rewriter.replaceOpWithNewOp<neura::FAddOp>(op, result_type, lhs, rhs);
     return success();
   }
@@ -81,7 +81,7 @@ struct ArithSubIToNeuraSub : public OpRewritePattern<mlir::arith::SubIOp> {
     Value rhs = op.getRhs();
     Type result_type = op.getType();
 
-
+    // Optional predicate: default to null.
     rewriter.replaceOpWithNewOp<neura::SubOp>(op, result_type, lhs, rhs);
     return success();
   }
@@ -111,7 +111,7 @@ struct ArithMulIToNeuraMul : public OpRewritePattern<mlir::arith::MulIOp> {
     Value rhs = op.getRhs();
     Type result_type = op.getType();
 
-
+    // Optional predicate: default to null.
     rewriter.replaceOpWithNewOp<neura::MulOp>(op, result_type, lhs, rhs);
     return success();
   }
@@ -154,7 +154,7 @@ struct ArithFDivToNeuraFDiv : public OpRewritePattern<mlir::arith::DivFOp> {
     Value rhs = op.getRhs();
     Type result_type = op.getType();
 
-
+    // Optional predicate: default to null.
     rewriter.replaceOpWithNewOp<neura::FDivOp>(op, result_type, lhs, rhs);
     return success();
   }
@@ -172,11 +172,9 @@ struct ArithRemSIToNeuraOp : public OpRewritePattern<mlir::arith::RemSIOp> {
     // Converts arith RemSIOp to basic Neura Op.
 
     Value div =
-        rewriter.create<neura::DivOp>(loc, result_type, lhs, rhs);
-    Value mul =
-        rewriter.create<neura::MulOp>(loc, result_type, rhs, div);
-    Value rem =
-        rewriter.create<neura::SubOp>(loc, result_type, lhs, mul);
+        rewriter.create<neura::DivOp>(loc, result_type, lhs, rhs, nullptr);
+    Value mul = rewriter.create<neura::MulOp>(loc, result_type, rhs, div);
+    Value rem = rewriter.create<neura::SubOp>(loc, result_type, lhs, mul);
 
     rewriter.replaceOp(op, rem);
     return success();

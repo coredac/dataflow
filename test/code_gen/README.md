@@ -29,12 +29,13 @@ Each core contains:
 
 ### Instruction Format
 Each `entry` contains:
-- `entry_id` — the (single-instruction) context ID  
-- `instructions` — a list with one item:
-  - `opcode` — e.g. `CONSTANT`, `DATA_MOV`, `PHI`, `ICMP`, `FADD`, …
-  - `timestep` — the per-tile cycle at which the instruction executes
-  - `src_operands` — inputs
-  - `dst_operands` — outputs
+- `entry_id` — the execution context ID (typically "entry0" and can be extended to multiple entries in the future )
+- `instructions` — a list of instruction groups organized by timestep:
+  - `timestep` — the per-tile cycle at which the instruction group executes
+  - `operations` — a list of operations executed in this timestep
+    - `opcode` — e.g. `CONSTANT`, `DATA_MOV`, `PHI`, `ICMP`, `FADD`, `GRANT_ONCE`, `GRANT_PREDICATE`, `CTRL_MOV`, `NOT`, `RETURN`
+    - `src_operands` — inputs
+    - `dst_operands` — output
 
 Operands encode:
 - `#N` — immediate constant (e.g., `#10`)
@@ -58,109 +59,91 @@ array_config:
       entries:
         - entry_id: "entry0"
           instructions:
-            - opcode: "CONSTANT"
-              timestep: 0
-              src_operands:
-                - operand: "#0"
-                  color: "RED"
-              dst_operands:
-                - operand: "EAST"
-                  color: "RED"
-        - entry_id: "entry1"
-          instructions:
-            - opcode: "CONSTANT"
-              timestep: 1
-              src_operands:
-                - operand: "#10"
-                  color: "RED"
-              dst_operands:
-                - operand: "EAST"
-                  color: "RED"
+            - timestep: 0
+              operations:
+                - opcode: "CONSTANT"
+                  src_operands:
+                    - operand: "#0"
+                      color: "RED"
+                  dst_operands:
+                    - operand: "EAST"
+                      color: "RED"
+            - timestep: 1
+              operations:
+                - opcode: "CONSTANT"
+                  src_operands:
+                    - operand: "#10"
+                      color: "RED"
+                  dst_operands:
+                    - operand: "EAST"
+                      color: "RED"
+            - timestep: 4
+              operations:
+                - opcode: "DATA_MOV"
+                  src_operands:
+                    - operand: "EAST"
+                      color: "RED"
+                  dst_operands:
+                    - operand: "NORTH"
+                      color: "RED"
     - column: 1
-      row: 1
-      core_id: "5"
+      row: 0
+      core_id: "1"
       entries:
         - entry_id: "entry0"
           instructions:
-            - opcode: "PHI"
-              timestep: 2
-              src_operands:
-                - operand: "EAST"
-                  color: "RED"
-                - operand: "SOUTH"
-                  color: "RED"
-              dst_operands:
-                - operand: "EAST"
-                  color: "RED"
-        - entry_id: "entry1"
-          instructions:
-            - opcode: "ICMP"
-              timestep: 4
-              src_operands:
-                - operand: "EAST"
-                  color: "RED"
-                - operand: "SOUTH"
-                  color: "RED"
-              dst_operands:
-                - operand: "EAST"
-                  color: "RED"
-                - operand: "NORTH"
-                  color: "RED"
-                - operand: "$22"
-                  color: "RED"
-                - operand: "$21"
-                  color: "RED"
-                - operand: "SOUTH"
-                  color: "RED"
-                - operand: "$20"
-                  color: "RED"
-    - column: 2
-      row: 1
-      core_id: "6"
-      entries:
-        - entry_id: "entry0"
-          instructions:
-            - opcode: "ADD"
-              timestep: 3
-              src_operands:
-                - operand: "WEST"
-                  color: "RED"
-                - operand: "SOUTH"
-                  color: "RED"
-              dst_operands:
-                - operand: "WEST"
-                  color: "RED"
-                - operand: "$25"
-                  color: "RED"
-        - entry_id: "entry1"
-          instructions:
-            - opcode: "FADD"
-              timestep: 5
-              src_operands:
-                - operand: "$24"
-                  color: "RED"
-                - operand: "NORTH"
-                  color: "RED"
-              dst_operands:
-                - operand: "$26"
-                  color: "RED"
-                - operand: "EAST"
-                  color: "RED"
+            - timestep: 1
+              operations:
+                - opcode: "GRANT_ONCE"
+                  src_operands:
+                    - operand: "WEST"
+                      color: "RED"
+                  dst_operands:
+                    - operand: "NORTH"
+                      color: "RED"
+            - timestep: 2
+              operations:
+                - opcode: "GRANT_ONCE"
+                  src_operands:
+                    - operand: "WEST"
+                      color: "RED"
+                  dst_operands:
+                    - operand: "$4"
+                      color: "RED"
+            - timestep: 3
+              operations:
+                - opcode: "PHI"
+                  src_operands:
+                    - operand: "$5"
+                      color: "RED"
+                    - operand: "$4"
+                      color: "RED"
+                  dst_operands:
+                    - operand: "NORTH"
+                      color: "RED"
+                    - operand: "$4"
+                      color: "RED"
+                - opcode: "DATA_MOV"
+                  src_operands:
+                    - operand: "EAST"
+                      color: "RED"
+                  dst_operands:
+                    - operand: "WEST"
+                      color: "RED"
 ```
 
 #### What Each Tile Does:
 
 **PE(0,0) - Constant Generation Tile:**
-- `entry0` @t=0: Generates constant value 0 and sends it eastward
-- `entry1` @t=1: Generates constant value 10 (loop upper bound) and sends it eastward
+- @t=0: Generates constant value 0 and sends it eastward
+- @t=1: Generates constant value 10 (loop upper bound) and sends it eastward
+- @t=4: Forwards data from east to north
 
-**PE(1,1) - Control Flow Tile:**
-- `entry0` @t=2: Merges data flows from east and south using PHI operation
-- `entry1` @t=4: Performs integer comparison (i < 10), broadcasts result to multiple destinations including registers $22, $21, $20
-
-**PE(2,1) - Arithmetic Tile:**
-- `entry0` @t=3: Performs integer addition (i + 1) and stores result in register $25
-- `entry1` @t=5: Performs floating-point addition (accumulator + 3.0) and stores result in register $26
+**PE(1,0) - Control Flow Tile:**
+- @t=1: Grants data from west to north
+- @t=2: Grants data from west to register $4
+- @t=3: Merges data flows using PHI operation and forwards data from east to west
+- @t=5: Performs conditional data authorization based on predicate conditions
 
 
 ## ASM Format Description
@@ -168,36 +151,62 @@ The ASM format is a human-readable assembly-style view per tile.
 
 ### Basics
 - **PE(x,y)** — the tile coordinates
-- **Format** — `OPCODE, [src …] -> [dst …] (t=TIMESTEP)`
+- **Format** — Operations are grouped by timestep in `{}` blocks with `(t=TIMESTEP)` suffix
+- **Operation format** — `OPCODE, [src …] -> [dst …]` or `OPCODE -> [dst …]` (for operations without source operands)
 - **Operand tokens**
   - `#N` — immediate (e.g., `#0`, `#10`, `#3.000000`)
-  - `$N` — local register (e.g., `$20`, `$22`, `$25`)
+  - `$N` — local register (e.g., `$4`, `$5`, `$8`)
   - `[operand]` — non-directional (reg/imm)
   - `[DIRECTION, COLOR]` — directional with routing color
     - e.g., `[EAST, RED]`, `[WEST, RED]`, `[NORTH, RED]`, `[SOUTH, RED]`
 
 ## Timing Execution Examples 
 ### PE(0,0)
-- @t=0: `CONSTANT [#0] -> [EAST]` - Generate constant 0 and send to east
-- @t=1: `CONSTANT [#10] -> [EAST]` - Generate constant 10 (loop upper bound) and send to east
-- @t=4: `DATA_MOV [EAST] -> [NORTH]` - Receive data from east and forward to north
+```
+{
+  CONSTANT, [#0] -> [EAST, RED]
+} (t=0)
+{
+  CONSTANT, [#10] -> [EAST, RED]
+} (t=1)
+{
+  DATA_MOV, [EAST, RED] -> [NORTH, RED]
+} (t=4)
+```
 
-### PE(1,1)
-- @t=2: `PHI [EAST], [SOUTH] -> [EAST]` - Merge data flows from east and south
-- @t=4: `ICMP [EAST], [SOUTH] -> [EAST], [NORTH], [$22], [$21], [SOUTH], [$20]` - Integer Compare operation, broadcasting results to multiple targets
-- @t=5: `NOT [$20] -> [EAST]` - Negate the value in register $20
-- @t=6: `GRANT_PREDICATE [WEST], [$21] -> [EAST]` - Data authorization based on predicate conditions
-- @t=7: `CTRL_MOV [WEST] -> [$20]` - Control flow movement, updating register $20
+### PE(1,0)
+```
+{
+  GRANT_ONCE, [WEST, RED] -> [NORTH, RED]
+} (t=1)
+{
+  GRANT_ONCE, [WEST, RED] -> [$4]
+} (t=2)
+{
+  PHI, [$5], [$4] -> [NORTH, RED], [$4]
+  DATA_MOV, [EAST, RED] -> [WEST, RED]
+} (t=3)
+{
+  GRANT_PREDICATE, [$4], [NORTH, RED] -> [$5]
+} (t=5)
+```
 
-### PE(2,1)
-- @t=3: `ADD [WEST], [SOUTH] -> [WEST], [$25]` - Execute addition operation
-- @t=4: `PHI [$24], [EAST] -> [$24]` - Data flow merging
-- @t=5: `FADD [$24], [NORTH] -> [$26], [EAST]` - Execute floating-point addition
-- @t=6: `GRANT_PREDICATE [$25], [$24] -> [WEST]` - Data authorization based on conditions
+### PE(2,0)
+```
+{
+  CONSTANT, [#1] -> [$8]
+} (t=0)
+{
+  ADD, [WEST, RED], [SOUTH, RED] -> [WEST, RED], [$25]
+} (t=3)
+{
+  FADD, [$24], [NORTH, RED] -> [$26], [EAST, RED]
+} (t=5)
+```
 
 ## Notes / Known Limitations
 
 ### Current Implementation Constraints
-- **One instruction per entry**: Multiple operations within a tile are currently emitted as separate entries to satisfy the simulator requirements. We will allow multiple instructions per entry in the future.
+- **Timestep-based grouping**: Operations are grouped by timestep within each entry, allowing multiple operations to execute in the same cycle
 - **Default color scheme**: You'll typically see "RED" as the default virtual channel color in the YAML output
-- **Entry-based scheduling**: Each execution context (entry) can only contain one instruction at a time
+- **Entry-based scheduling**: Each execution context (entry) can contain multiple instructions organized by timestep

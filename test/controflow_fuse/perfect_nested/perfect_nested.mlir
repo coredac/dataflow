@@ -28,6 +28,22 @@
 // RUN: --transform-ctrl-to-data-flow \
 // RUN: | FileCheck %s -check-prefix=CTRL2DATA
 
+// RUN: mlir-neura-opt %t-llvm.mlir \
+// RUN: --assign-accelerator \
+// RUN: --lower-arith-to-neura \
+// RUN: --lower-memref-to-neura \
+// RUN: --lower-builtin-to-neura \
+// RUN: --lower-llvm-to-neura \
+// RUN: --canonicalize-cast \
+// RUN: --fold-constant \
+// RUN: --canonicalize-live-in \
+// RUN: --leverage-predicated-value \
+// RUN: --transform-ctrl-to-data-flow \
+// RUN: --fold-constant \
+// RUN: --insert-data-mov \
+// RUN: --map-to-accelerator="mapping-strategy=heuristic backtrack-config=customized" \
+// RUN: | FileCheck %s -check-prefix=MAPPING
+
 module attributes {} {
   func.func @_Z10bert_node1PA1_A1_A1_A1_A128_bPA1_A128_S1_(%arg0: memref<?x1x1x1x1x128xi8>, %arg1: memref<?x1x128x1x1x128xi8>) attributes {llvm.linkage = #llvm.linkage<external>} {
     affine.for %arg2 = 0 to 128 {
@@ -174,3 +190,6 @@ module attributes {} {
 // CTRL2DATA-NEXT:     neura.ctrl_mov %53 -> %10 : !neura.data<i64, i1> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     "neura.return"() : () -> ()
 // CTRL2DATA-NEXT:   }
+
+
+// MAPPING:      func.func @_Z10bert_node1PA1_A1_A1_A1_A128_bPA1_A128_S1_(%arg0: memref<?x1x1x1x1x128xi8>, %arg1: memref<?x1x128x1x1x128xi8>) attributes {accelerator = "neura", llvm.linkage = #llvm.linkage<external>, mapping_info = {compiled_ii = 10 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 8 : i32, res_mii = 3 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {
