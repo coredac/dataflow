@@ -209,28 +209,24 @@ Architecture::Architecture(int width, int height) {
     for (int x = 0; x < width; ++x) {
       // Gets the tile by coordinates.
       Tile *tile = getTile(x, y);
-
-      // Creates registers as a register file.
-      // FIXME: We have to assign different IDs due to the hash function
-      // cannot distinguish between different register files..
-      Register *register_0 = new Register(reg_id++);
-      Register *register_1 = new Register(reg_id++);
-      RegisterFile *register_file_0 = new RegisterFile(0);
-      register_file_0->addRegister(register_0);
-      register_file_0->addRegister(register_1);
-
-      // Creates registers as a register file.
-      Register *register_2 = new Register(reg_id++);
-      Register *register_3 = new Register(reg_id++);
-      RegisterFile *register_file_1 = new RegisterFile(1);
-      register_file_1->addRegister(register_2);
-      register_file_1->addRegister(register_3);
+      const int kNUM_REGS_PER_REGFILE = 4;
+      const int kNUM_REGFILES_PER_CLUSTER = 2;
 
       // Assembles register files into a cluster.
       RegisterFileCluster *register_file_cluster =
           new RegisterFileCluster(y * width + x);
-      register_file_cluster->addRegisterFile(register_file_0);
-      register_file_cluster->addRegisterFile(register_file_1);
+
+      // Creates registers as a register file.
+      // FIXME: We have to assign different IDs due to the hash function
+      // cannot distinguish between different register files..
+      for (int file_idx = 0; file_idx < kNUM_REGFILES_PER_CLUSTER; ++file_idx) {
+        RegisterFile *register_file = new RegisterFile(file_idx);
+        for (int reg_idx = 0; reg_idx < kNUM_REGS_PER_REGFILE; ++reg_idx) {
+          Register *reg = new Register(reg_id++);
+          register_file->addRegister(reg);
+        }
+        register_file_cluster->addRegisterFile(register_file);
+      }
 
       // Adds register file cluster to the tile.
       tile->addRegisterFileCluster(register_file_cluster);

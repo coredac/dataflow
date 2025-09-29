@@ -44,6 +44,11 @@ func.func @test_add_zero() -> f32 {
   return %res : f32
 }
 
+// RUN: neura-interpreter %s | FileCheck %s
+
+// TODO: Remove Test 5 because we plan to remove the predicate attribute in
+// https://github.com/coredac/dataflow/issues/116
+
 // ===----------------------------------------------------------------------===//
 // Test 5: Add with operation embed predicate 0
 // ===----------------------------------------------------------------------===//

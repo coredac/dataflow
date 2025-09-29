@@ -9,7 +9,7 @@
 
 using namespace mlir;
 
-#define GEN_PASS_DEF_InsertCtrlMov
+#define GEN_PASS_DEF_INSERTCTRLMOV
 #include "NeuraDialect/NeuraPasses.h.inc"
 
 namespace {

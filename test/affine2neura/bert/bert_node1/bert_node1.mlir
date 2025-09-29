@@ -48,7 +48,7 @@ module attributes {} {
 // CHECK-NEXT: %10 = "neura.icmp"(%9, %1) <{cmpType = "slt"}> : (index, index) -> i1
 // CHECK-NEXT: neura.cond_br %10 : i1 then to ^bb4 else to ^bb5
 // CHECK-NEXT: ^bb4:  // pred: ^bb3
-// CHECK-NEXT: %11 = neura.load_indexed %arg0[%2, %2, %2, %2, %2, %9 : index, index, index, index, index, index] memref<?x1x1x1x1x128xi8> : i8
+// CHECK-NEXT: %11 = neura. %arg0[%2, %2, %2, %2, %2, %9 : index, index, index, index, index, index] memref<?x1x1x1x1x128xi8> : i8
 // CHECK-NEXT: neura.store_indexed %11 to %arg1[%2, %2, %5, %2, %2, %9 : index, index, index, index, index, index] memref<?x1x128x1x1x128xi8> : i8
 // CHECK-NEXT: %12 = "neura.add"(%9, %0) : (index, index) -> index
 // CHECK-NEXT: %13 = "neura.cast"(%12) <{cast_type = "index_to_int"}> : (index) -> i64

@@ -49,9 +49,10 @@ Build LLVM & Neura
  - Test:
 ```sh
  $ cd ../test
+ # a test with detailed middle output
  $ ../build/tools/mlir-neura-opt/mlir-neura-opt --debug test.mlir
 
  # Or test with lit:
- $ /workspace/llvm-project/build/bin/llvm-lit . -v
+ $ /workspace/llvm-project/build/bin/llvm-lit test.mlir -v
 ```
 
