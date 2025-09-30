@@ -43,7 +43,7 @@ func.func @test_cast_i2bool() -> i1 {
 // f2i with true predicate
 func.func @test_cast_embed_predicated() -> i32 {
   %val = "neura.constant"() {value = 5.5 : f32, predicate = true} : () -> f32
-  %res = "neura.cast"(%val) { cast_type = "f2i" } : (f32, i1) -> i32
+  %res = "neura.cast"(%val) { cast_type = "f2i" } : (f32) -> i32
   // CHECK: [neura-interpreter]  → Output: 6.000000
   return %res : i32
 }
@@ -51,7 +51,7 @@ func.func @test_cast_embed_predicated() -> i32 {
 // f2i with false predicate
 func.func @test_cast_embed_predicate_false() -> i32 {
   %val = "neura.constant"() {value = 5.5 : f32, predicate = false} : () -> f32
-  %res = "neura.cast"(%val) { cast_type = "f2i" } : (f32, i1) -> i32
+  %res = "neura.cast"(%val) { cast_type = "f2i" } : (f32) -> i32
   // CHECK: [neura-interpreter]  → Output: 0.000000
   return %res : i32
 }

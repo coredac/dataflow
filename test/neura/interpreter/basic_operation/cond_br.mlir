@@ -24,7 +24,6 @@ func.func @test_cond_br_false() {
 //   %cond = arith.constant 1 : i1
 //   %pred = arith.constant 1 : i32
 //   "neura.cond_br"(%cond, %pred) [^bb1, ^bb2] {operandSegmentSizes = array<i32: 1, 1, 0, 0>} : (i1, i32) -> ()
-//   // CHECK:  [neura-interpreter]  → Output: (void)
 // ^bb1:
 //   return
 // ^bb2:

@@ -52,7 +52,6 @@ struct LlvmFAddToNeuraFAdd : public OpRewritePattern<mlir::LLVM::FAddOp> {
     if (!mlir::isa<FloatType>(result_type))
       return failure();
 
-    // Sets optional predicate: default to 'none'.
     rewriter.replaceOpWithNewOp<neura::FAddOp>(op, result_type, lhs, rhs);
     return success();
   }
@@ -72,9 +71,7 @@ struct LlvmFSubToNeuraFSub : public OpRewritePattern<mlir::LLVM::FSubOp> {
       return failure();
     }
 
-    // Sets optional predicate: default to 'none'.
-    rewriter.replaceOpWithNewOp<neura::FSubOp>(op, result_type, lhs, rhs,
-                                               Value());
+    rewriter.replaceOpWithNewOp<neura::FSubOp>(op, result_type, lhs, rhs);
     return success();
   }
 };
@@ -290,7 +287,6 @@ struct LlvmConstantToNeuraConstant : public OpRewritePattern<LLVM::ConstantOp> {
     // Creates operation state manually.
     OperationState state(op.getLoc(), neura::ConstantOp::getOperationName());
     state.addAttribute("value", attr);
-    // state.addAttribute("predicate", rewriter.getBoolAttr(true));
     state.addTypes(op.getType());
 
     // Creates the operation and replaces.

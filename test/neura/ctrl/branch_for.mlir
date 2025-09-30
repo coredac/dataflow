@@ -87,11 +87,11 @@ func.func @loop_test() -> f32 {
 }
 
 // CHECK:      func.func @loop_test() -> f32 attributes {accelerator = "neura"} {
-// CHECK-NEXT:   %0 = "neura.constant"() <{value = 10 : i64}> {predicate = true} : () -> !neura.data<i64, i1>
-// CHECK-NEXT:   %1 = "neura.constant"() <{value = 0 : i64}> {predicate = true} : () -> !neura.data<i64, i1>
-// CHECK-NEXT:   %2 = "neura.constant"() <{value = 1 : i64}> {predicate = true} : () -> !neura.data<i64, i1>
-// CHECK-NEXT:   %3 = "neura.constant"() <{value = 3.000000e+00 : f32}> {predicate = true} : () -> !neura.data<f32, i1>
-// CHECK-NEXT:   %4 = "neura.constant"() <{value = 0.000000e+00 : f32}> {predicate = true} : () -> !neura.data<f32, i1>
+// CHECK-NEXT:   %0 = "neura.constant"() <{value = 10 : i64}> : () -> !neura.data<i64, i1>
+// CHECK-NEXT:   %1 = "neura.constant"() <{value = 0 : i64}> : () -> !neura.data<i64, i1>
+// CHECK-NEXT:   %2 = "neura.constant"() <{value = 1 : i64}> : () -> !neura.data<i64, i1>
+// CHECK-NEXT:   %3 = "neura.constant"() <{value = 3.000000e+00 : f32}> : () -> !neura.data<f32, i1>
+// CHECK-NEXT:   %4 = "neura.constant"() <{value = 0.000000e+00 : f32}> : () -> !neura.data<f32, i1>
 // CHECK-NEXT:   neura.br %1, %4 : !neura.data<i64, i1>, !neura.data<f32, i1> to ^bb1
 // CHECK-NEXT: ^bb1(%5: !neura.data<i64, i1>, %6: !neura.data<f32, i1>):  // 2 preds: ^bb0, ^bb1
 // CHECK-NEXT:   %7 = "neura.fadd"(%6, %3) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
@@ -103,8 +103,8 @@ func.func @loop_test() -> f32 {
 // CHECK-NEXT: }
 
 // CANONICALIZE:       func.func @loop_test() -> f32 attributes {accelerator = "neura"} {
-// CANONICALIZE-NEXT:     %0 = "neura.constant"() <{predicate = true, value = 0 : i64}> : () -> i64
-// CANONICALIZE-NEXT:     %1 = "neura.constant"() <{predicate = true, value = 0.000000e+00 : f32}> : () -> f32
+// CANONICALIZE-NEXT:     %0 = "neura.constant"() <{value = 0 : i64}> : () -> i64
+// CANONICALIZE-NEXT:     %1 = "neura.constant"() <{value = 0.000000e+00 : f32}> : () -> f32
 // CANONICALIZE-NEXT:     neura.br %0, %1 : i64, f32 to ^bb1
 // CANONICALIZE-NEXT:   ^bb1(%2: i64, %3: f32):  // 2 preds: ^bb0, ^bb1
 // CANONICALIZE-NEXT:     %4 = "neura.fadd"(%3) {rhs_const_value = 3.000000e+00 : f32} : (f32) -> f32
@@ -116,9 +116,9 @@ func.func @loop_test() -> f32 {
 // CANONICALIZE-NEXT:   }
 
 // CTRL2DATA:        func.func @loop_test() -> f32 attributes {accelerator = "neura"} {
-// CTRL2DATA-NEXT:     %0 = "neura.constant"() <{predicate = true, value = 0 : i64}> : () -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %0 = "neura.constant"() <{value = 0 : i64}> : () -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %1 = "neura.grant_once"(%0) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %2 = "neura.constant"() <{predicate = true, value = 0.000000e+00 : f32}> : () -> !neura.data<f32, i1>
+// CTRL2DATA-NEXT:     %2 = "neura.constant"() <{value = 0.000000e+00 : f32}> : () -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:     %3 = "neura.grant_once"(%2) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:     %4 = neura.reserve : !neura.data<f32, i1>
 // CTRL2DATA-NEXT:     %5 = "neura.phi"(%4, %3) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
@@ -193,26 +193,74 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:   columns: 4
 // YAML-NEXT:   rows: 4
 // YAML-NEXT:   cores:
-// YAML-NEXT:   - column: 0
-// YAML-NEXT:   row: 1
-// YAML-NEXT:   core_id: "4"
-// YAML-NEXT:   entries:
-// YAML-NEXT:   - entry_id: "entry0"
-// YAML-NEXT:   instructions:
-// YAML-NEXT:   - opcode: "GRANT_ONCE"
-// YAML-NEXT:   timestep: 2
-// YAML-NEXT:   dst_operands:
-// YAML-NEXT:   - operand: "EAST"
-// YAML-NEXT:   color: "RED"
+// YAML-NEXT:     - column: 0
+// YAML-NEXT:       row: 0
+// YAML-NEXT:       core_id: "0"
+// YAML-NEXT:       entries:
+// YAML-NEXT:         - entry_id: "entry0"
+// YAML-NEXT:           instructions:
+// YAML-NEXT:             - timestep: 0
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "GRANT_ONCE"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "#0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - timestep: 2
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "GRANT_ONCE"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "#0.000000"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - timestep: 3
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "PHI"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - timestep: 4
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "DATA_MOV"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - timestep: 5
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "DATA_MOV"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
 
 
-// ASM-LABEL: PE(0,1):
-// ASM: GRANT_ONCE -> [EAST, RED] (t=2)
-
-// ASM-LABEL: PE(1,1):
-// ASM: DATA_MOV, [NORTH, RED] -> [EAST, RED] (t=2)
-// ASM: PHI, [$20], [WEST, RED] -> [NORTH, RED], [$20] (t=3)
-// ASM: DATA_MOV, [NORTH, RED] -> [EAST, RED] (t=3)
-// ASM: DATA_MOV, [SOUTH, RED] -> [$21] (t=5)
-// ASM: CTRL_MOV, [EAST, RED] -> [NORTH, RED] (t=5)
-// ASM: GRANT_PREDICATE, [$20], [$21] -> [$20] (t=6)
+// ASM:      PE(0,0):
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_ONCE, [#0] -> [EAST, RED]
+// ASM-NEXT: } (t=0)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_ONCE, [#0.000000] -> [$0]
+// ASM-NEXT: } (t=2)
+// ASM-NEXT: {
+// ASM-NEXT:   PHI, [NORTH, RED], [$0] -> [EAST, RED]
+// ASM-NEXT: } (t=3)
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [NORTH, RED]
+// ASM-NEXT: } (t=4)
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [NORTH, RED]
+// ASM-NEXT: } (t=5)
