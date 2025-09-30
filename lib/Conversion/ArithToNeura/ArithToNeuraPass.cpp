@@ -172,7 +172,7 @@ struct ArithRemSIToNeuraOp : public OpRewritePattern<mlir::arith::RemSIOp> {
     // Converts arith RemSIOp to basic Neura Op.
 
     Value div =
-        rewriter.create<neura::DivOp>(loc, result_type, lhs, rhs, nullptr);
+        rewriter.create<neura::DivOp>(loc, result_type, lhs, rhs);
     Value mul = rewriter.create<neura::MulOp>(loc, result_type, rhs, div);
     Value rem = rewriter.create<neura::SubOp>(loc, result_type, lhs, mul);
 

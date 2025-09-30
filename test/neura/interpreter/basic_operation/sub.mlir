@@ -28,9 +28,9 @@ func.func @test_sub_with_embed_predicate_true() -> i32 {
   %a = "neura.constant"() {value = 300 : i32, predicate = true} : () -> i32
   %b = "neura.constant"() {value = 100 : i32, predicate = true} : () -> i32
   %res = "neura.sub"(%a, %b) : (i32, i32) -> i32
-
-//   return %res : i32
-// }
+  // CHECK: [neura-interpreter]  → Output: 200.000000
+  return %res : i32
+}
 
 
 // Test subtraction with predicate=false
