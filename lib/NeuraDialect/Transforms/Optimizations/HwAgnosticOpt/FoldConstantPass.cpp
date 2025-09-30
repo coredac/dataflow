@@ -205,6 +205,34 @@ struct FuseFAddRhsConstantPattern
   }
 };
 
+struct FuseDivRhsConstantPattern : public FuseRhsConstantPattern<neura::DivOp> {
+  using FuseRhsConstantPattern<neura::DivOp>::FuseRhsConstantPattern;
+
+  Operation *
+  createOpWithFusedRhsConstant(neura::DivOp op, Attribute rhs_const_value,
+                               PatternRewriter &rewriter) const override {
+    auto fused_op = rewriter.create<neura::DivOp>(
+        op.getLoc(), op.getResult().getType(), op.getLhs(),
+        /*rhs=*/nullptr);
+    addConstantAttribute(fused_op, "rhs_const_value", rhs_const_value);
+    return fused_op;
+  }
+};
+
+struct FuseRemRhsConstantPattern : public FuseRhsConstantPattern<neura::RemOp> {
+  using FuseRhsConstantPattern<neura::RemOp>::FuseRhsConstantPattern;
+
+  Operation *
+  createOpWithFusedRhsConstant(neura::RemOp op, Attribute rhs_const_value,
+                               PatternRewriter &rewriter) const override {
+    auto fused_op = rewriter.create<neura::RemOp>(
+        op.getLoc(), op.getResult().getType(), op.getLhs(),
+        /*rhs=*/nullptr);
+    addConstantAttribute(fused_op, "rhs_const_value", rhs_const_value);
+    return fused_op;
+  }
+};
+
 // =========================================
 // FoldConstantPass Implementation
 // =========================================
@@ -226,6 +254,8 @@ struct FoldConstantPass
     patterns.add<FuseMulRhsConstantPattern>(&getContext());
     patterns.add<FuseICmpRhsConstantPattern>(&getContext());
     patterns.add<FuseFAddRhsConstantPattern>(&getContext());
+    patterns.add<FuseDivRhsConstantPattern>(&getContext());
+    patterns.add<FuseRemRhsConstantPattern>(&getContext());
 
     patterns.add<FuseConstantAndGrantPattern>(&getContext());
     FrozenRewritePatternSet frozen(std::move(patterns));
