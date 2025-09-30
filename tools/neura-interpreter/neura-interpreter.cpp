@@ -389,6 +389,10 @@ bool handleNeuraConstantOp(
     assert(value_to_predicated_data_map.count(op.getResult()) == 0 &&
            "Duplicate constant result?");
     value_to_predicated_data_map[op.getResult()] = val;
+    if (isVerboseMode()) {
+      llvm::outs() << "[neura-interpreter]  └─ Constant  : value = " << val.value
+                  << " [pred = " << val.predicate << "]\n";
+    }
   }
   // Handles integer scalar constants.
   else if (auto int_attr = llvm::dyn_cast<mlir::IntegerAttr>(attr)) {
@@ -404,6 +408,10 @@ bool handleNeuraConstantOp(
     assert(value_to_predicated_data_map.count(op.getResult()) == 0 &&
            "Duplicate constant result?");
     value_to_predicated_data_map[op.getResult()] = val;
+    if (isVerboseMode()) {
+      llvm::outs() << "[neura-interpreter]  └─ Constant  : value = " << val.value
+                  << " [pred = " << val.predicate << "]\n";
+    }
   }
   // Handles vector constants (dense element attributes).
   else if (auto dense_attr = llvm::dyn_cast<mlir::DenseElementsAttr>(attr)) {
@@ -435,6 +443,7 @@ bool handleNeuraConstantOp(
     value_to_predicated_data_map[op.getResult()] = val;
 
     if (isVerboseMode()) {
+      llvm::outs() << "[neura-interpreter]  ├─ Constant  : pred = " << val.predicate << "]\n";
       llvm::outs() << "[neura-interpreter]  └─ Parsed vector constant of size: "
                    << vector_size << "\n";
     }
@@ -1783,15 +1792,15 @@ bool handleCastOp(
   if (isVerboseMode()) {
     llvm::outs() << "[neura-interpreter]  Executing neura.cast:\n";
   }
-  if (op.getNumOperands() < 1 || op.getNumOperands() > 2) {
+  if (op.getOperation()->getNumOperands() != 1) {
     if (isVerboseMode()) {
       llvm::errs()
-          << "[neura-interpreter]  └─ neura.cast expects 1 or 2 operands\n";
+          << "[neura-interpreter]  └─ neura.cast expects 1 operand\n";
     }
     return false;
   }
 
-  auto input = value_to_predicated_data_map[op.getOperand(0)];
+  auto input = value_to_predicated_data_map[op.getOperand()];
   std::string cast_type = op.getCastType().str();
 
   if (isVerboseMode()) {
@@ -1801,23 +1810,13 @@ bool handleCastOp(
   }
 
   bool final_predicate = input.predicate;
-  if (op.getOperation()->getNumOperands() > 1) {
-    auto pred_operand = value_to_predicated_data_map[op.getOperand(1)];
-    final_predicate = final_predicate && pred_operand.predicate &&
-                      (pred_operand.value != 0.0f);
-    if (isVerboseMode()) {
-      llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
-      llvm::outs() << "[neura-interpreter]  │  └─ Pred      : value = "
-                   << pred_operand.value
-                   << ", [pred = " << pred_operand.predicate << "]\n";
-    }
-  }
   if (isVerboseMode()) {
+    llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
     llvm::outs() << "[neura-interpreter]  ├─ Cast type : " << cast_type << "\n";
   }
 
   float result_value = 0.0f;
-  auto input_type = op.getOperand(0).getType();
+  auto input_type = op.getOperand().getType();
   // Handles specific conversion types with input type validation.
   if (cast_type == "f2i") {
     if (!input_type.isF32()) {
@@ -2242,17 +2241,10 @@ bool handleCondBrOp(
   // Computes final predicate (combines condition's predicate and optional
   // predicate operand).
   bool final_predicate = cond_data.predicate;
-  if (op.getNumOperands() > 1) {
-    auto pred_data = value_to_predicated_data_map[op.getPredicate()];
-    final_predicate =
-        final_predicate && pred_data.predicate && (pred_data.value != 0.0f);
-    if (isVerboseMode()) {
-      llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
-      llvm::outs() << "[neura-interpreter]  │  └─ Pred : value = "
-                   << pred_data.value << " [pred = " << pred_data.predicate
-                   << "]\n";
-    }
+  if (isVerboseMode()) {
+    llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
   }
+
 
   // Retrieves successor blocks (targets of the conditional branch).
   auto current_succs_range = current_block->getSuccessors();
