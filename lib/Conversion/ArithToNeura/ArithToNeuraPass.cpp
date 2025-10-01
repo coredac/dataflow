@@ -98,8 +98,7 @@ struct ArithSubFToNeuraFSub : public OpRewritePattern<mlir::arith::SubFOp> {
     Type result_type = op.getType();
 
     // Optional predicate: default to null.
-    rewriter.replaceOpWithNewOp<neura::FSubOp>(op, result_type, lhs, rhs,
-                                               nullptr);
+    rewriter.replaceOpWithNewOp<neura::FSubOp>(op, result_type, lhs, rhs);
     return success();
   }
 };
@@ -144,8 +143,7 @@ struct ArithDivSIToNeuraDiv : public OpRewritePattern<mlir::arith::DivSIOp> {
     Type result_type = op.getType();
     // Converts arith DivSIOp to Neura DivOp.
     // Optional predicate: default to null.
-    rewriter.replaceOpWithNewOp<neura::DivOp>(op, result_type, lhs, rhs,
-                                              nullptr);
+    rewriter.replaceOpWithNewOp<neura::DivOp>(op, result_type, lhs, rhs);
     return success();
   }
 };
@@ -176,8 +174,7 @@ struct ArithRemSIToNeuraOp : public OpRewritePattern<mlir::arith::RemSIOp> {
     Location loc = op.getLoc();
     // Converts arith RemSIOp to basic Neura Op.
     // Optional predicate: default to null.
-    Value div =
-        rewriter.create<neura::DivOp>(loc, result_type, lhs, rhs, nullptr);
+    Value div = rewriter.create<neura::DivOp>(loc, result_type, lhs, rhs);
     Value mul = rewriter.create<neura::MulOp>(loc, result_type, rhs, div);
     Value rem = rewriter.create<neura::SubOp>(loc, result_type, lhs, mul);
 
