@@ -210,9 +210,104 @@ void parseTileOverridePortsAndMemory(llvm::yaml::MappingNode *overrideMap, mlir:
 
 // Helper function to parse a single tile override.
 void parseSingleTileOverride(llvm::yaml::MappingNode *overrideMap, mlir::neura::TileOverride &override) {
-  parseTileOverrideCoordinates(overrideMap, override);
-  parseTileOverrideOperations(overrideMap, override);
-  parseTileOverridePortsAndMemory(overrideMap, override);
+  for (auto &keyValuePair : *overrideMap) {
+    auto *keyNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getKey());
+    if (!keyNode) continue;
+    
+    llvm::SmallString<64> keyString;
+    llvm::StringRef keyRef = keyNode->getValue(keyString);
+    
+    if (keyRef == "id") {
+      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getValue());
+      if (valueNode) {
+        llvm::SmallString<64> valueString;
+        llvm::StringRef valueRef = valueNode->getValue(valueString);
+        long long tempValue = 0;
+        if (!valueRef.getAsInteger(10, tempValue)) {
+          override.id = static_cast<int>(tempValue);
+        }
+      }
+    } else if (keyRef == "x") {
+      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getValue());
+      if (valueNode) {
+        llvm::SmallString<64> valueString;
+        llvm::StringRef valueRef = valueNode->getValue(valueString);
+        long long tempValue = 0;
+        if (!valueRef.getAsInteger(10, tempValue)) {
+          override.x = static_cast<int>(tempValue);
+        }
+      }
+    } else if (keyRef == "y") {
+      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getValue());
+      if (valueNode) {
+        llvm::SmallString<64> valueString;
+        llvm::StringRef valueRef = valueNode->getValue(valueString);
+        long long tempValue = 0;
+        if (!valueRef.getAsInteger(10, tempValue)) {
+          override.y = static_cast<int>(tempValue);
+        }
+      }
+    } else if (keyRef == "operations") {
+      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::SequenceNode>(keyValuePair.getValue());
+      if (valueNode) {
+        override.operations.clear();
+        for (auto &operationNode : *valueNode) {
+          auto *operationScalar = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(&operationNode);
+          if (operationScalar) {
+            llvm::SmallString<64> operationString;
+            llvm::StringRef operationRef = operationScalar->getValue(operationString);
+            override.operations.push_back(operationRef.str());
+          }
+        }
+      }
+    } else if (keyRef == "num_registers") {
+      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getValue());
+      if (valueNode) {
+        llvm::SmallString<64> valueString;
+        llvm::StringRef valueRef = valueNode->getValue(valueString);
+        long long tempValue = 0;
+        if (!valueRef.getAsInteger(10, tempValue)) {
+          override.num_registers = static_cast<int>(tempValue);
+        }
+      }
+    } else if (keyRef == "ports") {
+      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::SequenceNode>(keyValuePair.getValue());
+      if (valueNode) {
+        override.ports.clear();
+        for (auto &portNode : *valueNode) {
+          auto *portScalar = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(&portNode);
+          if (portScalar) {
+            llvm::SmallString<64> portString;
+            llvm::StringRef portRef = portScalar->getValue(portString);
+            override.ports.push_back(portRef.str());
+          }
+        }
+      }
+    } else if (keyRef == "memory") {
+      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::MappingNode>(keyValuePair.getValue());
+      if (valueNode) {
+        for (auto &memoryKeyValuePair : *valueNode) {
+          auto *memoryKeyNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(memoryKeyValuePair.getKey());
+          if (!memoryKeyNode) continue;
+          
+          llvm::SmallString<64> memoryKeyString;
+          llvm::StringRef memoryKeyRef = memoryKeyNode->getValue(memoryKeyString);
+          
+          if (memoryKeyRef == "capacity") {
+            auto *memoryValueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(memoryKeyValuePair.getValue());
+            if (memoryValueNode) {
+              llvm::SmallString<64> memoryValueString;
+              llvm::StringRef memoryValueRef = memoryValueNode->getValue(memoryValueString);
+              long long tempValue = 0;
+              if (!memoryValueRef.getAsInteger(10, tempValue)) {
+                override.memory.capacity = static_cast<int>(tempValue);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 // Helper function to parse tile overrides.
@@ -347,8 +442,72 @@ void parseLinkOverrideTilesAndExistence(llvm::yaml::MappingNode *overrideMap, ml
 
 // Helper function to parse a single link override.
 void parseSingleLinkOverride(llvm::yaml::MappingNode *overrideMap, mlir::neura::LinkOverride &override) {
-  parseLinkOverrideProperties(overrideMap, override);
-  parseLinkOverrideTilesAndExistence(overrideMap, override);
+  for (auto &keyValuePair : *overrideMap) {
+    auto *keyNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getKey());
+    if (!keyNode) continue;
+    
+    llvm::SmallString<64> keyString;
+    llvm::StringRef keyRef = keyNode->getValue(keyString);
+    
+    if (keyRef == "id") {
+      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getValue());
+      if (valueNode) {
+        llvm::SmallString<64> valueString;
+        llvm::StringRef valueRef = valueNode->getValue(valueString);
+        long long tempValue = 0;
+        if (!valueRef.getAsInteger(10, tempValue)) {
+          override.id = static_cast<int>(tempValue);
+        }
+      }
+    } else if (keyRef == "latency") {
+      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getValue());
+      if (valueNode) {
+        llvm::SmallString<64> valueString;
+        llvm::StringRef valueRef = valueNode->getValue(valueString);
+        long long tempValue = 0;
+        if (!valueRef.getAsInteger(10, tempValue)) {
+          override.latency = static_cast<int>(tempValue);
+        }
+      }
+    } else if (keyRef == "bandwidth") {
+      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getValue());
+      if (valueNode) {
+        llvm::SmallString<64> valueString;
+        llvm::StringRef valueRef = valueNode->getValue(valueString);
+        long long tempValue = 0;
+        if (!valueRef.getAsInteger(10, tempValue)) {
+          override.bandwidth = static_cast<int>(tempValue);
+        }
+      }
+    } else if (keyRef == "src_tile_id") {
+      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getValue());
+      if (valueNode) {
+        llvm::SmallString<64> valueString;
+        llvm::StringRef valueRef = valueNode->getValue(valueString);
+        long long tempValue = 0;
+        if (!valueRef.getAsInteger(10, tempValue)) {
+          override.src_tile_id = static_cast<int>(tempValue);
+        }
+      }
+    } else if (keyRef == "dst_tile_id") {
+      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getValue());
+      if (valueNode) {
+        llvm::SmallString<64> valueString;
+        llvm::StringRef valueRef = valueNode->getValue(valueString);
+        long long tempValue = 0;
+        if (!valueRef.getAsInteger(10, tempValue)) {
+          override.dst_tile_id = static_cast<int>(tempValue);
+        }
+      }
+    } else if (keyRef == "existence") {
+      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getValue());
+      if (valueNode) {
+        llvm::SmallString<64> valueString;
+        llvm::StringRef valueRef = valueNode->getValue(valueString);
+        override.existence = (valueRef == "true" || valueRef == "True" || valueRef == "1");
+      }
+    }
+  }
 }
 
 // Helper function to parse link overrides.

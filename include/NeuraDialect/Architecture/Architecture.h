@@ -32,29 +32,29 @@ enum class FunctionUnitKind {
 
 // Enum for supported operation types.
 enum OperationKind { 
-  // Integer arithmetic operations
+  // Integer arithmetic operations.
   IAdd = 0, IMul = 1, ISub = 2, IDiv = 3, IRem = 4,
-  // Floating-point arithmetic operations  
+  // Floating-point arithmetic operations.
   FAdd = 5, FMul = 6, FSub = 7, FDiv = 8,
-  // Memory operations
+  // Memory operations.
   ILoad = 9, IStore = 10, ILoadIndexed = 11, IStoreIndexed = 12, IAlloca = 13,
-  // Logical operations
+  // Logical operations.
   IOr = 14, INot = 15, ICmp = 16, FCmp = 17, ISel = 18,
-  // Type conversion operations
+  // Type conversion operations.
   ICast = 19, ISExt = 20, IZExt = 21, IShl = 22,
-  // Vector operations
+  // Vector operations.
   VFMul = 23,
-  // Fused operations
+  // Fused operations.
   FAddFAdd = 24, FMulFAdd = 25,
-  // Control flow operations
+  // Control flow operations.
   IReturn = 26, IPhi = 27,
-  // Data movement operations
+  // Data movement operations.
   IDataMov = 28, ICtrlMov = 29,
-  // Predicate operations
+  // Predicate operations.
   IReserve = 30, IGrantPredicate = 31, IGrantOnce = 32, IGrantAlways = 33,
-  // Loop control operations
+  // Loop control operations.
   ILoopControl = 34,
-  // Constant operations
+  // Constant operations.
   IConstant = 35
 };
 
@@ -175,7 +175,7 @@ public:
         return true;
       }
     }
-    // Checks if any function unit in this tile supports the operation.
+    // Check if any function unit in this tile supports the operation.
     // This is now properly implemented by checking all functional units.
     return false;
   }
@@ -188,14 +188,14 @@ public:
 
   const std::vector<Register *> getRegisters() const;
 
-  // Port management
+  // Port management.
   const std::vector<std::string> &getPorts() const { return ports; }
-  void setPorts(const std::vector<std::string> &newPorts) { ports = newPorts; }
+  void setPorts(const std::vector<std::string> &new_ports) { ports = new_ports; }
   bool hasPort(const std::string &port) const {
     return std::find(ports.begin(), ports.end(), port) != ports.end();
   }
 
-  // Memory management
+  // Memory management.
   int getMemoryCapacity() const { return memory_capacity; }
   void setMemoryCapacity(int capacity) { memory_capacity = capacity; }
 
@@ -211,9 +211,9 @@ private:
   std::set<FunctionUnit *> functional_units; // Non-owning, for fast lookup.
   RegisterFileCluster *register_file_cluster = nullptr;
   
-  // Port and memory configuration
+  // Port and memory configuration.
   std::vector<std::string> ports;
-  int memory_capacity = -1;  // -1 means not configured
+  int memory_capacity = -1;  // -1 means not configured.
 };
 
 //===----------------------------------------------------------------------===//
@@ -238,7 +238,7 @@ public:
 
   void connect(Tile *src, Tile *dst);
 
-  // Link properties
+  // Link properties.
   int getLatency() const { return latency; }
   int getBandwidth() const { return bandwidth; }
   void setLatency(int l) { latency = l; }
@@ -364,12 +364,12 @@ struct LinkOverride;
 // Now supports comprehensive configuration via YAML including ports, memory, and function units.
 class Architecture {
 public:
-  // Single constructor - handles all cases internally
+  // Single constructor - handles all cases internally.
   Architecture(int width, int height, 
-               const TileDefaults& tileDefaults,
-               const std::vector<TileOverride>& tileOverrides,
-               const LinkDefaults& linkDefaults,
-               const std::vector<LinkOverride>& linkOverrides);
+               const TileDefaults& tile_defaults,
+               const std::vector<TileOverride>& tile_overrides,
+               const LinkDefaults& link_defaults,
+               const std::vector<LinkOverride>& link_overrides);
 
   Tile *getTile(int id);
   Tile *getTile(int x, int y);
@@ -378,7 +378,7 @@ public:
   int getHeight() const { return height; }
 
   Link *getLink(int id);
-  void removeLink(int linkId);
+  void removeLink(int link_id);
 
   int getNumTiles() const;
   std::vector<Tile *> getAllTiles() const;
@@ -387,10 +387,10 @@ public:
 private:
   // Helper methods for constructor initialization.
   void initializeTiles(int width, int height);
-  void configureDefaultTileSettings(const TileDefaults& tileDefaults);
-  void applyTileOverrides(const std::vector<TileOverride>& tileOverrides);
-  void createLinks(const LinkDefaults& linkDefaults);
-  void applyLinkOverrides(const std::vector<LinkOverride>& linkOverrides);
+  void configureDefaultTileSettings(const TileDefaults& tile_defaults);
+  void applyTileOverrides(const std::vector<TileOverride>& tile_overrides);
+  void createLinks(const LinkDefaults& link_defaults);
+  void applyLinkOverrides(const std::vector<LinkOverride>& link_overrides);
   void createRegisterFileCluster(Tile *tile, int num_registers, int &reg_id);
   void recreateRegisterFileCluster(Tile *tile, int num_registers);
 

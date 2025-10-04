@@ -7,132 +7,132 @@ using namespace mlir;
 using namespace mlir::neura;
 
 // Helper function to configure arithmetic operations.
-void configureArithmeticOperations(CustomizableFunctionUnit *functionUnit, const std::string &operation) {
+void configureArithmeticOperations(CustomizableFunctionUnit *function_unit, const std::string &operation) {
   if (operation == "add") {
-    functionUnit->addSupportedOperation(IAdd);
+    function_unit->addSupportedOperation(IAdd);
   } else if (operation == "sub") {
-    functionUnit->addSupportedOperation(ISub);
+    function_unit->addSupportedOperation(ISub);
   } else if (operation == "mul") {
-    functionUnit->addSupportedOperation(IMul);
+    function_unit->addSupportedOperation(IMul);
   } else if (operation == "div") {
-    functionUnit->addSupportedOperation(IDiv);
+    function_unit->addSupportedOperation(IDiv);
   } else if (operation == "rem") {
-    functionUnit->addSupportedOperation(IRem);
+    function_unit->addSupportedOperation(IRem);
   } else if (operation == "fadd") {
-    functionUnit->addSupportedOperation(FAdd);
+    function_unit->addSupportedOperation(FAdd);
   } else if (operation == "fsub") {
-    functionUnit->addSupportedOperation(FSub);
+    function_unit->addSupportedOperation(FSub);
   } else if (operation == "fmul") {
-    functionUnit->addSupportedOperation(FMul);
+    function_unit->addSupportedOperation(FMul);
   } else if (operation == "fdiv") {
-    functionUnit->addSupportedOperation(FDiv);
+    function_unit->addSupportedOperation(FDiv);
   }
 }
 
 // Helper function to configure memory operations.
-void configureMemoryOperations(CustomizableFunctionUnit *functionUnit, const std::string &operation) {
+void configureMemoryOperations(CustomizableFunctionUnit *function_unit, const std::string &operation) {
   if (operation == "load") {
-    functionUnit->addSupportedOperation(ILoad);
+    function_unit->addSupportedOperation(ILoad);
   } else if (operation == "store") {
-    functionUnit->addSupportedOperation(IStore);
+    function_unit->addSupportedOperation(IStore);
   } else if (operation == "load_indexed") {
-    functionUnit->addSupportedOperation(ILoadIndexed);
+    function_unit->addSupportedOperation(ILoadIndexed);
   } else if (operation == "store_indexed") {
-    functionUnit->addSupportedOperation(IStoreIndexed);
+    function_unit->addSupportedOperation(IStoreIndexed);
   } else if (operation == "alloca") {
-    functionUnit->addSupportedOperation(IAlloca);
+    function_unit->addSupportedOperation(IAlloca);
   }
 }
 
 // Helper function to configure logical operations.
-void configureLogicalOperations(CustomizableFunctionUnit *functionUnit, const std::string &operation) {
+void configureLogicalOperations(CustomizableFunctionUnit *function_unit, const std::string &operation) {
   if (operation == "or") {
-    functionUnit->addSupportedOperation(IOr);
+    function_unit->addSupportedOperation(IOr);
   } else if (operation == "not") {
-    functionUnit->addSupportedOperation(INot);
+    function_unit->addSupportedOperation(INot);
   } else if (operation == "icmp") {
-    functionUnit->addSupportedOperation(ICmp);
+    function_unit->addSupportedOperation(ICmp);
   } else if (operation == "fcmp") {
-    functionUnit->addSupportedOperation(FCmp);
+    function_unit->addSupportedOperation(FCmp);
   } else if (operation == "sel") {
-    functionUnit->addSupportedOperation(ISel);
+    function_unit->addSupportedOperation(ISel);
   }
 }
 
 // Helper function to configure type conversion operations.
-void configureTypeConversionOperations(CustomizableFunctionUnit *functionUnit, const std::string &operation) {
+void configureTypeConversionOperations(CustomizableFunctionUnit *function_unit, const std::string &operation) {
   if (operation == "cast") {
-    functionUnit->addSupportedOperation(ICast);
+    function_unit->addSupportedOperation(ICast);
   } else if (operation == "sext") {
-    functionUnit->addSupportedOperation(ISExt);
+    function_unit->addSupportedOperation(ISExt);
   } else if (operation == "zext") {
-    functionUnit->addSupportedOperation(IZExt);
+    function_unit->addSupportedOperation(IZExt);
   } else if (operation == "shl") {
-    functionUnit->addSupportedOperation(IShl);
+    function_unit->addSupportedOperation(IShl);
   }
 }
 
 // Helper function to configure specialized operations.
-void configureSpecializedOperations(CustomizableFunctionUnit *functionUnit, const std::string &operation) {
+void configureSpecializedOperations(CustomizableFunctionUnit *function_unit, const std::string &operation) {
   if (operation == "vfmul") {
-    functionUnit->addSupportedOperation(VFMul);
+    function_unit->addSupportedOperation(VFMul);
   } else if (operation == "fadd_fadd") {
-    functionUnit->addSupportedOperation(FAddFAdd);
+    function_unit->addSupportedOperation(FAddFAdd);
   } else if (operation == "fmul_fadd") {
-    functionUnit->addSupportedOperation(FMulFAdd);
+    function_unit->addSupportedOperation(FMulFAdd);
   } else if (operation == "return") {
-    functionUnit->addSupportedOperation(IReturn);
+    function_unit->addSupportedOperation(IReturn);
   } else if (operation == "phi") {
-    functionUnit->addSupportedOperation(IPhi);
+    function_unit->addSupportedOperation(IPhi);
   } else if (operation == "data_mov") {
-    functionUnit->addSupportedOperation(IDataMov);
+    function_unit->addSupportedOperation(IDataMov);
   } else if (operation == "ctrl_mov") {
-    functionUnit->addSupportedOperation(ICtrlMov);
+    function_unit->addSupportedOperation(ICtrlMov);
   } else if (operation == "reserve") {
-    functionUnit->addSupportedOperation(IReserve);
+    function_unit->addSupportedOperation(IReserve);
   } else if (operation == "grant_predicate") {
-    functionUnit->addSupportedOperation(IGrantPredicate);
+    function_unit->addSupportedOperation(IGrantPredicate);
   } else if (operation == "grant_once") {
-    functionUnit->addSupportedOperation(IGrantOnce);
+    function_unit->addSupportedOperation(IGrantOnce);
   } else if (operation == "grant_always") {
-    functionUnit->addSupportedOperation(IGrantAlways);
+    function_unit->addSupportedOperation(IGrantAlways);
   } else if (operation == "loop_control") {
-    functionUnit->addSupportedOperation(ILoopControl);
+    function_unit->addSupportedOperation(ILoopControl);
   } else if (operation == "constant") {
-    functionUnit->addSupportedOperation(IConstant);
+    function_unit->addSupportedOperation(IConstant);
   }
 }
 
 // Helper function to create a function unit for a specific operation.
 // Maps YAML operation names to OperationKind enum values and creates appropriate function units.
-void createFunctionUnitForOperation(Tile *tile, const std::string &operation, int &functionUnitId) {
-  auto functionUnit = std::make_unique<CustomizableFunctionUnit>(functionUnitId++);
+void createFunctionUnitForOperation(Tile *tile, const std::string &operation, int &function_unit_id) {
+  auto function_unit = std::make_unique<CustomizableFunctionUnit>(function_unit_id++);
   
   // Configures different types of operations using helper functions.
-  configureArithmeticOperations(functionUnit.get(), operation);
-  configureMemoryOperations(functionUnit.get(), operation);
-  configureLogicalOperations(functionUnit.get(), operation);
-  configureTypeConversionOperations(functionUnit.get(), operation);
-  configureSpecializedOperations(functionUnit.get(), operation);
+  configureArithmeticOperations(function_unit.get(), operation);
+  configureMemoryOperations(function_unit.get(), operation);
+  configureLogicalOperations(function_unit.get(), operation);
+  configureTypeConversionOperations(function_unit.get(), operation);
+  configureSpecializedOperations(function_unit.get(), operation);
   
   // TODO: Add support for unknown operations with warning instead of silent failure.
   // This would help users identify typos in their YAML configuration.
   
-  tile->addFunctionUnit(std::move(functionUnit));
+  tile->addFunctionUnit(std::move(function_unit));
 }
 
 // Helper function to configure tile function units based on operations.
-void configureTileFunctionUnits(Tile *tile, const std::vector<std::string> &operations, bool clearExisting = true) {
+void configureTileFunctionUnits(Tile *tile, const std::vector<std::string> &operations, bool clear_existing = true) {
   // Configures function units based on YAML operations specification.
-  // If clearExisting is true, this replaces any existing function units with the specified ones.
+  // If clear_existing is true, this replaces any existing function units with the specified ones.
   
-  if (clearExisting) {
+  if (clear_existing) {
     tile->clearFunctionUnits();
   }
   
-  int functionUnitId = 0;
+  int function_unit_id = 0;
   for (const auto &operation : operations) {
-    createFunctionUnitForOperation(tile, operation, functionUnitId);
+    createFunctionUnitForOperation(tile, operation, function_unit_id);
   }
 }
 
@@ -145,8 +145,6 @@ Tile::Tile(int id, int x, int y) {
   this->x = x;
   this->y = y;
 
-  // Function units are now configured via YAML specification in Architecture constructor.
-  // The old hardcoded FixedPointAdder has been replaced with configurable function units.
 }
 
 int Tile::getId() const { return id; }
@@ -185,9 +183,9 @@ void Tile::addRegisterFileCluster(RegisterFileCluster *register_file_cluster) {
     llvm::errs() << "Warning: Overwriting existing register file cluster ("
                  << this->register_file_cluster->getId() << ") in Tile "
                  << this->id << "\n";
+    // Remove the old register file cluster before adding the new one.
+    delete this->register_file_cluster;
   }
-  assert(this->register_file_cluster == nullptr &&
-         "Register file cluster already exists");
   this->register_file_cluster = register_file_cluster;
   register_file_cluster->setTile(this);
 }
@@ -340,17 +338,17 @@ void Architecture::initializeTiles(int width, int height) {
 
 // Helper method to create register file cluster for a tile.
 void Architecture::createRegisterFileCluster(Tile *tile, int num_registers, int &reg_id) {
-  const int kNUM_REGS_PER_REGFILE = 8;  // Keep this fixed for now
-  const int kNUM_REGFILES_PER_CLUSTER = num_registers / kNUM_REGS_PER_REGFILE;
+  const int k_num_regs_per_regfile = 8;  // Keep this fixed for now.
+  const int k_num_regfiles_per_cluster = num_registers / k_num_regs_per_regfile;
   
   RegisterFileCluster *register_file_cluster = new RegisterFileCluster(tile->getId());
 
-  // Createss registers as a register file.
+  // Creates registers as a register file.
   // FIXME: We have to assign different IDs due to the hash function
-  // cannot distinguish between different register files..
-  for (int file_idx = 0; file_idx < kNUM_REGFILES_PER_CLUSTER; ++file_idx) {
+  // cannot distinguish between different register files.
+  for (int file_idx = 0; file_idx < k_num_regfiles_per_cluster; ++file_idx) {
     RegisterFile *register_file = new RegisterFile(file_idx);
-    for (int reg_idx = 0; reg_idx < kNUM_REGS_PER_REGFILE; ++reg_idx) {
+    for (int reg_idx = 0; reg_idx < k_num_regs_per_regfile; ++reg_idx) {
       Register *reg = new Register(reg_id++);
       register_file->addRegister(reg);
     }
@@ -361,28 +359,28 @@ void Architecture::createRegisterFileCluster(Tile *tile, int num_registers, int 
 }
 
 // Helper method to configure default tile settings.
-void Architecture::configureDefaultTileSettings(const TileDefaults& tileDefaults) {
+void Architecture::configureDefaultTileSettings(const TileDefaults& tile_defaults) {
   int reg_id = 0;
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
       Tile *tile = getTile(x, y);
       
       // Creates register file cluster with default capacity.
-      createRegisterFileCluster(tile, tileDefaults.num_registers, reg_id);
+      createRegisterFileCluster(tile, tile_defaults.num_registers, reg_id);
       
-      // Configures function units based on tileDefaults.operations.
-      configureTileFunctionUnits(tile, tileDefaults.operations);
+      // Configures function units based on tile_defaults.operations.
+      configureTileFunctionUnits(tile, tile_defaults.operations);
       
       // Sets default ports for the tile.
-      tile->setPorts(tileDefaults.default_ports);
+      tile->setPorts(tile_defaults.default_ports);
     }
   }
 }
 
 // Helper method to recreate register file cluster with new capacity.
 void Architecture::recreateRegisterFileCluster(Tile *tile, int num_registers) {
-  const int kNUM_REGS_PER_REGFILE = 8;  // Keep this fixed for now
-  const int kNUM_REGFILES_PER_CLUSTER = num_registers / kNUM_REGS_PER_REGFILE;
+  const int k_num_regs_per_regfile = 8;  // Keep this fixed for now.
+  const int k_num_regfiles_per_cluster = num_registers / k_num_regs_per_regfile;
   
   // Remove existing register file cluster.
   if (tile->getRegisterFileCluster()) {
@@ -394,10 +392,10 @@ void Architecture::recreateRegisterFileCluster(Tile *tile, int num_registers) {
       new RegisterFileCluster(tile->getId());
   
   // Creates registers with new capacity.
-  int reg_id = tile->getId() * 1000;  // Use tile ID as base to avoid conflicts
-  for (int file_idx = 0; file_idx < kNUM_REGFILES_PER_CLUSTER; ++file_idx) {
+  int reg_id = tile->getId() * 1000;  // Use tile ID as base to avoid conflicts.
+  for (int file_idx = 0; file_idx < k_num_regfiles_per_cluster; ++file_idx) {
     RegisterFile *register_file = new RegisterFile(file_idx);
-    for (int reg_idx = 0; reg_idx < kNUM_REGS_PER_REGFILE; ++reg_idx) {
+    for (int reg_idx = 0; reg_idx < k_num_regs_per_regfile; ++reg_idx) {
       Register *reg = new Register(reg_id++);
       register_file->addRegister(reg);
     }
@@ -409,8 +407,8 @@ void Architecture::recreateRegisterFileCluster(Tile *tile, int num_registers) {
 }
 
 // Helper method to apply tile overrides.
-void Architecture::applyTileOverrides(const std::vector<TileOverride>& tileOverrides) {
-  for (const auto &override : tileOverrides) {
+void Architecture::applyTileOverrides(const std::vector<TileOverride>& tile_overrides) {
+  for (const auto &override : tile_overrides) {
     Tile *tile = nullptr;
     if (override.id >= 0) {
       tile = getTile(override.id);
@@ -443,38 +441,38 @@ void Architecture::applyTileOverrides(const std::vector<TileOverride>& tileOverr
 }
 
 // Helper method to create links between tiles.
-void Architecture::createLinks(const LinkDefaults& linkDefaults) {
+void Architecture::createLinks(const LinkDefaults& link_defaults) {
   int link_id = 0;
   for (int j = 0; j < height; ++j) {
     for (int i = 0; i < width; ++i) {
       Tile *tile = getTile(i, j);
 
-      // Createss links to neighboring tiles with default properties.
+      // Creates links to neighboring tiles with default properties.
       if (i > 0) {
         auto link_towards_left = std::make_unique<Link>(link_id++);
-        link_towards_left->setLatency(linkDefaults.latency);
-        link_towards_left->setBandwidth(linkDefaults.bandwidth);
+        link_towards_left->setLatency(link_defaults.latency);
+        link_towards_left->setBandwidth(link_defaults.bandwidth);
         link_towards_left->connect(tile, getTile(i - 1, j));
         link_storage.push_back(std::move(link_towards_left));
       }
       if (i < width - 1) {
         auto link_towards_right = std::make_unique<Link>(link_id++);
-        link_towards_right->setLatency(linkDefaults.latency);
-        link_towards_right->setBandwidth(linkDefaults.bandwidth);
+        link_towards_right->setLatency(link_defaults.latency);
+        link_towards_right->setBandwidth(link_defaults.bandwidth);
         link_towards_right->connect(tile, getTile(i + 1, j));
         link_storage.push_back(std::move(link_towards_right));
       }
       if (j > 0) {
         auto link_towards_down = std::make_unique<Link>(link_id++);
-        link_towards_down->setLatency(linkDefaults.latency);
-        link_towards_down->setBandwidth(linkDefaults.bandwidth);
+        link_towards_down->setLatency(link_defaults.latency);
+        link_towards_down->setBandwidth(link_defaults.bandwidth);
         link_towards_down->connect(tile, getTile(i, j - 1));
         link_storage.push_back(std::move(link_towards_down));
       }
       if (j < height - 1) {
         auto link_towards_up = std::make_unique<Link>(link_id++);
-        link_towards_up->setLatency(linkDefaults.latency);
-        link_towards_up->setBandwidth(linkDefaults.bandwidth);
+        link_towards_up->setLatency(link_defaults.latency);
+        link_towards_up->setBandwidth(link_defaults.bandwidth);
         link_towards_up->connect(tile, getTile(i, j + 1));
         link_storage.push_back(std::move(link_towards_up));
       }
@@ -483,8 +481,8 @@ void Architecture::createLinks(const LinkDefaults& linkDefaults) {
 }
 
 // Helper method to apply link overrides.
-void Architecture::applyLinkOverrides(const std::vector<LinkOverride>& linkOverrides) {
-  for (const auto &override : linkOverrides) {
+void Architecture::applyLinkOverrides(const std::vector<LinkOverride>& link_overrides) {
+  for (const auto &override : link_overrides) {
     if (override.id >= 0 && override.id < static_cast<int>(link_storage.size())) {
       Link *link = link_storage[override.id].get();
       if (link) {
@@ -506,19 +504,19 @@ void Architecture::applyLinkOverrides(const std::vector<LinkOverride>& linkOverr
 
 // Main constructor - handles all cases internally.
 Architecture::Architecture(int width, int height, 
-                          const TileDefaults& tileDefaults,
-                          const std::vector<TileOverride>& tileOverrides,
-                          const LinkDefaults& linkDefaults,
-                          const std::vector<LinkOverride>& linkOverrides) {
+                          const TileDefaults& tile_defaults,
+                          const std::vector<TileOverride>& tile_overrides,
+                          const LinkDefaults& link_defaults,
+                          const std::vector<LinkOverride>& link_overrides) {
   this->width = width;
   this->height = height;
 
   // Initializes architecture components using helper methods.
   initializeTiles(width, height);
-  configureDefaultTileSettings(tileDefaults);
-  applyTileOverrides(tileOverrides);
-  createLinks(linkDefaults);
-  applyLinkOverrides(linkOverrides);
+  configureDefaultTileSettings(tile_defaults);
+  applyTileOverrides(tile_overrides);
+  createLinks(link_defaults);
+  applyLinkOverrides(link_overrides);
 }
 
 
@@ -553,25 +551,25 @@ std::vector<Link *> Architecture::getAllLinks() const {
   return all_links;
 }
 
-void Architecture::removeLink(int linkId) {
-  if (linkId < 0 || linkId >= static_cast<int>(link_storage.size())) {
+void Architecture::removeLink(int link_id) {
+  if (link_id < 0 || link_id >= static_cast<int>(link_storage.size())) {
     return;
   }
   
-  Link *link = link_storage[linkId].get();
+  Link *link = link_storage[link_id].get();
   if (!link) {
     return;
   }
   
-  Tile *srcTile = link->getSrcTile();
-  Tile *dstTile = link->getDstTile();
+  Tile *src_tile = link->getSrcTile();
+  Tile *dst_tile = link->getDstTile();
   
-  if (srcTile && dstTile) {
-    // Remove the link from both tiles' connection sets
-    srcTile->unlinkDstTile(link, dstTile);
+  if (src_tile && dst_tile) {
+    // Remove the link from both tiles' connection sets.
+    src_tile->unlinkDstTile(link, dst_tile);
   }
   
-  // Marks the link as removed by setting it to null
-  link_storage[linkId].reset();
+  // Marks the link as removed by setting it to null.
+  link_storage[link_id].reset();
 }
 
