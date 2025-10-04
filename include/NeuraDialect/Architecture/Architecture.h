@@ -1,6 +1,7 @@
 #ifndef NEURA_ARCHITECTURE_H
 #define NEURA_ARCHITECTURE_H
 
+#include <algorithm>
 #include <cassert>
 #include <map>
 #include <memory>
@@ -30,7 +31,32 @@ enum class FunctionUnitKind {
 };
 
 // Enum for supported operation types.
-enum OperationKind { IAdd = 0, IMul = 1, FAdd = 2, FMul = 3 };
+enum OperationKind { 
+  // Integer arithmetic operations
+  IAdd = 0, IMul = 1, ISub = 2, IDiv = 3, IRem = 4,
+  // Floating-point arithmetic operations  
+  FAdd = 5, FMul = 6, FSub = 7, FDiv = 8,
+  // Memory operations
+  ILoad = 9, IStore = 10, ILoadIndexed = 11, IStoreIndexed = 12, IAlloca = 13,
+  // Logical operations
+  IOr = 14, INot = 15, ICmp = 16, FCmp = 17, ISel = 18,
+  // Type conversion operations
+  ICast = 19, ISExt = 20, IZExt = 21, IShl = 22,
+  // Vector operations
+  VFMul = 23,
+  // Fused operations
+  FAddFAdd = 24, FMulFAdd = 25,
+  // Control flow operations
+  IReturn = 26, IPhi = 27,
+  // Data movement operations
+  IDataMov = 28, ICtrlMov = 29,
+  // Predicate operations
+  IReserve = 30, IGrantPredicate = 31, IGrantOnce = 32, IGrantAlways = 33,
+  // Loop control operations
+  ILoopControl = 34,
+  // Constant operations
+  IConstant = 35
+};
 
 //===----------------------------------------------------------------------===//
 // BasicResource: abstract base class for Tile, Link, etc.
@@ -94,24 +120,6 @@ private:
   Tile *tile;
 };
 
-class FixedPointAdder : public FunctionUnit {
-public:
-  FixedPointAdder(int id) : FunctionUnit(id) {
-    supported_operations.insert(OperationKind::IAdd);
-  }
-  std::string getType() const override { return "fixed_point_adder"; }
-  ResourceKind getKind() const override { return ResourceKind::FunctionUnit; }
-};
-
-class FixedPointMultiplier : public FunctionUnit {
-public:
-  FixedPointMultiplier(int id) : FunctionUnit(id) {
-    supported_operations.insert(OperationKind::IMul);
-  }
-  std::string getType() const override { return "fixed_point_multiplier"; }
-  ResourceKind getKind() const override { return ResourceKind::FunctionUnit; }
-};
-
 class CustomizableFunctionUnit : public FunctionUnit {
 public:
   CustomizableFunctionUnit(int id) : FunctionUnit(id) {}
@@ -143,6 +151,7 @@ public:
   int getY() const;
 
   void linkDstTile(Link *link, Tile *tile);
+  void unlinkDstTile(Link *link, Tile *tile);
   const std::set<Tile *> &getDstTiles() const;
   const std::set<Tile *> &getSrcTiles() const;
   const std::set<Link *> &getOutLinks() const;
@@ -155,16 +164,20 @@ public:
     functional_units.insert(functional_unit_storage.back().get());
   }
 
+  void clearFunctionUnits() {
+    functional_unit_storage.clear();
+    functional_units.clear();
+  }
+
   bool canSupportOperation(OperationKind operation) const {
     for (FunctionUnit *fu : functional_units) {
       if (fu->canSupportOperation(operation)) {
         return true;
       }
     }
-    // TODO: Check if the tile can support the operation based on its
-    // capabilities.
-    // @Jackcuii, https://github.com/coredac/dataflow/issues/82.
-    return true;
+    // Checks if any function unit in this tile supports the operation.
+    // This is now properly implemented by checking all functional units.
+    return false;
   }
 
   void addRegisterFileCluster(RegisterFileCluster *register_file_cluster);
@@ -174,6 +187,17 @@ public:
   const std::vector<RegisterFile *> getRegisterFiles() const;
 
   const std::vector<Register *> getRegisters() const;
+
+  // Port management
+  const std::vector<std::string> &getPorts() const { return ports; }
+  void setPorts(const std::vector<std::string> &newPorts) { ports = newPorts; }
+  bool hasPort(const std::string &port) const {
+    return std::find(ports.begin(), ports.end(), port) != ports.end();
+  }
+
+  // Memory management
+  int getMemoryCapacity() const { return memory_capacity; }
+  void setMemoryCapacity(int capacity) { memory_capacity = capacity; }
 
 private:
   int id;
@@ -186,6 +210,10 @@ private:
       functional_unit_storage;               // Owns FUs.
   std::set<FunctionUnit *> functional_units; // Non-owning, for fast lookup.
   RegisterFileCluster *register_file_cluster = nullptr;
+  
+  // Port and memory configuration
+  std::vector<std::string> ports;
+  int memory_capacity = -1;  // -1 means not configured
 };
 
 //===----------------------------------------------------------------------===//
@@ -210,10 +238,18 @@ public:
 
   void connect(Tile *src, Tile *dst);
 
+  // Link properties
+  int getLatency() const { return latency; }
+  int getBandwidth() const { return bandwidth; }
+  void setLatency(int l) { latency = l; }
+  void setBandwidth(int b) { bandwidth = b; }
+
 private:
   int id;
   Tile *src_tile;
   Tile *dst_tile;
+  int latency = 1;
+  int bandwidth = 32;
 };
 
 //===----------------------------------------------------------------------===//
@@ -318,11 +354,22 @@ struct PairHash {
   }
 };
 
+// Forward declaration
+struct TileDefaults;
+struct TileOverride;
+struct LinkDefaults;
+struct LinkOverride;
+
 // Describes the CGRA architecture template.
-// TODO: Model architecture in detail (e.g., registers, ports).
+// Now supports comprehensive configuration via YAML including ports, memory, and function units.
 class Architecture {
 public:
-  Architecture(int width, int height);
+  // Single constructor - handles all cases internally
+  Architecture(int width, int height, 
+               const TileDefaults& tileDefaults,
+               const std::vector<TileOverride>& tileOverrides,
+               const LinkDefaults& linkDefaults,
+               const std::vector<LinkOverride>& linkOverrides);
 
   Tile *getTile(int id);
   Tile *getTile(int x, int y);
@@ -331,14 +378,24 @@ public:
   int getHeight() const { return height; }
 
   Link *getLink(int id);
+  void removeLink(int linkId);
 
   int getNumTiles() const;
   std::vector<Tile *> getAllTiles() const;
   std::vector<Link *> getAllLinks() const;
 
 private:
-  // TODO: Model architecture in detail, e.g., ports, registers, crossbars, etc.
-  // https://github.com/coredac/dataflow/issues/52.
+  // Helper methods for constructor initialization.
+  void initializeTiles(int width, int height);
+  void configureDefaultTileSettings(const TileDefaults& tileDefaults);
+  void applyTileOverrides(const std::vector<TileOverride>& tileOverrides);
+  void createLinks(const LinkDefaults& linkDefaults);
+  void applyLinkOverrides(const std::vector<LinkOverride>& linkOverrides);
+  void createRegisterFileCluster(Tile *tile, int num_registers, int &reg_id);
+  void recreateRegisterFileCluster(Tile *tile, int num_registers);
+
+  // Architecture components: tiles, links, and their mappings.
+  // Ports and memory are now modeled as part of Tile class.
   std::vector<std::unique_ptr<Tile>> tile_storage;
   std::vector<std::unique_ptr<Link>> link_storage;
   std::unordered_map<int, Tile *> id_to_tile;
