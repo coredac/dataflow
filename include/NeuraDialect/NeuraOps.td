@@ -60,20 +60,6 @@ def Neura_RemOp : Op<NeuraDialect, "rem">{
   let traits = [SameOperandsAndResultElementType];
 }
 
-def Neura_RemOp : Op<NeuraDialect, "rem">{
-  let summary = "Integer remainder operation";
-  let description = [{
-    Performs an integer remainder operation, computing the result of
-    a % b, where % is the remainder operator.
-
-    Example:
-      %result = neura.rem %a, %b : i32
-  }];
-  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs);
-  let results = (outs AnyType:$result);
-  let traits = [SameOperandsAndResultElementType];
-}
-
 // Defines a floating-point addition operation.
 def Neura_FAddOp : Op<NeuraDialect, "fadd"> {
   let summary = "Floating addition operation";

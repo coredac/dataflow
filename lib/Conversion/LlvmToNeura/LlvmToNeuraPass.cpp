@@ -134,35 +134,6 @@ struct LlvmSRemToNeuraRem : public OpRewritePattern<LLVM::SRemOp> {
   }
 };
 
-struct LlvmSDivToNeuraDiv : public OpRewritePattern<LLVM::SDivOp> {
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(LLVM::SDivOp op,
-                                PatternRewriter &rewriter) const override {
-    Value lhs = op.getLhs();
-    Value rhs = op.getRhs();
-    Type resultType = op.getType();
-
-    rewriter.replaceOpWithNewOp<neura::DivOp>(op, resultType, lhs, rhs);
-    return success();
-  }
-};
-
-struct LlvmSRemToNeuraRem : public OpRewritePattern<LLVM::SRemOp> {
-  using OpRewritePattern<LLVM::SRemOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(LLVM::SRemOp op,
-                                PatternRewriter &rewriter) const override {
-    Value lhs = op.getLhs();
-    Value rhs = op.getRhs();
-    Type resultType = op.getType();
-
-    // Create neura.rem operation to replace llvm.srem
-    rewriter.replaceOpWithNewOp<neura::RemOp>(op, resultType, lhs, rhs);
-    return success();
-  }
-};
-
 struct LlvmVFMulToNeuraVFMul : public OpRewritePattern<mlir::LLVM::FMulOp> {
   using OpRewritePattern::OpRewritePattern;
 
