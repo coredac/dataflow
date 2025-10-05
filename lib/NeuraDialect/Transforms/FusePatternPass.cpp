@@ -109,7 +109,7 @@ struct FuseFMulFAddPattern : public OpRewritePattern<neura::FAddOp> {
   }
 };
 
-struct FuseGEPLoadPattern : public OpRewritePattern<neura::LoadOp> {
+struct FuseGepLoadPattern : public OpRewritePattern<neura::LoadOp> {
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(neura::LoadOp load,
@@ -236,7 +236,7 @@ struct FusePatternPass
     RewritePatternSet patterns(&getContext());
     patterns.add<FuseFAddFAddPattern>(&getContext(), 2);
     patterns.add<FuseFMulFAddPattern>(&getContext(), 3);
-    patterns.add<FuseGEPLoadPattern>(&getContext(), 4);
+    patterns.add<FuseGepLoadPattern>(&getContext(), 4);
     patterns.add<FuseGEPStorePattern>(&getContext(), 5);
     patterns.add<FuseMulAddPattern>(&getContext(), 6);
     FrozenRewritePatternSet frozen(std::move(patterns));

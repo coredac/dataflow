@@ -1,5 +1,5 @@
-# RUN: clang++ -S -emit-llvm -o kernel.ll kernel.cpp
-# RUN: mlir-translate --import-llvm kernel.ll -o kernel.mlir
+# RUN: clang++ -S -emit-llvm -O3 -fno-unroll-loops -fno-vectorize -o %t-kernel.ll kernel.cpp
+# RUN: mlir-translate --import-llvm %t-kernel.ll -o %t-kernel.mlir
 # RUN: mlir-neura-opt --assign-accelerator \
 # RUN:           --lower-llvm-to-neura \
 # RUN:           --canonicalize-live-in \
@@ -9,11 +9,16 @@
 # RUN:           --fold-constant \
 # RUN:           --fuse-pattern \
 # RUN:           --view-op-graph \
-# RUN:           --insert-data-mov kernel.mlir | FileCheck %s --check-prefix=CHECK-FUSED
+# RUN:           --insert-data-mov %t-kernel.mlir -o %t-kernel_dataflow.mlir | FileCheck %s --check-prefix=CHECK-FUSED --input-file=%t-kernel_dataflow.mlir
+
+# RUN: mlir-neura-opt --map-to-accelerator="mapping-strategy=heuristic backtrack-config=customized" %t-kernel_dataflow.mlir | FileCheck %s --check-prefix=CHECK-MAPPING
 
 # CHECK-FUSED: func.func
 # CHECK-FUSED: accelerator = "neura"
-# CHECK-FUSED: %222 = neura.load_indexed %220[%221 : !neura.data<i64, i1>] !neura.data<!llvm.ptr, i1> : !neura.data<i32, i1>
-# CHECK-FUSED: %231 = neura.load_indexed %229[%230 : !neura.data<i64, i1>] !neura.data<!llvm.ptr, i1> : !neura.data<i32, i1>
-# CHECK-FUSED: %253 = "neura.mul_add"(%250, %251, %252) : (!neura.data<i32, i1>, !neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
-# CHECK-FUSED: neura.store_indexed %260 to %261[%262 : !neura.data<i64, i1>] !neura.data<!llvm.ptr, i1> : !neura.data<i32, i1>
+# CHECK-FUSED: %102 = neura.load_indexed %100[%101 : !neura.data<i64, i1>] !neura.data<!llvm.ptr, i1> : !neura.data<i32, i1>
+# CHECK-FUSED: %33 = "neura.mul_add"(%30, %31, %32) : (i32, i32, i32) -> i32
+# CHECK-FUSED: %42 = "neura.mul_add"(%39, %40, %41) : (i32, i32, i32) -> i32
+
+# CHECK-MAPPING: mapping_info 
+# CHECK-MAPPING: mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 9 : i32, res_mii = 5 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32
+# CHECK-MAPPING: mapping_locs
