@@ -6,8 +6,9 @@
 using namespace mlir;
 using namespace mlir::neura;
 
-// Helper function to configure arithmetic operations.
-void configureArithmeticOperations(CustomizableFunctionUnit *function_unit, const std::string &operation) {
+// Helper function to configure all supported operations.
+void configureSupportedOperations(CustomizableFunctionUnit *function_unit, const std::string &operation) {
+  // Integer arithmetic operations.
   if (operation == "add") {
     function_unit->addSupportedOperation(IAdd);
   } else if (operation == "sub") {
@@ -18,7 +19,9 @@ void configureArithmeticOperations(CustomizableFunctionUnit *function_unit, cons
     function_unit->addSupportedOperation(IDiv);
   } else if (operation == "rem") {
     function_unit->addSupportedOperation(IRem);
-  } else if (operation == "fadd") {
+  }
+  // Floating-point arithmetic operations.
+  else if (operation == "fadd") {
     function_unit->addSupportedOperation(FAdd);
   } else if (operation == "fsub") {
     function_unit->addSupportedOperation(FSub);
@@ -27,11 +30,8 @@ void configureArithmeticOperations(CustomizableFunctionUnit *function_unit, cons
   } else if (operation == "fdiv") {
     function_unit->addSupportedOperation(FDiv);
   }
-}
-
-// Helper function to configure memory operations.
-void configureMemoryOperations(CustomizableFunctionUnit *function_unit, const std::string &operation) {
-  if (operation == "load") {
+  // Memory operations.
+  else if (operation == "load") {
     function_unit->addSupportedOperation(ILoad);
   } else if (operation == "store") {
     function_unit->addSupportedOperation(IStore);
@@ -42,11 +42,8 @@ void configureMemoryOperations(CustomizableFunctionUnit *function_unit, const st
   } else if (operation == "alloca") {
     function_unit->addSupportedOperation(IAlloca);
   }
-}
-
-// Helper function to configure logical operations.
-void configureLogicalOperations(CustomizableFunctionUnit *function_unit, const std::string &operation) {
-  if (operation == "or") {
+  // Logical operations.
+  else if (operation == "or") {
     function_unit->addSupportedOperation(IOr);
   } else if (operation == "not") {
     function_unit->addSupportedOperation(INot);
@@ -57,11 +54,8 @@ void configureLogicalOperations(CustomizableFunctionUnit *function_unit, const s
   } else if (operation == "sel") {
     function_unit->addSupportedOperation(ISel);
   }
-}
-
-// Helper function to configure type conversion operations.
-void configureTypeConversionOperations(CustomizableFunctionUnit *function_unit, const std::string &operation) {
-  if (operation == "cast") {
+  // Type conversion operations.
+  else if (operation == "cast") {
     function_unit->addSupportedOperation(ICast);
   } else if (operation == "sext") {
     function_unit->addSupportedOperation(ISExt);
@@ -70,25 +64,30 @@ void configureTypeConversionOperations(CustomizableFunctionUnit *function_unit, 
   } else if (operation == "shl") {
     function_unit->addSupportedOperation(IShl);
   }
-}
-
-// Helper function to configure specialized operations.
-void configureSpecializedOperations(CustomizableFunctionUnit *function_unit, const std::string &operation) {
-  if (operation == "vfmul") {
+  // Vector and fused operations.
+  else if (operation == "vfmul") {
     function_unit->addSupportedOperation(VFMul);
   } else if (operation == "fadd_fadd") {
     function_unit->addSupportedOperation(FAddFAdd);
   } else if (operation == "fmul_fadd") {
     function_unit->addSupportedOperation(FMulFAdd);
-  } else if (operation == "return") {
+  }
+  // Control flow operations.
+  else if (operation == "return") {
     function_unit->addSupportedOperation(IReturn);
   } else if (operation == "phi") {
     function_unit->addSupportedOperation(IPhi);
-  } else if (operation == "data_mov") {
+  } else if (operation == "loop_control") {
+    function_unit->addSupportedOperation(ILoopControl);
+  }
+  // Data movement operations.
+  else if (operation == "data_mov") {
     function_unit->addSupportedOperation(IDataMov);
   } else if (operation == "ctrl_mov") {
     function_unit->addSupportedOperation(ICtrlMov);
-  } else if (operation == "reserve") {
+  }
+  // Predicate and reservation operations.
+  else if (operation == "reserve") {
     function_unit->addSupportedOperation(IReserve);
   } else if (operation == "grant_predicate") {
     function_unit->addSupportedOperation(IGrantPredicate);
@@ -96,9 +95,9 @@ void configureSpecializedOperations(CustomizableFunctionUnit *function_unit, con
     function_unit->addSupportedOperation(IGrantOnce);
   } else if (operation == "grant_always") {
     function_unit->addSupportedOperation(IGrantAlways);
-  } else if (operation == "loop_control") {
-    function_unit->addSupportedOperation(ILoopControl);
-  } else if (operation == "constant") {
+  }
+  // Constant operations.
+  else if (operation == "constant") {
     function_unit->addSupportedOperation(IConstant);
   }
 }
@@ -108,12 +107,8 @@ void configureSpecializedOperations(CustomizableFunctionUnit *function_unit, con
 void createFunctionUnitForOperation(Tile *tile, const std::string &operation, int &function_unit_id) {
   auto function_unit = std::make_unique<CustomizableFunctionUnit>(function_unit_id++);
   
-  // Configures different types of operations using helper functions.
-  configureArithmeticOperations(function_unit.get(), operation);
-  configureMemoryOperations(function_unit.get(), operation);
-  configureLogicalOperations(function_unit.get(), operation);
-  configureTypeConversionOperations(function_unit.get(), operation);
-  configureSpecializedOperations(function_unit.get(), operation);
+  // Configures all supported operations using the unified function.
+  configureSupportedOperations(function_unit.get(), operation);
   
   // TODO: Add support for unknown operations with warning instead of silent failure.
   // This would help users identify typos in their YAML configuration.
