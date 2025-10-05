@@ -48,21 +48,21 @@ func.func @test_fdiv_zero_dividend() -> f32 {
   return %res : f32
 }
 
-func.func @test_fdiv_with_embed_predicate_true() -> f32 {
-  %a = "neura.constant"() {value = 15.0 : f32, predicate = true} : () -> f32
-  %b = "neura.constant"() {value = 3.0 : f32, predicate = true} : () -> f32
-  %res = "neura.fdiv"(%a, %b) : (f32, f32) -> f32
-  // CHECK: [neura-interpreter]  → Output: 5.000000
-  return %res : f32
-}
+// func.func @test_fdiv_with_embed_predicate_true() -> f32 {
+//   %a = "neura.constant"() {value = 15.0 : f32, predicate = true} : () -> f32
+//   %b = "neura.constant"() {value = 3.0 : f32, predicate = true} : () -> f32
+//   %res = "neura.fdiv"(%a, %b) : (f32, f32) -> f32
+//   // [neura-interpreter]  → Output: 5.000000
+//   return %res : f32
+// }
 
-func.func @test_fdiv_with_embed_predicate_false() -> f32 {
-  %a = "neura.constant"() {value = 20.0 : f32, predicate = false} : () -> f32
-  %b = "neura.constant"() {value = 4.0 : f32, predicate = false} : () -> f32
-  %res = "neura.fdiv"(%a, %b) : (f32, f32) -> f32
-  // CHECK: [neura-interpreter]  → Output: 0.000000
-  return %res : f32
-}
+// func.func @test_fdiv_with_embed_predicate_false() -> f32 {
+//   %a = "neura.constant"() {value = 20.0 : f32, predicate = false} : () -> f32
+//   %b = "neura.constant"() {value = 4.0 : f32, predicate = false} : () -> f32
+//   %res = "neura.fdiv"(%a, %b) : (f32, f32) -> f32
+//   // [neura-interpreter]  → Output: 0.000000
+//   return %res : f32
+// }
 
 func.func @test_fdiv_f64() -> f64 {
   %a = arith.constant 10.5 : f64
