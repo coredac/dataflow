@@ -43,17 +43,3 @@ func.func @test_fadd_zero() -> f32 {
   // CHECK: [neura-interpreter]  → Output: 25.500000
   return %res : f32
 }
-
-// TODO: Remove tests with predicate handling because we plan to remove the predicate attribute in
-// https://github.com/coredac/dataflow/issues/116
-
-// ===----------------------------------------------------------------------===//
-// Test 5: Predicate handling in neura.fadd
-// ===----------------------------------------------------------------------===//
-// func.func @test_fadd_embed_invalid_predicate() -> f32 {
-//   %a = "neura.constant"() {value = 0.0 : f32, predicate = false} : () -> f32
-//   %b = "neura.constant"() {value = 25.5 : f32, predicate = false} : () -> f32
-//   %res = "neura.fadd"(%a, %b) : (f32, f32) -> f32
-//   // [neura-interpreter]  → Output: 0.000000
-//   return %res : f32
-// }

@@ -39,12 +39,3 @@ func.func @test_fmul_fadd_decimal() -> f32 {
   // CHECK: [neura-interpreter]  → Output: 6.500000
   return %res : f32
 }
-
-func.func @test_fmul_fadd_with_invalid_input_predicate() -> f32 {
-  %a = arith.constant 2.0 : f32
-  %b = "neura.constant"() {value = 5.0 : f32, predicate = false} : () -> f32
-  %c = arith.constant 3.0 : f32
-  %res = "neura.fmul_fadd"(%a, %b, %c) : (f32, f32, f32) -> f32
-  // CHECK: [neura-interpreter]  → Output: 0.000000
-  return %res : f32
-}
