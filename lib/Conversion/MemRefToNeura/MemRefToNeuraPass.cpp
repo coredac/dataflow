@@ -8,6 +8,7 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "llvm/Support/LogicalResult.h"
 
 using namespace mlir;
 using namespace mlir::neura;
@@ -44,6 +45,30 @@ struct MemRefStoreLowering : public OpRewritePattern<memref::StoreOp> {
   }
 };
 
+struct MemRefAllocaToNeuraAlloca : public OpRewritePattern<memref::AllocaOp> {
+  using OpRewritePattern<memref::AllocaOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(memref::AllocaOp alloca_op,
+                                PatternRewriter &rewriter) const override {
+    // Gets the result type.
+    Type result_type = alloca_op.getType();
+
+    // Checks if we have dynamic dimensions.
+    if (!alloca_op.getDynamicSizes().empty()) {
+      // For dynamic dimensions, we need to create the alloca with the size
+      // arguments.
+      rewriter.replaceOpWithNewOp<neura::AllocaOp>(alloca_op, result_type,
+                                                   alloca_op.getDynamicSizes());
+    } else {
+      // For static dimensions, we can create the alloca without size arguments.
+      rewriter.replaceOpWithNewOp<neura::AllocaOp>(alloca_op, result_type,
+                                                   Value());
+    }
+
+    return success();
+  }
+};
+
 struct LowerMemRefToNeuraPass
     : public PassWrapper<LowerMemRefToNeuraPass, OperationPass<ModuleOp>> {
 
@@ -62,8 +87,11 @@ struct LowerMemRefToNeuraPass
     ModuleOp module_op = getOperation();
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(&getContext());
+
     patterns.add<MemRefLoadLowering>(context);
     patterns.add<MemRefStoreLowering>(context);
+    patterns.add<MemRefAllocaToNeuraAlloca>(context);
+
     module_op.walk([&](func::FuncOp func_op) {
       if (func_op->hasAttr(mlir::accel::kAcceleratorAttr)) {
         auto target =

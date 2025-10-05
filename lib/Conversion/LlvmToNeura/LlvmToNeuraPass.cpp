@@ -105,6 +105,64 @@ struct LlvmFMulToNeuraFMul : public OpRewritePattern<mlir::LLVM::FMulOp> {
   }
 };
 
+struct LlvmSDivToNeuraDiv : public OpRewritePattern<LLVM::SDivOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::SDivOp op,
+                                PatternRewriter &rewriter) const override {
+    Value lhs = op.getLhs();
+    Value rhs = op.getRhs();
+    Type resultType = op.getType();
+
+    rewriter.replaceOpWithNewOp<neura::DivOp>(op, resultType, lhs, rhs);
+    return success();
+  }
+};
+
+struct LlvmSRemToNeuraRem : public OpRewritePattern<LLVM::SRemOp> {
+  using OpRewritePattern<LLVM::SRemOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::SRemOp op,
+                                PatternRewriter &rewriter) const override {
+    Value lhs = op.getLhs();
+    Value rhs = op.getRhs();
+    Type resultType = op.getType();
+
+    // Create neura.rem operation to replace llvm.srem
+    rewriter.replaceOpWithNewOp<neura::RemOp>(op, resultType, lhs, rhs);
+    return success();
+  }
+};
+
+struct LlvmSDivToNeuraDiv : public OpRewritePattern<LLVM::SDivOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::SDivOp op,
+                                PatternRewriter &rewriter) const override {
+    Value lhs = op.getLhs();
+    Value rhs = op.getRhs();
+    Type resultType = op.getType();
+
+    rewriter.replaceOpWithNewOp<neura::DivOp>(op, resultType, lhs, rhs);
+    return success();
+  }
+};
+
+struct LlvmSRemToNeuraRem : public OpRewritePattern<LLVM::SRemOp> {
+  using OpRewritePattern<LLVM::SRemOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::SRemOp op,
+                                PatternRewriter &rewriter) const override {
+    Value lhs = op.getLhs();
+    Value rhs = op.getRhs();
+    Type resultType = op.getType();
+
+    // Create neura.rem operation to replace llvm.srem
+    rewriter.replaceOpWithNewOp<neura::RemOp>(op, resultType, lhs, rhs);
+    return success();
+  }
+};
+
 struct LlvmVFMulToNeuraVFMul : public OpRewritePattern<mlir::LLVM::FMulOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -353,12 +411,25 @@ struct LlvmMulToNeuraMul : public OpRewritePattern<LLVM::MulOp> {
   }
 };
 
+struct LlvmShlToNeuraShl : public OpRewritePattern<LLVM::ShlOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::ShlOp op,
+                                PatternRewriter &rewriter) const override {
+    Value lhs = op.getLhs();
+    Value rhs = op.getRhs();
+    Type resultType = op.getType();
+
+    rewriter.replaceOpWithNewOp<neura::ShlOp>(op, resultType, lhs, rhs);
+    return success();
+  }
+};
+
 struct LlvmFuncToNeuraFunc : public OpRewritePattern<LLVM::LLVMFuncOp> {
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(LLVM::LLVMFuncOp op,
                                 PatternRewriter &rewriter) const override {
-
 
     auto target = op->getAttrOfType<StringAttr>(mlir::accel::kAcceleratorAttr);
     if (!target || target.getValue() != mlir::accel::kNeuraTarget) {
@@ -367,12 +438,11 @@ struct LlvmFuncToNeuraFunc : public OpRewritePattern<LLVM::LLVMFuncOp> {
 
     // Converts LLVMFunctionType to FunctionType.
     auto llvmFuncType = op.getFunctionType();
-    auto funcType = rewriter.getFunctionType(
-        llvmFuncType.getParams(),
-        llvmFuncType.getReturnType()
-    );
+    auto funcType = rewriter.getFunctionType(llvmFuncType.getParams(),
+                                             llvmFuncType.getReturnType());
 
-    // Creates the new func.func operation using OperationState to have full control.
+    // Creates the new func.func operation using OperationState to have full
+    // control.
     OperationState state(op.getLoc(), func::FuncOp::getOperationName());
     state.addAttribute("sym_name", rewriter.getStringAttr(op.getName()));
     state.addAttribute("function_type", TypeAttr::get(funcType));
@@ -388,13 +458,16 @@ struct LlvmFuncToNeuraFunc : public OpRewritePattern<LLVM::LLVMFuncOp> {
     }
     state.addAttributes(attrs);
 
+
     // Adds the function body region.
     state.addRegion();
+
 
     auto newFunc = cast<func::FuncOp>(rewriter.create(state));
 
     // Moves the function body.
-    rewriter.inlineRegionBefore(op.getBody(), newFunc.getBody(), newFunc.getBody().end());
+    rewriter.inlineRegionBefore(op.getBody(), newFunc.getBody(),
+                                newFunc.getBody().end());
 
     // Replaces the old function.
     rewriter.replaceOp(op, newFunc);
@@ -428,10 +501,10 @@ struct LlvmCallToFuncCall : public OpRewritePattern<LLVM::CallOp> {
     // Gets the result types from the function signature.
     auto resultTypes = funcOp.getFunctionType().getResults();
 
+
     // Converts the call to func.call.
     auto newCall = rewriter.create<func::CallOp>(
-        op.getLoc(), resultTypes, callee.value(), op.getArgOperands()
-    );
+        op.getLoc(), resultTypes, callee.value(), op.getArgOperands());
 
     // Replaces the old call with the new one.
     // Handles both cases: calls with results and calls without results.
@@ -486,6 +559,9 @@ struct LowerLlvmToNeuraPass
     patterns.add<LlvmMulToNeuraMul>(&getContext());
     patterns.add<LlvmFuncToNeuraFunc>(&getContext());
     patterns.add<LlvmCallToFuncCall>(&getContext());
+    patterns.add<LlvmShlToNeuraShl>(&getContext());
+    patterns.add<LlvmSDivToNeuraDiv>(&getContext());
+    patterns.add<LlvmSRemToNeuraRem>(&getContext());
 
     FrozenRewritePatternSet frozen(std::move(patterns));
 

@@ -209,8 +209,8 @@ Architecture::Architecture(int width, int height) {
     for (int x = 0; x < width; ++x) {
       // Gets the tile by coordinates.
       Tile *tile = getTile(x, y);
-      const int kNUM_REGS_PER_REGFILE = 4;
-      const int kNUM_REGFILES_PER_CLUSTER = 2;
+      const int kNUM_REGS_PER_REGFILE = 8;
+      const int kNUM_REGFILES_PER_CLUSTER = 4;
 
       // Assembles register files into a cluster.
       RegisterFileCluster *register_file_cluster =
