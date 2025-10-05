@@ -40,9 +40,37 @@ def Neura_MulOp : Op<NeuraDialect, "mul"> {
 
 def Neura_DivOp : Op<NeuraDialect, "div"> {
   let summary = "Integer division operation";
-  let arguments = (ins AnyType:$lhs, AnyType:$rhs);
+  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs);
   let results = (outs AnyType:$result);
   // let assemblyFormat = "$lhs `,` $rhs `,` attr-dict `:` type($result)";
+  let traits = [SameOperandsAndResultElementType];
+}
+
+def Neura_RemOp : Op<NeuraDialect, "rem">{
+  let summary = "Integer remainder operation";
+  let description = [{
+    Performs an integer remainder operation, computing the result of
+    a % b, where % is the remainder operator.
+
+    Example:
+      %result = neura.rem %a, %b : i32
+  }];
+  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs);
+  let results = (outs AnyType:$result);
+  let traits = [SameOperandsAndResultElementType];
+}
+
+def Neura_RemOp : Op<NeuraDialect, "rem">{
+  let summary = "Integer remainder operation";
+  let description = [{
+    Performs an integer remainder operation, computing the result of
+    a % b, where % is the remainder operator.
+
+    Example:
+      %result = neura.rem %a, %b : i32
+  }];
+  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs);
+  let results = (outs AnyType:$result);
   let traits = [SameOperandsAndResultElementType];
 }
 
@@ -60,8 +88,8 @@ def Neura_FAddOp : Op<NeuraDialect, "fadd"> {
 def Neura_FSubOp: Op<NeuraDialect, "fsub"> {
   let summary = "Floating substraction operation";
   let opName = "fsub";
-  let arguments = (ins AnyFloat:$lhs, AnyFloat:$rhs);
-  let results = (outs AnyFloat:$result);
+  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs);
+  let results = (outs AnyType:$result);
   // let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($result)";
   let traits = [SameOperandsAndResultElementType];
 }
@@ -218,9 +246,9 @@ def Neura_AllocaOp : Op<NeuraDialect, "alloca"> {
       %ptr = neura.alloca %size : !neura.data<i32, i1> -> !llvm.ptr
   }];
 
-  let arguments = (ins AnyType:$size);
+  let arguments = (ins Optional<AnyType>:$size);
   let results = (outs AnyType:$result);
-  let assemblyFormat = "$size attr-dict `:` type($size) `->` type($result)";
+  let assemblyFormat = "($size^ `:` type($size))? attr-dict `->` type($result)";
 }
 
 // Defines a sign extension operation.
@@ -253,6 +281,20 @@ def Neura_ZExtOp : Op<NeuraDialect, "zext"> {
   let arguments = (ins AnyType:$value);
   let results = (outs AnyType:$result);
   let assemblyFormat = "$value attr-dict `:` type($value) `->` type($result)";
+}
+
+// Defines a logical shift left operation.
+def Neura_ShlOp : Op<NeuraDialect, "shl"> {
+  let summary = "Logical shift left operation";
+  let description = [{
+    Performs a logical left shift on an integer value.
+    Similar to llvm.shl, but works with predicated values.
+
+    Example:
+      %shifted = neura.shl %value, %shiftAmount : !neura.data<i32, i1> -> !neura.data<i32, i1>
+  }];
+  let arguments = (ins AnyType:$value, Optional<AnyType>:$shiftAmount);
+  let results = (outs AnyType:$result);
 }
 
 // ----------------------------------------------------
