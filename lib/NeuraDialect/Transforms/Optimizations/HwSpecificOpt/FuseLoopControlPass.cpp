@@ -174,6 +174,7 @@ std::unique_ptr<LoopInfo> identifyLoop(Operation *index_reserve_op) {
   assert(initial_value && initial_value.getDefiningOp() &&
          isa<neura::GrantOnceOp>(initial_value.getDefiningOp()) &&
          "The initial_value should be defined by a GrantOnceOp.");
+
   loop->start_attr = findConstantAttribute(initial_value.getDefiningOp());
 
   if (!loop->start_attr) {
@@ -192,8 +193,6 @@ std::unique_ptr<LoopInfo> identifyLoop(Operation *index_reserve_op) {
         loop->condition_val = icmp_op.getResult();
         loop->icmp_op = icmp_op;
 
-        llvm::errs() << "[CtrlFlowFuse] Checking icmp operation: " << *icmp_op
-                     << "\n";
         loop->end_attr = findConstantAttribute(icmp_op);
         if (!loop->end_attr) {
           // Unable to determine end value or attribute.
