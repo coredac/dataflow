@@ -32,7 +32,7 @@
 // RUN: --transform-ctrl-to-data-flow | FileCheck %s -check-prefix=CTRL2DATA
 
 // RUN: mlir-neura-opt %t-llvm.mlir \
-// RUN: --assign-accelerator \ 
+// RUN: --assign-accelerator \
 // RUN: --lower-arith-to-neura \
 // RUN: --lower-memref-to-neura \
 // RUN: --lower-builtin-to-neura \
@@ -76,11 +76,11 @@ module attributes {} {
 
 
 // CHECK:      func.func @_Z11simple_loopPiS_(%arg0: memref<?xi32>, %arg1: memref<?xi32>) attributes {accelerator = "neura", llvm.linkage = #llvm.linkage<external>} {
-// CHECK-NEXT:     %0 = "neura.constant"() <{predicate = true, value = 1 : index}> : () -> index
-// CHECK-NEXT:     %1 = "neura.constant"() <{predicate = true, value = 128 : index}> : () -> index
-// CHECK-NEXT:     %2 = "neura.constant"() <{predicate = true, value = 1 : i32}> : () -> i32
-// CHECK-NEXT:     %3 = "neura.constant"() <{predicate = true, value = 2 : i32}> : () -> i32
-// CHECK-NEXT:     %4 = "neura.constant"() <{predicate = true, value = 0 : index}> : () -> index
+// CHECK-NEXT:     %0 = "neura.constant"() <{value = 1 : index}> : () -> index
+// CHECK-NEXT:     %1 = "neura.constant"() <{value = 128 : index}> : () -> index
+// CHECK-NEXT:     %2 = "neura.constant"() <{value = 1 : i32}> : () -> i32
+// CHECK-NEXT:     %3 = "neura.constant"() <{value = 2 : i32}> : () -> i32
+// CHECK-NEXT:     %4 = "neura.constant"() <{value = 0 : index}> : () -> index
 // CHECK-NEXT:     %5 = "neura.cast"(%4) <{cast_type = "index_to_int"}> : (index) -> i64
 // CHECK-NEXT:     neura.br %5 : i64 to ^bb1
 // CHECK-NEXT:   ^bb1(%6: i64):  // 2 preds: ^bb0, ^bb2
@@ -100,13 +100,13 @@ module attributes {} {
 // CHECK-NEXT:   }
 
 // CANONICALIZE:       func.func @_Z11simple_loopPiS_(%arg0: memref<?xi32>, %arg1: memref<?xi32>) attributes {accelerator = "neura", llvm.linkage = #llvm.linkage<external>} {
-// CANONICALIZE-NEXT:     %0 = "neura.constant"() <{predicate = true, value = "%arg0"}> : () -> memref<?xi32>
-// CANONICALIZE-NEXT:     %1 = "neura.constant"() <{predicate = true, value = "%arg1"}> : () -> memref<?xi32>
-// CANONICALIZE-NEXT:     %2 = "neura.constant"() <{predicate = true, value = 1 : i64}> : () -> i64
-// CANONICALIZE-NEXT:     %3 = "neura.constant"() <{predicate = true, value = 128 : i64}> : () -> i64
-// CANONICALIZE-NEXT:     %4 = "neura.constant"() <{predicate = true, value = 1 : i32}> : () -> i32
-// CANONICALIZE-NEXT:     %5 = "neura.constant"() <{predicate = true, value = 2 : i32}> : () -> i32
-// CANONICALIZE-NEXT:     %6 = "neura.constant"() <{predicate = true, value = 0 : i64}> : () -> i64
+// CANONICALIZE-NEXT:     %0 = "neura.constant"() <{value = "%arg0"}> : () -> memref<?xi32>
+// CANONICALIZE-NEXT:     %1 = "neura.constant"() <{value = "%arg1"}> : () -> memref<?xi32>
+// CANONICALIZE-NEXT:     %2 = "neura.constant"() <{value = 1 : i64}> : () -> i64
+// CANONICALIZE-NEXT:     %3 = "neura.constant"() <{value = 128 : i64}> : () -> i64
+// CANONICALIZE-NEXT:     %4 = "neura.constant"() <{value = 1 : i32}> : () -> i32
+// CANONICALIZE-NEXT:     %5 = "neura.constant"() <{value = 2 : i32}> : () -> i32
+// CANONICALIZE-NEXT:     %6 = "neura.constant"() <{value = 0 : i64}> : () -> i64
 // CANONICALIZE-NEXT:     neura.br %6, %3, %0, %5, %4, %1, %2 : i64, i64, memref<?xi32>, i32, i32, memref<?xi32>, i64 to ^bb1
 // CANONICALIZE-NEXT:   ^bb1(%7: i64, %8: i64, %9: memref<?xi32>, %10: i32, %11: i32, %12: memref<?xi32>, %13: i64):  // 2 preds: ^bb0, ^bb2
 // CANONICALIZE-NEXT:     %14 = "neura.icmp"(%7, %8) <{cmpType = "slt"}> : (i64, i64) -> i1
@@ -123,19 +123,19 @@ module attributes {} {
 // CANONICALIZE-NEXT:   }
 
 // CTRL2DATA:        func.func @_Z11simple_loopPiS_(%arg0: memref<?xi32>, %arg1: memref<?xi32>) attributes {accelerator = "neura", llvm.linkage = #llvm.linkage<external>} {
-// CTRL2DATA-NEXT:     %0 = "neura.constant"() <{predicate = true, value = "%arg0"}> : () -> !neura.data<memref<?xi32>, i1>
+// CTRL2DATA-NEXT:     %0 = "neura.constant"() <{value = "%arg0"}> : () -> !neura.data<memref<?xi32>, i1>
 // CTRL2DATA-NEXT:     %1 = "neura.grant_once"(%0) : (!neura.data<memref<?xi32>, i1>) -> !neura.data<memref<?xi32>, i1>
-// CTRL2DATA-NEXT:     %2 = "neura.constant"() <{predicate = true, value = "%arg1"}> : () -> !neura.data<memref<?xi32>, i1>
+// CTRL2DATA-NEXT:     %2 = "neura.constant"() <{value = "%arg1"}> : () -> !neura.data<memref<?xi32>, i1>
 // CTRL2DATA-NEXT:     %3 = "neura.grant_once"(%2) : (!neura.data<memref<?xi32>, i1>) -> !neura.data<memref<?xi32>, i1>
-// CTRL2DATA-NEXT:     %4 = "neura.constant"() <{predicate = true, value = 1 : i64}> : () -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %4 = "neura.constant"() <{value = 1 : i64}> : () -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %5 = "neura.grant_once"(%4) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %6 = "neura.constant"() <{predicate = true, value = 128 : i64}> : () -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %6 = "neura.constant"() <{value = 128 : i64}> : () -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %7 = "neura.grant_once"(%6) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %8 = "neura.constant"() <{predicate = true, value = 1 : i32}> : () -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %8 = "neura.constant"() <{value = 1 : i32}> : () -> !neura.data<i32, i1>
 // CTRL2DATA-NEXT:     %9 = "neura.grant_once"(%8) : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %10 = "neura.constant"() <{predicate = true, value = 2 : i32}> : () -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %10 = "neura.constant"() <{value = 2 : i32}> : () -> !neura.data<i32, i1>
 // CTRL2DATA-NEXT:     %11 = "neura.grant_once"(%10) : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %12 = "neura.constant"() <{predicate = true, value = 0 : i64}> : () -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %12 = "neura.constant"() <{value = 0 : i64}> : () -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %13 = "neura.grant_once"(%12) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %14 = neura.reserve : !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %15 = "neura.phi"(%14, %5) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>

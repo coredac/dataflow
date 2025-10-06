@@ -48,24 +48,13 @@ func.func @test_fdiv_zero_dividend() -> f32 {
   return %res : f32
 }
 
-// TODO: Remove Test with predicate because we plan to remove the predicate attribute in
-// https://github.com/coredac/dataflow/issues/116
-
-// func.func @test_fdiv_with_predicate_true() -> f32 {
-//   %a = arith.constant 15.0 : f32
-//   %b = arith.constant 3.0 : f32
-//   %pred = arith.constant 1 : i32
-//   %res = "neura.fdiv"(%a, %b, %pred) : (f32, f32, i32) -> f32
-//   return %res : f32
-// }
-
-// func.func @test_fdiv_with_predicate_false() -> f32 {
-//   %a = arith.constant 20.0 : f32
-//   %b = arith.constant 4.0 : f32
-//   %pred = arith.constant 0 : i32
-//   %res = "neura.fdiv"(%a, %b, %pred) : (f32, f32, i32) -> f32
-//   return %res : f32
-// }
+func.func @test_fdiv_with_embed_predicate_true() -> f32 {
+  %a = "neura.constant"() {value = 15.0 : f32} : () -> f32
+  %b = "neura.constant"() {value = 3.0 : f32} : () -> f32
+  %res = "neura.fdiv"(%a, %b) : (f32, f32) -> f32
+  // CHECK: [neura-interpreter]  → Output: 5.000000
+  return %res : f32
+}
 
 func.func @test_fdiv_f64() -> f64 {
   %a = arith.constant 10.5 : f64
