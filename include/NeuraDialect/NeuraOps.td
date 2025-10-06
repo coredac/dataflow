@@ -465,27 +465,28 @@ def Neura_LoopControlOp : Op<NeuraDialect, "loop_control">{
       // Shows loop control that calculates next index and validity in one step.
       %next_idx, %loop_valid = neura.loop_control(
         parent_valid = %parent_valid,
-        start = %start_val,
-        end = %end_val,
-        step = %step_val
-      ) <{iteration_type = "increment"}> : !neura.data<i1, i1>,
-                                           !neura.data<i64, i1>, !neura.data<i64, i1>, !neura.data<i64, i1>
-                                           -> !neura.data<i64, i1>, !neura.data<i1, i1>
+      ) <{
+           start_value = 0 : i64, 
+           end_value = 100 : i64, 
+           step_value = 1 : i64,
+           iteration_type = "increment"
+         }> : !neura.data<i1, i1> -> !neura.data<i64, i1>, !neura.data<i1, i1>
   }];
 
   let arguments = (ins
     AnyType:$parentValid,  // Valid predicate from the parent loop.
-    StrAttr:$iterationType, // Type of the loop iteration (e.g., "increment", "decrement").
-    AnyType:$start,         // Start index of the loop (optional if startValue attr is presented).
-    AnyType:$end,           // End index of the loop (optional if endValue attr is presented).
-    AnyType:$step           // Step size for the loop (optional if stepValue attr is presented).
+    AnyAttr:$iterationType, // "increment" or "decrement".
+    AnyAttr:$start,       // Start index value.
+    AnyAttr:$end,         // End index value.
+    AnyAttr:$step         // Step value (increment or decrement based on iteration_type).
   );
+  
 
   let results = (outs
     AnyType:$nextindex,         // Current loop index
     AnyType:$valid          // Valid predicate for the current index
   );
 
-  let assemblyFormat =
-    " `(``parent_valid` `=` $parentValid `,` `start` `=` $start `,` `end` `=` $end `,` `step` `=` $step`)` attr-dict `:` type($parentValid) `,` type($start) `,` type($end) `,` type($step) `->` type($nextindex) `,` type($valid)";
+  // let assemblyFormat =
+  //   " `(``parent_valid` `=` $parentValid `,` `start` `=` $start `,` `end` `=` $end `,` `step` `=` $step`)` attr-dict `:` type($parentValid) `,` type($start) `,` type($end) `,` type($step) `->` type($nextindex) `,` type($valid)";
 }
