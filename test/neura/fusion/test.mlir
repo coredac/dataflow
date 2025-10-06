@@ -28,6 +28,5 @@
 # CHECK-FUSED: %33 = "neura.mul_add"(%30, %31, %32) : (i32, i32, i32) -> i32
 # CHECK-FUSED: %42 = "neura.mul_add"(%39, %40, %41) : (i32, i32, i32) -> i32
 
-# CHECK-MAPPING: mapping_info 
-# CHECK-MAPPING: mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 9 : i32, res_mii = 5 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32
+# CHECK-MAPPING: mapping_info = {compiled_ii = 18 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 9 : i32, res_mii = 5 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}
 # CHECK-MAPPING: mapping_locs
