@@ -46,10 +46,10 @@ module attributes {} {
 
 
 // CHECK: func.func @_Z27perfect_nested_reduction_2dPA128_i(%arg0: memref<?x128xi32>) -> i32 attributes {accelerator = "neura", llvm.linkage = #llvm.linkage<external>} {
-// CHECK-NEXT:   %0 = "neura.constant"() <{predicate = true, value = 1 : index}> : () -> index
-// CHECK-NEXT:   %1 = "neura.constant"() <{predicate = true, value = 128 : index}> : () -> index
-// CHECK-NEXT:   %2 = "neura.constant"() <{predicate = true, value = 0 : i32}> : () -> i32
-// CHECK-NEXT:   %3 = "neura.constant"() <{predicate = true, value = 0 : index}> : () -> index
+// CHECK-NEXT:   %0 = "neura.constant"() <{value = 1 : index}> : () -> index
+// CHECK-NEXT:   %1 = "neura.constant"() <{value = 128 : index}> : () -> index
+// CHECK-NEXT:   %2 = "neura.constant"() <{value = 0 : i32}> : () -> i32
+// CHECK-NEXT:   %3 = "neura.constant"() <{value = 0 : index}> : () -> index
 // CHECK-NEXT:   %4 = "neura.cast"(%3) <{cast_type = "index_to_int"}> : (index) -> i64
 // CHECK-NEXT:   neura.br %4, %2 : i64, i32 to ^bb1
 // CHECK-NEXT: ^bb1(%5: i64, %6: i32):  // 2 preds: ^bb0, ^bb5
@@ -78,10 +78,10 @@ module attributes {} {
 // CHECK-NEXT: }
 
 // CAST:     func.func @_Z27perfect_nested_reduction_2dPA128_i(%arg0: memref<?x128xi32>) -> i32 attributes {accelerator = "neura", llvm.linkage = #llvm.linkage<external>} {
-// CAST-NEXT:     %0 = "neura.constant"() <{predicate = true, value = 1 : i64}> : () -> i64
-// CAST-NEXT:     %1 = "neura.constant"() <{predicate = true, value = 128 : i64}> : () -> i64
-// CAST-NEXT:     %2 = "neura.constant"() <{predicate = true, value = 0 : i32}> : () -> i32
-// CAST-NEXT:     %3 = "neura.constant"() <{predicate = true, value = 0 : i64}> : () -> i64
+// CAST-NEXT:     %0 = "neura.constant"() <{value = 1 : i64}> : () -> i64
+// CAST-NEXT:     %1 = "neura.constant"() <{value = 128 : i64}> : () -> i64
+// CAST-NEXT:     %2 = "neura.constant"() <{value = 0 : i32}> : () -> i32
+// CAST-NEXT:     %3 = "neura.constant"() <{value = 0 : i64}> : () -> i64
 // CAST-NEXT:     neura.br %3, %2 : i64, i32 to ^bb1
 // CAST-NEXT:   ^bb1(%4: i64, %5: i32):  // 2 preds: ^bb0, ^bb5
 // CAST-NEXT:     %6 = "neura.icmp"(%4, %1) <{cmpType = "slt"}> : (i64, i64) -> i1
@@ -104,15 +104,15 @@ module attributes {} {
 // CAST-NEXT:   }
 
 // CTRL2DATA:        func.func @_Z27perfect_nested_reduction_2dPA128_i(%arg0: memref<?x128xi32>) -> i32 attributes {accelerator = "neura", llvm.linkage = #llvm.linkage<external>} {
-// CTRL2DATA-NEXT:     %0 = "neura.constant"() <{predicate = true, value = "%arg0"}> : () -> !neura.data<memref<?x128xi32>, i1>
+// CTRL2DATA-NEXT:     %0 = "neura.constant"() <{value = "%arg0"}> : () -> !neura.data<memref<?x128xi32>, i1>
 // CTRL2DATA-NEXT:     %1 = "neura.grant_once"(%0) : (!neura.data<memref<?x128xi32>, i1>) -> !neura.data<memref<?x128xi32>, i1>
-// CTRL2DATA-NEXT:     %2 = "neura.constant"() <{predicate = true, value = 1 : i64}> : () -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %2 = "neura.constant"() <{value = 1 : i64}> : () -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %3 = "neura.grant_once"(%2) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %4 = "neura.constant"() <{predicate = true, value = 128 : i64}> : () -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %4 = "neura.constant"() <{value = 128 : i64}> : () -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %5 = "neura.grant_once"(%4) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %6 = "neura.constant"() <{predicate = true, value = 0 : i32}> : () -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %6 = "neura.constant"() <{value = 0 : i32}> : () -> !neura.data<i32, i1>
 // CTRL2DATA-NEXT:     %7 = "neura.grant_once"(%6) : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %8 = "neura.constant"() <{predicate = true, value = 0 : i64}> : () -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %8 = "neura.constant"() <{value = 0 : i64}> : () -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %9 = "neura.grant_once"(%8) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %10 = neura.reserve : !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %11 = "neura.phi"(%10, %3) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
