@@ -57,10 +57,10 @@ module {
 }
 
 // CHECK:     func.func @simple_add_loop() -> i64 attributes {accelerator = "neura"} {
-// CHECK-NEXT: %0 = "neura.constant"() <{predicate = true, value = 16 : i64}> : () -> i64
-// CHECK-NEXT: %1 = "neura.constant"() <{predicate = true, value = 1 : i64}> : () -> i64
-// CHECK-NEXT: %2 = "neura.constant"() <{predicate = true, value = 1 : i64}> : () -> i64
-// CHECK-NEXT: %3 = "neura.constant"() <{predicate = true, value = 0 : i64}> : () -> i64
+// CHECK-NEXT: %0 = "neura.constant"() <{value = 16 : i64}> : () -> i64
+// CHECK-NEXT: %1 = "neura.constant"() <{value = 1 : i64}> : () -> i64
+// CHECK-NEXT: %2 = "neura.constant"() <{value = 1 : i64}> : () -> i64
+// CHECK-NEXT: %3 = "neura.constant"() <{value = 0 : i64}> : () -> i64
 // CHECK-NEXT: neura.br %3, %2, %0, %1 : i64, i64, i64, i64 to ^bb1
 // CHECK-NEXT: ^bb1(%4: i64, %5: i64, %6: i64, %7: i64):  // 2 preds: ^bb0, ^bb2
 // CHECK-NEXT: %8 = "neura.icmp"(%4, %6) <{cmpType = "slt"}> : (i64, i64) -> i1

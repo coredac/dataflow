@@ -53,7 +53,7 @@ struct FuseFAddFAddPattern : public OpRewritePattern<neura::FAddOp> {
     Type type = second.getType();
 
     auto fused = rewriter.create<neura::FAddFAddOp>(
-        loc, type, first.getLhs(), first.getRhs(), tail, Value());
+        loc, type, first.getLhs(), first.getRhs(), tail);
 
     rewriter.replaceOp(second, fused.getResult());
     rewriter.eraseOp(first);
@@ -101,7 +101,7 @@ struct FuseFMulFAddPattern : public OpRewritePattern<neura::FAddOp> {
     Type type = add.getType();
 
     auto fused = rewriter.create<neura::FMulFAddOp>(
-        loc, type, fmul.getLhs(), fmul.getRhs(), other, Value());
+        loc, type, fmul.getLhs(), fmul.getRhs(), other);
 
     rewriter.replaceOp(add, fused.getResult());
     rewriter.eraseOp(fmul);

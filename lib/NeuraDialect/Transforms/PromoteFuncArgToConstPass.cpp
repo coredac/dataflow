@@ -32,11 +32,10 @@ LogicalResult promoteFunctionArgsToConstants(Region &region) {
 
   // Creates a constant operation for each function argument.
   for (auto [idx, arg] : llvm::enumerate(args)) {
-    // For constant operation, the default predicate is true.
+    // For constant operation, no predicate.
     auto const_op = builder.create<neura::ConstantOp>(
         arg.getLoc(), arg.getType(),
-        builder.getStringAttr("\%arg" + std::to_string(idx)),
-        builder.getBoolAttr(true));
+        builder.getStringAttr("\%arg" + std::to_string(idx)));
     arg.replaceAllUsesWith(const_op.getResult());
   }
 

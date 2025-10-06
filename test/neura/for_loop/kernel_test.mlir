@@ -34,12 +34,12 @@
 
 // CHECK:       func.func @_Z6kernelPfS_S_
 // CHECK:       accelerator = "neura"
-// CHECK-NEXT:     %0 = "neura.constant"() <{predicate = true, value = "%arg0"}> : () -> !neura.data<!llvm.ptr, i1>
-// CHECK-NEXT:     %1 = "neura.constant"() <{predicate = true, value = "%arg1"}> : () -> !neura.data<!llvm.ptr, i1>
-// CHECK-NEXT:     %2 = "neura.constant"() <{predicate = true, value = "%arg2"}> : () -> !neura.data<!llvm.ptr, i1>
-// CHECK-NEXT:     %3 = "neura.constant"() <{predicate = true, value = 0 : i64}> : () -> !neura.data<i64, i1>
-// CHECK-NEXT:     %4 = "neura.constant"() <{predicate = true, value = 1 : i64}> : () -> !neura.data<i64, i1>
-// CHECK-NEXT:     %5 = "neura.constant"() <{predicate = true, value = 32 : i64}> : () -> !neura.data<i64, i1>
+// CHECK-NEXT:     %0 = "neura.constant"() <{value = "%arg0"}> : () -> !neura.data<!llvm.ptr, i1>
+// CHECK-NEXT:     %1 = "neura.constant"() <{value = "%arg1"}> : () -> !neura.data<!llvm.ptr, i1>
+// CHECK-NEXT:     %2 = "neura.constant"() <{value = "%arg2"}> : () -> !neura.data<!llvm.ptr, i1>
+// CHECK-NEXT:     %3 = "neura.constant"() <{value = 0 : i64}> : () -> !neura.data<i64, i1>
+// CHECK-NEXT:     %4 = "neura.constant"() <{value = 1 : i64}> : () -> !neura.data<i64, i1>
+// CHECK-NEXT:     %5 = "neura.constant"() <{value = 32 : i64}> : () -> !neura.data<i64, i1>
 // CHECK-NEXT:     %6 = "neura.load"(%1) : (!neura.data<!llvm.ptr, i1>) -> !neura.data<f32, i1>
 // CHECK-NEXT:     neura.br %3, %6, %0, %2, %1, %4, %5 : !neura.data<i64, i1>, !neura.data<f32, i1>, !neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1>, !neura.data<i64, i1>, !neura.data<i64, i1> to ^bb1
 // CHECK-NEXT:   ^bb1(%7: !neura.data<i64, i1>, %8: !neura.data<f32, i1>, %9: !neura.data<!llvm.ptr, i1>, %10: !neura.data<!llvm.ptr, i1>, %11: !neura.data<!llvm.ptr, i1>, %12: !neura.data<i64, i1>, %13: !neura.data<i64, i1>):  // 2 preds: ^bb0, ^bb1
@@ -62,7 +62,7 @@
 // CHECK-FUSED:       accelerator = "neura"
 // CHECK-FUSED-NEXT:     %0 = "neura.grant_once"() <{constant_value = "%arg0"}> : () -> !neura.data<!llvm.ptr, i1>
 // CHECK-FUSED-NEXT:     %1 = "neura.grant_once"() <{constant_value = "%arg1"}> : () -> !neura.data<!llvm.ptr, i1>
-// CHECK-FUSED-NEXT:     %2 = "neura.constant"() <{predicate = true, value = "%arg1"}> : () -> !neura.data<!llvm.ptr, i1>
+// CHECK-FUSED-NEXT:     %2 = "neura.constant"() <{value = "%arg1"}> : () -> !neura.data<!llvm.ptr, i1>
 // CHECK-FUSED-NEXT:     %3 = "neura.grant_once"() <{constant_value = "%arg2"}> : () -> !neura.data<!llvm.ptr, i1>
 // CHECK-FUSED-NEXT:     %4 = "neura.grant_once"() <{constant_value = 0 : i64}> : () -> !neura.data<i64, i1>
 // CHECK-FUSED-NEXT:     %5 = "neura.grant_once"() <{constant_value = 1 : i64}> : () -> !neura.data<i64, i1>
@@ -111,7 +111,7 @@
 // CHECK-MOV:        accelerator = "neura"
 // CHECK-MOV-NEXT:     %0 = "neura.grant_once"() <{constant_value = "%arg0"}> : () -> !neura.data<!llvm.ptr, i1>
 // CHECK-MOV-NEXT:     %1 = "neura.grant_once"() <{constant_value = "%arg1"}> : () -> !neura.data<!llvm.ptr, i1>
-// CHECK-MOV-NEXT:     %2 = "neura.constant"() <{predicate = true, value = "%arg1"}> : () -> !neura.data<!llvm.ptr, i1>
+// CHECK-MOV-NEXT:     %2 = "neura.constant"() <{value = "%arg1"}> : () -> !neura.data<!llvm.ptr, i1>
 // CHECK-MOV-NEXT:     %3 = "neura.grant_once"() <{constant_value = "%arg2"}> : () -> !neura.data<!llvm.ptr, i1>
 // CHECK-MOV-NEXT:     %4 = "neura.grant_once"() <{constant_value = 0 : i64}> : () -> !neura.data<i64, i1>
 // CHECK-MOV-NEXT:     %5 = "neura.grant_once"() <{constant_value = 1 : i64}> : () -> !neura.data<i64, i1>

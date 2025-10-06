@@ -13,10 +13,10 @@ module attributes {} {
 }
 
 // CHECK:  func.func @_Z10bert_node8PA128_A1_KfPA128_A1_f(%arg0: memref<?x128x1xf32>, %arg1: memref<?x128x1xf32>) attributes {accelerator = "neura"} {
-// CHECK-NEXT: %0 = "neura.constant"() <{predicate = true, value = 1 : index}> : () -> index
-// CHECK-NEXT: %1 = "neura.constant"() <{predicate = true, value = 128 : index}> : () -> index
-// CHECK-NEXT: %2 = "neura.constant"() <{predicate = true, value = 7.680000e+02 : f32}> : () -> f32
-// CHECK-NEXT: %3 = "neura.constant"() <{predicate = true, value = 0 : index}> : () -> index
+// CHECK-NEXT: %0 = "neura.constant"() <{value = 1 : index}> : () -> index
+// CHECK-NEXT: %1 = "neura.constant"() <{value = 128 : index}> : () -> index
+// CHECK-NEXT: %2 = "neura.constant"() <{value = 7.680000e+02 : f32}> : () -> f32
+// CHECK-NEXT: %3 = "neura.constant"() <{value = 0 : index}> : () -> index
 // CHECK-NEXT: %4 = "neura.cast"(%3) <{cast_type = "index_to_int"}> : (index) -> i64
 // CHECK-NEXT: neura.br %4 : i64 to ^bb1
 // CHECK-NEXT: ^bb1(%5: i64):  // 2 preds: ^bb0, ^bb2
