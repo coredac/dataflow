@@ -9,9 +9,18 @@
 # RUN:           --fold-constant \
 # RUN:           --fuse-pattern \
 # RUN:           --view-op-graph \
-# RUN:           --insert-data-mov %t-kernel.mlir -o %t-kernel_dataflow.mlir | FileCheck %s --check-prefix=CHECK-FUSED --input-file=%t-kernel_dataflow.mlir
+# RUN:           --insert-data-mov %t-kernel.mlir | FileCheck %s --check-prefix=CHECK-FUSED
 
-# RUN: mlir-neura-opt --map-to-accelerator="mapping-strategy=heuristic backtrack-config=customized" %t-kernel_dataflow.mlir | FileCheck %s --check-prefix=CHECK-MAPPING
+# RUN: mlir-neura-opt --assign-accelerator \
+# RUN:           --lower-llvm-to-neura \
+# RUN:           --canonicalize-live-in \
+# RUN:           --leverage-predicated-value \
+# RUN:           --fold-constant \
+# RUN:           --transform-ctrl-to-data-flow \
+# RUN:           --fold-constant \
+# RUN:           --fuse-pattern \
+# RUN:           --insert-data-mov \
+# RUN:           --map-to-accelerator="mapping-strategy=heuristic backtrack-config=customized" %t-kernel.mlir | FileCheck %s --check-prefix=CHECK-MAPPING
 
 # CHECK-FUSED: func.func
 # CHECK-FUSED: accelerator = "neura"
