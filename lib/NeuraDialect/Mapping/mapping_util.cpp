@@ -316,12 +316,18 @@ mlir::Operation *mlir::neura::getMaterializedBackwardUser(Operation *op) {
          "Expected the user of ctrl_mov target to be a reserve operation");
   auto reserve_op = dyn_cast<neura::ReserveOp>(target.getDefiningOp());
 
-  // Skip ctrl_mov users of reserve; return the first phi user.
+  // Skip ctrl_mov users of reserve; return the first materialized user.
   for (Operation *user : reserve_op.getResult().getUsers()) {
     if (isa<neura::CtrlMovOp>(user)) {
       continue; // skip ctrl_mov user
     }
     if (isa<neura::PhiOp>(user)) {
+      return user;
+    }
+    if (isa<neura::InvariantOp>(user)) {
+      return user;
+    }
+    if (isa<neura::CarryOp>(user)) {
       return user;
     }
   }
@@ -736,7 +742,10 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
   // Assembles all the producers.
   std::vector<Operation *> producers;
   for (Value operand : op->getOperands()) {
+    llvm::errs() << "[calculateAward] Operand: " << operand << "\n";
     if (isa<neura::ReserveOp>(operand.getDefiningOp())) {
+      llvm::errs() << "[calculateAward] Skipping Reserve op as producer: "
+                   << *operand.getDefiningOp() << "\n";
       // Skips Reserve ops (backward ctrl move) when calculating award.
       continue;
     }
@@ -768,6 +777,7 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
     }
     int earliest_start_time_step = target_level;
     for (Operation *producer : producers) {
+      llvm::errs() << "[calculateAward] Producer: " << *producer << "\n";
       std::vector<MappingLoc> producer_locs =
           mapping_state.getAllLocsOfOp(producer);
       assert(!producer_locs.empty() && "No locations found for producer");

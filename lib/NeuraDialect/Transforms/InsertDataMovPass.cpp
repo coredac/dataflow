@@ -77,9 +77,9 @@ struct InsertDataMovForNeuraOps : public RewritePattern {
     SmallVector<Value> new_operands;
     for (Value operand : op->getOperands()) {
       Operation *producer = operand.getDefiningOp();
-      // Skips adding mov for neura.reserve -> neura.phi.
-      if (isa<neura::PhiOp>(op) && producer &&
-          isa<neura::ReserveOp>(producer)) {
+
+      // Skips adding mov for any operand that comes from a reserve op.
+      if (producer && isa<neura::ReserveOp>(producer)) {
         new_operands.push_back(operand);
         continue;
       }

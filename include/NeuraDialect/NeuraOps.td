@@ -487,8 +487,8 @@ def Neura_LoopControlOp : Op<NeuraDialect, "loop_control">{
     AnyType:$valid          // Valid predicate for the current index
   );
 
-  let assemblyFormat =
-    " `(``parent_valid` `=` $parentValid `,` `start` `=` $start `,` `end` `=` $end `,` `step` `=` $step`)` attr-dict `:` type($parentValid) `,` type($start) `,` type($end) `,` type($step) `->` type($nextindex) `,` type($valid)";
+  // let assemblyFormat =
+  //   " `(``parent_valid` `=` $parentValid `,` `start` `=` $start `,` `end` `=` $end `,` `step` `=` $step`)` attr-dict `:` type($parentValid) `,` type($start) `,` type($end) `,` type($step) `->` type($nextindex) `,` type($valid)";
 }
 
 // ----------------------------------------------------
