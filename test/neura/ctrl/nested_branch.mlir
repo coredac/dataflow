@@ -39,12 +39,12 @@ func.func @complex_test(%in: i64) -> f32 {
 }
 
 // CHECK:       func.func @complex_test(%arg0: i64) -> f32 attributes {accelerator = "neura"} {
-// CHECK-NEXT:     %0 = "neura.constant"() <{predicate = true, value = "%arg0"}> : () -> !neura.data<i64, i1>
-// CHECK-NEXT:     %1 = "neura.constant"() <{predicate = true, value = 0 : i64}> : () -> !neura.data<i64, i1>
-// CHECK-NEXT:     %2 = "neura.constant"() <{predicate = true, value = 1.000000e+00 : f32}> : () -> !neura.data<f32, i1>
-// CHECK-NEXT:     %3 = "neura.constant"() <{predicate = true, value = 2.000000e+00 : f32}> : () -> !neura.data<f32, i1>
-// CHECK-NEXT:     %4 = "neura.constant"() <{predicate = true, value = 3.000000e+00 : f32}> : () -> !neura.data<f32, i1>
-// CHECK-NEXT:     %5 = "neura.constant"() <{predicate = true, value = 4.000000e+00 : f32}> : () -> !neura.data<f32, i1>
+// CHECK-NEXT:     %0 = "neura.constant"() <{value = "%arg0"}> : () -> !neura.data<i64, i1>
+// CHECK-NEXT:     %1 = "neura.constant"() <{value = 0 : i64}> : () -> !neura.data<i64, i1>
+// CHECK-NEXT:     %2 = "neura.constant"() <{value = 1.000000e+00 : f32}> : () -> !neura.data<f32, i1>
+// CHECK-NEXT:     %3 = "neura.constant"() <{value = 2.000000e+00 : f32}> : () -> !neura.data<f32, i1>
+// CHECK-NEXT:     %4 = "neura.constant"() <{value = 3.000000e+00 : f32}> : () -> !neura.data<f32, i1>
+// CHECK-NEXT:     %5 = "neura.constant"() <{value = 4.000000e+00 : f32}> : () -> !neura.data<f32, i1>
 // CHECK-NEXT:     %6 = "neura.icmp"(%0, %1) <{cmpType = "eq"}> : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i1, i1>
 // CHECK-NEXT:     neura.cond_br %6 : !neura.data<i1, i1> then %4, %5 : !neura.data<f32, i1>, !neura.data<f32, i1> to ^bb3 else %2, %3, %2 : !neura.data<f32, i1>, !neura.data<f32, i1>, !neura.data<f32, i1> to ^bb1
 // CHECK-NEXT:   ^bb1(%7: !neura.data<f32, i1>, %8: !neura.data<f32, i1>, %9: !neura.data<f32, i1>):  // 2 preds: ^bb0, ^bb2
@@ -61,15 +61,15 @@ func.func @complex_test(%in: i64) -> f32 {
 // CHECK-NEXT:   }
 
 // CTRL2DATA:        func.func @complex_test(%arg0: i64) -> f32 attributes {accelerator = "neura"} {
-// CTRL2DATA-NEXT:     %0 = "neura.constant"() <{predicate = true, value = "%arg0"}> : () -> !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %1 = "neura.constant"() <{predicate = true, value = 0 : i64}> : () -> !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %2 = "neura.constant"() <{predicate = true, value = 1.000000e+00 : f32}> : () -> !neura.data<f32, i1>
+// CTRL2DATA-NEXT:     %0 = "neura.constant"() <{value = "%arg0"}> : () -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %1 = "neura.constant"() <{value = 0 : i64}> : () -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %2 = "neura.constant"() <{value = 1.000000e+00 : f32}> : () -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:     %3 = "neura.grant_once"(%2) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
-// CTRL2DATA-NEXT:     %4 = "neura.constant"() <{predicate = true, value = 2.000000e+00 : f32}> : () -> !neura.data<f32, i1>
+// CTRL2DATA-NEXT:     %4 = "neura.constant"() <{value = 2.000000e+00 : f32}> : () -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:     %5 = "neura.grant_once"(%4) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
-// CTRL2DATA-NEXT:     %6 = "neura.constant"() <{predicate = true, value = 3.000000e+00 : f32}> : () -> !neura.data<f32, i1>
+// CTRL2DATA-NEXT:     %6 = "neura.constant"() <{value = 3.000000e+00 : f32}> : () -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:     %7 = "neura.grant_once"(%6) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
-// CTRL2DATA-NEXT:     %8 = "neura.constant"() <{predicate = true, value = 4.000000e+00 : f32}> : () -> !neura.data<f32, i1>
+// CTRL2DATA-NEXT:     %8 = "neura.constant"() <{value = 4.000000e+00 : f32}> : () -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:     %9 = "neura.grant_once"(%8) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:     %10 = "neura.icmp"(%0, %1) <{cmpType = "eq"}> : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i1, i1>
 // CTRL2DATA-NEXT:     %11 = "neura.grant_once"(%10) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>

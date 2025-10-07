@@ -11,7 +11,7 @@ func.func @test_phi_ctrlflow() -> f32 {
   "neura.ctrl_mov"(%one, %v) : (f32, f32) -> ()
 
   %cond = arith.constant 0 : i1
-  "neura.cond_br"(%cond) [^bb1, ^bb2] {operandSegmentSizes = array<i32: 1, 0, 0, 0>} : (i1) -> ()
+  "neura.cond_br"(%cond) [^bb1, ^bb2] {operandSegmentSizes = array<i32: 1, 0, 0>} : (i1) -> ()
 
 ^bb1:
   "neura.ctrl_mov"(%init, %v) : (f32, f32) -> ()
@@ -44,7 +44,7 @@ func.func @test_loop_phi() -> f32 {
 
   %cond = "neura.fcmp"(%i, %limit) {cmpType = "lt"} : (f32, f32) -> i1
 
-  "neura.cond_br"(%cond) [^loop_body, ^loop_exit] {operandSegmentSizes = array<i32: 1, 0, 0, 0>} : (i1) -> ()
+  "neura.cond_br"(%cond) [^loop_body, ^loop_exit] {operandSegmentSizes = array<i32: 1, 0, 0>} : (i1) -> ()
 
 ^loop_body:
   %i_next = "neura.fadd"(%i, %one) : (f32, f32) -> f32
@@ -63,8 +63,8 @@ func.func @test_phi_multi_preds() -> i32 {
   %c0 = arith.constant 0 : i32
   %c1 = arith.constant 1 : i32
   %c2 = arith.constant 2 : i32
-  %cond = arith.constant 0 : i1  
-  "neura.cond_br"(%cond) [^bb1, ^bb2] {operandSegmentSizes = array<i32: 1, 0, 0, 0>} : (i1) -> ()
+  %cond = arith.constant 0 : i1
+  "neura.cond_br"(%cond) [^bb1, ^bb2] {operandSegmentSizes = array<i32: 1, 0, 0>} : (i1) -> ()
 
 ^bb1:
   "neura.br"() [^merge] : () -> ()
@@ -102,7 +102,7 @@ func.func @test_small_nested_loops() -> f32 {
 ^outer_head:
   %i = "neura.phi"(%outer_i, %zero) : (f32, f32) -> f32
   %outer_cond = "neura.fcmp"(%i, %two) {cmpType = "lt"} : (f32, f32) -> i1
-  "neura.cond_br"(%outer_cond) [^outer_body, ^outer_exit] {operandSegmentSizes = array<i32: 1, 0, 0, 0>} : (i1) -> ()
+  "neura.cond_br"(%outer_cond) [^outer_body, ^outer_exit] {operandSegmentSizes = array<i32: 1, 0, 0>} : (i1) -> ()
 
 ^outer_body:
   %inner_j = "neura.reserve"() : () -> f32
@@ -114,7 +114,7 @@ func.func @test_small_nested_loops() -> f32 {
 ^inner_head:
   %j = "neura.phi"(%inner_j, %zero) : (f32, f32) -> f32
   %inner_cond = "neura.fcmp"(%j, %two) {cmpType = "lt"} : (f32, f32) -> i1
-  "neura.cond_br"(%inner_cond) [^inner_body, ^inner_exit] {operandSegmentSizes = array<i32: 1, 0, 0, 0>} : (i1) -> ()
+  "neura.cond_br"(%inner_cond) [^inner_body, ^inner_exit] {operandSegmentSizes = array<i32: 1, 0, 0>} : (i1) -> ()
 
 ^inner_body:
   %i_mul_two = "neura.fmul"(%i, %two) : (f32, f32) -> f32

@@ -89,11 +89,11 @@ func.func @loop_test() -> f32 {
 }
 
 // CHECK:      func.func @loop_test() -> f32 attributes {accelerator = "neura"} {
-// CHECK-NEXT:   %0 = "neura.constant"() <{predicate = true, value = 10 : i64}> : () -> !neura.data<i64, i1>
-// CHECK-NEXT:   %1 = "neura.constant"() <{predicate = true, value = 0 : i64}> : () -> !neura.data<i64, i1>
-// CHECK-NEXT:   %2 = "neura.constant"() <{predicate = true, value = 1 : i64}> : () -> !neura.data<i64, i1>
-// CHECK-NEXT:   %3 = "neura.constant"() <{predicate = true, value = 3.000000e+00 : f32}> : () -> !neura.data<f32, i1>
-// CHECK-NEXT:   %4 = "neura.constant"() <{predicate = true, value = 0.000000e+00 : f32}> : () -> !neura.data<f32, i1>
+// CHECK-NEXT:   %0 = "neura.constant"() <{value = 10 : i64}> : () -> !neura.data<i64, i1>
+// CHECK-NEXT:   %1 = "neura.constant"() <{value = 0 : i64}> : () -> !neura.data<i64, i1>
+// CHECK-NEXT:   %2 = "neura.constant"() <{value = 1 : i64}> : () -> !neura.data<i64, i1>
+// CHECK-NEXT:   %3 = "neura.constant"() <{value = 3.000000e+00 : f32}> : () -> !neura.data<f32, i1>
+// CHECK-NEXT:   %4 = "neura.constant"() <{value = 0.000000e+00 : f32}> : () -> !neura.data<f32, i1>
 // CHECK-NEXT:   neura.br %1, %4 : !neura.data<i64, i1>, !neura.data<f32, i1> to ^bb1
 // CHECK-NEXT: ^bb1(%5: !neura.data<i64, i1>, %6: !neura.data<f32, i1>):  // 2 preds: ^bb0, ^bb1
 // CHECK-NEXT:   %7 = "neura.fadd"(%6, %3) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
@@ -105,8 +105,8 @@ func.func @loop_test() -> f32 {
 // CHECK-NEXT: }
 
 // CANONICALIZE:       func.func @loop_test() -> f32 attributes {accelerator = "neura"} {
-// CANONICALIZE-NEXT:     %0 = "neura.constant"() <{predicate = true, value = 0 : i64}> : () -> i64
-// CANONICALIZE-NEXT:     %1 = "neura.constant"() <{predicate = true, value = 0.000000e+00 : f32}> : () -> f32
+// CANONICALIZE-NEXT:     %0 = "neura.constant"() <{value = 0 : i64}> : () -> i64
+// CANONICALIZE-NEXT:     %1 = "neura.constant"() <{value = 0.000000e+00 : f32}> : () -> f32
 // CANONICALIZE-NEXT:     neura.br %0, %1 : i64, f32 to ^bb1
 // CANONICALIZE-NEXT:   ^bb1(%2: i64, %3: f32):  // 2 preds: ^bb0, ^bb1
 // CANONICALIZE-NEXT:     %4 = "neura.fadd"(%3) {rhs_const_value = 3.000000e+00 : f32} : (f32) -> f32
@@ -118,9 +118,9 @@ func.func @loop_test() -> f32 {
 // CANONICALIZE-NEXT:   }
 
 // CTRL2DATA:        func.func @loop_test() -> f32 attributes {accelerator = "neura"} {
-// CTRL2DATA-NEXT:     %0 = "neura.constant"() <{predicate = true, value = 0 : i64}> : () -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %0 = "neura.constant"() <{value = 0 : i64}> : () -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %1 = "neura.grant_once"(%0) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %2 = "neura.constant"() <{predicate = true, value = 0.000000e+00 : f32}> : () -> !neura.data<f32, i1>
+// CTRL2DATA-NEXT:     %2 = "neura.constant"() <{value = 0.000000e+00 : f32}> : () -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:     %3 = "neura.grant_once"(%2) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:     %4 = neura.reserve : !neura.data<f32, i1>
 // CTRL2DATA-NEXT:     %5 = "neura.phi"(%4, %3) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
@@ -188,7 +188,7 @@ func.func @loop_test() -> f32 {
 // MOV-NEXT:     %25 = "neura.data_mov"(%24) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
 // MOV-NEXT:     "neura.return"(%25) : (!neura.data<f32, i1>) -> ()
 // MOV-NEXT:   }
- 
+
 // MAPPING:      module {
 // MAPPING-NEXT:   func.func @loop_test() -> f32 attributes {accelerator = "neura", mapping_info = {compiled_ii = 4 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 4 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {
 
