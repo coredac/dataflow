@@ -25,26 +25,34 @@ struct RemovePredicatedTypePass
            "to basic types.";
   }
 
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<mlir::neura::NeuraDialect>();
-  }
-
   void runOnOperation() override {
     ModuleOp module = getOperation();
 
-    // Process each function
+    // Processes each function.
     module.walk([&](FunctionOpInterface func) {
       auto accel_attr = func->getAttrOfType<StringAttr>("accelerator");
       if (!accel_attr || accel_attr.getValue() != "neura") {
         return;
       }
 
-      // Get operations in topological order
-      SmallVector<Operation *> orderedOps;
-      getOperationsInTopologicalOrder(func, orderedOps);
+      // Converts block arguments.
+      func.walk([&](Block *block) {
+        // Processes block arguments.
+        for (BlockArgument arg : block->getArguments()) {
+          Type orig_type = arg.getType();
+          if (auto predicated_type =
+                  llvm::dyn_cast<neura::PredicatedValue>(orig_type)) {
+            arg.setType(predicated_type.getValueType());
+          }
+        }
+      });
 
-      // Process each operation in order
-      for (Operation *op : orderedOps) {
+      // Gets operations in topological order.
+      SmallVector<Operation *> ordered_ops;
+      getOperationsInTopologicalOrder(func, ordered_ops);
+
+      // Processes each operation in topological order.
+      for (Operation *op : ordered_ops) {
         if (failed(removePredicatedType(op))) {
           llvm::errs() << "Failed to convert op from predicated form: " << *op
                        << "\n";
@@ -56,38 +64,40 @@ struct RemovePredicatedTypePass
   }
 
 private:
-  // Get operations in topological order
+  // Gets operations in topological order.
   void getOperationsInTopologicalOrder(FunctionOpInterface func,
-                                       SmallVector<Operation *> &ordered) {
-    DenseSet<Operation *> visited;
+                                       SmallVector<Operation *> &ordered_ops) {
+    DenseSet<Operation *> visited_ops;
     func.walk<WalkOrder::PreOrder>([&](Operation *op) {
-      if (visited.contains(op))
+      if (visited_ops.contains(op)) {
         return;
+      }
 
-      // Visit operands first
+      // Visits operands first.
       for (Value operand : op->getOperands()) {
-        if (Operation *defOp = operand.getDefiningOp()) {
-          if (!visited.contains(defOp)) {
-            visited.insert(defOp);
-            ordered.push_back(defOp);
+        if (Operation *def_op = operand.getDefiningOp()) {
+          if (!visited_ops.contains(def_op)) {
+            visited_ops.insert(def_op);
+            ordered_ops.push_back(def_op);
           }
         }
       }
 
-      if (!visited.contains(op)) {
-        visited.insert(op);
-        ordered.push_back(op);
+      if (!visited_ops.contains(op)) {
+        visited_ops.insert(op);
+        ordered_ops.push_back(op);
       }
     });
   }
 
-  // Convert a single operation from predicated to normal types
+  // Converts a single operation from predicated to normal types.
   LogicalResult removePredicatedType(Operation *op) {
-    // Skip if not a Neura op
-    if (op->getDialect()->getNamespace() != "neura")
+    // Skips if not a Neura op.
+    if (op->getDialect()->getNamespace() != "neura") {
       return success();
+    }
 
-    // Skip if no results or no predicated types
+    // Skips if no results or no predicated types.
     if (op->getNumResults() == 0 ||
         !llvm::any_of(op->getResultTypes(), [](Type t) {
           return mlir::isa<mlir::neura::PredicatedValue>(t);
@@ -95,39 +105,39 @@ private:
       return success();
     }
 
-    // Convert result types to non-predicated form
+    // Converts result types to non-predicated form.
     OpBuilder builder(op);
-    SmallVector<Type> newResults;
+    SmallVector<Type> new_results;
     for (Type t : op->getResultTypes()) {
-      if (auto predicatedType = llvm::dyn_cast<neura::PredicatedValue>(t)) {
-        newResults.push_back(predicatedType.getValueType());
+      if (auto predicated_type = llvm::dyn_cast<neura::PredicatedValue>(t)) {
+        new_results.push_back(predicated_type.getValueType());
       } else {
-        newResults.push_back(t);
+        new_results.push_back(t);
       }
     }
 
-    // Create new operation with updated result types
+    // Creates new operation with updated result types.
     OperationState state(op->getLoc(), op->getName());
     state.addOperands(op->getOperands());
-    state.addTypes(newResults);
+    state.addTypes(new_results);
     state.addAttributes(op->getAttrs());
 
-    // Copy regions if needed
+    // Copies regions if needed.
     for (unsigned i = 0; i < op->getNumRegions(); ++i) {
       state.addRegion();
     }
 
-    Operation *newOp = builder.create(state);
+    Operation *new_op = builder.create(state);
 
-    // Move regions if any
+    // Moves regions if any.
     for (unsigned i = 0; i < op->getNumRegions(); ++i) {
-      Region &oldRegion = op->getRegion(i);
-      Region &newRegion = newOp->getRegion(i);
-      newRegion.takeBody(oldRegion);
+      Region &old_region = op->getRegion(i);
+      Region &new_region = new_op->getRegion(i);
+      new_region.takeBody(old_region);
     }
 
-    // Replace old op
-    op->replaceAllUsesWith(newOp);
+    // Replaces old op.
+    op->replaceAllUsesWith(new_op);
     op->erase();
     return success();
   }
