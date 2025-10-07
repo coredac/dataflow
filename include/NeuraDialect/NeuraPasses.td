@@ -116,4 +116,23 @@ def FoldConstant : Pass<"fold-constant", "ModuleOp"> {
   let constructor = "neura::createFoldConstantPass()";
 }
 
+def TransformToSteerControl : Pass<"transform-to-steer-control", "func::FuncOp"> {
+  let summary = "Transform control flow into data flow using steer control";
+  let description = [{
+    This pass transforms Neura control flow graphs (CDFG) into pure dataflow graphs (DFG)
+    using steer control operations like true_steer, false_steer, carry, and merge.
+    Unlike predication-based approaches, steer control explicitly directs data through
+    different paths based on conditions.
+  }];
+  let constructor = "neura::createTransformToSteerControlPass()";
+}
+
+def RemovePredicatedType : Pass<"remove-predicated-type", "ModuleOp"> {
+  let summary = "Removes predicated types from Neura dialect operations";
+  let description = [{
+    This pass removes predicated types from Neura dialect operations,
+    converting them back to regular types.
+  }];
+  let constructor = "neura::createRemovePredicatedTypePass()";
+}
 #endif // NEURA_PASSES_TD
