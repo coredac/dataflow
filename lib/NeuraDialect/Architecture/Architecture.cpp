@@ -425,6 +425,7 @@ void Architecture::applyTileOverrides(const std::vector<TileOverride>& tile_over
       // Overrides ports if specified.
       if (!override.ports.empty()) {
         tile->setPorts(override.ports);
+        removeUnsupportedLinks(tile);
       }
       
       // Overrides memory capacity if specified.
@@ -566,5 +567,65 @@ void Architecture::removeLink(int link_id) {
   
   // Marks the link as removed by setting it to null.
   link_storage[link_id].reset();
+}
+
+// Helper method to remove links for directions not supported by the tile.
+void Architecture::removeUnsupportedLinks(Tile *tile) {
+  int x = tile->getX();
+  int y = tile->getY();
+  
+  // Checks each direction and removes links if tile doesn't have the corresponding port.
+  
+  // Checks West direction
+  if (!tile->hasPort("W") && x > 0) {
+    // Finds the link ID from this tile to the west tile
+    for (size_t i = 0; i < link_storage.size(); ++i) {
+      if (link_storage[i] && 
+          link_storage[i]->getSrcTile() == tile && 
+          link_storage[i]->getDstTile() == getTile(x - 1, y)) {
+        removeLink(i);
+        break;
+      }
+    }
+  }
+  
+  // Checks East direction
+  if (!tile->hasPort("E") && x < width - 1) {
+    // Finds the link ID from this tile to the east tile
+    for (size_t i = 0; i < link_storage.size(); ++i) {
+      if (link_storage[i] && 
+          link_storage[i]->getSrcTile() == tile && 
+          link_storage[i]->getDstTile() == getTile(x + 1, y)) {
+        removeLink(i);
+        break;
+      }
+    }
+  }
+  
+  // Checks South direction
+  if (!tile->hasPort("S") && y > 0) {
+    // Finds the link ID from this tile to the south tile
+    for (size_t i = 0; i < link_storage.size(); ++i) {
+      if (link_storage[i] && 
+          link_storage[i]->getSrcTile() == tile && 
+          link_storage[i]->getDstTile() == getTile(x, y - 1)) {
+        removeLink(i);
+        break;
+      }
+    }
+  }
+  
+  // Checks North direction
+  if (!tile->hasPort("N") && y < height - 1) {
+    // Finds the link ID from this tile to the north tile
+    for (size_t i = 0; i < link_storage.size(); ++i) {
+      if (link_storage[i] && 
+          link_storage[i]->getSrcTile() == tile && 
+          link_storage[i]->getDstTile() == getTile(x, y + 1)) {
+        removeLink(i);
+        break;
+      }
+    }
+  }
 }
 

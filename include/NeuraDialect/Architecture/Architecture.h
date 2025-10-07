@@ -393,6 +393,7 @@ private:
   void applyLinkOverrides(const std::vector<LinkOverride>& link_overrides);
   void createRegisterFileCluster(Tile *tile, int num_registers, int &reg_id);
   void recreateRegisterFileCluster(Tile *tile, int num_registers);
+  void removeUnsupportedLinks(Tile *tile);
 
   // Architecture components: tiles, links, and their mappings.
   // Ports and memory are now modeled as part of Tile class.
