@@ -576,9 +576,9 @@ void Architecture::removeUnsupportedLinks(Tile *tile) {
   
   // Checks each direction and removes links if tile doesn't have the corresponding port.
   
-  // Checks West direction
+  // Checks West direction.
   if (!tile->hasPort("W") && x > 0) {
-    // Finds the link ID from this tile to the west tile
+    // Finds the link ID from this tile to the west tile.
     for (size_t i = 0; i < link_storage.size(); ++i) {
       if (link_storage[i] && 
           link_storage[i]->getSrcTile() == tile && 
@@ -589,9 +589,9 @@ void Architecture::removeUnsupportedLinks(Tile *tile) {
     }
   }
   
-  // Checks East direction
+  // Checks East direction.
   if (!tile->hasPort("E") && x < width - 1) {
-    // Finds the link ID from this tile to the east tile
+    // Finds the link ID from this tile to the east tile.
     for (size_t i = 0; i < link_storage.size(); ++i) {
       if (link_storage[i] && 
           link_storage[i]->getSrcTile() == tile && 
@@ -602,9 +602,9 @@ void Architecture::removeUnsupportedLinks(Tile *tile) {
     }
   }
   
-  // Checks South direction
+  // Checks South direction.
   if (!tile->hasPort("S") && y > 0) {
-    // Finds the link ID from this tile to the south tile
+    // Finds the link ID from this tile to the south tile.
     for (size_t i = 0; i < link_storage.size(); ++i) {
       if (link_storage[i] && 
           link_storage[i]->getSrcTile() == tile && 
@@ -615,9 +615,9 @@ void Architecture::removeUnsupportedLinks(Tile *tile) {
     }
   }
   
-  // Checks North direction
+  // Checks North direction.
   if (!tile->hasPort("N") && y < height - 1) {
-    // Finds the link ID from this tile to the north tile
+    // Finds the link ID from this tile to the north tile.
     for (size_t i = 0; i < link_storage.size(); ++i) {
       if (link_storage[i] && 
           link_storage[i]->getSrcTile() == tile && 
