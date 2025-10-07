@@ -6,6 +6,7 @@
 // RUN:   --transform-ctrl-to-data-flow \
 // RUN:   --insert-data-mov \
 // RUN:   --map-to-accelerator="mapping-strategy=heuristic" \
+// RUN:   --architecture-spec=../test_architecture_spec/architecture.yaml \
 // RUN:   --generate-code -o %t-mapping.mlir 
 // RU: FileCheck %s --input-file=%t-mapping.mlir -check-prefix=MAPPING
 // RUN: FileCheck %s --input-file=tmp-generated-instructions.yaml --check-prefix=YAML
