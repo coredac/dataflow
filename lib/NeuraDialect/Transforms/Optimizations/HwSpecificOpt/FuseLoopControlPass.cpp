@@ -3,6 +3,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
@@ -10,6 +11,7 @@
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Error.h"
 #include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cassert>
@@ -36,10 +38,20 @@ public:
   Value end_val;   // End value for the loop index.
   Value step_val;  // Step value for the loop index.
 
+  // Optional attributes for the parameters, if any.
+  Attribute start_attr = nullptr;
+  Attribute end_attr = nullptr;
+  Attribute step_attr = nullptr;
+
   // Backward edge information.
-  Operation *index_ctrl_mov = nullptr; // Initialized to nullptr.
-  Operation *index_grant_op =
-      nullptr; // The grant_predicate operation for the index.
+  // The ctrl_mov operation for the index.
+  Operation *index_ctrl_mov = nullptr;
+  // The grant_predicate operation for the index.
+  Operation *index_grant_op = nullptr;
+  // The icmp operation for the loop condition.
+  Operation *icmp_op = nullptr;
+  // The add operation for the index.
+  Operation *add_op = nullptr;
 
   // Used for replace and update operations.
   llvm::SetVector<Operation *> ops_to_remove;
@@ -59,8 +71,9 @@ public:
   // Checks if the loop info is complete.
   // There is no not_condition_val because it is derived from condition_val.
   bool isComplete() const {
-    return index_reserve_val && index_phi_val && condition_val && start_val &&
-           end_val && step_val && index_ctrl_mov;
+    return index_reserve_val && index_phi_val && index_grant_op &&
+           condition_val && start_attr && end_attr && step_attr &&
+           index_ctrl_mov && icmp_op && add_op;
   }
 
   // Records the users that use the loop index and (not-)condition values.
@@ -90,50 +103,26 @@ private:
   }
 };
 
-// Finds the original parameter for start value.
-Value findOriginalConstant(Value val,
-                           llvm::SetVector<Operation *> &ops_to_remove) {
-  if (!val || !val.getDefiningOp()) {
-    return val;
+// Finds the constant attribute for a value.
+Attribute findConstantAttribute(Operation *op) {
+  // Checks if the operation has a constant attribute.
+  if (op && op->hasAttr("rhs_const_value")) {
+    return op->getAttr("rhs_const_value");
   }
 
-  Operation *def_op = val.getDefiningOp();
-
   // If the value is already a constant, return it.
-  if (auto const_op = dyn_cast<neura::ConstantOp>(def_op)) {
-    return val;
+  if (auto const_op = dyn_cast<neura::ConstantOp>(op)) {
+    return const_op.getValueAttr();
   }
 
   // Handles grant operations and adds them to the removal list.
-  if (auto grant_once_op = dyn_cast<neura::GrantOnceOp>(def_op)) {
-    ops_to_remove.insert(def_op);
-    return findOriginalConstant(grant_once_op.getValue(), ops_to_remove);
-  }
-
-  // For grant_predicate, only tracks value inputs and ignores condition inputs.
-  if (auto grant_predicate_op = dyn_cast<neura::GrantPredicateOp>(def_op)) {
-    ops_to_remove.insert(def_op);
-    return findOriginalConstant(grant_predicate_op.getValue(), ops_to_remove);
-  }
-
-  // For phi operations, finds the original constant from inputs.
-  if (auto phi_op = dyn_cast<neura::PhiOp>(def_op)) {
-    ops_to_remove.insert(def_op);
-    for (Value input : phi_op.getInputs()) {
-      ops_to_remove.insert(input.getDefiningOp());
-      if (isa<neura::ReserveOp>(input.getDefiningOp())) {
-        for (Operation *user : input.getUsers()) {
-          if (auto ctrl_mov_op = dyn_cast<neura::CtrlMovOp>(user)) {
-            ops_to_remove.insert(ctrl_mov_op);
-          }
-        }
-        continue;
-      }
-      return findOriginalConstant(input, ops_to_remove);
+  if (auto grant_once_op = dyn_cast<neura::GrantOnceOp>(op)) {
+    if (grant_once_op->hasAttr("constant_value")) {
+      return grant_once_op->getAttr("constant_value");
     }
   }
 
-  return val;
+  return nullptr;
 }
 
 // Identifies a simple loop.
@@ -185,7 +174,16 @@ std::unique_ptr<LoopInfo> identifyLoop(Operation *index_reserve_op) {
   assert(initial_value && initial_value.getDefiningOp() &&
          isa<neura::GrantOnceOp>(initial_value.getDefiningOp()) &&
          "The initial_value should be defined by a GrantOnceOp.");
-  loop->start_val = initial_value;
+
+  loop->start_attr = findConstantAttribute(initial_value.getDefiningOp());
+
+  if (!loop->start_attr) {
+    // Unable to determine start value or attribute.
+    llvm::errs()
+        << "[CtrlFlowFuse] Unable to determine start value or attribute.\n";
+    return nullptr;
+  }
+  loop->addOpToRemove(initial_value.getDefiningOp());
 
   // Identifies the phi->icmp->[not]->grant_predicate pattern.
   for (Operation *phi_user : index_phi_op->getUsers()) {
@@ -193,7 +191,14 @@ std::unique_ptr<LoopInfo> identifyLoop(Operation *index_reserve_op) {
       if (icmp_op.getCmpType() == "slt" &&
           icmp_op.getLhs() == loop->index_phi_val) {
         loop->condition_val = icmp_op.getResult();
-        loop->end_val = icmp_op.getRhs();
+        loop->icmp_op = icmp_op;
+
+        loop->end_attr = findConstantAttribute(icmp_op);
+        if (!loop->end_attr) {
+          // Unable to determine end value or attribute.
+          llvm::errs() << "[CtrlFlowFuse] Unable to determine end attribute.\n";
+          return nullptr;
+        }
         loop->addOpToRemove(icmp_op);
 
         // Identifies the not operation if it exists.
@@ -217,46 +222,6 @@ std::unique_ptr<LoopInfo> identifyLoop(Operation *index_reserve_op) {
             }
           }
         }
-
-        // Identifies the recurrence cycle of the end value.
-        Operation *end_val_def_op = loop->end_val.getDefiningOp();
-        if (auto end_phi_op = dyn_cast_or_null<neura::PhiOp>(end_val_def_op)) {
-          // Identifies the end value's reserve operation.
-          Value end_reserve_val = nullptr;
-          for (Value input : end_phi_op.getInputs()) {
-            if (auto reserve_op = input.getDefiningOp<neura::ReserveOp>()) {
-              end_reserve_val = input;
-              loop->addOpToRemove(reserve_op);
-              break;
-            }
-          }
-
-          if (end_reserve_val) {
-            // Identifies the end ctrl_mov operation.
-            for (Operation *user : end_reserve_val.getUsers()) {
-              if (auto ctrl_mov_op = dyn_cast<neura::CtrlMovOp>(user)) {
-                if (ctrl_mov_op.getTarget() == end_reserve_val) {
-                  loop->addOpToRemove(ctrl_mov_op);
-                  loop->addOpToRemove(end_phi_op);
-                  if (isa<neura::GrantPredicateOp>(
-                          ctrl_mov_op.getValue().getDefiningOp())) {
-                    loop->addOpToRemove(ctrl_mov_op.getValue().getDefiningOp());
-                  }
-                  // Finds the actual end value from the inputs of the
-                  // end_phi_op.
-                  for (Value input : end_phi_op.getInputs()) {
-                    if (input != end_reserve_val) {
-                      loop->end_val =
-                          findOriginalConstant(input, loop->ops_to_remove);
-                      break;
-                    }
-                  }
-                  break;
-                }
-              }
-            }
-          }
-        }
         break;
       } else {
         // TODO: Adds support for other compare types if needed.
@@ -272,8 +237,9 @@ std::unique_ptr<LoopInfo> identifyLoop(Operation *index_reserve_op) {
     }
   }
 
-  if (!loop->condition_val || !loop->end_val || !loop->index_phi_val) {
-    llvm::errs() << "[CtrlFlowFuse] Incomplete loop information.\n";
+  if (!loop->condition_val || !loop->icmp_op) {
+    llvm::errs() << "[CtrlFlowFuse] Incomplete loop information, condition or "
+                    "ICMP operation missing.\n";
     return nullptr; // Incomplete loop.
   }
 
@@ -286,22 +252,24 @@ std::unique_ptr<LoopInfo> identifyLoop(Operation *index_reserve_op) {
 
         if (neura::AddOp add_op =
                 ctrl_mov_op.getValue().getDefiningOp<neura::AddOp>()) {
-          loop->addOpToRemove(add_op);
-          Value granted_index = loop->index_grant_op->getResult(0);
-          if (add_op.getLhs() == granted_index) {
-            loop->step_val =
-                findOriginalConstant(add_op.getRhs(), loop->ops_to_remove);
-          } else if (add_op.getRhs() == granted_index) {
-            loop->step_val =
-                findOriginalConstant(add_op.getLhs(), loop->ops_to_remove);
+          llvm::errs() << "[CtrlFlowFuse] Found add operation: " << *add_op
+                       << "\n";
+          loop->add_op = add_op;
+          loop->step_attr = findConstantAttribute(add_op);
+          if (!loop->step_attr) {
+            // Unable to determine step attribute.
+            llvm::errs()
+                << "[CtrlFlowFuse] Unable to determine step attribute.\n";
+            return nullptr;
           }
+          loop->addOpToRemove(add_op);
+          break;
         }
-        break;
       }
     }
   }
 
-  if (!loop->index_ctrl_mov || !loop->step_val) {
+  if (!loop->index_ctrl_mov || !loop->add_op || !loop->step_attr) {
     llvm::errs() << "[CtrlFlowFuse] Incomplete loop information: ctrl_mov or "
                     "step value not found.\n";
     return nullptr; // Incomplete loop.
@@ -323,13 +291,6 @@ Value createConstantPredicate(PatternRewriter &rewriter, Location loc,
                                             rewriter.getBoolAttr(value));
 }
 
-Operation *findDefiningOp(Value value) {
-  if (!value) {
-    return nullptr;
-  }
-  return value.getDefiningOp();
-}
-
 LogicalResult replaceWithLoopController(LoopInfo *loop_info,
                                         PatternRewriter &rewriter) {
   if (!loop_info || !loop_info->isComplete()) {
@@ -339,43 +300,7 @@ LogicalResult replaceWithLoopController(LoopInfo *loop_info,
 
   Location loc = loop_info->index_reserve_val.getLoc();
 
-  Operation *start_def_op = findDefiningOp(loop_info->start_val);
-  Operation *end_def_op = findDefiningOp(loop_info->end_val);
-  Operation *step_def_op = findDefiningOp(loop_info->step_val);
-
-  // Gets the insertion point for the new loop_controller operation.
-  Operation *insertion_point = nullptr;
-
-  // Compares the defining operations to find the latest one.
-  auto updateLatestOp = [&](Operation *op1, Operation *op2) -> Operation * {
-    if (!op1) {
-      return op2;
-    }
-    if (!op2) {
-      return op1;
-    }
-    // Returns the later operation in the block.
-    return op2->isBeforeInBlock(op1) ? op1 : op2;
-  };
-
-  // Updates the insertion point based on the defining operations.
-  if (start_def_op) {
-    insertion_point = updateLatestOp(insertion_point, start_def_op);
-  }
-  if (end_def_op) {
-    insertion_point = updateLatestOp(insertion_point, end_def_op);
-  }
-  if (step_def_op) {
-    insertion_point = updateLatestOp(insertion_point, step_def_op);
-  }
-
-  // Sets the insertion point after the latest defining operation.
-  if (insertion_point) {
-    rewriter.setInsertionPointAfter(insertion_point);
-  } else {
-    assert(false && "No valid insertion point found for loop_controller");
-    return failure();
-  }
+  rewriter.setInsertionPointAfter(loop_info->index_phi_val.getDefiningOp());
 
   // Creates the parentValid signal for loop_controller.
   auto true_const = createConstantPredicate(rewriter, loc, true);
@@ -387,28 +312,6 @@ LogicalResult replaceWithLoopController(LoopInfo *loop_info,
 
   // Prepares the values and iter type for loop_controller.
   auto index_type = loop_info->index_phi_val.getType();
-  rewriter.setInsertionPointAfter(true_val.getDefiningOp());
-
-  // For start value, we use the grant_once for correctness.
-  Value start_val = loop_info->start_val;
-  if (!isa<neura::GrantOnceOp>(start_val.getDefiningOp())) {
-    rewriter.setInsertionPointAfter(start_val.getDefiningOp());
-    start_val = rewriter.create<neura::GrantOnceOp>(loc, index_type, start_val,
-                                                    nullptr);
-  }
-
-  // For end value and step value, we create grant_always for correctness.
-  Value end_val = loop_info->end_val;
-  rewriter.setInsertionPointAfter(end_val.getDefiningOp());
-  end_val =
-      rewriter.create<neura::GrantAlwaysOp>(loc, index_type, end_val, nullptr);
-
-  Value step_val = loop_info->step_val;
-  rewriter.setInsertionPointAfter(step_val.getDefiningOp());
-  step_val =
-      rewriter.create<neura::GrantAlwaysOp>(loc, index_type, step_val, nullptr);
-
-  rewriter.setInsertionPointAfter(true_val.getDefiningOp());
 
   StringAttr iter_type;
   if (neura::ICmpOp icmp_op =
@@ -421,10 +324,11 @@ LogicalResult replaceWithLoopController(LoopInfo *loop_info,
     }
   }
 
-  // Creates the loop_controller operation.
+  rewriter.setInsertionPointAfter(true_val.getDefiningOp());
+
   auto loop_controller = rewriter.create<neura::LoopControlOp>(
-      loc, index_type, true_val.getType(), true_val, iter_type, start_val,
-      end_val, step_val);
+      loc, index_type, true_val.getType(), true_val, iter_type,
+      loop_info->start_attr, loop_info->end_attr, loop_info->step_attr);
 
   Value new_index = loop_controller.getNextindex();
   Value new_valid = loop_controller.getValid();
@@ -551,8 +455,14 @@ struct FuseLoopControlFlowPattern : public OpRewritePattern<func::FuncOp> {
     });
 
     if (identified_loops.empty()) {
+      llvm::errs() << "[CtrlFlowFuse] No loops identified for fusion in "
+                   << func_op.getName() << "\n";
       return failure();
     }
+
+    llvm::errs() << "[CtrlFlowFuse] Identified " << identified_loops.size()
+                 << " loops for fusion in function " << func_op.getName()
+                 << "\n";
 
     for (auto &loop_info : identified_loops) {
       if (failed(replaceWithLoopController(loop_info.get(), rewriter))) {
