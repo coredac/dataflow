@@ -293,111 +293,291 @@ public:
     Value false_value;
     neura::GrantPredicateOp true_grant;
     neura::GrantPredicateOp false_grant;
+    neura::PhiOp phi_op;
+    neura::NotOp not_op;
   };
 
   MergePatternFinder(func::FuncOp func) {
     // Collects all the not operations.
-    llvm::DenseMap<Value, Value> condition_to_negated;
+    llvm::DenseMap<Value, neura::NotOp> not_value_to_op;
     llvm::DenseMap<Value, Value> negated_to_condition;
 
     func.walk([&](neura::NotOp not_op) {
-      condition_to_negated[not_op.getInput()] = not_op.getResult();
+      not_value_to_op[not_op.getResult()] = not_op;
       negated_to_condition[not_op.getResult()] = not_op.getInput();
     });
 
     // Collects all the grant_predicate operations based on their conditions.
     llvm::DenseMap<Value, llvm::SmallVector<neura::GrantPredicateOp>>
         condition_to_grants;
-
     func.walk([&](neura::GrantPredicateOp grant_op) {
       condition_to_grants[grant_op.getPredicate()].push_back(grant_op);
     });
 
-    // Finds pairs of grant_predicate operations that can be merged.
-    for (auto &entry : condition_to_grants) {
-      Value condition = entry.first;
-      auto &true_grants = entry.second;
-
-      auto neg_it = condition_to_negated.find(condition);
-      if (neg_it == condition_to_negated.end()) {
-        continue;
+    func.walk([&](neura::PhiOp phi_op) {
+      // Phi operation must have two operands.
+      if (phi_op.getNumOperands() != 2) {
+        return;
       }
 
-      Value negated_condition = neg_it->second;
+      Value input0 = phi_op.getOperand(0);
+      Value input1 = phi_op.getOperand(1);
 
-      auto false_it = condition_to_grants.find(negated_condition);
-      if (false_it == condition_to_grants.end()) {
-        continue;
+      // Each operand must be produced by a grant_predicate operation.
+      auto grant0 = input0.getDefiningOp<neura::GrantPredicateOp>();
+      auto grant1 = input1.getDefiningOp<neura::GrantPredicateOp>();
+      if (!grant0 || !grant1) {
+        return;
       }
 
-      auto &false_grants = false_it->second;
+      // Checks if the conditions of the two grant_predicate operations are
+      // complementary.
+      Value cond0 = grant0.getPredicate();
+      Value cond1 = grant1.getPredicate();
 
-      for (auto true_grant : true_grants) {
-        Value true_value = true_grant.getValue();
+      // Checks if one condition is the negation of the other.
+      neura::NotOp not_op = nullptr;
+      Value original_cond;
+      bool cond0_is_original = false;
 
-        for (auto false_grant : false_grants) {
-          Value false_value = false_grant.getValue();
-
-          if (true_value.getType() == false_value.getType() &&
-              true_grant.getResult().getType() ==
-                  false_grant.getResult().getType()) {
-            merge_candidates.push_back(
-                {condition, true_value, false_value, true_grant, false_grant});
-          }
-        }
+      // case 1: cond0 is the original condition, cond1 is its negation.
+      if (auto it = not_value_to_op.find(cond1);
+          it != not_value_to_op.end() && it->second.getInput() == cond0) {
+        not_op = it->second;
+        original_cond = cond0;
+        cond0_is_original = true;
       }
-    }
+      // case 2: cond1 is the original condition, cond0 is its negation.
+      else if (auto it = not_value_to_op.find(cond0);
+               it != not_value_to_op.end() && it->second.getInput() == cond1) {
+        not_op = it->second;
+        original_cond = cond1;
+        cond0_is_original = false;
+      }
+      // Conditions are not complementary, not the pattern we are looking for.
+      else {
+        return;
+      }
+
+      // Determines true branch and false branch
+      neura::GrantPredicateOp true_grant = cond0_is_original ? grant0 : grant1;
+      neura::GrantPredicateOp false_grant = cond0_is_original ? grant1 : grant0;
+      Value true_value = true_grant.getValue();
+      Value false_value = false_grant.getValue();
+
+      // Records the found merge pattern
+      merge_candidates.push_back({original_cond, true_value, false_value,
+                                  true_grant, false_grant, phi_op, not_op});
+
+      // Records the operations involved in the merge
+      phi_in_merge[phi_op] = merge_candidates.size() - 1;
+      grants_in_merge.insert(true_grant);
+      grants_in_merge.insert(false_grant);
+      if (not_op) {
+        nots_in_merge.insert(not_op);
+      }
+    });
   }
 
   llvm::SmallVector<MergeCandidate> getMergeCandidates() const {
     return this->merge_candidates;
   }
 
+  bool isPhiInMerge(neura::PhiOp phi_op) const {
+    return phi_in_merge.contains(phi_op);
+  }
+
+  bool isGrantInMerge(neura::GrantPredicateOp grant_op) const {
+    return grants_in_merge.contains(grant_op);
+  }
+
+  bool isNotInMerge(neura::NotOp not_op) const {
+    return nots_in_merge.contains(not_op);
+  }
+
+  const MergeCandidate *getMergeCandidateForPhi(neura::PhiOp phi_op) const {
+    auto it = phi_in_merge.find(phi_op);
+    if (it != phi_in_merge.end())
+      return &merge_candidates[it->second];
+    return nullptr;
+  }
+
 private:
   llvm::SmallVector<MergeCandidate> merge_candidates;
+  llvm::DenseMap<neura::PhiOp, unsigned> phi_in_merge;
+  llvm::DenseSet<neura::GrantPredicateOp> grants_in_merge;
+  llvm::DenseSet<neura::NotOp> nots_in_merge;
 };
 
-class GrantPairToMergePattern : public RewritePattern {
+class PhiToMergePattern : public OpRewritePattern<neura::PhiOp> {
 public:
-  GrantPairToMergePattern(MLIRContext *context,
-                          const MergePatternFinder &merge_pattern_finder,
-                          OperationsToErase &ops_to_erase)
-      : RewritePattern(MatchAnyOpTypeTag(), 1, context),
+  PhiToMergePattern(MLIRContext *context,
+                    const MergePatternFinder &merge_pattern_finder,
+                    OperationsToErase &ops_to_erase)
+      : OpRewritePattern<neura::PhiOp>(context),
         merge_pattern_finder(merge_pattern_finder), ops_to_erase(ops_to_erase) {
   }
-  LogicalResult matchAndRewrite(Operation *op,
+
+  LogicalResult matchAndRewrite(neura::PhiOp phi_op,
                                 PatternRewriter &rewriter) const override {
-    auto grant_op = dyn_cast<neura::GrantPredicateOp>(op);
-    if (!grant_op) {
+    // Checks if the phi operation is part of a merge pattern.
+    if (!merge_pattern_finder.isPhiInMerge(phi_op)) {
       return failure();
     }
 
-    for (auto &candidate : this->merge_pattern_finder.getMergeCandidates()) {
-      if (grant_op == candidate.true_grant) {
-        rewriter.setInsertionPoint(grant_op);
-        auto merge_op = rewriter.create<neura::MergeOp>(
-            grant_op.getLoc(), grant_op.getResult().getType(),
-            candidate.condition, candidate.true_value, candidate.false_value);
+    const auto *merge_candidate =
+        merge_pattern_finder.getMergeCandidateForPhi(phi_op);
+    if (!merge_candidate) {
+      return failure();
+    }
 
-        if (auto not_op = candidate.false_grant.getPredicate()
-                              .getDefiningOp<neura::NotOp>()) {
-          ops_to_erase.markForErasure(not_op);
-        }
-        rewriter.replaceOp(candidate.true_grant, merge_op.getResult());
-        rewriter.replaceOp(candidate.false_grant, merge_op.getResult());
+    rewriter.setInsertionPoint(phi_op);
+    auto merge_op = rewriter.create<neura::MergeOp>(
+        phi_op.getLoc(), phi_op.getType(), merge_candidate->condition,
+        merge_candidate->true_value, merge_candidate->false_value);
 
-        return success();
-      } else if (grant_op == candidate.false_grant) {
-        return failure();
-      }
+    rewriter.replaceOp(phi_op, merge_op.getResult());
+
+    // Marks the related operations for erasure.
+    ops_to_erase.markForErasure(merge_candidate->true_grant);
+    ops_to_erase.markForErasure(merge_candidate->false_grant);
+    ops_to_erase.markForErasure(merge_candidate->not_op);
+
+    return success();
+  }
+
+private:
+  const MergePatternFinder &merge_pattern_finder;
+  OperationsToErase &ops_to_erase;
+};
+
+class SteerPhiToMergePattern : public OpRewritePattern<neura::PhiOp> {
+public:
+  SteerPhiToMergePattern(MLIRContext *context, OperationsToErase &ops_to_erase,
+                         MergePatternFinder &merge_pattern_finder,
+                         LoopAnalyzer &loop_analyzer)
+      : OpRewritePattern<neura::PhiOp>(context), ops_to_erase(ops_to_erase),
+        merge_pattern_finder(merge_pattern_finder),
+        loop_analyzer(loop_analyzer) {}
+
+  LogicalResult matchAndRewrite(neura::PhiOp phi_op,
+                                PatternRewriter &rewriter) const override {
+    // Checks if the phi operation has two operands.
+    if (phi_op.getNumOperands() != 2) {
+      return failure();
+    }
+
+    Value input0 = phi_op.getOperand(0);
+    Value input1 = phi_op.getOperand(1);
+
+    // Checks if the phi operation is already part of a merge pattern or a loop
+    // recurrence.
+    if (merge_pattern_finder.isPhiInMerge(phi_op) ||
+        loop_analyzer.isLoopPhi(phi_op.getResult())) {
+      return failure();
+    }
+
+    Value condition = nullptr;
+    Value true_value = nullptr;
+    Value false_value = nullptr;
+
+    // Case 1: Direct pattern: true_steer + false_steer
+    if (tryMatchDirectSteerPattern(input0, input1, condition, true_value,
+                                   false_value) ||
+        tryMatchDirectSteerPattern(input1, input0, condition, true_value,
+                                   false_value)) {
+      createMergeOp(phi_op, rewriter, condition, true_value, false_value);
+      return success();
+    }
+
+    // Case 2: One input is based on a true_steer, the other is a false_steer.
+    if (tryMatchIndirectSteerPattern(input0, input1, condition, true_value,
+                                     false_value) ||
+        tryMatchIndirectSteerPattern(input1, input0, condition, true_value,
+                                     false_value)) {
+      createMergeOp(phi_op, rewriter, condition, true_value, false_value);
+      return success();
     }
 
     return failure();
   }
 
 private:
-  const MergePatternFinder &merge_pattern_finder;
   OperationsToErase &ops_to_erase;
+  MergePatternFinder &merge_pattern_finder;
+  LoopAnalyzer &loop_analyzer;
+
+  // Checks for direct true_steer + false_steer pattern.
+  bool tryMatchDirectSteerPattern(Value input1, Value input2, Value &condition,
+                                  Value &true_value, Value &false_value) const {
+    auto true_steer = input1.getDefiningOp<neura::TrueSteerOp>();
+    if (!true_steer) {
+      return false;
+    }
+
+    auto false_steer = input2.getDefiningOp<neura::FalseSteerOp>();
+    if (!false_steer) {
+      return false;
+    }
+
+    // Checks if both steer operations share the same condition.
+    if (true_steer.getCondition() != false_steer.getCondition()) {
+      return false;
+    }
+
+    condition = true_steer.getCondition();
+    true_value = input1;
+    false_value = input2;
+    return true;
+  }
+
+  // Checks if one input is based on a steer operation.
+  bool tryMatchIndirectSteerPattern(Value input1, Value input2,
+                                    Value &condition, Value &true_value,
+                                    Value &false_value) const {
+    // Checks if input2 is a false_steer.
+    auto false_steer = input2.getDefiningOp<neura::FalseSteerOp>();
+    if (!false_steer) {
+      return false;
+    }
+
+    condition = false_steer.getCondition();
+
+    // Checks the defining operation of input1.
+    Operation *def_op = input1.getDefiningOp();
+    if (!def_op) {
+      return false;
+    }
+
+    // Checks if the defining operation's inputs use true_steer.
+    bool found_true_steer = false;
+    for (Value operand : def_op->getOperands()) {
+      if (auto true_steer = operand.getDefiningOp<neura::TrueSteerOp>()) {
+        if (true_steer.getCondition() == condition) {
+          found_true_steer = true;
+          break;
+        }
+      }
+    }
+
+    if (!found_true_steer) {
+      return false;
+    }
+
+    true_value = input1;
+    false_value = input2;
+    return true;
+  }
+
+  // Creates a merge operation to replace the phi operation.
+  void createMergeOp(neura::PhiOp phi_op, PatternRewriter &rewriter,
+                     Value condition, Value true_value,
+                     Value false_value) const {
+    rewriter.setInsertionPoint(phi_op);
+    auto merge_op = rewriter.create<neura::MergeOp>(
+        phi_op.getLoc(), phi_op.getType(), condition, true_value, false_value);
+    rewriter.replaceOp(phi_op, merge_op.getResult());
+  }
 };
 
 class GrantPredicateToSteerPattern
@@ -475,10 +655,19 @@ struct TransformToSteerControlPass
     if (failed(applyPatternsGreedily(func, std::move(grant_once_patterns)))) {
       signalPassFailure();
     }
+    MergePatternFinder merge_pattern_finder(func);
+
+    RewritePatternSet merge_patterns(&context);
+    merge_patterns.add<PhiToMergePattern>(&context, merge_pattern_finder,
+                                          ops_to_erase);
+    if (failed(applyPatternsGreedily(func, std::move(merge_patterns)))) {
+      signalPassFailure();
+    }
+    // Erases the marked operations after processing all merge patterns.
+    ops_to_erase.eraseMarkedOperations();
 
     LoopAnalyzer loop_analyzer(func);
     BackwardValueHandler backward_value_handler(rewriter);
-    MergePatternFinder merge_pattern_finder(func);
 
     RewritePatternSet phi_patterns(&context);
     phi_patterns.add<PhiToCarryPattern>(&context, loop_analyzer,
@@ -487,15 +676,6 @@ struct TransformToSteerControlPass
       signalPassFailure();
     }
     // Erases the marked operations after processing all phi operations.
-    ops_to_erase.eraseMarkedOperations();
-
-    RewritePatternSet merge_patterns(&context);
-    merge_patterns.add<GrantPairToMergePattern>(&context, merge_pattern_finder,
-                                                ops_to_erase);
-    if (failed(applyPatternsGreedily(func, std::move(merge_patterns)))) {
-      signalPassFailure();
-    }
-    // Erases the marked operations after processing all merge patterns.
     ops_to_erase.eraseMarkedOperations();
 
     RewritePatternSet steer_patterns(&context);
@@ -507,6 +687,28 @@ struct TransformToSteerControlPass
     // Erases the marked operations after processing all grant_predicate
     // operations.
     ops_to_erase.eraseMarkedOperations();
+
+    RewritePatternSet steer_phi_patterns(&context);
+    steer_phi_patterns.add<SteerPhiToMergePattern>(
+        &context, ops_to_erase, merge_pattern_finder, loop_analyzer);
+    if (failed(applyPatternsGreedily(func, std::move(steer_phi_patterns)))) {
+      signalPassFailure();
+    }
+    // Erases the marked operations after processing all steer-phi patterns.
+    ops_to_erase.eraseMarkedOperations();
+
+    // Cleans up any remaining unused reserve, ctrl_mov, and not operations.
+    llvm::SmallVector<Operation *, 16> to_erase;
+    func.walk([&](Operation *op) {
+      if ((isa<neura::ReserveOp>(op) || isa<neura::CtrlMovOp>(op) ||
+           isa<neura::NotOp>(op)) &&
+          op->use_empty()) {
+        to_erase.push_back(op);
+      }
+    });
+    for (auto it = to_erase.rbegin(); it != to_erase.rend(); ++it) {
+      (*it)->erase();
+    }
 
     // Checks if the function is now in predicate mode.
     auto dataflow_mode_attr = func->getAttrOfType<StringAttr>("dataflow_mode");
