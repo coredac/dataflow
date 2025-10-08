@@ -139,6 +139,25 @@ struct MapToAcceleratorPass
         return;
       }
 
+      // Checks the dataflow IR mode.
+      auto dataflow_mode_attr =
+          func->getAttrOfType<StringAttr>("dataflow_mode");
+      bool is_steering_mode =
+          (dataflow_mode_attr && dataflow_mode_attr.getValue() == "steering");
+
+      // If steering mode, enforce spatial-only mapping.
+      if (is_steering_mode) {
+        if (mappingMode_stringRef != "spatial-only") {
+          func.emitError() << "Steering IR mode requires spatial-only mapping, "
+                           << "but got mapping mode: " << mappingMode_stringRef;
+          signalPassFailure();
+          return;
+        }
+        llvm::errs() << "[MapToAcceleratorPass] Using spatial-only mapping for "
+                        "steering mode function: "
+                     << func.getName() << "\n";
+      }
+
       // Collects and reports recurrence cycles found in the function.
       auto recurrence_cycles = collectRecurrenceCycles(func);
       std::set<Operation *> critical_ops;
