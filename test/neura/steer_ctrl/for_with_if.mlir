@@ -71,23 +71,34 @@ module attributes {} {
 // CHECK-NEXT:   %26 = neura.carry %11, %9, %7 : i32, i1, i32 -> i32
 // CHECK-NEXT:   %27 = neura.carry %18, %9, %8 : i64, i1, i64 -> i64
 // CHECK-NEXT:   %28 = "neura.icmp"(%27, %25) <{cmpType = "slt"}> : (i64, i64) -> i1
-// CHECK-NEXT:   %29 = "neura.icmp"(%26, %24) <{cmpType = "sge"}> : (i32, i32) -> i1
-// CHECK-NEXT:   %30 = neura.true_steer %26, %29 : i32, i1 -> i32
-// CHECK-NEXT:   %31 = neura.true_steer %23, %29 : i32, i1 -> i32
-// CHECK-NEXT:   %32 = neura.false_steer %26, %29 : i32, i1 -> i32
-// CHECK-NEXT:   %33 = "neura.add"(%30, %31) : (i32, i32) -> i32
-// CHECK-NEXT:   %34 = neura.merge %29, %23, %23 : i1, i32, i32 -> i32
-// CHECK-NEXT:   %35 = neura.merge %29, %24, %24 : i1, i32, i32 -> i32
-// CHECK-NEXT:   %36 = neura.merge %29, %25, %25 : i1, i64, i64 -> i64
-// CHECK-NEXT:   %37 = neura.merge %29, %19, %19 : i1, i64, i64 -> i64
-// CHECK-NEXT:   %38 = neura.merge %29, %20, %20 : i1, i32, i32 -> i32
-// CHECK-NEXT:   %39 = neura.merge %29, %21, %21 : i1, i32, i32 -> i32
-// CHECK-NEXT:   %40 = neura.merge %29, %27, %27 : i1, i64, i64 -> i64
-// CHECK-NEXT:   %41 = neura.merge %29, %22, %22 : i1, memref<?xi32>, memref<?xi32> -> memref<?xi32>
-// CHECK-NEXT:   %42 = neura.merge %29, %33, %32 : i1, i32, i32 -> i32
-// CHECK-NEXT:   %43 = neura.load_indexed %41[%40 : i64] memref<?xi32> : i32
-// CHECK-NEXT:   %44 = "neura.mul"(%43, %39) : (i32, i32) -> i32
-// CHECK-NEXT:   %45 = "neura.add"(%44, %38) : (i32, i32) -> i32
-// CHECK-NEXT:   %46 = "neura.add"(%42, %45) : (i32, i32) -> i32
-// CHECK-NEXT:   %47 = "neura.add"(%40, %37) : (i64, i64) -> i64
-// CHECK-NEXT:   "neura.return"(%26) : (i32) -> ()
+// CHECK-NEXT:   neura.ctrl_mov %28 -> %9 : i1 i1
+// CHECK-NEXT:   %29 = neura.false_steer %26, %28 : i32, i1 -> i32
+// CHECK-NEXT:   %30 = "neura.icmp"(%26, %24) <{cmpType = "sge"}> : (i32, i32) -> i1
+// CHECK-NEXT:   %31 = neura.true_steer %26, %30 : i32, i1 -> i32
+// CHECK-NEXT:   %32 = neura.true_steer %23, %30 : i32, i1 -> i32
+// CHECK-NEXT:   %33 = neura.false_steer %26, %30 : i32, i1 -> i32
+// CHECK-NEXT:   %34 = "neura.add"(%31, %32) : (i32, i32) -> i32
+// CHECK-NEXT:   %35 = neura.merge %30, %23, %23 : i1, i32, i32 -> i32
+// CHECK-NEXT:   neura.ctrl_mov %35 -> %4 : i32 i32
+// CHECK-NEXT:   %36 = neura.merge %30, %24, %24 : i1, i32, i32 -> i32
+// CHECK-NEXT:   neura.ctrl_mov %36 -> %5 : i32 i32
+// CHECK-NEXT:   %37 = neura.merge %30, %25, %25 : i1, i64, i64 -> i64
+// CHECK-NEXT:   neura.ctrl_mov %37 -> %6 : i64 i64
+// CHECK-NEXT:   %38 = neura.merge %30, %19, %19 : i1, i64, i64 -> i64
+// CHECK-NEXT:   neura.ctrl_mov %38 -> %0 : i64 i64
+// CHECK-NEXT:   %39 = neura.merge %30, %20, %20 : i1, i32, i32 -> i32
+// CHECK-NEXT:   neura.ctrl_mov %39 -> %1 : i32 i32
+// CHECK-NEXT:   %40 = neura.merge %30, %21, %21 : i1, i32, i32 -> i32
+// CHECK-NEXT:   neura.ctrl_mov %40 -> %2 : i32 i32
+// CHECK-NEXT:   %41 = neura.merge %30, %27, %27 : i1, i64, i64 -> i64
+// CHECK-NEXT:   %42 = neura.merge %30, %22, %22 : i1, memref<?xi32>, memref<?xi32> -> memref<?xi32>
+// CHECK-NEXT:   neura.ctrl_mov %42 -> %3 : memref<?xi32> memref<?xi32>
+// CHECK-NEXT:   %43 = neura.merge %30, %34, %33 : i1, i32, i32 -> i32
+// CHECK-NEXT:   %44 = neura.load_indexed %42[%41 : i64] memref<?xi32> : i32
+// CHECK-NEXT:   %45 = "neura.mul"(%44, %40) : (i32, i32) -> i32
+// CHECK-NEXT:   %46 = "neura.add"(%45, %39) : (i32, i32) -> i32
+// CHECK-NEXT:   %47 = "neura.add"(%43, %46) : (i32, i32) -> i32
+// CHECK-NEXT:   neura.ctrl_mov %47 -> %7 : i32 i32
+// CHECK-NEXT:   %48 = "neura.add"(%41, %38) : (i64, i64) -> i64
+// CHECK-NEXT:   neura.ctrl_mov %48 -> %8 : i64 i64
+// CHECK-NEXT:   "neura.return"(%29) : (i32) -> ()

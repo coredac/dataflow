@@ -108,7 +108,10 @@ public:
           for (auto phi_user : phi_op->getUsers()) {
             if (isa<neura::GrantPredicateOp>(phi_user)) {
               auto def_op = llvm::dyn_cast<neura::GrantPredicateOp>(phi_user);
-              if (def_op.getValue() == phi_op.getResult()) {
+              if (def_op.getValue() == phi_op.getResult() &&
+                  !isa<neura::NotOp>(def_op.getPredicate().getDefiningOp())) {
+                llvm::errs() << "[ctrl2steer] Found loop condition: "
+                             << def_op.getPredicate() << "\n";
                 condition = def_op.getPredicate();
                 grant_op = def_op;
                 break;
@@ -256,7 +259,8 @@ public:
     llvm::SmallVector<neura::GrantPredicateOp> related_grant_ops;
     for (auto *user : phi_op->getUsers()) {
       if (auto grant_op = dyn_cast<neura::GrantPredicateOp>(user)) {
-        if (grant_op.getValue() == phi_op.getResult()) {
+        if (grant_op.getValue() == phi_op.getResult() &&
+            grant_op.getPredicate() == condition) {
           related_grant_ops.push_back(grant_op);
         }
       }
@@ -700,12 +704,24 @@ struct TransformToSteerControlPass
     // Cleans up any remaining unused reserve, ctrl_mov, and not operations.
     llvm::SmallVector<Operation *, 16> to_erase;
     func.walk([&](Operation *op) {
-      if ((isa<neura::ReserveOp>(op) || isa<neura::CtrlMovOp>(op) ||
-           isa<neura::NotOp>(op)) &&
-          op->use_empty()) {
+      if (isa<neura::ReserveOp>(op) && op->use_empty()) {
         to_erase.push_back(op);
+      } else if (isa<neura::NotOp>(op) && op->use_empty()) {
+        to_erase.push_back(op);
+      } else if (auto ctrl_mov_op = dyn_cast<neura::CtrlMovOp>(op)) {
+        // Cleans up ctrl_mov operations whose target reserve is unused.
+        if (auto target_reserve =
+                ctrl_mov_op.getTarget().getDefiningOp<neura::ReserveOp>()) {
+          if (target_reserve->use_empty()) {
+            // If the target reserve is going to be deleted, this ctrl_mov can
+            // also be deleted.
+            to_erase.push_back(ctrl_mov_op);
+          }
+        }
       }
     });
+
+    // 从后向前删除，避免依赖问题
     for (auto it = to_erase.rbegin(); it != to_erase.rend(); ++it) {
       (*it)->erase();
     }
