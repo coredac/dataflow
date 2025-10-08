@@ -548,17 +548,38 @@ void transformControlFlowToDataFlow(Region &region, ControlFlowInfo &ctrl_info,
 
   // Sets the "dataflow_mode" attribute to "predicate" for the parent function.
   if (auto func = dyn_cast<func::FuncOp>(region.getParentOp())) {
-    func->setAttr("dataflow_mode",
-                  StringAttr::get(func.getContext(), "predicate"));
-    llvm::errs() << "[ctrl2data] Set dataflow mode to predicate for function: "
-                 << func.getName() << "\n";
+    if (!func->hasAttr("dataflow_mode")) {
+      func->setAttr("dataflow_mode",
+                    StringAttr::get(func.getContext(), "predicate"));
+      llvm::errs()
+          << "[ctrl2data] Set dataflow mode to predicate for function: "
+          << func.getName() << "\n";
+    } else {
+      llvm::errs()
+          << "[ctrl2data] Function " << func.getName()
+          << " already has dataflow_mode set to "
+          << func->getAttrOfType<StringAttr>("dataflow_mode").getValue()
+          << "\n";
+      func->setAttr("dataflow_mode",
+                    StringAttr::get(func.getContext(), "predicate"));
+    }
   } else if (auto llvm_func =
                  dyn_cast<LLVM::LLVMFuncOp>(region.getParentOp())) {
-    llvm_func->setAttr("dataflow_mode",
-                       StringAttr::get(llvm_func.getContext(), "predicate"));
-    llvm::errs()
-        << "[ctrl2data] Set dataflow mode to predicate for LLVM function: "
-        << llvm_func.getName() << "\n";
+    if (!llvm_func->hasAttr("dataflow_mode")) {
+      llvm_func->setAttr("dataflow_mode",
+                         StringAttr::get(llvm_func.getContext(), "predicate"));
+      llvm::errs()
+          << "[ctrl2data] Set dataflow mode to predicate for LLVM function: "
+          << llvm_func.getName() << "\n";
+    } else {
+      llvm::errs()
+          << "[ctrl2data] LLVM function " << llvm_func.getName()
+          << " already has dataflow_mode set to "
+          << llvm_func->getAttrOfType<StringAttr>("dataflow_mode").getValue()
+          << "\n";
+      llvm_func->setAttr("dataflow_mode",
+                         StringAttr::get(llvm_func.getContext(), "predicate"));
+    }
   }
 }
 
