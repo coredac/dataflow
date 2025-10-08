@@ -25,9 +25,9 @@
 // RUN: --transform-ctrl-to-data-flow \
 // RUN: --transform-to-steer-control \
 // RUN: --remove-predicated-type \
-// RUN: --insert-data-mov \
-// RUN: --map-to-accelerator="mapping-strategy=heuristic mapping-mode=spatial-only backtrack-config=customized" \
-// RUN: | FileCheck %s -check-prefix=MAPPING
+// RUN: --insert-data-mov 
+// RU: --map-to-accelerator="mapping-strategy=heuristic mapping-mode=spatial-only backtrack-config=customized" 
+// RU: | FileCheck %s -check-prefix=MAPPING
 
 module {
   func.func @simple_add_loop() -> i64 {
@@ -58,12 +58,12 @@ module {
 // CHECK-NEXT:   %10 = neura.carry %6, %2, %1 : i64, i1, i64 -> i64
 // CHECK-NEXT:   %11 = "neura.icmp"(%10, %8) <{cmpType = "slt"}> : (i64, i64) -> i1
 // CHECK-NEXT:   neura.ctrl_mov %11 -> %2 : i1 i1
-// CHECK-NEXT:   %12 = "neura.not"(%11) : (i1) -> i1
+// CHECK-NEXT:   %12 = neura.false_steer %9, %11 : i64, i1 -> i64
 // CHECK-NEXT:   %13 = "neura.add"(%9, %9) : (i64, i64) -> i64
 // CHECK-NEXT:   neura.ctrl_mov %13 -> %0 : i64 i64
 // CHECK-NEXT:   %14 = "neura.add"(%10, %7) : (i64, i64) -> i64
 // CHECK-NEXT:   neura.ctrl_mov %14 -> %1 : i64 i64
-// CHECK-NEXT:   "neura.return"(%9) : (i64) -> ()
+// CHECK-NEXT:   "neura.return"(%12) : (i64) -> ()
 // CHECK-NEXT: }
 
 // MAPPING:      func.func @simple_add_loop() -> i64 attributes {accelerator = "neura", dataflow_mode = "steering", mapping_info = {compiled_ii = 4 : i32, mapping_mode = "spatial-only", mapping_strategy = "heuristic", rec_mii = 2 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {
