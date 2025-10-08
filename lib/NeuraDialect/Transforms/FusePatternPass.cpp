@@ -134,7 +134,7 @@ struct FuseGepLoadPattern : public OpRewritePattern<neura::LoadOp> {
     }
     
     auto fused = rewriter.create<neura::LoadIndexedOp>(
-        loc, type, gep_op.getBase(), indexValues, load.getPredicate());
+        loc, type, gep_op.getBase(), indexValues);
 
     rewriter.replaceOp(load, fused.getResult());
     rewriter.eraseOp(gep_op);
@@ -166,7 +166,7 @@ struct FuseGepStorePattern : public OpRewritePattern<neura::StoreOp> {
     }
     
     rewriter.create<neura::StoreIndexedOp>(
-        loc, store.getValue(), gep_op.getBase(), indexValues, store.getPredicate());
+        loc, store.getValue(), gep_op.getBase(), indexValues);
 
     rewriter.eraseOp(store);
     rewriter.eraseOp(gep_op);
