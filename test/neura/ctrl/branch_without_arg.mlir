@@ -53,7 +53,7 @@ func.func @test(%in: i64) -> f32 {
 // CHECK-NEXT:   "neura.return"(%13) : (!neura.data<f32, i1>) -> ()
 // CHECK-NEXT: }
 
-// CTRL2DATA: func.func @test(%arg0: i64) -> f32 attributes {accelerator = "neura"} {
+// CTRL2DATA: func.func @test(%arg0: i64) -> f32 attributes {accelerator = "neura", dataflow_mode = "predicate"} {
 // CTRL2DATA-NEXT:     %0 = "neura.constant"() <{value = "%arg0"}> : () -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %1 = "neura.constant"() <{value = 0 : i64}> : () -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %2 = "neura.constant"() <{value = 1.000000e+00 : f32}> : () -> !neura.data<f32, i1>
