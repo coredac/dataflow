@@ -1,0 +1,18 @@
+# build output
+build/
+
+# intermediate output
+**/Output/
+tmp-generated-instructions.asm
+tmp-generated-instructions.yaml
+.lit_test_times.txt
+lit.cfg
+opgraph.dot
+
+# vscode config
+.vscode/
+.clang-format
+
+# misc
+updateCHECK.sh
+README.md
