@@ -63,41 +63,41 @@ struct MapToAcceleratorPass
   void runOnOperation() override {
     ModuleOp module = getOperation();
     std::unique_ptr<Mapping> mapping_strategy;
-    StringRef mappingStrategy_stringRef(mappingStrategy.getValue());
-    StringRef backtrackConfig_stringRef(backtrackConfig.getValue());
-    StringRef mappingMode_stringRef(mappingMode.getValue());
-    bool is_spatial_only = (mappingMode_stringRef == "spatial-only");
-    if (is_spatial_only || mappingMode_stringRef == "spatial-temporal" ||
-        mappingMode_stringRef.empty()) {
-      if (mappingMode_stringRef.empty()) {
-        mappingMode_stringRef = "spatial-temporal";
+    StringRef mapping_strategy_stringRef(mappingStrategy.getValue());
+    StringRef backtrack_config_stringRef(backtrackConfig.getValue());
+    StringRef mapping_mode_stringRef(mappingMode.getValue());
+    bool is_spatial_only = (mapping_mode_stringRef == "spatial-only");
+    if (is_spatial_only || mapping_mode_stringRef == "spatial-temporal" ||
+        mapping_mode_stringRef.empty()) {
+      if (mapping_mode_stringRef.empty()) {
+        mapping_mode_stringRef = "spatial-temporal";
       }
       llvm::errs() << "[MapToAcceleratorPass] Using Mapping Mode: "
-                   << mappingMode_stringRef << "\n";
+                   << mapping_mode_stringRef << "\n";
     } else {
       llvm::errs() << "[MapToAcceleratorPass] Unsupported mapping mode: "
-                   << mappingMode_stringRef << "\n";
+                   << mapping_mode_stringRef << "\n";
       return;
     }
 
-    if (mappingStrategy_stringRef == "heuristic" ||
-        mappingStrategy_stringRef.empty()) {
-      mappingStrategy_stringRef = "heuristic";
+    if (mapping_strategy_stringRef == "heuristic" ||
+        mapping_strategy_stringRef.empty()) {
+      mapping_strategy_stringRef = "heuristic";
 
-      if (backtrackConfig_stringRef == "simple") {
+      if (backtrack_config_stringRef == "simple") {
         mapping_strategy = std::make_unique<HeuristicMapping>(1, 1);
-      } else if (backtrackConfig_stringRef == "greedy") {
+      } else if (backtrack_config_stringRef == "greedy") {
         mapping_strategy = std::make_unique<HeuristicMapping>(INT_MAX, 1);
-      } else if (backtrackConfig_stringRef == "exhaustive") {
+      } else if (backtrack_config_stringRef == "exhaustive") {
         mapping_strategy = std::make_unique<HeuristicMapping>(INT_MAX, INT_MAX);
-      } else if (backtrackConfig_stringRef == "customized") {
+      } else if (backtrack_config_stringRef == "customized") {
         mapping_strategy = std::make_unique<HeuristicMapping>(5, 3);
-      } else if (backtrackConfig_stringRef.starts_with("customized=")) {
+      } else if (backtrack_config_stringRef.starts_with("customized=")) {
         // Used for custom backtrack parameters.
         // Example: "customized=5,3" means max_loc=5, max_depth=3
         // Extracts the parameters after "customized=".
         StringRef paramsRef =
-            backtrackConfig_stringRef.substr(strlen("customized="));
+            backtrack_config_stringRef.substr(strlen("customized="));
         size_t comma_pos = paramsRef.find(',');
 
         if (comma_pos != StringRef::npos) {
@@ -116,19 +116,19 @@ struct MapToAcceleratorPass
           } else {
             llvm::errs() << "[MapToAcceleratorPass] Illegal customized "
                             "parameters format: "
-                         << backtrackConfig_stringRef << "\n";
+                         << backtrack_config_stringRef << "\n";
             return;
           }
         } else {
           llvm::errs()
               << "[MapToAcceleratorPass] Illegal customized parameters format: "
-              << backtrackConfig_stringRef << "\n";
+              << backtrack_config_stringRef << "\n";
           return;
         }
       }
     } else {
       llvm::errs() << "[MapToAcceleratorPass] Unsupported mapping strategy: "
-                   << mappingStrategy_stringRef << "\n";
+                   << mapping_strategy_stringRef << "\n";
       return;
     }
 
@@ -137,6 +137,26 @@ struct MapToAcceleratorPass
       auto accel_attr = func->getAttrOfType<StringAttr>("accelerator");
       if (!accel_attr || accel_attr.getValue() != "neura") {
         return;
+      }
+
+      // Checks the dataflow IR mode.
+      auto dataflow_mode_attr =
+          func->getAttrOfType<StringAttr>("dataflow_mode");
+      bool is_steering_mode =
+          (dataflow_mode_attr && dataflow_mode_attr.getValue() == "steering");
+
+      // If steering mode, enforce spatial-only mapping.
+      if (is_steering_mode) {
+        if (mapping_mode_stringRef != "spatial-only") {
+          func.emitError() << "Steering IR mode requires spatial-only mapping, "
+                           << "but got mapping mode: "
+                           << mapping_mode_stringRef;
+          signalPassFailure();
+          return;
+        }
+        llvm::errs() << "[MapToAcceleratorPass] Using spatial-only mapping for "
+                        "steering mode function: "
+                     << func.getName() << "\n";
       }
 
       // Collects and reports recurrence cycles found in the function.
@@ -228,9 +248,9 @@ struct MapToAcceleratorPass
                               IntegerAttr::get(IntegerType::get(ctx, 32),
                                                architecture.getHeight())),
                NamedAttribute(StringAttr::get(ctx, "mapping_strategy"),
-                              StringAttr::get(ctx, mappingStrategy_stringRef)),
+                              StringAttr::get(ctx, mapping_strategy_stringRef)),
                NamedAttribute(StringAttr::get(ctx, "mapping_mode"),
-                              StringAttr::get(ctx, mappingMode_stringRef)),
+                              StringAttr::get(ctx, mapping_mode_stringRef)),
                NamedAttribute(StringAttr::get(ctx, "compiled_ii"),
                               IntegerAttr::get(IntegerType::get(ctx, 32), ii)),
                NamedAttribute(

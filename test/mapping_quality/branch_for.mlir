@@ -115,7 +115,7 @@ func.func @loop_test() -> f32 {
 // CANONICALIZE-NEXT:     "neura.return"(%7) : (f32) -> ()
 // CANONICALIZE-NEXT:   }
 
-// CTRL2DATA:        func.func @loop_test() -> f32 attributes {accelerator = "neura"} {
+// CTRL2DATA:        func.func @loop_test() -> f32 attributes {accelerator = "neura", dataflow_mode = "predicate"} {
 // CTRL2DATA-NEXT:     %0 = "neura.constant"() <{value = 0 : i64}> : () -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %1 = "neura.grant_once"(%0) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %2 = "neura.constant"() <{value = 0.000000e+00 : f32}> : () -> !neura.data<f32, i1>
@@ -136,7 +136,7 @@ func.func @loop_test() -> f32 {
 // CTRL2DATA-NEXT:     "neura.return"(%14) : (!neura.data<f32, i1>) -> ()
 // CTRL2DATA-NEXT:   }
 
-// FUSE:        func.func @loop_test() -> f32 attributes {accelerator = "neura"} {
+// FUSE:        func.func @loop_test() -> f32 attributes {accelerator = "neura", dataflow_mode = "predicate"} {
 // FUSE-NEXT:     %0 = "neura.grant_once"() <{constant_value = 0 : i64}> : () -> !neura.data<i64, i1>
 // FUSE-NEXT:     %1 = "neura.grant_once"() <{constant_value = 0.000000e+00 : f32}> : () -> !neura.data<f32, i1>
 // FUSE-NEXT:     %2 = neura.reserve : !neura.data<f32, i1>
@@ -155,7 +155,7 @@ func.func @loop_test() -> f32 {
 // FUSE-NEXT:     "neura.return"(%12) : (!neura.data<f32, i1>) -> ()
 // FUSE-NEXT:   }
 
-// MOV:        func.func @loop_test() -> f32 attributes {accelerator = "neura"} {
+// MOV:        func.func @loop_test() -> f32 attributes {accelerator = "neura", dataflow_mode = "predicate"} {
 // MOV-NEXT:     %0 = "neura.grant_once"() <{constant_value = 0 : i64}> : () -> !neura.data<i64, i1>
 // MOV-NEXT:     %1 = "neura.grant_once"() <{constant_value = 0.000000e+00 : f32}> : () -> !neura.data<f32, i1>
 // MOV-NEXT:     %2 = neura.reserve : !neura.data<f32, i1>
@@ -188,7 +188,7 @@ func.func @loop_test() -> f32 {
 // MOV-NEXT:   }
 
 // MAPPING:      module {
-// MAPPING-NEXT:   func.func @loop_test() -> f32 attributes {accelerator = "neura", mapping_info = {compiled_ii = 4 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 4 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {
+// MAPPING-NEXT:   func.func @loop_test() -> f32 attributes {accelerator = "neura", dataflow_mode = "predicate", mapping_info = {compiled_ii = 4 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 4 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {
 
 
 // YAML:      array_config:

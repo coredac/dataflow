@@ -12,6 +12,10 @@ OperationKind getOperationKindFromMlirOp(Operation *op);
 // Returns true if the operation does not need CGRA tile placement.
 bool is_non_materialized(Operation *op);
 
+// Returns true if the operation is a materialized reserve user, i.e.,
+// phi, invariant, carry.
+bool isMaterializedReserveUser(Operation *op);
+
 // Represents a recurrence cycle rooted at a reserve operation and closed by
 // ctrl_mov.
 struct RecurrenceCycle {
