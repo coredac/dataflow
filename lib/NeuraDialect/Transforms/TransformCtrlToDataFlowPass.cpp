@@ -545,6 +545,21 @@ void transformControlFlowToDataFlow(Region &region, ControlFlowInfo &ctrl_info,
                     "block after flattening.\n";
     assert(false && "No ReturnOp found in the entry block after flattening.");
   }
+
+  // Sets the "dataflow_mode" attribute to "predicate" for the parent function.
+  if (auto func = dyn_cast<func::FuncOp>(region.getParentOp())) {
+    func->setAttr("dataflow_mode",
+                  StringAttr::get(func.getContext(), "predicate"));
+    llvm::errs() << "[ctrl2data] Set dataflow mode to predicate for function: "
+                 << func.getName() << "\n";
+  } else if (auto llvm_func =
+                 dyn_cast<LLVM::LLVMFuncOp>(region.getParentOp())) {
+    llvm_func->setAttr("dataflow_mode",
+                       StringAttr::get(llvm_func.getContext(), "predicate"));
+    llvm::errs()
+        << "[ctrl2data] Set dataflow mode to predicate for LLVM function: "
+        << llvm_func.getName() << "\n";
+  }
 }
 
 namespace {

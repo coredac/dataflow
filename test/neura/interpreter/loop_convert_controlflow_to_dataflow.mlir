@@ -37,7 +37,7 @@ func.func @loop_sum() -> f32 {
   "neura.return"(%ret_sum) : (f32) -> ()
 }
 
-// DATAFLOW_IR:        func.func @loop_sum() -> f32 attributes {accelerator = "neura"} {
+// DATAFLOW_IR:        func.func @loop_sum() -> f32 attributes {accelerator = "neura", dataflow_mode = "predicate"} {
 // DATAFLOW_IR-NEXT:     %0 = "neura.grant_once"() <{constant_value = 0.000000e+00 : f32}> : () -> !neura.data<f32, i1>
 // DATAFLOW_IR-NEXT:     %1 = "neura.grant_once"() <{constant_value = 1.000000e+00 : f32}> : () -> !neura.data<f32, i1>
 // DATAFLOW_IR-NEXT:     %2 = "neura.grant_once"() <{constant_value = 3.000000e+00 : f32}> : () -> !neura.data<f32, i1>

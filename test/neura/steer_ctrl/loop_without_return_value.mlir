@@ -27,7 +27,7 @@ module attributes {} {
   }
 }
 
-// CHECK:      func.func @_Z11simple_loopPiS_(%arg0: memref<?xi32>, %arg1: memref<?xi32>) attributes {accelerator = "neura", llvm.linkage = #llvm.linkage<external>} {
+// CHECK:      func.func @_Z11simple_loopPiS_(%arg0: memref<?xi32>, %arg1: memref<?xi32>) attributes {accelerator = "neura", dataflow_mode = "steering", llvm.linkage = #llvm.linkage<external>} {
 // CHECK-NEXT:   %0 = neura.reserve : i64
 // CHECK-NEXT:   %1 = neura.reserve : i1
 // CHECK-NEXT:   %2 = "neura.constant"() <{value = "%arg0"}> : () -> memref<?xi32>

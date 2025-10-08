@@ -507,6 +507,21 @@ struct TransformToSteerControlPass
     // Erases the marked operations after processing all grant_predicate
     // operations.
     ops_to_erase.eraseMarkedOperations();
+
+    // Checks if the function is now in predicate mode.
+    auto dataflow_mode_attr = func->getAttrOfType<StringAttr>("dataflow_mode");
+    if (!dataflow_mode_attr || dataflow_mode_attr.getValue() != "predicate") {
+      func.emitError("transform-to-steer-control requires function to be in "
+                     "predicate mode");
+      signalPassFailure();
+      return;
+    }
+    // Changes the dataflow_mode attribute to "steering".
+    func->setAttr("dataflow_mode", StringAttr::get(&context, "steering"));
+    llvm::errs()
+        << "[ctrl2steer] Changed dataflow mode from predicate to steering "
+           "for function: "
+        << func.getName() << "\n";
   }
 };
 } // namespace

@@ -87,7 +87,7 @@ module attributes {} {
 // CHECK-NEXT:     "neura.return"(%10) : (i32) -> ()
 // CHECK-NEXT:   }
 
-// CTRL2DATA:        func.func @_Z11for_with_ifPi(%arg0: memref<?xi32>) -> i32 attributes {accelerator = "neura", llvm.linkage = #llvm.linkage<external>} {
+// CTRL2DATA:        func.func @_Z11for_with_ifPi(%arg0: memref<?xi32>) -> i32 attributes {accelerator = "neura", dataflow_mode = "predicate", llvm.linkage = #llvm.linkage<external>} {
 // CTRL2DATA-NEXT:     %0 = "neura.constant"() <{value = "%arg0"}> : () -> !neura.data<memref<?xi32>, i1>
 // CTRL2DATA-NEXT:     %1 = "neura.grant_once"(%0) : (!neura.data<memref<?xi32>, i1>) -> !neura.data<memref<?xi32>, i1>
 // CTRL2DATA-NEXT:     %2 = "neura.constant"() <{value = 0 : i32}> : () -> !neura.data<i32, i1>
