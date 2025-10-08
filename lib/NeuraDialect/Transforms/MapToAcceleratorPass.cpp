@@ -40,6 +40,11 @@ struct MapToAcceleratorPass
   MapToAcceleratorPass() = default;
   MapToAcceleratorPass(const MapToAcceleratorPass &pass)
       : PassWrapper<MapToAcceleratorPass, OperationPass<ModuleOp>>(pass) {}
+  Option<std::string> sortStrategy{
+      *this, "sort-strategy",
+      llvm::cl::desc("Strategy for sorting operations before mapping. "
+                     "Options: topological, mixed (default)."),
+      llvm::cl::init("mixed")};
   Option<std::string> mappingStrategy{
       *this, "mapping-strategy",
       llvm::cl::desc("Mapping strategy to use for mapping operations to the "
@@ -66,6 +71,7 @@ struct MapToAcceleratorPass
     StringRef mapping_strategy_stringRef(mappingStrategy.getValue());
     StringRef backtrack_config_stringRef(backtrackConfig.getValue());
     StringRef mapping_mode_stringRef(mappingMode.getValue());
+    StringRef sort_strategy_stringRef(sortStrategy.getValue());
     bool is_spatial_only = (mapping_mode_stringRef == "spatial-only");
     if (is_spatial_only || mapping_mode_stringRef == "spatial-temporal" ||
         mapping_mode_stringRef.empty()) {
@@ -206,30 +212,36 @@ struct MapToAcceleratorPass
         llvm::outs() << "[MapToAcceleratorPass] Topologically sorted op: "
                      << *op << "\n";
       }
-      std::vector<std::vector<Operation *>> level_buckets =
-          getOpsInAlapLevels(topologically_sorted_ops, critical_ops);
-      for (int level = 0; level < static_cast<int>(level_buckets.size());
-           ++level) {
-        llvm::outs() << "[MapToAcceleratorPass] ALAP Bucket Level " << level
-                     << ": " << level_buckets[level].size() << " ops\n";
-        for (Operation *op : level_buckets[level]) {
-          llvm::outs() << "  " << *op << "\n";
+
+      std::vector<std::pair<Operation *, int>> sorted_ops_with_levels;
+      if (sort_strategy_stringRef == "topological") {
+        for (Operation *op : topologically_sorted_ops) {
+          sorted_ops_with_levels.push_back({op, 0}); // Level 0 for all ops
+        }
+      } else if (sort_strategy_stringRef == "mixed") {
+        std::vector<std::vector<Operation *>> level_buckets =
+            getOpsInAlapLevels(topologically_sorted_ops, critical_ops);
+        for (int level = 0; level < static_cast<int>(level_buckets.size());
+             ++level) {
+          llvm::outs() << "[MapToAcceleratorPass] ALAP Bucket Level " << level
+                       << ": " << level_buckets[level].size() << " ops\n";
+          for (Operation *op : level_buckets[level]) {
+            llvm::outs() << "  " << *op << "\n";
+          }
+        }
+        sorted_ops_with_levels = flatten_level_buckets(level_buckets);
+        for (const auto &[op, level] : sorted_ops_with_levels) {
+          llvm::outs() << "[MapToAcceleratorPass] ALAP sorted op: " << *op
+                       << " (ALAP level: " << level << ")\n";
         }
       }
-      std::vector<std::pair<Operation *, int>> sorted_ops_with_alap_levels =
-          flatten_level_buckets(level_buckets);
-      for (const auto &[op, level] : sorted_ops_with_alap_levels) {
-        llvm::outs() << "[MapToAcceleratorPass] ALAP sorted op: " << *op
-                     << " (ALAP level: " << level << ")\n";
-      }
-      // assert(false);
       for (int ii = possibleMinII; ii <= maxII; ++ii) {
         llvm::errs()
             << "[MapToAcceleratorPass] Start mapping with target II of " << ii
             << "\n";
         // Creates a mapping state for the current II.
         MappingState mapping_state(architecture, ii, is_spatial_only);
-        if (mapping_strategy->map(sorted_ops_with_alap_levels, critical_ops,
+        if (mapping_strategy->map(sorted_ops_with_levels, critical_ops,
                                   architecture, mapping_state)) {
           // success
           llvm::errs() << "[MapToAcceleratorPass] Successfully mapped function "
