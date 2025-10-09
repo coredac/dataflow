@@ -250,8 +250,8 @@ private:
   int id;
   Tile *src_tile;
   Tile *dst_tile;
-  int latency = 1;
-  int bandwidth = 32;
+  int latency = 1;        // Latency in cycles.
+  int bandwidth = 32;     // Bandwidth in bits per cycle
 };
 
 //===----------------------------------------------------------------------===//
