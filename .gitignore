@@ -3,16 +3,16 @@ build/
 
 # intermediate output
 **/Output/
-tmp-generated-instructions.asm
-tmp-generated-instructions.yaml
+/test/**/*.yaml
+/test/**/*.asm
 .lit_test_times.txt
 lit.cfg
-opgraph.dot
+*.dot
 
 # vscode config
-.vscode/
+.clangd
 .clang-format
+.cache
+.vscode
 
 # misc
-updateCHECK.sh
-README.md
