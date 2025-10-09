@@ -1,6 +1,6 @@
 # RUN: clang++ -S -emit-llvm -O3 -fno-unroll-loops -fno-vectorize -o %t-kernel.ll kernel.cpp
 # RUN: mlir-translate --import-llvm %t-kernel.ll -o %t-kernel.mlir
-# RUN: mlir-neura-opt --architecture-spec=%S/../test_architecture_spec/architecture.yaml --assign-accelerator \
+# RUN: mlir-neura-opt --architecture-spec=%S/../../test_architecture_spec/architecture.yaml --assign-accelerator \
 # RUN:           --lower-llvm-to-neura \
 # RUN:           --canonicalize-live-in \
 # RUN:           --leverage-predicated-value \
@@ -11,7 +11,7 @@
 # RUN:           --view-op-graph \
 # RUN:           --insert-data-mov %t-kernel.mlir | FileCheck %s --check-prefix=CHECK-FUSED
 
-# RUN: mlir-neura-opt --architecture-spec=%S/../test_architecture_spec/architecture.yaml --assign-accelerator \
+# RUN: mlir-neura-opt --architecture-spec=%S/../../test_architecture_spec/architecture.yaml --assign-accelerator \
 # RUN:           --lower-llvm-to-neura \
 # RUN:           --canonicalize-live-in \
 # RUN:           --leverage-predicated-value \
