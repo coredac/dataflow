@@ -324,6 +324,14 @@ def Neura_FMulFAddOp : Op<NeuraDialect, "fmul_fadd"> {
   let traits = [SameOperandsAndResultElementType];
 }
 
+def Neura_MulAddOp : Op<NeuraDialect, "mul_add"> {
+  let summary = "Fused add(mul(a, b), c)";
+  let arguments = (ins AnyType:$a, AnyType:$b, AnyType:$c, Optional<AnyType>:$predicate);
+  let results = (outs AnyType:$result);
+  // let assemblyFormat = "$a `,` $b `,` $c `,` $predicate attr-dict `:` type($result)";
+  let traits = [SameOperandsAndResultElementType];
+}
+
 // ----------------------------------------------------
 // Defines move operations.
 def Neura_DataMovOp : Op<NeuraDialect, "data_mov"> {

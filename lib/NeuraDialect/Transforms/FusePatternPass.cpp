@@ -15,6 +15,11 @@ struct FuseFAddFAddPattern : public OpRewritePattern<neura::FAddOp> {
 
   LogicalResult matchAndRewrite(neura::FAddOp second,
                                 PatternRewriter &rewriter) const override {
+    // Checks if rhs exists before trying to get its defining op.
+    if (!second.getRhs()) {
+      return failure();
+    }
+
     Value lhs = second.getLhs();
     Value rhs = second.getRhs();
 
@@ -61,6 +66,11 @@ struct FuseFMulFAddPattern : public OpRewritePattern<neura::FAddOp> {
 
   LogicalResult matchAndRewrite(neura::FAddOp add,
                                 PatternRewriter &rewriter) const override {
+    // Checks if rhs exists before trying to get its defining op.
+    if (!add.getRhs()) {
+      return failure();
+    }
+
     auto lhs_op = add.getLhs().getDefiningOp<neura::FMulOp>();
     auto rhs_op = add.getRhs().getDefiningOp<neura::FMulOp>();
 
@@ -82,7 +92,7 @@ struct FuseFMulFAddPattern : public OpRewritePattern<neura::FAddOp> {
       return failure();
     }
 
-    // Optional: only fuses if fmul has a single use.
+    // Optionally fuses if fmul has a single use.
     if (!fmul->hasOneUse()) {
       return failure();
     }
@@ -95,6 +105,119 @@ struct FuseFMulFAddPattern : public OpRewritePattern<neura::FAddOp> {
 
     rewriter.replaceOp(add, fused.getResult());
     rewriter.eraseOp(fmul);
+    return success();
+  }
+};
+
+struct FuseGepLoadPattern : public OpRewritePattern<neura::LoadOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(neura::LoadOp load,
+                                PatternRewriter &rewriter) const override {
+    Value addr = load.getAddr();
+    auto gep_op = addr.getDefiningOp<neura::GEP>();
+
+    if (!gep_op)
+      return failure();
+
+    // Only fuses if the gep has a single use.
+    if (!gep_op->hasOneUse())
+      return failure();
+
+    Location loc = load.getLoc();
+    Type type = load.getType();
+
+    // Creates the fused operation with base and indices from gep.
+    SmallVector<Value> indexValues;
+    for (auto gepIndex : gep_op.getIndicesAndPredicate()) {
+      indexValues.push_back(gepIndex);
+    }
+    
+    auto fused = rewriter.create<neura::LoadIndexedOp>(
+        loc, type, gep_op.getBase(), indexValues);
+
+    rewriter.replaceOp(load, fused.getResult());
+    rewriter.eraseOp(gep_op);
+    return success();
+  }
+};
+
+struct FuseGepStorePattern : public OpRewritePattern<neura::StoreOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(neura::StoreOp store,
+                                PatternRewriter &rewriter) const override {
+    Value addr = store.getAddr();
+    auto gep_op = addr.getDefiningOp<neura::GEP>();
+
+    if (!gep_op)
+      return failure();
+
+    // Only fuses if the gep has a single use.
+    if (!gep_op->hasOneUse())
+      return failure();
+
+    Location loc = store.getLoc();
+
+    // Creates the fused operation with base and indices from gep.
+    SmallVector<Value> indexValues;
+    for (auto gepIndex : gep_op.getIndicesAndPredicate()) {
+      indexValues.push_back(gepIndex);
+    }
+    
+    rewriter.create<neura::StoreIndexedOp>(
+        loc, store.getValue(), gep_op.getBase(), indexValues);
+
+    rewriter.eraseOp(store);
+    rewriter.eraseOp(gep_op);
+    return success();
+  }
+};
+
+struct FuseMulAddPattern : public OpRewritePattern<neura::AddOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(neura::AddOp add,
+                                PatternRewriter &rewriter) const override {
+    // Checks if rhs exists before trying to get its defining op.
+    if (!add.getRhs()) {
+      return failure();
+    }
+
+    auto lhs_op = add.getLhs().getDefiningOp<neura::MulOp>();
+    auto rhs_op = add.getRhs().getDefiningOp<neura::MulOp>();
+
+    neura::MulOp mul = nullptr;
+    Value other;
+
+    // Case 1: mul is on the LHS.
+    if (lhs_op && add.getRhs()) {
+      mul = lhs_op;
+      other = add.getRhs();
+    }
+    // Case 2: mul is on the RHS.
+    else if (rhs_op && add.getLhs()) {
+      mul = rhs_op;
+      other = add.getLhs();
+    }
+
+    if (!mul) {
+      return failure();
+    }
+
+    // Only fuses if mul has a single use.
+    if (!mul->hasOneUse()) {
+      return failure();
+    }
+
+    Location loc = add.getLoc();
+    Type type = add.getType();
+
+    auto fused = rewriter.create<neura::MulAddOp>(
+        loc, type, mul.getLhs(), mul.getRhs(), other, Value());
+
+    rewriter.replaceOp(add, fused.getResult());
+    rewriter.eraseOp(mul);
     return success();
   }
 };
@@ -113,6 +236,9 @@ struct FusePatternPass
     RewritePatternSet patterns(&getContext());
     patterns.add<FuseFAddFAddPattern>(&getContext(), 2);
     patterns.add<FuseFMulFAddPattern>(&getContext(), 3);
+    patterns.add<FuseGepLoadPattern>(&getContext(), 4);
+    patterns.add<FuseGepStorePattern>(&getContext(), 5);
+    patterns.add<FuseMulAddPattern>(&getContext(), 6);
     FrozenRewritePatternSet frozen(std::move(patterns));
 
     // Applies to every region inside the module (regardless of func type,
