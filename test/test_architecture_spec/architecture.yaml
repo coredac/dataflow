@@ -13,7 +13,7 @@ link_defaults:
   latency: 1
   bandwidth: 32
 
-connectivity: "mesh"
+base_topology: "mesh"
 
 link_overrides:
 

@@ -10,6 +10,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "NeuraDialect/Architecture/ArchitectureSpec.h"
+
 namespace mlir {
 namespace neura {
 
@@ -369,7 +371,8 @@ public:
                const TileDefaults& tile_defaults,
                const std::vector<TileOverride>& tile_overrides,
                const LinkDefaults& link_defaults,
-               const std::vector<LinkOverride>& link_overrides);
+               const std::vector<LinkOverride>& link_overrides,
+               BaseTopology base_topology = BaseTopology::MESH);
 
   Tile *getTile(int id);
   Tile *getTile(int x, int y);
@@ -389,11 +392,18 @@ private:
   void initializeTiles(int width, int height);
   void configureDefaultTileSettings(const TileDefaults& tile_defaults);
   void applyTileOverrides(const std::vector<TileOverride>& tile_overrides);
-  void createLinks(const LinkDefaults& link_defaults);
+  void createLinks(const LinkDefaults& link_defaults, BaseTopology base_topology);
   void applyLinkOverrides(const std::vector<LinkOverride>& link_overrides);
   void createRegisterFileCluster(Tile *tile, int num_registers, int &reg_id);
   void recreateRegisterFileCluster(Tile *tile, int num_registers);
-  void removeUnsupportedLinks(Tile *tile);
+  bool linkExists(Tile *src_tile, Tile *dst_tile);
+  
+  // Helper methods for creating different topology links.
+  void createSingleLink(int &link_id, Tile *src_tile, Tile *dst_tile, const LinkDefaults& link_defaults);
+  void createLinkIfValid(int &link_id, Tile *src_tile, int dst_x, int dst_y, const LinkDefaults& link_defaults);
+  void createMeshLinks(int &link_id, const LinkDefaults& link_defaults);
+  void createKingMeshLinks(int &link_id, const LinkDefaults& link_defaults);
+  void createRingLinks(int &link_id, const LinkDefaults& link_defaults);
 
   // Architecture components: tiles, links, and their mappings.
   // Ports and memory are now modeled as part of Tile class.

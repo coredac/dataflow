@@ -7,6 +7,13 @@
 namespace mlir {
 namespace neura {
 
+// Enumeration for base topology types
+enum class BaseTopology {
+  MESH,      // 4-connected mesh (N, S, W, E)
+  KING_MESH, // 8-connected mesh (N, S, W, E, NE, NW, SE, SW)
+  RING       // Ring topology (only outer boundary connections)
+};
+
 // Structure to hold tile default configuration
 struct TileDefaults {
   int num_registers = 64;  // default value

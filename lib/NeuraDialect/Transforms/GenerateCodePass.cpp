@@ -189,7 +189,8 @@ static Topology getTopologyFromArchitecture(int columns, int rows) {
   mlir::neura::Architecture arch(columns, rows, mlir::neura::TileDefaults{}, 
                                  std::vector<mlir::neura::TileOverride>{}, 
                                  mlir::neura::LinkDefaults{}, 
-                                 std::vector<mlir::neura::LinkOverride>{});
+                                 std::vector<mlir::neura::LinkOverride>{},
+                                 mlir::neura::BaseTopology::MESH);
 
   for (auto *tile : arch.getAllTiles()) {
     topo.tile_location[tile->getId()] = {tile->getX(), tile->getY()};

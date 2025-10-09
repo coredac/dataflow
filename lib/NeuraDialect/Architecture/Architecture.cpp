@@ -6,7 +6,7 @@
 using namespace mlir;
 using namespace mlir::neura;
 
-// Helper function to configure all supported operations.
+// Configures all supported operations for a function unit.
 void configureSupportedOperations(CustomizableFunctionUnit *function_unit, const std::string &operation) {
   // Integer arithmetic operations.
   if (operation == "add") {
@@ -102,7 +102,7 @@ void configureSupportedOperations(CustomizableFunctionUnit *function_unit, const
   }
 }
 
-// Helper function to create a function unit for a specific operation.
+// Creates a function unit for a specific operation.
 // Maps YAML operation names to OperationKind enum values and creates appropriate function units.
 void createFunctionUnitForOperation(Tile *tile, const std::string &operation, int &function_unit_id) {
   auto function_unit = std::make_unique<CustomizableFunctionUnit>(function_unit_id++);
@@ -116,7 +116,7 @@ void createFunctionUnitForOperation(Tile *tile, const std::string &operation, in
   tile->addFunctionUnit(std::move(function_unit));
 }
 
-// Helper function to configure tile function units based on operations.
+// Configures tile function units based on operations.
 void configureTileFunctionUnits(Tile *tile, const std::vector<std::string> &operations, bool clear_existing = true) {
   // Configures function units based on YAML operations specification.
   // If clear_existing is true, this replaces any existing function units with the specified ones.
@@ -191,19 +191,23 @@ const RegisterFileCluster *Tile::getRegisterFileCluster() const {
 
 const std::vector<RegisterFile *> Tile::getRegisterFiles() const {
   std::vector<RegisterFile *> all_register_files;
-  for (const auto &[id, file] :
-       this->register_file_cluster->getRegisterFiles()) {
-    all_register_files.push_back(file);
+  if (this->register_file_cluster) {
+    for (const auto &[id, file] :
+         this->register_file_cluster->getRegisterFiles()) {
+      all_register_files.push_back(file);
+    }
   }
   return all_register_files;
 }
 
 const std::vector<Register *> Tile::getRegisters() const {
   std::vector<Register *> all_registers;
-  for (const auto &[reg_file_id, reg_file] :
-       this->register_file_cluster->getRegisterFiles()) {
-    for (const auto &[reg_id, reg] : reg_file->getRegisters()) {
-      all_registers.push_back(reg);
+  if (this->register_file_cluster) {
+    for (const auto &[reg_file_id, reg_file] :
+         this->register_file_cluster->getRegisterFiles()) {
+      for (const auto &[reg_id, reg] : reg_file->getRegisters()) {
+        all_registers.push_back(reg);
+      }
     }
   }
   return all_registers;
@@ -315,7 +319,7 @@ RegisterFileCluster::getRegisterFiles() const {
 // Architecture
 //===----------------------------------------------------------------------===//
 
-// Helper method to initialize tiles in the architecture.
+// Initializes tiles in the architecture.
 void Architecture::initializeTiles(int width, int height) {
   const int num_tiles = width * height;
   tile_storage.reserve(num_tiles);
@@ -331,7 +335,7 @@ void Architecture::initializeTiles(int width, int height) {
   }
 }
 
-// Helper method to create register file cluster for a tile.
+// Creates register file cluster for a tile.
 void Architecture::createRegisterFileCluster(Tile *tile, int num_registers, int &reg_id) {
   const int k_num_regs_per_regfile = 8;  // Keep this fixed for now.
   const int k_num_regfiles_per_cluster = num_registers / k_num_regs_per_regfile;
@@ -339,8 +343,6 @@ void Architecture::createRegisterFileCluster(Tile *tile, int num_registers, int 
   RegisterFileCluster *register_file_cluster = new RegisterFileCluster(tile->getId());
 
   // Creates registers as a register file.
-  // FIXME: We have to assign different IDs due to the hash function
-  // cannot distinguish between different register files.
   for (int file_idx = 0; file_idx < k_num_regfiles_per_cluster; ++file_idx) {
     RegisterFile *register_file = new RegisterFile(file_idx);
     for (int reg_idx = 0; reg_idx < k_num_regs_per_regfile; ++reg_idx) {
@@ -353,7 +355,7 @@ void Architecture::createRegisterFileCluster(Tile *tile, int num_registers, int 
   tile->addRegisterFileCluster(register_file_cluster);
 }
 
-// Helper method to configure default tile settings.
+// Configures default tile settings.
 void Architecture::configureDefaultTileSettings(const TileDefaults& tile_defaults) {
   int reg_id = 0;
   for (int y = 0; y < height; ++y) {
@@ -372,7 +374,7 @@ void Architecture::configureDefaultTileSettings(const TileDefaults& tile_default
   }
 }
 
-// Helper method to recreate register file cluster with new capacity.
+// Recreates register file cluster with new capacity.
 void Architecture::recreateRegisterFileCluster(Tile *tile, int num_registers) {
   const int k_num_regs_per_regfile = 8;  // Keep this fixed for now.
   const int k_num_regfiles_per_cluster = num_registers / k_num_regs_per_regfile;
@@ -401,7 +403,7 @@ void Architecture::recreateRegisterFileCluster(Tile *tile, int num_registers) {
   tile->addRegisterFileCluster(new_register_file_cluster);
 }
 
-// Helper method to apply tile overrides.
+// Applies tile overrides to modify specific tiles.
 void Architecture::applyTileOverrides(const std::vector<TileOverride>& tile_overrides) {
   for (const auto &override : tile_overrides) {
     Tile *tile = nullptr;
@@ -425,7 +427,6 @@ void Architecture::applyTileOverrides(const std::vector<TileOverride>& tile_over
       // Overrides ports if specified.
       if (!override.ports.empty()) {
         tile->setPorts(override.ports);
-        removeUnsupportedLinks(tile);
       }
       
       // Overrides memory capacity if specified.
@@ -436,49 +437,121 @@ void Architecture::applyTileOverrides(const std::vector<TileOverride>& tile_over
   }
 }
 
-// Helper method to create links between tiles.
-void Architecture::createLinks(const LinkDefaults& link_defaults) {
+// Creates a single link between two tiles.
+void Architecture::createSingleLink(int &link_id, Tile *src_tile, Tile *dst_tile, 
+                                   const LinkDefaults& link_defaults) {
+  auto link = std::make_unique<Link>(link_id++);
+  link->setLatency(link_defaults.latency);
+  link->setBandwidth(link_defaults.bandwidth);
+  link->connect(src_tile, dst_tile);
+  link_storage.push_back(std::move(link));
+}
+
+// Creates links between tiles based on topology.
+void Architecture::createLinks(const LinkDefaults& link_defaults, BaseTopology base_topology) {
   int link_id = 0;
+  
+  switch (base_topology) {
+    case BaseTopology::MESH:
+      createMeshLinks(link_id, link_defaults);
+      break;
+    case BaseTopology::KING_MESH:
+      createKingMeshLinks(link_id, link_defaults);
+      break;
+    case BaseTopology::RING:
+      createRingLinks(link_id, link_defaults);
+      break;
+    default:
+      // Default to mesh if unknown topology
+      createMeshLinks(link_id, link_defaults);
+      break;
+  }
+}
+
+// Checks if a tile is on the boundary of the architecture.
+bool isOnBoundary(int x, int y, int width, int height) {
+  return (x == 0 || x == width - 1 || y == 0 || y == height - 1);
+}
+
+// Creates a link if the destination tile exists within bounds.
+void Architecture::createLinkIfValid(int &link_id, Tile *src_tile, int dst_x, int dst_y, 
+                                   const LinkDefaults& link_defaults) {
+  if (dst_x >= 0 && dst_x < width && dst_y >= 0 && dst_y < height) {
+    createSingleLink(link_id, src_tile, getTile(dst_x, dst_y), link_defaults);
+  }
+}
+
+// Creates 4-connected mesh links (N, S, W, E).
+void Architecture::createMeshLinks(int &link_id, const LinkDefaults& link_defaults) {
   for (int j = 0; j < height; ++j) {
     for (int i = 0; i < width; ++i) {
       Tile *tile = getTile(i, j);
 
       // Creates links to neighboring tiles with default properties.
-      if (i > 0) {
-        auto link_towards_left = std::make_unique<Link>(link_id++);
-        link_towards_left->setLatency(link_defaults.latency);
-        link_towards_left->setBandwidth(link_defaults.bandwidth);
-        link_towards_left->connect(tile, getTile(i - 1, j));
-        link_storage.push_back(std::move(link_towards_left));
-      }
-      if (i < width - 1) {
-        auto link_towards_right = std::make_unique<Link>(link_id++);
-        link_towards_right->setLatency(link_defaults.latency);
-        link_towards_right->setBandwidth(link_defaults.bandwidth);
-        link_towards_right->connect(tile, getTile(i + 1, j));
-        link_storage.push_back(std::move(link_towards_right));
-      }
-      if (j > 0) {
-        auto link_towards_down = std::make_unique<Link>(link_id++);
-        link_towards_down->setLatency(link_defaults.latency);
-        link_towards_down->setBandwidth(link_defaults.bandwidth);
-        link_towards_down->connect(tile, getTile(i, j - 1));
-        link_storage.push_back(std::move(link_towards_down));
-      }
-      if (j < height - 1) {
-        auto link_towards_up = std::make_unique<Link>(link_id++);
-        link_towards_up->setLatency(link_defaults.latency);
-        link_towards_up->setBandwidth(link_defaults.bandwidth);
-        link_towards_up->connect(tile, getTile(i, j + 1));
-        link_storage.push_back(std::move(link_towards_up));
+      createLinkIfValid(link_id, tile, i - 1, j, link_defaults);     // West
+      createLinkIfValid(link_id, tile, i + 1, j, link_defaults);     // East
+      createLinkIfValid(link_id, tile, i, j - 1, link_defaults);     // South
+      createLinkIfValid(link_id, tile, i, j + 1, link_defaults);     // North
+    }
+  }
+}
+
+// Creates 8-connected king mesh links (N, S, W, E, NE, NW, SE, SW).
+void Architecture::createKingMeshLinks(int &link_id, const LinkDefaults& link_defaults) {
+  for (int j = 0; j < height; ++j) {
+    for (int i = 0; i < width; ++i) {
+      Tile *tile = getTile(i, j);
+
+      // Creates 4-connected links (N, S, W, E).
+      createLinkIfValid(link_id, tile, i - 1, j, link_defaults);     // West
+      createLinkIfValid(link_id, tile, i + 1, j, link_defaults);     // East
+      createLinkIfValid(link_id, tile, i, j - 1, link_defaults);     // South
+      createLinkIfValid(link_id, tile, i, j + 1, link_defaults);     // North
+      
+      // Creates diagonal links for king mesh (NE, NW, SE, SW).
+      createLinkIfValid(link_id, tile, i - 1, j - 1, link_defaults); // Southwest
+      createLinkIfValid(link_id, tile, i + 1, j - 1, link_defaults); // Southeast
+      createLinkIfValid(link_id, tile, i - 1, j + 1, link_defaults); // Northwest
+      createLinkIfValid(link_id, tile, i + 1, j + 1, link_defaults); // Northeast
+    }
+  }
+}
+
+// Creates ring topology links (only outer boundary connections).
+void Architecture::createRingLinks(int &link_id, const LinkDefaults& link_defaults) {
+  // Connect tiles on the outer boundary only.
+  for (int j = 0; j < height; ++j) {
+    for (int i = 0; i < width; ++i) {
+      Tile *tile = getTile(i, j);
+      
+      // Check if tile is on the boundary.
+      if (isOnBoundary(i, j, width, height)) {
+        // Create connections only to adjacent boundary tiles.
+        createLinkIfValid(link_id, tile, i - 1, j, link_defaults);     // West
+        createLinkIfValid(link_id, tile, i + 1, j, link_defaults);     // East
+        createLinkIfValid(link_id, tile, i, j - 1, link_defaults);     // South
+        createLinkIfValid(link_id, tile, i, j + 1, link_defaults);     // North
       }
     }
   }
 }
 
-// Helper method to apply link overrides.
+// Checks if a link already exists between two tiles.
+bool Architecture::linkExists(Tile *src_tile, Tile *dst_tile) {
+  for (const auto &link : link_storage) {
+    if (link && link->getSrcTile() == src_tile && link->getDstTile() == dst_tile) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Applies link overrides to create, modify, or remove links.
 void Architecture::applyLinkOverrides(const std::vector<LinkOverride>& link_overrides) {
+  int next_link_id = link_storage.size(); // Start from the next available ID
+  
   for (const auto &override : link_overrides) {
+    // Handle existing link modifications/removals by ID
     if (override.id >= 0 && override.id < static_cast<int>(link_storage.size())) {
       Link *link = link_storage[override.id].get();
       if (link) {
@@ -495,6 +568,42 @@ void Architecture::applyLinkOverrides(const std::vector<LinkOverride>& link_over
         }
       }
     }
+    // Handle link creation/removal by tile IDs
+    else if (override.src_tile_id >= 0 && override.dst_tile_id >= 0) {
+      Tile *src_tile = getTile(override.src_tile_id);
+      Tile *dst_tile = getTile(override.dst_tile_id);
+      
+      if (src_tile && dst_tile) {
+        bool link_already_exists = linkExists(src_tile, dst_tile);
+        
+        if (override.existence && !link_already_exists) {
+          // Create new link
+          auto link = std::make_unique<Link>(next_link_id++);
+          
+          // Set link properties
+          if (override.latency > 0) {
+            link->setLatency(override.latency);
+          }
+          if (override.bandwidth > 0) {
+            link->setBandwidth(override.bandwidth);
+          }
+          
+          // Connect the tiles
+          link->connect(src_tile, dst_tile);
+          link_storage.push_back(std::move(link));
+        } else if (!override.existence && link_already_exists) {
+          // Remove existing link
+          for (size_t i = 0; i < link_storage.size(); ++i) {
+            if (link_storage[i] && 
+                link_storage[i]->getSrcTile() == src_tile && 
+                link_storage[i]->getDstTile() == dst_tile) {
+              removeLink(static_cast<int>(i));
+              break;
+            }
+          }
+        }
+      }
+    }
   }
 }
 
@@ -503,7 +612,8 @@ Architecture::Architecture(int width, int height,
                           const TileDefaults& tile_defaults,
                           const std::vector<TileOverride>& tile_overrides,
                           const LinkDefaults& link_defaults,
-                          const std::vector<LinkOverride>& link_overrides) {
+                          const std::vector<LinkOverride>& link_overrides,
+                          BaseTopology base_topology) {
   this->width = width;
   this->height = height;
 
@@ -511,7 +621,7 @@ Architecture::Architecture(int width, int height,
   initializeTiles(width, height);
   configureDefaultTileSettings(tile_defaults);
   applyTileOverrides(tile_overrides);
-  createLinks(link_defaults);
+  createLinks(link_defaults, base_topology);
   applyLinkOverrides(link_overrides);
 }
 
@@ -568,64 +678,3 @@ void Architecture::removeLink(int link_id) {
   // Marks the link as removed by setting it to null.
   link_storage[link_id].reset();
 }
-
-// Helper method to remove links for directions not supported by the tile.
-void Architecture::removeUnsupportedLinks(Tile *tile) {
-  int x = tile->getX();
-  int y = tile->getY();
-  
-  // Checks each direction and removes links if tile doesn't have the corresponding port.
-  
-  // Checks West direction.
-  if (!tile->hasPort("W") && x > 0) {
-    // Finds the link ID from this tile to the west tile.
-    for (size_t i = 0; i < link_storage.size(); ++i) {
-      if (link_storage[i] && 
-          link_storage[i]->getSrcTile() == tile && 
-          link_storage[i]->getDstTile() == getTile(x - 1, y)) {
-        removeLink(i);
-        break;
-      }
-    }
-  }
-  
-  // Checks East direction.
-  if (!tile->hasPort("E") && x < width - 1) {
-    // Finds the link ID from this tile to the east tile.
-    for (size_t i = 0; i < link_storage.size(); ++i) {
-      if (link_storage[i] && 
-          link_storage[i]->getSrcTile() == tile && 
-          link_storage[i]->getDstTile() == getTile(x + 1, y)) {
-        removeLink(i);
-        break;
-      }
-    }
-  }
-  
-  // Checks South direction.
-  if (!tile->hasPort("S") && y > 0) {
-    // Finds the link ID from this tile to the south tile.
-    for (size_t i = 0; i < link_storage.size(); ++i) {
-      if (link_storage[i] && 
-          link_storage[i]->getSrcTile() == tile && 
-          link_storage[i]->getDstTile() == getTile(x, y - 1)) {
-        removeLink(i);
-        break;
-      }
-    }
-  }
-  
-  // Checks North direction.
-  if (!tile->hasPort("N") && y < height - 1) {
-    // Finds the link ID from this tile to the north tile.
-    for (size_t i = 0; i < link_storage.size(); ++i) {
-      if (link_storage[i] && 
-          link_storage[i]->getSrcTile() == tile && 
-          link_storage[i]->getDstTile() == getTile(x, y + 1)) {
-        removeLink(i);
-        break;
-      }
-    }
-  }
-}
-
