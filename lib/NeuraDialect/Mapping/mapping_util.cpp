@@ -367,12 +367,9 @@ mlir::Operation *mlir::neura::getMaterializedBackwardUser(Operation *op) {
          "Expected the user of ctrl_mov target to be a reserve operation");
   auto reserve_op = dyn_cast<neura::ReserveOp>(target.getDefiningOp());
 
-  // Skip ctrl_mov users of reserve; return the first phi user.
+  // Skip ctrl_mov users of reserve; return the first materialized user.
   for (Operation *user : reserve_op.getResult().getUsers()) {
-    if (isa<neura::CtrlMovOp>(user)) {
-      continue; // skip ctrl_mov user
-    }
-    if (isa<neura::PhiOp>(user)) {
+    if (isMaterializedReserveUser(user)) {
       return user;
     }
   }
@@ -753,6 +750,19 @@ bool mlir::neura::canReachLocInTime(const MappingLoc &src_loc,
   return false;
 }
 
+bool mlir::neura::isMaterializedReserveUser(Operation *user) {
+  if (isa<neura::PhiOp>(user)) {
+    return true;
+  }
+  if (isa<neura::InvariantOp>(user)) {
+    return true;
+  }
+  if (isa<neura::CarryOp>(user)) {
+    return true;
+  }
+  return false;
+}
+
 void mlir::neura::updateAward(std::map<MappingLoc, int> &locs_with_award,
                               MappingLoc loc, int award) {
   // Updates the award of the top element in the priority queue.
@@ -803,8 +813,9 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
     assert(ctrl_mov && "Expected user to be a CtrlMovOp");
     mlir::Operation *materialized_backward_op =
         getMaterializedBackwardUser(ctrl_mov);
-    assert(isa<neura::PhiOp>(materialized_backward_op) &&
-           "Expected materialized operation of ctrl_mov to be a PhiOp");
+    assert(isMaterializedReserveUser(materialized_backward_op) &&
+           "Expected materialized operation of ctrl_mov to be a "
+           "PhiOp/InvariantOp/CarryOp.");
     backward_users.push_back(materialized_backward_op);
   }
 
@@ -845,10 +856,7 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
       award += op->getOperands().size() -
                getPhysicalHops(producers, tile, mapping_state);
     }
-    // llvm::errs() << "[DEBUG] checking range: "
-    //              << earliest_start_time_step << " to "
-    //              << latest_end_time_step << " for tile: "
-    //              << tile->getType() << "#" << tile->getId() << "\n";
+
     for (int t = earliest_start_time_step; t < latest_end_time_step; t += 1) {
       MappingLoc tile_loc_candidate = {tile, t};
       // If the tile at time `t` is available, we can consider it for mapping.
@@ -993,8 +1001,9 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
       assert(ctrl_mov && "Expected user to be a CtrlMovOp");
       mlir::Operation *materialized_backward_op =
           getMaterializedBackwardUser(ctrl_mov);
-      assert(isa<neura::PhiOp>(materialized_backward_op) &&
-             "Expected materialized operation of ctrl_mov to be a PhiOp");
+      assert(isMaterializedReserveUser(materialized_backward_op) &&
+             "Expected materialized operation of ctrl_mov to be a "
+             "PhiOp/InvariantOp/CarryOp");
       // Gets the last location of the materialized operation.
       MappingLoc backward_loc =
           mapping_state.getAllLocsOfOp(materialized_backward_op).back();

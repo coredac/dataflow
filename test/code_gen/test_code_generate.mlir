@@ -8,7 +8,7 @@
 // RUN:   --map-to-accelerator="mapping-strategy=heuristic" \
 // RUN:   --architecture-spec=../test_architecture_spec/architecture.yaml \
 // RUN:   --generate-code -o %t-mapping.mlir 
-// RU: FileCheck %s --input-file=%t-mapping.mlir -check-prefix=MAPPING
+// RUN: FileCheck %s --input-file=%t-mapping.mlir -check-prefix=MAPPING
 // RUN: FileCheck %s --input-file=tmp-generated-instructions.yaml --check-prefix=YAML
 // RUN: FileCheck %s --input-file=tmp-generated-instructions.asm --check-prefix=ASM
 
@@ -32,7 +32,7 @@ func.func @loop_test() -> f32 {
   return %result : f32
 }
 
-// MAPPING:        func.func @loop_test() -> f32 attributes {accelerator = "neura", mapping_info = {compiled_ii = 6 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 4 : i32, res_mii = 2 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {
+// MAPPING:        func.func @loop_test() -> f32 attributes {accelerator = "neura", dataflow_mode = "predicate", mapping_info = {compiled_ii = 6 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 4 : i32, res_mii = 2 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {
 
 // Each core represents a processing element in the CGRA array
 // Example: column: 1, row: 1 represents the core at position (1,1) in the 4x4 grid

@@ -16,9 +16,11 @@
 // RUN: --lower-builtin-to-neura \
 // RUN: --lower-llvm-to-neura \
 // RUN: --canonicalize-cast \
+// RUN: --fold-constant \
 // RUN: --canonicalize-live-in \
 // RUN: --leverage-predicated-value \
 // RUN: --transform-ctrl-to-data-flow \
+// RUN: --fold-constant \
 // RUN: --fuse-loop-control \
 // RUN: --fold-constant \
 // RUN: --insert-data-mov \
@@ -33,9 +35,11 @@
 // RUN: --lower-builtin-to-neura \
 // RUN: --lower-llvm-to-neura \
 // RUN: --canonicalize-cast \
+// RUN: --fold-constant \
 // RUN: --canonicalize-live-in \
 // RUN: --leverage-predicated-value \
 // RUN: --transform-ctrl-to-data-flow \
+// RUN: --fold-constant \
 // RUN: --fuse-loop-control \
 // RUN: --fold-constant \
 // RUN: --insert-data-mov \
@@ -75,6 +79,6 @@ module {
 // CHECK-NEXT: "neura.return"(%15) : (i64) -> ()
 // CHECK-NEXT: }
 
-// SPATIAL:          func.func @simple_add_loop() -> i64 attributes {accelerator = "neura", mapping_info = {compiled_ii = 7 : i32, mapping_mode = "spatial-only", mapping_strategy = "heuristic", rec_mii = 3 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {
+// SPATIAL:          func.func @simple_add_loop() -> i64 attributes {accelerator = "neura", dataflow_mode = "predicate", mapping_info = {compiled_ii = 4 : i32, mapping_mode = "spatial-only", mapping_strategy = "heuristic", rec_mii = 3 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {
 
-// SPATIAL-TEMPORAL:        func.func @simple_add_loop() -> i64 attributes {accelerator = "neura", mapping_info = {compiled_ii = 3 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 3 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {
+// SPATIAL-TEMPORAL:        func.func @simple_add_loop() -> i64 attributes {accelerator = "neura", dataflow_mode = "predicate", mapping_info = {compiled_ii = 3 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 3 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {

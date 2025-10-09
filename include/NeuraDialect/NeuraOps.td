@@ -465,27 +465,106 @@ def Neura_LoopControlOp : Op<NeuraDialect, "loop_control">{
       // Shows loop control that calculates next index and validity in one step.
       %next_idx, %loop_valid = neura.loop_control(
         parent_valid = %parent_valid,
-        start = %start_val,
-        end = %end_val,
-        step = %step_val
-      ) <{iteration_type = "increment"}> : !neura.data<i1, i1>,
-                                           !neura.data<i64, i1>, !neura.data<i64, i1>, !neura.data<i64, i1>
-                                           -> !neura.data<i64, i1>, !neura.data<i1, i1>
+      ) <{
+           start_value = 0 : i64, 
+           end_value = 100 : i64, 
+           step_value = 1 : i64,
+           iteration_type = "increment"
+         }> : !neura.data<i1, i1> -> !neura.data<i64, i1>, !neura.data<i1, i1>
   }];
 
   let arguments = (ins
     AnyType:$parentValid,  // Valid predicate from the parent loop.
-    StrAttr:$iterationType, // Type of the loop iteration (e.g., "increment", "decrement").
-    AnyType:$start,         // Start index of the loop (optional if startValue attr is presented).
-    AnyType:$end,           // End index of the loop (optional if endValue attr is presented).
-    AnyType:$step           // Step size for the loop (optional if stepValue attr is presented).
+    AnyAttr:$iterationType, // "increment" or "decrement".
+    AnyAttr:$start,       // Start index value.
+    AnyAttr:$end,         // End index value.
+    AnyAttr:$step         // Step value (increment or decrement based on iteration_type).
   );
+  
 
   let results = (outs
     AnyType:$nextindex,         // Current loop index
     AnyType:$valid          // Valid predicate for the current index
   );
 
-  let assemblyFormat =
-    " `(``parent_valid` `=` $parentValid `,` `start` `=` $start `,` `end` `=` $end `,` `step` `=` $step`)` attr-dict `:` type($parentValid) `,` type($start) `,` type($end) `,` type($step) `->` type($nextindex) `,` type($valid)";
+  // let assemblyFormat =
+  //   " `(``parent_valid` `=` $parentValid `,` `start` `=` $start `,` `end` `=` $end `,` `step` `=` $step`)` attr-dict `:` type($parentValid) `,` type($start) `,` type($end) `,` type($step) `->` type($nextindex) `,` type($valid)";
+}
+
+// ----------------------------------------------------
+// Defines operations for steering-control based DFG execution.
+// ----------------------------------------------------
+
+// Defines the true_steer operation.
+def Neura_TrueSteerOp : Op<NeuraDialect, "true_steer">{
+  let summary = "Conditionally pass a value when condition is true.";
+  let description = [{When the condition is true, the input value is passed to the output; otherwise, the output is empty.
+    Example:
+      %out = neura.true_steer %in, %cond : i32, i1 -> f32
+  }];
+
+  let arguments = (ins AnyType:$input, AnyType:$condition);
+  let results = (outs AnyType:$output);
+
+  let assemblyFormat = "$input `,` $condition attr-dict `:` type($input) `,` type($condition) `->` type($output)";
+}
+
+// Defines the false_steer operation.
+def Neura_FalseSteerOp : Op<NeuraDialect, "false_steer">{
+  let summary = "Conditionally pass a value when condition is false.";
+  let description = [{When the condition is false, the input value is passed to the output; otherwise, the output is empty.
+    Example:
+      %out = neura.false_steer %in, %cond : i32, i1 -> f32
+  }];
+
+  let arguments = (ins AnyType:$input, AnyType:$condition);
+  let results = (outs AnyType:$output);
+
+  let assemblyFormat = "$input `,` $condition attr-dict `:` type($input) `,` type($condition) `->` type($output)";
+}
+
+// Defines the carry operation.
+def Neura_CarryOp : Op<NeuraDialect, "carry">{
+  let summary = "Carry state across iterations.";
+  let description = [{
+  Three inputs for carry operation:
+    - initial value: used in the first execution.
+    - condition: determines whether to use the carried value.
+    - carried value: used when condition is true.
+  The output is the initial value when it is executed for the first time, otherwise it is the carried value when the condition is true.
+  Example:
+    %out = neura.carry %init, %cond, %carry_val : i32, i1, i32 -> i32
+  }];
+
+  let arguments = (ins AnyType:$initial, AnyType:$condition, AnyType:$carried);
+  let results = (outs AnyType:$result);
+  let assemblyFormat = "$initial `,` $condition `,` $carried attr-dict `:` type($initial) `,` type($condition) `,` type($carried) `->` type($result)";
+}
+
+// Defines the merge operation.
+def Neura_MergeOp : Op<NeuraDialect, "merge">{
+  let summary = "Merge multiple inputs into one output.";
+  let description = [{
+  Merges multiple input values into a single output value based on the condition.
+  Example:
+      %out = neura.merge %cond, %in1, %in2 : i1, i32, i32 -> i32
+  }];
+
+  let arguments = (ins AnyType:$condition, AnyType:$true_value, AnyType:$false_value);
+  let results = (outs AnyType:$result);
+
+  let assemblyFormat = "$condition `,` $true_value `,` $false_value attr-dict `:` type($condition) `,` type($true_value) `,` type($false_value) `->` type($result)";
+}
+
+// Defines the invariant operation.
+def Neura_InvariantOp : Op<NeuraDialect, "invariant">{
+  let summary = "Invariant value across DFG execution.";
+  let description = [{
+  Invariant operation is a subset of carry operation where the output is always the initial value.
+  Example:
+      %out = neura.invariant %init %cond : i32, i1 -> i32
+  }];
+  let arguments = (ins AnyType:$initial, AnyType:$condition);
+  let results = (outs AnyType:$result);
+  let assemblyFormat = "$initial `,` $condition attr-dict `:` type($initial) `,` type($condition) `->` type($result)";
 }
