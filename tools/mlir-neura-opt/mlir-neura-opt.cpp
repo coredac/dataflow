@@ -15,42 +15,42 @@
 #include "NeuraDialect/Architecture/ArchitectureSpec.h"
 
 // Global variable to store architecture spec file path
-static std::string architectureSpecFile;
-static mlir::neura::TileDefaults tileDefaults;
+static std::string architecture_spec_file;
+static mlir::neura::TileDefaults tile_defaults;
 
 // Function to get the architecture spec file path
 std::string mlir::neura::getArchitectureSpecFile() {
-  return architectureSpecFile;
+  return architecture_spec_file;
 }
 
 // Function to get tile defaults configuration
 mlir::neura::TileDefaults mlir::neura::getTileDefaults() {
-  return tileDefaults;
+  return tile_defaults;
 }
 
 int main(int argc, char **argv) {
   // Manually scan and strip --architecture-spec from argv, keep others for MlirOptMain.
-  std::vector<char *> forwardedArgs;
-  forwardedArgs.reserve(argc);
-  forwardedArgs.push_back(argv[0]);
+  std::vector<char *> forwarded_args;
+  forwarded_args.reserve(argc);
+  forwarded_args.push_back(argv[0]);
   for (int i = 1; i < argc; ++i) {
-    llvm::StringRef argRef(argv[i]);
-    if (argRef == "--architecture-spec") {
+    llvm::StringRef arg_ref(argv[i]);
+    if (arg_ref == "--architecture-spec") {
       if (i + 1 < argc) {
-        architectureSpecFile = argv[i + 1];
+        architecture_spec_file = argv[i + 1];
         ++i; // skip value
         continue;
       }
-    } else if (argRef.starts_with("--architecture-spec=")) {
-      architectureSpecFile = argRef.substr(strlen("--architecture-spec=")).str();
+    } else if (arg_ref.starts_with("--architecture-spec=")) {
+      architecture_spec_file = arg_ref.substr(strlen("--architecture-spec=")).str();
       continue;
     }
-    forwardedArgs.push_back(argv[i]);
+    forwarded_args.push_back(argv[i]);
   }
 
 
-  int newArgc = static_cast<int>(forwardedArgs.size());
-  char **newArgv = forwardedArgs.data();
+  int new_argc = static_cast<int>(forwarded_args.size());
+  char **new_argv = forwarded_args.data();
 
   // Registers MLIR dialects.
   mlir::DialectRegistry registry;
@@ -66,14 +66,14 @@ int main(int argc, char **argv) {
   mlir::registerViewOpGraphPass();
 
   // Print architecture spec file info
-  if (!architectureSpecFile.empty()) {
+  if (!architecture_spec_file.empty()) {
     llvm::errs() << "[mlir-neura-opt] Architecture specification file: " 
-                 << architectureSpecFile << "\n";
+                 << architecture_spec_file << "\n";
   } else {
     llvm::errs() << "[mlir-neura-opt] No architecture specification file provided, using default configuration\n";
   }
 
   // Runs the MLIR optimizer.
   return mlir::asMainReturnCode(
-      mlir::MlirOptMain(newArgc, newArgv, "Neura Dialect Optimizer", registry));
+      mlir::MlirOptMain(new_argc, new_argv, "Neura Dialect Optimizer", registry));
 }
