@@ -45,15 +45,15 @@ struct LeveragePredicatedValuePass
         }
 
         for (BlockArgument arg : block->getArguments()) {
-          Type origType = arg.getType();
+          Type orig_type = arg.getType();
 
           // Avoid double-wrapping if already predicated
-          if (llvm::isa<neura::PredicatedValue>(origType)) {
+          if (llvm::isa<neura::PredicatedValue>(orig_type)) {
             continue;
           }
 
           auto predicated_type = neura::PredicatedValue::get(
-              func.getContext(), origType,
+              func.getContext(), orig_type,
               IntegerType::get(func.getContext(), 1));
           arg.setType(predicated_type);
         }

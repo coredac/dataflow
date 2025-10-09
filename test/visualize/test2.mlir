@@ -19,7 +19,7 @@ func.func @test_print_op_graph(%a: f32, %b: f32) -> f32 {
 // CHECK-GRAPH: label = "neura.constant : (!neura.data<f32, i1>)
 // CHECK-GRAPH: label = "neura.fadd : (!neura.data<f32, i1>)\n"
 // CHECK-GRAPH: digraph G
-// CHECK-GRAPH: label = "func.func : ()\n\naccelerator: \"neura\"\nfunction_type: (f32, f32) -> f32\nsym_name: \"test_print_op_graph...";
+// CHECK-GRAPH: label = "func.func : ()\n\naccelerator: \"neura\"\ndataflow_mode: \"predicate\"\nfunction_type: (f32, f32) -> f32\nsym_name: \"test_print_op_graph...";
 // CHECK-GRAPH: label = "neura.constant : (!neura.data<f32, i1>)
 // CHECK-GRAPH: label = "neura.data_mov : (!neura.data<f32, i1>)
 // CHECK-GRAPH: label = "neura.fadd : (!neura.data<f32, i1>)\n"
