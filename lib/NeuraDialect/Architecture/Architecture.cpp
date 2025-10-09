@@ -265,6 +265,32 @@ Architecture::Architecture(int width, int height) {
         link_towards_up->connect(tile, getTile(i, j + 1));
         link_storage.push_back(std::move(link_towards_up));
       }
+
+      // 添加对角方向的连接
+      // 左上对角
+      if (i > 0 && j < height - 1) {
+        auto link_towards_upper_left = std::make_unique<Link>(link_id++);
+        link_towards_upper_left->connect(tile, getTile(i - 1, j + 1));
+        link_storage.push_back(std::move(link_towards_upper_left));
+      }
+      // 右上对角
+      if (i < width - 1 && j < height - 1) {
+        auto link_towards_upper_right = std::make_unique<Link>(link_id++);
+        link_towards_upper_right->connect(tile, getTile(i + 1, j + 1));
+        link_storage.push_back(std::move(link_towards_upper_right));
+      }
+      // 左下对角
+      if (i > 0 && j > 0) {
+        auto link_towards_lower_left = std::make_unique<Link>(link_id++);
+        link_towards_lower_left->connect(tile, getTile(i - 1, j - 1));
+        link_storage.push_back(std::move(link_towards_lower_left));
+      }
+      // 右下对角
+      if (i < width - 1 && j > 0) {
+        auto link_towards_lower_right = std::make_unique<Link>(link_id++);
+        link_towards_lower_right->connect(tile, getTile(i + 1, j - 1));
+        link_storage.push_back(std::move(link_towards_lower_right));
+      }
     }
   }
 }
