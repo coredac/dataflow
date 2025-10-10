@@ -36,7 +36,7 @@ This allocation scheme ensures predictable register numbering in test outputs.
 To use this architecture specification in your tests, add the following option to your `mlir-neura-opt` command:
 
 ```bash
---architecture-spec=test_architecture_spec/architecture.yaml
+--architecture-spec=arch_spec/architecture.yaml
 ```
 
 ### Example
@@ -46,7 +46,7 @@ mlir-neura-opt input.mlir \
   --assign-accelerator \
   --lower-llvm-to-neura \
   --map-to-accelerator="mapping-strategy=heuristic" \
-  --architecture-spec=test_architecture_spec/architecture.yaml \
+  --architecture-spec=arch_spec/architecture.yaml \
   --generate-code
 ```
 
@@ -54,9 +54,9 @@ mlir-neura-opt input.mlir \
 
 When using this architecture specification from different test directories, use the appropriate relative path:
 
-- From `test/`: `test_architecture_spec/architecture.yaml`
-- From `test/code_gen/`: `../test_architecture_spec/architecture.yaml`  
-- From `test/neura/ctrl/`: `../../test_architecture_spec/architecture.yaml`
+- From `test/`: `arch_spec/architecture.yaml`
+- From `test/code_gen/`: `../arch_spec/architecture.yaml`  
+- From `test/neura/ctrl/`: `../../arch_spec/architecture.yaml`
 
 ## Benefits
 

@@ -25,7 +25,7 @@
 // RUN: --fold-constant \
 // RUN: --insert-data-mov \
 // RUN: --map-to-accelerator="mapping-strategy=heuristic mapping-mode=spatial-only backtrack-config=customized=4,3" \
-// RUN: --architecture-spec=../test_architecture_spec/architecture.yaml \
+// RUN: --architecture-spec=../arch_spec/architecture.yaml \
 // RUN: | FileCheck %s -check-prefix=SPATIAL
 
 // RUN: mlir-neura-opt %t-llvm.mlir \
@@ -44,7 +44,7 @@
 // RUN: --fold-constant \
 // RUN: --insert-data-mov \
 // RUN: --map-to-accelerator="mapping-strategy=heuristic mapping-mode=spatial-temporal backtrack-config=customized=4,4" \
-// RUN: --architecture-spec=../test_architecture_spec/architecture.yaml \
+// RUN: --architecture-spec=../arch_spec/architecture.yaml \
 // RUN: | FileCheck %s -check-prefix=SPATIAL-TEMPORAL
 
 module {

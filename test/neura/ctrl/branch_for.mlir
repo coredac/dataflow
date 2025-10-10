@@ -51,7 +51,7 @@
 // RUN:   --fold-constant \
 // RUN:   --insert-data-mov \
 // RUN:   --map-to-accelerator="mapping-strategy=heuristic backtrack-config=simple" \
-// RUN:   --architecture-spec=../../test_architecture_spec/architecture.yaml \
+// RUN:   --architecture-spec=../../arch_spec/architecture.yaml \
 // RUN:   | FileCheck %s -check-prefix=MAPPING
 
 // RUN: mlir-neura-opt %s \
@@ -64,7 +64,7 @@
 // RUN:   --fold-constant \
 // RUN:   --insert-data-mov \
 // RUN:   --map-to-accelerator="mapping-strategy=heuristic backtrack-config=simple" \
-// RUN:   --architecture-spec=../../test_architecture_spec/architecture.yaml \
+// RUN:   --architecture-spec=../../arch_spec/architecture.yaml \
 // RUN:   --generate-code
 // RUN: FileCheck %s --input-file=tmp-generated-instructions.yaml -check-prefix=YAML
 // RUN: FileCheck %s --input-file=tmp-generated-instructions.asm --check-prefix=ASM
