@@ -108,8 +108,7 @@ void configureSupportedOperations(CustomizableFunctionUnit *function_unit, const
 
 // Creates a function unit for a specific operation.
 // Maps YAML operation names to OperationKind enum values and creates appropriate function units.
-// Returns the next available function unit ID.
-int createFunctionUnitForOperation(Tile *tile, const std::string &operation, int function_unit_id) {
+void createFunctionUnitForOperation(Tile *tile, const std::string &operation, int function_unit_id) {
   auto function_unit = std::make_unique<CustomizableFunctionUnit>(function_unit_id);
   
   // Configures all supported operations using the unified function.
@@ -119,9 +118,6 @@ int createFunctionUnitForOperation(Tile *tile, const std::string &operation, int
   // Such support would help users identify typos in their YAML configuration.
   
   tile->addFunctionUnit(std::move(function_unit));
-  
-  // Returns the next available ID.
-  return function_unit_id + 1;
 }
 
 // Configures tile function units based on operations.
@@ -135,7 +131,7 @@ void configureTileFunctionUnits(Tile *tile, const std::vector<std::string> &oper
   
   int function_unit_id = 0;
   for (const auto &operation : operations) {
-    function_unit_id = createFunctionUnitForOperation(tile, operation, function_unit_id);
+    createFunctionUnitForOperation(tile, operation, function_unit_id++);
   }
 }
 
