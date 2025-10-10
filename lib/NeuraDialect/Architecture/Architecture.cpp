@@ -140,7 +140,7 @@ void configureTileFunctionUnits(Tile *tile, const std::vector<std::string> &oper
 }
 
 //===----------------------------------------------------------------------===//
-// Tile.
+// Tile
 //===----------------------------------------------------------------------===//
 
 Tile::Tile(int id, int x, int y) {
@@ -222,7 +222,7 @@ const std::vector<Register *> Tile::getRegisters() const {
 }
 
 //===----------------------------------------------------------------------===//
-// Link.
+// Link
 //===----------------------------------------------------------------------===//
 
 Link::Link(int id) { this->id = id; }
@@ -241,7 +241,7 @@ void Link::connect(Tile *src, Tile *dst) {
 }
 
 //===----------------------------------------------------------------------===//
-// FunctionUnit.
+// FunctionUnit
 //===----------------------------------------------------------------------===//
 
 FunctionUnit::FunctionUnit(int id) { this->id = id; }
@@ -253,7 +253,7 @@ void FunctionUnit::setTile(Tile *tile) { this->tile = tile; }
 Tile *FunctionUnit::getTile() const { return this->tile; }
 
 //===----------------------------------------------------------------------===//
-// Register.
+// Register
 //===----------------------------------------------------------------------===//
 
 Register::Register(int id) { this->id = id; }
@@ -271,7 +271,7 @@ void Register::setRegisterFile(RegisterFile *register_file) {
 RegisterFile *Register::getRegisterFile() const { return this->register_file; }
 
 //===----------------------------------------------------------------------===//
-// Register File.
+// Register File
 //===----------------------------------------------------------------------===//
 
 RegisterFile::RegisterFile(int id) { this->id = id; }
@@ -302,7 +302,7 @@ RegisterFileCluster *RegisterFile::getRegisterFileCluster() const {
 }
 
 //===----------------------------------------------------------------------===//
-// Register File Cluster.
+// Register File Cluster
 //===----------------------------------------------------------------------===//
 
 RegisterFileCluster::RegisterFileCluster(int id) { this->id = id; }
@@ -324,21 +324,18 @@ RegisterFileCluster::getRegisterFiles() const {
 }
 
 //===----------------------------------------------------------------------===//
-// Architecture.
+// Architecture
 //===----------------------------------------------------------------------===//
 
 // Initializes tiles in the architecture.
 void Architecture::initializeTiles(int width, int height) {
-  const int num_tiles = width * height;
-  tile_storage.reserve(num_tiles);
-  
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
       const int id = y * width + x;
       auto tile = std::make_unique<Tile>(id, x, y);
       id_to_tile[id] = tile.get();
       coord_to_tile[{x, y}] = tile.get();
-      tile_storage.push_back(std::move(tile));
+      tile_storage[id] = std::move(tile);
     }
   }
 }
@@ -650,13 +647,47 @@ Tile *Architecture::getTile(int x, int y) {
 
 std::vector<Tile *> Architecture::getAllTiles() const {
   std::vector<Tile *> result;
-  for (auto &tile : tile_storage)
-    result.push_back(tile.get());
+  for (const auto &[id, tile] : tile_storage) {
+    if (tile) {
+      result.push_back(tile.get());
+    }
+  }
   return result;
 }
 
 int Architecture::getNumTiles() const {
   return static_cast<int>(id_to_tile.size());
+}
+
+// Removes a tile from the architecture.
+void Architecture::removeTile(int tile_id) {
+  auto it = tile_storage.find(tile_id);
+  if (it == tile_storage.end() || !it->second) {
+    return;  // Tile not found or already removed.
+  }
+  
+  Tile *tile = it->second.get();
+  
+  // Removes all links connected to this tile.
+  std::vector<int> links_to_remove;
+  for (const auto &[link_id, link] : link_storage) {
+    if (link && (link->getSrcTile() == tile || link->getDstTile() == tile)) {
+      links_to_remove.push_back(link_id);
+    }
+  }
+  
+  for (int link_id : links_to_remove) {
+    removeLink(link_id);
+  }
+  
+  // Removes tile from coordinate mapping.
+  coord_to_tile.erase({tile->getX(), tile->getY()});
+  
+  // Removes tile from ID mapping.
+  id_to_tile.erase(tile_id);
+  
+  // Removes tile from storage.
+  tile_storage.erase(it);
 }
 
 std::vector<Link *> Architecture::getAllLinks() const {

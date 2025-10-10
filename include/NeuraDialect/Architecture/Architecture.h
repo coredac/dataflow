@@ -382,6 +382,9 @@ public:
 
   Link *getLink(int id);
   void removeLink(int link_id);
+  
+  // Tile management.
+  void removeTile(int tile_id);
 
   int getNumTiles() const;
   std::vector<Tile *> getAllTiles() const;
@@ -407,10 +410,10 @@ private:
 
   // Architecture components: tiles, links, and their mappings.
   // Ports and memory are now modeled as part of Tile class.
-  std::vector<std::unique_ptr<Tile>> tile_storage;
-  std::map<int, std::unique_ptr<Link>> link_storage;
-  std::unordered_map<int, Tile *> id_to_tile;
-  std::unordered_map<std::pair<int, int>, Tile *, PairHash> coord_to_tile;
+  std::map<int, std::unique_ptr<Tile>> tile_storage;  // Owns tiles, key is unique tile_id.
+  std::map<int, std::unique_ptr<Link>> link_storage;  // Owns links, key is unique link_id.
+  std::unordered_map<int, Tile *> id_to_tile;  // Maps unique tile_id to Tile pointer.
+  std::unordered_map<std::pair<int, int>, Tile *, PairHash> coord_to_tile;  // Maps (x,y) coordinates to Tile pointer.
 
   int width;
   int height;
