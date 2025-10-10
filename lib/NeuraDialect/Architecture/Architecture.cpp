@@ -2,6 +2,10 @@
 #include "NeuraDialect/Architecture/ArchitectureSpec.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cassert>
+#include <algorithm>
+#include <memory>
+#include <string>
+#include <vector>
 
 using namespace mlir;
 using namespace mlir::neura;
@@ -104,16 +108,20 @@ void configureSupportedOperations(CustomizableFunctionUnit *function_unit, const
 
 // Creates a function unit for a specific operation.
 // Maps YAML operation names to OperationKind enum values and creates appropriate function units.
-void createFunctionUnitForOperation(Tile *tile, const std::string &operation, int &function_unit_id) {
-  auto function_unit = std::make_unique<CustomizableFunctionUnit>(function_unit_id++);
+// Returns the next available function unit ID.
+int createFunctionUnitForOperation(Tile *tile, const std::string &operation, int function_unit_id) {
+  auto function_unit = std::make_unique<CustomizableFunctionUnit>(function_unit_id);
   
   // Configures all supported operations using the unified function.
   configureSupportedOperations(function_unit.get(), operation);
   
-  // TODO: Add support for unknown operations with warning instead of silent failure.
-  // This would help users identify typos in their YAML configuration.
+  // TODO: Adds support for unknown operations with warning instead of silent failure.
+  // Such support would help users identify typos in their YAML configuration.
   
   tile->addFunctionUnit(std::move(function_unit));
+  
+  // Returns the next available ID.
+  return function_unit_id + 1;
 }
 
 // Configures tile function units based on operations.
@@ -127,7 +135,7 @@ void configureTileFunctionUnits(Tile *tile, const std::vector<std::string> &oper
   
   int function_unit_id = 0;
   for (const auto &operation : operations) {
-    createFunctionUnitForOperation(tile, operation, function_unit_id);
+    function_unit_id = createFunctionUnitForOperation(tile, operation, function_unit_id);
   }
 }
 
@@ -178,7 +186,7 @@ void Tile::addRegisterFileCluster(RegisterFileCluster *register_file_cluster) {
     llvm::errs() << "Warning: Overwriting existing register file cluster ("
                  << this->register_file_cluster->getId() << ") in Tile "
                  << this->id << "\n";
-    // Remove the old register file cluster before adding the new one.
+    // Removes the old register file cluster before adding the new one.
     delete this->register_file_cluster;
   }
   this->register_file_cluster = register_file_cluster;
@@ -379,7 +387,7 @@ void Architecture::recreateRegisterFileCluster(Tile *tile, int num_registers) {
   const int k_num_regs_per_regfile = 8;  // Keep this fixed for now.
   const int k_num_regfiles_per_cluster = num_registers / k_num_regs_per_regfile;
   
-  // Remove existing register file cluster.
+  // Removes existing register file cluster.
   if (tile->getRegisterFileCluster()) {
     delete tile->getRegisterFileCluster();
   }
@@ -399,7 +407,7 @@ void Architecture::recreateRegisterFileCluster(Tile *tile, int num_registers) {
     new_register_file_cluster->addRegisterFile(register_file);
   }
   
-  // Add new register file cluster to the tile.
+  // Adds new register file cluster to the tile.
   tile->addRegisterFileCluster(new_register_file_cluster);
 }
 
@@ -440,11 +448,12 @@ void Architecture::applyTileOverrides(const std::vector<TileOverride>& tile_over
 // Creates a single link between two tiles.
 void Architecture::createSingleLink(int &link_id, Tile *src_tile, Tile *dst_tile, 
                                    const LinkDefaults& link_defaults) {
-  auto link = std::make_unique<Link>(link_id++);
+  auto link = std::make_unique<Link>(link_id);
   link->setLatency(link_defaults.latency);
   link->setBandwidth(link_defaults.bandwidth);
   link->connect(src_tile, dst_tile);
-  link_storage.push_back(std::move(link));
+  link_storage[link_id] = std::move(link);
+  link_id++;
 }
 
 // Creates links between tiles based on topology.
@@ -462,7 +471,7 @@ void Architecture::createLinks(const LinkDefaults& link_defaults, BaseTopology b
       createRingLinks(link_id, link_defaults);
       break;
     default:
-      // Default to mesh if unknown topology
+      // Defaults to mesh if unknown topology
       createMeshLinks(link_id, link_defaults);
       break;
   }
@@ -519,14 +528,14 @@ void Architecture::createKingMeshLinks(int &link_id, const LinkDefaults& link_de
 
 // Creates ring topology links (only outer boundary connections).
 void Architecture::createRingLinks(int &link_id, const LinkDefaults& link_defaults) {
-  // Connect tiles on the outer boundary only.
+  // Connects tiles on the outer boundary only.
   for (int j = 0; j < height; ++j) {
     for (int i = 0; i < width; ++i) {
       Tile *tile = getTile(i, j);
       
-      // Check if tile is on the boundary.
+      // Checks if tile is on the boundary.
       if (isOnBoundary(i, j, width, height)) {
-        // Create connections only to adjacent boundary tiles.
+        // Creates connections only to adjacent boundary tiles.
         createLinkIfValid(link_id, tile, i - 1, j, link_defaults);     // West
         createLinkIfValid(link_id, tile, i + 1, j, link_defaults);     // East
         createLinkIfValid(link_id, tile, i, j - 1, link_defaults);     // South
@@ -538,7 +547,7 @@ void Architecture::createRingLinks(int &link_id, const LinkDefaults& link_defaul
 
 // Checks if a link already exists between two tiles.
 bool Architecture::linkExists(Tile *src_tile, Tile *dst_tile) {
-  for (const auto &link : link_storage) {
+  for (const auto &[id, link] : link_storage) {
     if (link && link->getSrcTile() == src_tile && link->getDstTile() == dst_tile) {
       return true;
     }
@@ -548,11 +557,11 @@ bool Architecture::linkExists(Tile *src_tile, Tile *dst_tile) {
 
 // Applies link overrides to create, modify, or remove links.
 void Architecture::applyLinkOverrides(const std::vector<LinkOverride>& link_overrides) {
-  int next_link_id = link_storage.size(); // Start from the next available ID
+  int next_link_id = link_storage.empty() ? 0 : link_storage.rbegin()->first + 1; // Starts from the next available ID
   
   for (const auto &override : link_overrides) {
-    // Handle existing link modifications/removals by ID
-    if (override.id >= 0 && override.id < static_cast<int>(link_storage.size())) {
+    // Handles existing link modifications/removals by ID
+    if (override.id >= 0 && link_storage.find(override.id) != link_storage.end()) {
       Link *link = link_storage[override.id].get();
       if (link) {
         if (override.latency > 0) {
@@ -568,7 +577,7 @@ void Architecture::applyLinkOverrides(const std::vector<LinkOverride>& link_over
         }
       }
     }
-    // Handle link creation/removal by tile IDs
+    // Handles link creation/removal by tile IDs
     else if (override.src_tile_id >= 0 && override.dst_tile_id >= 0) {
       Tile *src_tile = getTile(override.src_tile_id);
       Tile *dst_tile = getTile(override.dst_tile_id);
@@ -577,10 +586,10 @@ void Architecture::applyLinkOverrides(const std::vector<LinkOverride>& link_over
         bool link_already_exists = linkExists(src_tile, dst_tile);
         
         if (override.existence && !link_already_exists) {
-          // Create new link
+          // Creates new link
           auto link = std::make_unique<Link>(next_link_id++);
           
-          // Set link properties
+          // Sets link properties
           if (override.latency > 0) {
             link->setLatency(override.latency);
           }
@@ -588,16 +597,17 @@ void Architecture::applyLinkOverrides(const std::vector<LinkOverride>& link_over
             link->setBandwidth(override.bandwidth);
           }
           
-          // Connect the tiles
+          // Connects the tiles
           link->connect(src_tile, dst_tile);
-          link_storage.push_back(std::move(link));
+          link_storage[next_link_id] = std::move(link);
+          next_link_id++;
         } else if (!override.existence && link_already_exists) {
-          // Remove existing link
-          for (size_t i = 0; i < link_storage.size(); ++i) {
-            if (link_storage[i] && 
-                link_storage[i]->getSrcTile() == src_tile && 
-                link_storage[i]->getDstTile() == dst_tile) {
-              removeLink(static_cast<int>(i));
+          // Removes existing link
+          for (auto it = link_storage.begin(); it != link_storage.end(); ++it) {
+            if (it->second && 
+                it->second->getSrcTile() == src_tile && 
+                it->second->getDstTile() == dst_tile) {
+              removeLink(it->first);
               break;
             }
           }
@@ -651,30 +661,29 @@ int Architecture::getNumTiles() const {
 
 std::vector<Link *> Architecture::getAllLinks() const {
   std::vector<Link *> all_links;
-  for (const auto &link : link_storage) {
-    all_links.push_back(link.get());
+  for (const auto &[id, link] : link_storage) {
+    if (link) {
+      all_links.push_back(link.get());
+    }
   }
   return all_links;
 }
 
 void Architecture::removeLink(int link_id) {
-  if (link_id < 0 || link_id >= static_cast<int>(link_storage.size())) {
+  auto it = link_storage.find(link_id);
+  if (it == link_storage.end() || !it->second) {
     return;
   }
   
-  Link *link = link_storage[link_id].get();
-  if (!link) {
-    return;
-  }
-  
+  Link *link = it->second.get();
   Tile *src_tile = link->getSrcTile();
   Tile *dst_tile = link->getDstTile();
   
   if (src_tile && dst_tile) {
-    // Remove the link from both tiles' connection sets.
+    // Removes the link from both tiles' connection sets.
     src_tile->unlinkDstTile(link, dst_tile);
   }
   
-  // Marks the link as removed by setting it to null.
-  link_storage[link_id].reset();
+  // Removes the link from storage.
+  link_storage.erase(it);
 }

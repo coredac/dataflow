@@ -15,7 +15,7 @@
 namespace mlir {
 namespace neura {
 
-// Enum for identifying resource type.
+// Enumeration for identifying resource type.
 enum class ResourceKind {
   Tile,
   Link,
@@ -25,14 +25,14 @@ enum class ResourceKind {
   RegisterFileCluster,
 };
 
-// Enum for function unit resource type.
+// Enumeration for function unit resource type.
 enum class FunctionUnitKind {
   FixedPointAdder,
   FixedPointMultiplier,
   CustomizableFunctionUnit,
 };
 
-// Enum for supported operation types.
+// Enumeration for supported operation types.
 enum OperationKind { 
   // Integer arithmetic operations.
   IAdd = 0, IMul = 1, ISub = 2, IDiv = 3, IRem = 4,
@@ -73,7 +73,7 @@ public:
 };
 
 //===----------------------------------------------------------------------===//
-// Forward declaration for use in Tile
+// Forward declaration for use in Tile.
 class Tile;
 class Link;
 class FunctionUnit;
@@ -133,7 +133,7 @@ public:
 };
 
 //===----------------------------------------------------------------------===//
-// Tile
+// Tile.
 //===----------------------------------------------------------------------===//
 
 class Tile : public BasicResource {
@@ -172,13 +172,13 @@ public:
   }
 
   bool canSupportOperation(OperationKind operation) const {
+    // Checks if any function unit in this tile supports the operation.
+    // The implementation checks all functional units in the tile.
     for (FunctionUnit *fu : functional_units) {
       if (fu->canSupportOperation(operation)) {
         return true;
       }
     }
-    // Check if any function unit in this tile supports the operation.
-    // This is now properly implemented by checking all functional units.
     return false;
   }
 
@@ -219,7 +219,7 @@ private:
 };
 
 //===----------------------------------------------------------------------===//
-// Link
+// Link.
 //===----------------------------------------------------------------------===//
 
 class Link : public BasicResource {
@@ -251,11 +251,11 @@ private:
   Tile *src_tile;
   Tile *dst_tile;
   int latency = 1;        // Latency in cycles.
-  int bandwidth = 32;     // Bandwidth in bits per cycle
+  int bandwidth = 32;     // Bandwidth in bits per cycle.
 };
 
 //===----------------------------------------------------------------------===//
-// Register
+// Register.
 //===----------------------------------------------------------------------===//
 
 class Register : public BasicResource {
@@ -284,7 +284,7 @@ private:
 };
 
 //===----------------------------------------------------------------------===//
-// Register File
+// Register File.
 //===----------------------------------------------------------------------===//
 
 class RegisterFile : public BasicResource {
@@ -317,7 +317,7 @@ private:
 };
 
 //===----------------------------------------------------------------------===//
-// Register File Cluster
+// Register File Cluster.
 //===----------------------------------------------------------------------===//
 
 class RegisterFileCluster : public BasicResource {
@@ -356,7 +356,7 @@ struct PairHash {
   }
 };
 
-// Forward declaration
+// Forward declaration.
 struct TileDefaults;
 struct TileOverride;
 struct LinkDefaults;
@@ -408,7 +408,7 @@ private:
   // Architecture components: tiles, links, and their mappings.
   // Ports and memory are now modeled as part of Tile class.
   std::vector<std::unique_ptr<Tile>> tile_storage;
-  std::vector<std::unique_ptr<Link>> link_storage;
+  std::map<int, std::unique_ptr<Link>> link_storage;
   std::unordered_map<int, Tile *> id_to_tile;
   std::unordered_map<std::pair<int, int>, Tile *, PairHash> coord_to_tile;
 

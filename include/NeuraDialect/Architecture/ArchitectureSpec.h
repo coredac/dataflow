@@ -7,26 +7,37 @@
 namespace mlir {
 namespace neura {
 
-// Enumeration for base topology types
+// Enumeration for base topology types.
 enum class BaseTopology {
-  MESH,      // 4-connected mesh (N, S, W, E)
-  KING_MESH, // 8-connected mesh (N, S, W, E, NE, NW, SE, SW)
-  RING       // Ring topology (only outer boundary connections)
+  MESH,      // 4-connected mesh (N, S, W, E).
+  KING_MESH, // 8-connected mesh (N, S, W, E, NE, NW, SE, SW).
+  RING       // Ring topology (only outer boundary connections).
 };
 
-// Structure to hold tile default configuration
+// Structure for holding tile default configuration.
 struct TileDefaults {
-  int num_registers = 64;  // default value
-  std::vector<std::string> default_ports = {"N", "S", "W", "E"};  // default ports
-  std::vector<std::string> operations = {"add", "mul", "sub"};  // default operations
+  int num_registers = 64;  // default value.
+  std::vector<std::string> default_ports = {"N", "S", "W", "E"};  // default ports.
+  std::vector<std::string> operations = {
+    "add", "mul", "sub", "div", "rem", 
+    "fadd", "fmul", "fsub", "fdiv", 
+    "or", "not", "icmp", "fcmp", "sel", 
+    "cast", "sext", "zext", "shl", 
+    "vfmul", "fadd_fadd", "fmul_fadd", 
+    "data_mov", "ctrl_mov", 
+    "reserve", "grant_predicate", "grant_once", "grant_always", 
+    "loop_control", "phi", "constant", 
+    "load", "store", "return", 
+    "load_indexed", "store_indexed", "alloca"
+  };  // default operations - includes all supported operations for newbie convenience.
 };
 
-// Structure to hold memory configuration
+// Structure for holding memory configuration.
 struct MemoryConfig {
-  int capacity = -1;  // Memory capacity in bytes
+  int capacity = -1;  // Memory capacity in bytes.
 };
 
-// Structure to hold tile override configuration
+// Structure for holding tile override configuration.
 struct TileOverride {
   int id = -1;
   int x = -1, y = -1;
@@ -36,13 +47,13 @@ struct TileOverride {
   MemoryConfig memory;
 };
 
-// Structure to hold link default configuration
+// Structure for holding link default configuration.
 struct LinkDefaults {
-  int latency = 1;  // default latency
-  int bandwidth = 32;  // default bandwidth
+  int latency = 1;  // default latency.
+  int bandwidth = 32;  // default bandwidth.
 };
 
-// Structure to hold link override configuration
+// Structure for holding link override configuration.
 struct LinkOverride {
   int id = -1;
   int latency = -1;
@@ -52,11 +63,11 @@ struct LinkOverride {
   bool existence = true;
 };
 
-// Function to get the architecture specification file path
-// This is set by the command line tool when a YAML file is provided
+// Function for getting the architecture specification file path.
+// This is set by the command line tool when a YAML file is provided.
 std::string getArchitectureSpecFile();
 
-// Function to get tile defaults configuration
+// Function for getting tile defaults configuration.
 TileDefaults getTileDefaults();
 
 } // namespace neura
