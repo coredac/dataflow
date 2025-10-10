@@ -140,7 +140,7 @@ void configureTileFunctionUnits(Tile *tile, const std::vector<std::string> &oper
 }
 
 //===----------------------------------------------------------------------===//
-// Tile
+// Tile.
 //===----------------------------------------------------------------------===//
 
 Tile::Tile(int id, int x, int y) {
@@ -222,7 +222,7 @@ const std::vector<Register *> Tile::getRegisters() const {
 }
 
 //===----------------------------------------------------------------------===//
-// Link
+// Link.
 //===----------------------------------------------------------------------===//
 
 Link::Link(int id) { this->id = id; }
@@ -241,7 +241,7 @@ void Link::connect(Tile *src, Tile *dst) {
 }
 
 //===----------------------------------------------------------------------===//
-// FunctionUnit
+// FunctionUnit.
 //===----------------------------------------------------------------------===//
 
 FunctionUnit::FunctionUnit(int id) { this->id = id; }
@@ -253,7 +253,7 @@ void FunctionUnit::setTile(Tile *tile) { this->tile = tile; }
 Tile *FunctionUnit::getTile() const { return this->tile; }
 
 //===----------------------------------------------------------------------===//
-// Register
+// Register.
 //===----------------------------------------------------------------------===//
 
 Register::Register(int id) { this->id = id; }
@@ -271,7 +271,7 @@ void Register::setRegisterFile(RegisterFile *register_file) {
 RegisterFile *Register::getRegisterFile() const { return this->register_file; }
 
 //===----------------------------------------------------------------------===//
-// Register File
+// Register File.
 //===----------------------------------------------------------------------===//
 
 RegisterFile::RegisterFile(int id) { this->id = id; }
@@ -302,7 +302,7 @@ RegisterFileCluster *RegisterFile::getRegisterFileCluster() const {
 }
 
 //===----------------------------------------------------------------------===//
-// Register File Cluster
+// Register File Cluster.
 //===----------------------------------------------------------------------===//
 
 RegisterFileCluster::RegisterFileCluster(int id) { this->id = id; }
@@ -324,7 +324,7 @@ RegisterFileCluster::getRegisterFiles() const {
 }
 
 //===----------------------------------------------------------------------===//
-// Architecture
+// Architecture.
 //===----------------------------------------------------------------------===//
 
 // Initializes tiles in the architecture.
@@ -471,7 +471,7 @@ void Architecture::createLinks(const LinkDefaults& link_defaults, BaseTopology b
       createRingLinks(link_id, link_defaults);
       break;
     default:
-      // Defaults to mesh if unknown topology
+      // Defaults to mesh if unknown topology.
       createMeshLinks(link_id, link_defaults);
       break;
   }
@@ -557,10 +557,10 @@ bool Architecture::linkExists(Tile *src_tile, Tile *dst_tile) {
 
 // Applies link overrides to create, modify, or remove links.
 void Architecture::applyLinkOverrides(const std::vector<LinkOverride>& link_overrides) {
-  int next_link_id = link_storage.empty() ? 0 : link_storage.rbegin()->first + 1; // Starts from the next available ID
+  int next_link_id = link_storage.empty() ? 0 : link_storage.rbegin()->first + 1; // Starts from the next available ID.
   
   for (const auto &override : link_overrides) {
-    // Handles existing link modifications/removals by ID
+    // Handles existing link modifications/removals by ID.
     if (override.id >= 0 && link_storage.find(override.id) != link_storage.end()) {
       Link *link = link_storage[override.id].get();
       if (link) {
@@ -577,7 +577,7 @@ void Architecture::applyLinkOverrides(const std::vector<LinkOverride>& link_over
         }
       }
     }
-    // Handles link creation/removal by tile IDs
+    // Handles link creation/removal by tile IDs.
     else if (override.src_tile_id >= 0 && override.dst_tile_id >= 0) {
       Tile *src_tile = getTile(override.src_tile_id);
       Tile *dst_tile = getTile(override.dst_tile_id);
@@ -586,10 +586,10 @@ void Architecture::applyLinkOverrides(const std::vector<LinkOverride>& link_over
         bool link_already_exists = linkExists(src_tile, dst_tile);
         
         if (override.existence && !link_already_exists) {
-          // Creates new link
+          // Creates new link.
           auto link = std::make_unique<Link>(next_link_id++);
           
-          // Sets link properties
+          // Sets link properties.
           if (override.latency > 0) {
             link->setLatency(override.latency);
           }
@@ -597,12 +597,12 @@ void Architecture::applyLinkOverrides(const std::vector<LinkOverride>& link_over
             link->setBandwidth(override.bandwidth);
           }
           
-          // Connects the tiles
+          // Connects the tiles.
           link->connect(src_tile, dst_tile);
           link_storage[next_link_id] = std::move(link);
           next_link_id++;
         } else if (!override.existence && link_already_exists) {
-          // Removes existing link
+          // Removes existing link.
           for (auto it = link_storage.begin(); it != link_storage.end(); ++it) {
             if (it->second && 
                 it->second->getSrcTile() == src_tile && 
