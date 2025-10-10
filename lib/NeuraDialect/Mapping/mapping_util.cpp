@@ -17,16 +17,67 @@ using namespace mlir::neura;
 namespace mlir {
 namespace neura {
 OperationKind getOperationKindFromMlirOp(Operation *op) {
-  if (isa<neura::AddOp>(op))
-    return IAdd;
-  if (isa<neura::MulOp>(op))
-    return IMul;
-  if (isa<neura::FAddOp>(op))
-    return FAdd;
-  if (isa<neura::FMulOp>(op))
-    return FMul;
-  // TODO: Complete the list here.
-  // @Jackcuii, https://github.com/coredac/dataflow/issues/82.
+  // Integer arithmetic operations
+  if (isa<neura::AddOp>(op)) return IAdd;
+  if (isa<neura::SubOp>(op)) return ISub;
+  if (isa<neura::MulOp>(op)) return IMul;
+  if (isa<neura::DivOp>(op)) return IDiv;
+  if (isa<neura::RemOp>(op)) return IRem;
+  
+  // Floating-point arithmetic operations
+  if (isa<neura::FAddOp>(op)) return FAdd;
+  if (isa<neura::FSubOp>(op)) return FSub;
+  if (isa<neura::FMulOp>(op)) return FMul;
+  if (isa<neura::FDivOp>(op)) return FDiv;
+  
+  // Memory operations
+  if (isa<neura::LoadOp>(op)) return ILoad;
+  if (isa<neura::StoreOp>(op)) return IStore;
+  if (isa<neura::LoadIndexedOp>(op)) return ILoadIndexed;
+  if (isa<neura::StoreIndexedOp>(op)) return IStoreIndexed;
+  if (isa<neura::AllocaOp>(op)) return IAlloca;
+  
+  // Logical operations
+  if (isa<neura::OrOp>(op)) return IOr;
+  if (isa<neura::NotOp>(op)) return INot;
+  if (isa<neura::ICmpOp>(op)) return ICmp;
+  if (isa<neura::FCmpOp>(op)) return FCmp;
+  if (isa<neura::SelOp>(op)) return ISel;
+  
+  // Type conversion operations
+  if (isa<neura::CastOp>(op)) return ICast;
+  if (isa<neura::SExtOp>(op)) return ISExt;
+  if (isa<neura::ZExtOp>(op)) return IZExt;
+  if (isa<neura::ShlOp>(op)) return IShl;
+  
+  // Vector operations
+  if (isa<neura::VFMulOp>(op)) return VFMul;
+  
+  // Fused operations
+  if (isa<neura::FAddFAddOp>(op)) return FAddFAdd;
+  if (isa<neura::FMulFAddOp>(op)) return FMulFAdd;
+  
+  // Control flow operations
+  if (isa<neura::ReturnOp>(op)) return IReturn;
+  if (isa<neura::PhiOp>(op)) return IPhi;
+  
+  // Data movement operations
+  if (isa<neura::DataMovOp>(op)) return IDataMov;
+  if (isa<neura::CtrlMovOp>(op)) return ICtrlMov;
+  
+  // Predicate operations
+  if (isa<neura::ReserveOp>(op)) return IReserve;
+  if (isa<neura::GrantPredicateOp>(op)) return IGrantPredicate;
+  if (isa<neura::GrantOnceOp>(op)) return IGrantOnce;
+  if (isa<neura::GrantAlwaysOp>(op)) return IGrantAlways;
+  
+  // Loop control operations
+  if (isa<neura::LoopControlOp>(op)) return ILoopControl;
+  
+  // Constant operations
+  if (isa<neura::ConstantOp>(op)) return IConstant;
+  
+  // Default fallback
   return IAdd;
 }
 

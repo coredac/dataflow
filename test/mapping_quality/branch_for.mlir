@@ -51,6 +51,7 @@
 // RUN:   --fold-constant \
 // RUN:   --insert-data-mov \
 // RUN:   --map-to-accelerator="mapping-strategy=heuristic backtrack-config=customized" \
+// RUN:   --architecture-spec=../arch_spec/architecture.yaml \
 // RUN:   -o %t-mapping.mlir
 // RUN:   FileCheck %s --input-file=%t-mapping.mlir -check-prefix=MAPPING
 
@@ -63,7 +64,8 @@
 // RUN:   --fold-constant \
 // RUN:   --insert-data-mov \
 // RUN:   --map-to-accelerator="mapping-strategy=heuristic backtrack-config=customized" \
-// RUN:   --generate-code
+// RUN:   --architecture-spec=../arch_spec/architecture.yaml \
+// RUN:   --generate-code 
 // RUN: FileCheck %s --input-file=tmp-generated-instructions.yaml -check-prefix=YAML
 // RUN: FileCheck %s --input-file=tmp-generated-instructions.asm --check-prefix=ASM
 

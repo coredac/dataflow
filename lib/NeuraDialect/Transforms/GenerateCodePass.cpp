@@ -18,6 +18,7 @@
 #include <unordered_set>
 
 #include "NeuraDialect/Architecture/Architecture.h"
+#include "NeuraDialect/Architecture/ArchitectureSpec.h"
 #include "NeuraDialect/NeuraOps.h"
 
 using namespace mlir;
@@ -185,7 +186,11 @@ struct Topology {
 
 static Topology getTopologyFromArchitecture(int columns, int rows) {
   Topology topo;
-  mlir::neura::Architecture arch(columns, rows);
+  mlir::neura::Architecture arch(columns, rows, mlir::neura::TileDefaults{}, 
+                                 std::vector<mlir::neura::TileOverride>{}, 
+                                 mlir::neura::LinkDefaults{}, 
+                                 std::vector<mlir::neura::LinkOverride>{},
+                                 mlir::neura::BaseTopology::MESH);
 
   for (auto *tile : arch.getAllTiles()) {
     topo.tile_location[tile->getId()] = {tile->getX(), tile->getY()};

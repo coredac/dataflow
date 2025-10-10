@@ -16,7 +16,8 @@
 // RUN:   --transform-ctrl-to-data-flow \
 // RUN:   --fold-constant \
 // RUN:   --insert-data-mov \
-// RUN:   --map-to-accelerator="mapping-strategy=heuristic backtrack-config=simple" %t-kernel.mlir | FileCheck %s --check-prefix=CHECK-LLVM2NEURA-MAP
+// RUN:   --map-to-accelerator="mapping-strategy=heuristic backtrack-config=simple" \
+// RUN:   --architecture-spec=../../arch_spec/architecture.yaml %t-kernel.mlir | FileCheck %s --check-prefix=CHECK-LLVM2NEURA-MAP
 
 // CHECK-LLVM2NEURA: accelerator = "neura"
 // CHECK-LLVM2NEURA: %25 = neura.alloca %24 : !neura.data<i32, i1> -> !neura.data<!llvm.ptr, i1>

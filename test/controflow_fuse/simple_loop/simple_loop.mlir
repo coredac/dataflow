@@ -62,7 +62,8 @@
 // RUN: --fuse-loop-control \
 // RUN: --fold-constant \
 // RUN: --insert-data-mov \
-// RUN: --map-to-accelerator="mapping-strategy=heuristic backtrack-config=customized" | FileCheck %s -check-prefix=FUSE-MAPPING
+// RUN: --map-to-accelerator="mapping-strategy=heuristic backtrack-config=customized" \
+// RUN: --architecture-spec=../../arch_spec/architecture.yaml | FileCheck %s -check-prefix=FUSE-MAPPING
 
 module attributes {} {
   func.func @_Z11simple_loopPiS_(%arg0: memref<?xi32>, %arg1: memref<?xi32>) attributes {llvm.linkage = #llvm.linkage<external>} {
