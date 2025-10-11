@@ -396,6 +396,22 @@ struct LlvmShlToNeuraShl : public OpRewritePattern<LLVM::ShlOp> {
   }
 };
 
+struct LlvmSelectToNueraSel : public OpRewritePattern<LLVM::SelectOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::SelectOp op,
+                                PatternRewriter &rewriter) const override {
+    Value condition = op.getCondition();
+    Value trueValue = op.getTrueValue();
+    Value falseValue = op.getFalseValue();
+    Type resultType = op.getType();
+
+    rewriter.replaceOpWithNewOp<neura::SelOp>(op, resultType, trueValue,
+                                              falseValue, condition);
+    return success();
+  }
+};
+
 struct LlvmFuncToNeuraFunc : public OpRewritePattern<LLVM::LLVMFuncOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -429,10 +445,8 @@ struct LlvmFuncToNeuraFunc : public OpRewritePattern<LLVM::LLVMFuncOp> {
     }
     state.addAttributes(attrs);
 
-
     // Adds the function body region.
     state.addRegion();
-
 
     auto newFunc = cast<func::FuncOp>(rewriter.create(state));
 
@@ -471,7 +485,6 @@ struct LlvmCallToFuncCall : public OpRewritePattern<LLVM::CallOp> {
 
     // Gets the result types from the function signature.
     auto resultTypes = funcOp.getFunctionType().getResults();
-
 
     // Converts the call to func.call.
     auto newCall = rewriter.create<func::CallOp>(
@@ -533,6 +546,7 @@ struct LowerLlvmToNeuraPass
     patterns.add<LlvmShlToNeuraShl>(&getContext());
     patterns.add<LlvmSDivToNeuraDiv>(&getContext());
     patterns.add<LlvmSRemToNeuraRem>(&getContext());
+    patterns.add<LlvmSelectToNueraSel>(&getContext());
 
     FrozenRewritePatternSet frozen(std::move(patterns));
 
