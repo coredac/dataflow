@@ -14,6 +14,8 @@ add_mlir_library(
     CanonicalizeCastPass.cpp
     PromoteFuncArgToConstPass.cpp
     InitCommonPatternPass.cpp
+    TransformToSteerControlPass.cpp
+    RemovePredicatedTypePass.cpp
 
     DEPENDS
     MLIRNeuraTransformsIncGen

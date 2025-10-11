@@ -1,19 +1,19 @@
 architecture:
   name: "NeuraCGRA"
   version: "1.0"
-  width: 4
-  height: 4
+  width: 8
+  height: 8
 
 tile_defaults:
-  num_registers: 64
+  num_registers: 128
   default_ports: ["N", "S", "W", "E"]
-  operations: ["add", "mul", "sub"]  # default ALU instructions
+  operations: ["add", "mul", "sub", "div", "rem", "fadd", "fmul", "fsub", "fdiv", "or", "not", "icmp", "fcmp", "sel", "cast", "sext", "zext", "shl", "vfmul", "fadd_fadd", "fmul_fadd", "data_mov", "ctrl_mov", "reserve", "grant_predicate", "grant_once", "grant_always", "loop_control", "phi", "constant"]  # comprehensive operation set
 
 link_defaults:
   latency: 1
   bandwidth: 32
 
-connectivity: "mesh"
+base_topology: "mesh"
 
 link_overrides:
   - id: 1
@@ -28,6 +28,12 @@ link_overrides:
     bandwidth: 32
     src_tile_id: 0
     dst_tile_id: 8
+    existence: true
+
+  - latency: 3
+    bandwidth: 32
+    src_tile_id: 0
+    dst_tile_id: 1
     existence: true
 
 tile_overrides:
@@ -62,7 +68,7 @@ tile_overrides:
     ports: ["E", "W"]
 
 extensions:
-  crossbar: false
+  placeholder: false
 
 simulator:
   execution_model: "serial"

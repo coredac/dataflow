@@ -17,16 +17,67 @@ using namespace mlir::neura;
 namespace mlir {
 namespace neura {
 OperationKind getOperationKindFromMlirOp(Operation *op) {
-  if (isa<neura::AddOp>(op))
-    return IAdd;
-  if (isa<neura::MulOp>(op))
-    return IMul;
-  if (isa<neura::FAddOp>(op))
-    return FAdd;
-  if (isa<neura::FMulOp>(op))
-    return FMul;
-  // TODO: Complete the list here.
-  // @Jackcuii, https://github.com/coredac/dataflow/issues/82.
+  // Integer arithmetic operations
+  if (isa<neura::AddOp>(op)) return IAdd;
+  if (isa<neura::SubOp>(op)) return ISub;
+  if (isa<neura::MulOp>(op)) return IMul;
+  if (isa<neura::DivOp>(op)) return IDiv;
+  if (isa<neura::RemOp>(op)) return IRem;
+  
+  // Floating-point arithmetic operations
+  if (isa<neura::FAddOp>(op)) return FAdd;
+  if (isa<neura::FSubOp>(op)) return FSub;
+  if (isa<neura::FMulOp>(op)) return FMul;
+  if (isa<neura::FDivOp>(op)) return FDiv;
+  
+  // Memory operations
+  if (isa<neura::LoadOp>(op)) return ILoad;
+  if (isa<neura::StoreOp>(op)) return IStore;
+  if (isa<neura::LoadIndexedOp>(op)) return ILoadIndexed;
+  if (isa<neura::StoreIndexedOp>(op)) return IStoreIndexed;
+  if (isa<neura::AllocaOp>(op)) return IAlloca;
+  
+  // Logical operations
+  if (isa<neura::OrOp>(op)) return IOr;
+  if (isa<neura::NotOp>(op)) return INot;
+  if (isa<neura::ICmpOp>(op)) return ICmp;
+  if (isa<neura::FCmpOp>(op)) return FCmp;
+  if (isa<neura::SelOp>(op)) return ISel;
+  
+  // Type conversion operations
+  if (isa<neura::CastOp>(op)) return ICast;
+  if (isa<neura::SExtOp>(op)) return ISExt;
+  if (isa<neura::ZExtOp>(op)) return IZExt;
+  if (isa<neura::ShlOp>(op)) return IShl;
+  
+  // Vector operations
+  if (isa<neura::VFMulOp>(op)) return VFMul;
+  
+  // Fused operations
+  if (isa<neura::FAddFAddOp>(op)) return FAddFAdd;
+  if (isa<neura::FMulFAddOp>(op)) return FMulFAdd;
+  
+  // Control flow operations
+  if (isa<neura::ReturnOp>(op)) return IReturn;
+  if (isa<neura::PhiOp>(op)) return IPhi;
+  
+  // Data movement operations
+  if (isa<neura::DataMovOp>(op)) return IDataMov;
+  if (isa<neura::CtrlMovOp>(op)) return ICtrlMov;
+  
+  // Predicate operations
+  if (isa<neura::ReserveOp>(op)) return IReserve;
+  if (isa<neura::GrantPredicateOp>(op)) return IGrantPredicate;
+  if (isa<neura::GrantOnceOp>(op)) return IGrantOnce;
+  if (isa<neura::GrantAlwaysOp>(op)) return IGrantAlways;
+  
+  // Loop control operations
+  if (isa<neura::LoopControlOp>(op)) return ILoopControl;
+  
+  // Constant operations
+  if (isa<neura::ConstantOp>(op)) return IConstant;
+  
+  // Default fallback
   return IAdd;
 }
 
@@ -316,12 +367,9 @@ mlir::Operation *mlir::neura::getMaterializedBackwardUser(Operation *op) {
          "Expected the user of ctrl_mov target to be a reserve operation");
   auto reserve_op = dyn_cast<neura::ReserveOp>(target.getDefiningOp());
 
-  // Skip ctrl_mov users of reserve; return the first phi user.
+  // Skip ctrl_mov users of reserve; return the first materialized user.
   for (Operation *user : reserve_op.getResult().getUsers()) {
-    if (isa<neura::CtrlMovOp>(user)) {
-      continue; // skip ctrl_mov user
-    }
-    if (isa<neura::PhiOp>(user)) {
+    if (isMaterializedReserveUser(user)) {
       return user;
     }
   }
@@ -702,6 +750,19 @@ bool mlir::neura::canReachLocInTime(const MappingLoc &src_loc,
   return false;
 }
 
+bool mlir::neura::isMaterializedReserveUser(Operation *user) {
+  if (isa<neura::PhiOp>(user)) {
+    return true;
+  }
+  if (isa<neura::InvariantOp>(user)) {
+    return true;
+  }
+  if (isa<neura::CarryOp>(user)) {
+    return true;
+  }
+  return false;
+}
+
 void mlir::neura::updateAward(std::map<MappingLoc, int> &locs_with_award,
                               MappingLoc loc, int award) {
   // Updates the award of the top element in the priority queue.
@@ -752,8 +813,9 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
     assert(ctrl_mov && "Expected user to be a CtrlMovOp");
     mlir::Operation *materialized_backward_op =
         getMaterializedBackwardUser(ctrl_mov);
-    assert(isa<neura::PhiOp>(materialized_backward_op) &&
-           "Expected materialized operation of ctrl_mov to be a PhiOp");
+    assert(isMaterializedReserveUser(materialized_backward_op) &&
+           "Expected materialized operation of ctrl_mov to be a "
+           "PhiOp/InvariantOp/CarryOp.");
     backward_users.push_back(materialized_backward_op);
   }
 
@@ -794,10 +856,7 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
       award += op->getOperands().size() -
                getPhysicalHops(producers, tile, mapping_state);
     }
-    // llvm::errs() << "[DEBUG] checking range: "
-    //              << earliest_start_time_step << " to "
-    //              << latest_end_time_step << " for tile: "
-    //              << tile->getType() << "#" << tile->getId() << "\n";
+
     for (int t = earliest_start_time_step; t < latest_end_time_step; t += 1) {
       MappingLoc tile_loc_candidate = {tile, t};
       // If the tile at time `t` is available, we can consider it for mapping.
@@ -942,8 +1001,9 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
       assert(ctrl_mov && "Expected user to be a CtrlMovOp");
       mlir::Operation *materialized_backward_op =
           getMaterializedBackwardUser(ctrl_mov);
-      assert(isa<neura::PhiOp>(materialized_backward_op) &&
-             "Expected materialized operation of ctrl_mov to be a PhiOp");
+      assert(isMaterializedReserveUser(materialized_backward_op) &&
+             "Expected materialized operation of ctrl_mov to be a "
+             "PhiOp/InvariantOp/CarryOp");
       // Gets the last location of the materialized operation.
       MappingLoc backward_loc =
           mapping_state.getAllLocsOfOp(materialized_backward_op).back();
