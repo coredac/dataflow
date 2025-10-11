@@ -13,6 +13,7 @@ add_mlir_library(
     CanonicalizeLiveInPass.cpp
     CanonicalizeCastPass.cpp
     PromoteFuncArgToConstPass.cpp
+    InitCommonPatternPass.cpp
 
     DEPENDS
     MLIRNeuraTransformsIncGen

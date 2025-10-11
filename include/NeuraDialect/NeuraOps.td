@@ -498,3 +498,49 @@ def Neura_LoopControlOp : Op<NeuraDialect, "loop_control">{
   // let assemblyFormat =
   //   " `(``parent_valid` `=` $parentValid `,` `start` `=` $start `,` `end` `=` $end `,` `step` `=` $step`)` attr-dict `:` type($parentValid) `,` type($start) `,` type($end) `,` type($step) `->` type($nextindex) `,` type($valid)";
 }
+
+// Common Pattern Operation - wraps a frequently occurring pattern
+def Neura_CommonPatternOp : Op<NeuraDialect, "common_pattern", [NoTerminator]> {
+  let summary = "Represents a common pattern identified by graph mining";
+  let description = [{
+    This operation wraps a frequently occurring subgraph pattern identified
+    by the InitCommonPatternPass. The pattern body is contained in a region
+    that preserves the original operations and their data flow edges.
+    
+    Attributes:
+    - pattern_id: unique identifier for this pattern type
+    - pattern_name: string description of the pattern
+    - frequency: how many times this pattern occurs in the original graph
+    
+    Example:
+      %result = neura.common_pattern {pattern_id = 0, pattern_name = "addf->addf", frequency = 3} 
+                  (%arg0, %arg1, %arg2) : (f32, f32, f32) -> f32 {
+        %0 = arith.addf %arg0, %arg1 : f32
+        %1 = arith.addf %0, %arg2 : f32
+        neura.yield %1 : f32
+      }
+  }];
+  
+  let arguments = (ins 
+    Variadic<AnyType>:$inputs,
+    I64Attr:$pattern_id,
+    StrAttr:$pattern_name,
+    I64Attr:$frequency
+  );
+  
+  let results = (outs Variadic<AnyType>:$outputs);
+  let regions = (region SizedRegion<1>:$body);
+  
+  let hasVerifier = 0;
+}
+
+// Yield operation for common pattern region
+def Neura_YieldOp : Op<NeuraDialect, "yield", [Terminator]> {
+  let summary = "Yield operation for common pattern regions";
+  let description = [{
+    This operation yields values from a common pattern region back to the parent.
+  }];
+  
+  let arguments = (ins Variadic<AnyType>:$operands);
+  let builders = [OpBuilder<(ins), [{ /* nothing to do */ }]>];
+}

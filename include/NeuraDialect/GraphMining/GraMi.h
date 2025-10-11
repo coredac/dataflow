@@ -1,0 +1,235 @@
+#ifndef NEURA_GRAMI_H
+#define NEURA_GRAMI_H
+
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/Value.h"
+#include "mlir/IR/Block.h"
+#include "mlir/IR/Region.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
+#include <vector>
+#include <map>
+#include <set>
+#include <string>
+#include <memory>
+
+namespace mlir::neura {
+
+// Forward declarations
+class DFGNode;
+class DFGEdge;
+class DFGGraph;
+class FrequentSubgraph;
+
+// DFG Node representing an operation
+class DFGNode {
+public:
+  using NodeId = size_t;
+  
+  DFGNode(NodeId id, mlir::Operation* op, const std::string& label)
+    : id_(id), operation_(op), label_(label) {}
+  
+  NodeId getId() const { return id_; }
+  mlir::Operation* getOperation() const { return operation_; }
+  const std::string& getLabel() const { return label_; }
+  
+  // Add edge to this node
+  void addIncomingEdge(DFGEdge* edge) { incoming_edges_.push_back(edge); }
+  void addOutgoingEdge(DFGEdge* edge) { outgoing_edges_.push_back(edge); }
+  
+  const std::vector<DFGEdge*>& getIncomingEdges() const { return incoming_edges_; }
+  const std::vector<DFGEdge*>& getOutgoingEdges() const { return outgoing_edges_; }
+  
+private:
+  NodeId id_;
+  mlir::Operation* operation_;
+  std::string label_;
+  std::vector<DFGEdge*> incoming_edges_;
+  std::vector<DFGEdge*> outgoing_edges_;
+};
+
+// DFG Edge representing data flow between operations
+class DFGEdge {
+public:
+  using EdgeId = size_t;
+  
+  DFGEdge(EdgeId id, DFGNode* from, DFGNode* to, mlir::Value value)
+    : id_(id), from_(from), to_(to), value_(value) {}
+  
+  EdgeId getId() const { return id_; }
+  DFGNode* getFrom() const { return from_; }
+  DFGNode* getTo() const { return to_; }
+  mlir::Value getValue() const { return value_; }
+  
+private:
+  EdgeId id_;
+  DFGNode* from_;
+  DFGNode* to_;
+  mlir::Value value_;
+};
+
+// DFG Graph representing the entire data flow graph
+class DFGGraph {
+public:
+  DFGGraph() : next_node_id_(0), next_edge_id_(0) {}
+  
+  // Add node to the graph
+  DFGNode* addNode(mlir::Operation* op, const std::string& label);
+  
+  // Add edge to the graph
+  DFGEdge* addEdge(DFGNode* from, DFGNode* to, mlir::Value value);
+  
+  // Get all nodes
+  const std::vector<DFGNode*>& getNodes() const { return nodes_; }
+  
+  // Get all edges
+  const std::vector<DFGEdge*>& getEdges() const { return edges_; }
+  
+  // Get node by ID
+  DFGNode* getNode(DFGNode::NodeId id) const;
+  
+  // Get edge by ID
+  DFGEdge* getEdge(DFGEdge::EdgeId id) const;
+  
+  // Get number of nodes and edges
+  size_t getNumNodes() const { return nodes_.size(); }
+  size_t getNumEdges() const { return edges_.size(); }
+  
+  // Clear the graph
+  void clear();
+  
+private:
+  std::vector<DFGNode*> nodes_;
+  std::vector<DFGEdge*> edges_;
+  llvm::DenseMap<mlir::Operation*, DFGNode*> op_to_node_;
+  DFGNode::NodeId next_node_id_;
+  DFGEdge::EdgeId next_edge_id_;
+};
+
+// Frequent subgraph pattern
+class FrequentSubgraph {
+public:
+  using NodeId = DFGNode::NodeId;
+  using EdgeId = DFGEdge::EdgeId;
+  
+  FrequentSubgraph(const std::string& pattern, size_t frequency)
+    : pattern_(pattern), frequency_(frequency) {}
+  
+  const std::string& getPattern() const { return pattern_; }
+  size_t getFrequency() const { return frequency_; }
+  
+  // Add node to the pattern
+  void addNode(NodeId node_id, const std::string& label) {
+    nodes_[node_id] = label;
+  }
+  
+  // Add edge to the pattern
+  void addEdge(EdgeId edge_id, NodeId from, NodeId to) {
+    edges_[edge_id] = std::make_pair(from, to);
+  }
+  
+  const std::map<NodeId, std::string>& getNodes() const { return nodes_; }
+  const std::map<EdgeId, std::pair<NodeId, NodeId>>& getEdges() const { return edges_; }
+  
+private:
+  std::string pattern_;
+  size_t frequency_;
+  std::map<NodeId, std::string> nodes_;
+  std::map<EdgeId, std::pair<NodeId, NodeId>> edges_;
+};
+
+// Pattern instance in the actual code
+struct PatternInstance {
+  std::vector<mlir::Operation*> operations;
+  std::vector<mlir::Value> inputs;   // External inputs to the pattern  
+  std::vector<mlir::Value> outputs;  // Outputs from the pattern
+  mlir::Operation* lastOp = nullptr; // Last operation in the pattern
+  int pattern_id;
+  size_t frequency;  // Weight for MWIS
+};
+
+// Pattern with all its instances
+struct PatternWithInstances {
+  int pattern_id;
+  size_t frequency;  // Weight for MWIS
+  std::vector<PatternInstance> instances;
+};
+
+// Result from GraMi mining: pattern + selected instances
+struct PatternWithSelectedInstances {
+  FrequentSubgraph pattern;
+  std::vector<PatternInstance> selected_instances;
+  
+  PatternWithSelectedInstances(const FrequentSubgraph& p) : pattern(p) {}
+};
+
+// GraMi algorithm implementation
+class GraMi {
+public:
+  GraMi(DFGGraph* graph, size_t min_support = 2)
+    : graph_(graph), min_support_(min_support) {}
+  
+  // Main mining function
+  std::vector<PatternWithSelectedInstances> mineFrequentSubgraphs();
+  
+  // Maximum Weighted Independent Set selection at pattern level
+  // Input: patterns with all their instances
+  // Output: indices of selected patterns (not instances)
+  static std::vector<size_t> selectMaxWeightedIndependentSet(
+      const std::vector<PatternWithInstances>& patterns);
+  
+  // Maximum Weighted Independent Set selection for instances within a single pattern
+  // Input: instances of a single pattern
+  // Output: indices of selected instances that don't conflict
+  static std::vector<size_t> selectMaxWeightedIndependentSetForInstances(
+      const std::vector<PatternInstance>& instances);
+  
+  // Set minimum support threshold
+  void setMinSupport(size_t min_support) { min_support_ = min_support; }
+  
+private:
+  DFGGraph* graph_;
+  size_t min_support_;
+  
+  // Helper functions for GraMi algorithm
+  std::vector<FrequentSubgraph> generateCandidates();
+  bool isFrequent(const FrequentSubgraph& candidate);
+  std::string generatePatternString(const FrequentSubgraph& subgraph);
+  std::vector<FrequentSubgraph> extendPattern(const FrequentSubgraph& pattern);
+  
+  // Graph isomorphism checking
+  bool isIsomorphic(const FrequentSubgraph& pattern1, const FrequentSubgraph& pattern2);
+  
+  // Support counting
+  size_t countSupport(const FrequentSubgraph& pattern);
+  
+  // Helper functions for MWIS
+  static bool instancesConflict(const PatternInstance& a, const PatternInstance& b);
+  static bool patternsConflict(const PatternWithInstances& a, const PatternWithInstances& b);
+};
+
+// Utility functions for graph extraction from MLIR
+class DFGExtractor {
+public:
+  // Extract DFG from MLIR module
+  static std::unique_ptr<DFGGraph> extractFromModule(mlir::ModuleOp module);
+  
+  // Extract DFG from MLIR function
+  static std::unique_ptr<DFGGraph> extractFromFunction(mlir::func::FuncOp func);
+  
+  // Extract DFG from MLIR block
+  static std::unique_ptr<DFGGraph> extractFromBlock(mlir::Block* block);
+  
+private:
+  // Helper functions
+  static std::string getOperationLabel(mlir::Operation* op);
+  static bool shouldIncludeOperation(mlir::Operation* op);
+};
+
+} // namespace mlir::neura
+
+#endif // NEURA_GRAMI_H

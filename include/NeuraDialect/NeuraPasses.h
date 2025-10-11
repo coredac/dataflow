@@ -39,6 +39,9 @@ std::unique_ptr<mlir::Pass> createFusePatternPass();
 std::unique_ptr<mlir::Pass> createFoldConstantPass();
 std::unique_ptr<mlir::Pass> createCanonicalizeCastPass();
 
+// Graph mining passes
+std::unique_ptr<mlir::Pass> createInitCommonPatternPass();
+
 #define GEN_PASS_REGISTRATION
 #include "NeuraDialect/NeuraPasses.h.inc"
 
