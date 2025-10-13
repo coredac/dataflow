@@ -538,7 +538,7 @@ mlir::neura::BaseTopology parseTopologyString(const std::string& topology_str) {
 }
 
 // Helper function to parse architecture YAML configuration.
-bool parseArchitectureYAML(llvm::yaml::Document &doc, int &width, int &height, 
+bool parseArchitectureYAML(llvm::yaml::Document &doc, int &width, int &height, int &max_ii,
                           mlir::neura::TileDefaults &tile_defaults,
                           std::vector<mlir::neura::TileOverride> &tile_overrides,
                           mlir::neura::LinkDefaults &link_defaults,
@@ -575,7 +575,7 @@ bool parseArchitectureYAML(llvm::yaml::Document &doc, int &width, int &height,
         
         llvm::SmallString<64> architectureKeyString;
         llvm::StringRef architectureKeyRef = architectureKeyNode->getValue(architectureKeyString);
-        if (architectureKeyRef != "width" && architectureKeyRef != "height") continue;
+        if (architectureKeyRef != "width" && architectureKeyRef != "height" && architectureKeyRef != "max_allowed_ii_by_hw") continue;
         
         auto *architectureValueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(architectureKeyValuePair.getValue());
         if (!architectureValueNode) continue;
@@ -586,6 +586,9 @@ bool parseArchitectureYAML(llvm::yaml::Document &doc, int &width, int &height,
         if (!architectureValueRef.getAsInteger(10, tempValue)) {
           if (architectureKeyRef == "width") width = static_cast<int>(tempValue);
           if (architectureKeyRef == "height") height = static_cast<int>(tempValue);
+          if (architectureKeyRef == "max_allowed_ii_by_hw") {
+            max_ii = static_cast<int>(tempValue);
+          }
         }
       }
         } else if (keyRef == "tile_defaults") {
@@ -739,6 +742,7 @@ struct MapToAcceleratorPass
     std::string architecture_spec_file = mlir::neura::getArchitectureSpecFile();
     int yaml_width = -1;
     int yaml_height = -1;
+    int yaml_max_ii = 20;  // Default max_ii = 20
     mlir::neura::TileDefaults yaml_tile_defaults;
     std::vector<mlir::neura::TileOverride> tile_overrides;
     mlir::neura::LinkDefaults yaml_link_defaults;
@@ -773,7 +777,7 @@ struct MapToAcceleratorPass
       }
 
       // Parse YAML configuration
-      if (!parseArchitectureYAML(firstDoc, yaml_width, yaml_height, yaml_tile_defaults, tile_overrides, yaml_link_defaults, link_overrides, base_topology)) {
+      if (!parseArchitectureYAML(firstDoc, yaml_width, yaml_height, yaml_max_ii, yaml_tile_defaults, tile_overrides, yaml_link_defaults, link_overrides, base_topology)) {
         return;
       }
 
@@ -845,7 +849,12 @@ struct MapToAcceleratorPass
       int res_mii = calculateResMii(func, architecture);
 
       const int possibleMinII = std::max(rec_mii, res_mii);
-      constexpr int maxII = 20;
+      const int maxII = yaml_max_ii;  // Use YAML config (default 20 if not specified)
+      
+      llvm::errs() << "[MapToAcceleratorPass] rec_mii=" << rec_mii 
+                   << ", res_mii=" << res_mii 
+                   << ", possibleMinII=" << possibleMinII 
+                   << ", maxII=" << maxII << " (from YAML config)\n";
       std::vector<Operation *> topologically_sorted_ops =
           getTopologicallySortedOps(func);
       if (topologically_sorted_ops.empty()) {

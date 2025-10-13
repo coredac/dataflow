@@ -143,6 +143,8 @@ static std::string getConstantLiteral(Operation *op) {
       return "#" + std::to_string(integer_attr.getInt());
     if (auto float_attr = dyn_cast<FloatAttr>(constant_value_attr))
       return "#" + std::to_string(float_attr.getValueAsDouble());
+    if (auto string_attr = dyn_cast<StringAttr>(constant_value_attr))
+      return string_attr.getValue().str();
   }
   
   return "";
