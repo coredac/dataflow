@@ -57,6 +57,20 @@ struct LlvmFAddToNeuraFAdd : public OpRewritePattern<mlir::LLVM::FAddOp> {
   }
 };
 
+struct LlvmSubToNeuraSub : public OpRewritePattern<LLVM::SubOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::SubOp op,
+                                PatternRewriter &rewriter) const override {
+    Value lhs = op.getLhs();
+    Value rhs = op.getRhs();
+    Type resultType = op.getType();
+
+    rewriter.replaceOpWithNewOp<neura::SubOp>(op, resultType, lhs, rhs);
+    return success();
+  }
+};
+
 struct LlvmFSubToNeuraFSub : public OpRewritePattern<mlir::LLVM::FSubOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -241,6 +255,17 @@ struct LlvmStoreToNeuraStore : public OpRewritePattern<mlir::LLVM::StoreOp> {
   }
 };
 
+struct LlvmAndToNeuraAnd : public OpRewritePattern<mlir::LLVM::AndOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mlir::LLVM::AndOp op,
+                                PatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<neura::AndOp>(op, op.getType(), op.getLhs(),
+                                              op.getRhs());
+    return success();
+  }
+};
+
 struct LlvmCondBrToNeuraCondBr : public OpRewritePattern<LLVM::CondBrOp> {
   using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(LLVM::CondBrOp op,
@@ -378,6 +403,20 @@ struct LlvmMulToNeuraMul : public OpRewritePattern<LLVM::MulOp> {
     Type resultType = op.getType();
 
     rewriter.replaceOpWithNewOp<neura::MulOp>(op, resultType, lhs, rhs);
+    return success();
+  }
+};
+
+struct LlvmAShrToNeuraAShr : public OpRewritePattern<LLVM::AShrOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::AShrOp op,
+                                PatternRewriter &rewriter) const override {
+    Value lhs = op.getLhs();
+    Value rhs = op.getRhs();
+    Type resultType = op.getType();
+
+    rewriter.replaceOpWithNewOp<neura::AShrOp>(op, resultType, lhs, rhs);
     return success();
   }
 };
@@ -523,6 +562,7 @@ struct LowerLlvmToNeuraPass
     mlir::neura::llvm2neura::populateWithGenerated(patterns);
     patterns.add<LlvmConstantToNeuraConstant>(&getContext());
     patterns.add<LlvmAddToNeuraAdd>(&getContext());
+    patterns.add<LlvmSubToNeuraSub>(&getContext());
     patterns.add<LlvmOrToNeuraOr>(&getContext());
     patterns.add<LlvmFAddToNeuraFAdd>(&getContext());
     patterns.add<LlvmFMulToNeuraFMul>(&getContext());
@@ -547,6 +587,8 @@ struct LowerLlvmToNeuraPass
     patterns.add<LlvmSDivToNeuraDiv>(&getContext());
     patterns.add<LlvmSRemToNeuraRem>(&getContext());
     patterns.add<LlvmSelectToNueraSel>(&getContext());
+    patterns.add<LlvmAndToNeuraAnd>(&getContext());
+    patterns.add<LlvmAShrToNeuraAShr>(&getContext());
 
     FrozenRewritePatternSet frozen(std::move(patterns));
 

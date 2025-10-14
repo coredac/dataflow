@@ -111,7 +111,7 @@ struct FuseRhsConstantPattern : public OpRewritePattern<OpType> {
     Value rhs = op.getRhs();
 
     if (isOriginConstantOp(lhs)) {
-      assert(false && "LHS constant folding not implemented yet.");
+      // assert(false && "LHS constant folding not implemented yet.");
       return failure();
     }
 

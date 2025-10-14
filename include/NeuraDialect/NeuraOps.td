@@ -100,8 +100,17 @@ def Neura_FDivOp : Op<NeuraDialect, "fdiv"> {
 // Defines a bitwise OR operation.
 def Neura_OrOp : Op<NeuraDialect, "or"> {
   let summary = "Bitwise OR operation";
-  let arguments = (ins AnySignlessInteger:$lhs, AnySignlessInteger:$rhs);
-  let results = (outs AnySignlessInteger:$result);
+  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs);
+  let results = (outs AnyType:$result);
+  // let assemblyFormat = "$lhs `,` $rhs `,` attr-dict `:` type($result)";
+  let traits = [SameOperandsAndResultElementType];
+}
+
+// Defines a bitwise AND operation.
+def Neura_AndOp : Op<NeuraDialect, "and"> {
+  let summary = "Bitwise AND operation";
+  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs);
+  let results = (outs AnyType:$result);
   // let assemblyFormat = "$lhs `,` $rhs `,` attr-dict `:` type($result)";
   let traits = [SameOperandsAndResultElementType];
 }
@@ -278,6 +287,19 @@ def Neura_ShlOp : Op<NeuraDialect, "shl"> {
 
     Example:
       %shifted = neura.shl %value, %shiftAmount : !neura.data<i32, i1> -> !neura.data<i32, i1>
+  }];
+  let arguments = (ins AnyType:$value, Optional<AnyType>:$shiftAmount);
+  let results = (outs AnyType:$result);
+}
+
+def Neura_AShrOp : Op<NeuraDialect, "ashr"> {
+  let summary = "Arithmetic shift right operation";
+  let description = [{
+    Performs an arithmetic right shift on an integer value.
+    Similar to llvm.ashr, but works with predicated values.
+
+    Example:
+      %shifted = neura.ashr %value, %shiftAmount : !neura.data<i32, i1> -> !neura.data<i32, i1>
   }];
   let arguments = (ins AnyType:$value, Optional<AnyType>:$shiftAmount);
   let results = (outs AnyType:$result);
