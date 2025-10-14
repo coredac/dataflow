@@ -7,6 +7,7 @@
 // RUN: mlir-neura-opt %s \
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
+// RUN:   --promote-func-arg-to-const \
 // RUN:   --fold-constant \
 // RUN:   --canonicalize-live-in \
 // RUN:   | FileCheck %s -check-prefix=CANONICALIZE
@@ -14,6 +15,7 @@
 // RUN: mlir-neura-opt %s \
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
+// RUN:   --promote-func-arg-to-const \
 // RUN:   --fold-constant \
 // RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
@@ -23,6 +25,7 @@
 // RUN: mlir-neura-opt %s \
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
+// RUN:   --promote-func-arg-to-const \
 // RUN:   --fold-constant \
 // RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
@@ -33,6 +36,7 @@
 // RUN: mlir-neura-opt %s \
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
+// RUN:   --promote-func-arg-to-const \
 // RUN:   --fold-constant \
 // RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
@@ -44,6 +48,7 @@
 // RUN: mlir-neura-opt %s \
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
+// RUN:   --promote-func-arg-to-const \
 // RUN:   --fold-constant \
 // RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
@@ -57,6 +62,7 @@
 // RUN: mlir-neura-opt %s \
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
+// RUN:   --promote-func-arg-to-const \
 // RUN:   --fold-constant \
 // RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
