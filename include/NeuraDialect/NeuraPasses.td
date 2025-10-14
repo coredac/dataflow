@@ -146,4 +146,14 @@ def RemovePredicatedType : Pass<"remove-predicated-type", "ModuleOp"> {
   }];
   let constructor = "neura::createRemovePredicatedTypePass()";
 }
+
+def IterMergePattern : Pass<"iter-merge-pattern", "ModuleOp"> {
+  let summary = "Iteratively merge and identify common patterns in DFG";
+  let description = [{
+    This pass iteratively traverses the DFG (Data Flow Graph) and identifies
+    common patterns using graph mining algorithms. It performs iterative merging
+    of patterns and stores results for subsequent passes.
+  }];
+  let constructor = "neura::createIterMergePatternPass()";
+}
 #endif // NEURA_PASSES_TD

@@ -176,6 +176,12 @@ public:
   // Main mining function
   std::vector<PatternWithSelectedInstances> mineFrequentSubgraphs();
   
+  // Merge adjacent common patterns into larger patterns
+  // This function identifies patterns that are adjacent in the DFG and merges them
+  // into larger, more comprehensive patterns
+  std::vector<PatternWithSelectedInstances> mergeAdjacentPatterns(
+      const std::vector<PatternWithSelectedInstances>& patterns);
+  
   // Maximum Weighted Independent Set selection at pattern level
   // Input: patterns with all their instances
   // Output: indices of selected patterns (not instances)
@@ -210,6 +216,26 @@ private:
   // Helper functions for MWIS
   static bool instancesConflict(const PatternInstance& a, const PatternInstance& b);
   static bool patternsConflict(const PatternWithInstances& a, const PatternWithInstances& b);
+  
+  // Helper functions for pattern merging
+  bool arePatternsAdjacent(const PatternWithSelectedInstances& pattern1, 
+                          const PatternWithSelectedInstances& pattern2);
+  bool areInstancesAdjacent(const PatternInstance& instance1, 
+                           const PatternInstance& instance2);
+  FrequentSubgraph mergePatternStructures(const FrequentSubgraph& pattern1, 
+                                         const FrequentSubgraph& pattern2);
+  // Overloaded version that finds connecting edges between instances
+  FrequentSubgraph mergePatternStructures(const PatternInstance& instance1,
+                                         const PatternInstance& instance2,
+                                         const FrequentSubgraph& pattern1, 
+                                         const FrequentSubgraph& pattern2);
+  PatternInstance mergePatternInstances(const PatternInstance& instance1, 
+                                       const PatternInstance& instance2);
+  std::string generateMergedPatternString(const FrequentSubgraph& merged_pattern);
+  
+private:
+  // Helper function to get operation label (matches DFGExtractor logic)
+  std::string getOperationLabel(mlir::Operation* op);
 };
 
 // Utility functions for graph extraction from MLIR
