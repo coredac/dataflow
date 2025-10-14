@@ -575,20 +575,22 @@ bool parseArchitectureYAML(llvm::yaml::Document &doc, int &width, int &height, i
         
         llvm::SmallString<64> architectureKeyString;
         llvm::StringRef architectureKeyRef = architectureKeyNode->getValue(architectureKeyString);
-        if (architectureKeyRef != "width" && architectureKeyRef != "height" && architectureKeyRef != "max_allowed_ii_by_hw") continue;
-        
-        auto *architectureValueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(architectureKeyValuePair.getValue());
-        if (!architectureValueNode) continue;
-        
-        llvm::SmallString<64> architectureValueString;
-        llvm::StringRef architectureValueRef = architectureValueNode->getValue(architectureValueString);
-        long long tempValue = 0;
-        if (!architectureValueRef.getAsInteger(10, tempValue)) {
-          if (architectureKeyRef == "width") width = static_cast<int>(tempValue);
-          if (architectureKeyRef == "height") height = static_cast<int>(tempValue);
-          if (architectureKeyRef == "max_allowed_ii_by_hw") {
-            max_ii = static_cast<int>(tempValue);
+        if (architectureKeyRef == "width" || architectureKeyRef == "height" || architectureKeyRef == "max_allowed_ii_by_hw") {
+          auto *architectureValueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(architectureKeyValuePair.getValue());
+          if (!architectureValueNode) continue;
+          
+          llvm::SmallString<64> architectureValueString;
+          llvm::StringRef architectureValueRef = architectureValueNode->getValue(architectureValueString);
+          long long tempValue = 0;
+          if (!architectureValueRef.getAsInteger(10, tempValue)) {
+            if (architectureKeyRef == "width") width = static_cast<int>(tempValue);
+            if (architectureKeyRef == "height") height = static_cast<int>(tempValue);
+            if (architectureKeyRef == "max_allowed_ii_by_hw") {
+              max_ii = static_cast<int>(tempValue);
+            }
           }
+        } else {
+          continue;
         }
       }
         } else if (keyRef == "tile_defaults") {
@@ -851,10 +853,6 @@ struct MapToAcceleratorPass
       const int possibleMinII = std::max(rec_mii, res_mii);
       const int maxII = yaml_max_ii;  // Use YAML config (default 20 if not specified)
       
-      llvm::errs() << "[MapToAcceleratorPass] rec_mii=" << rec_mii 
-                   << ", res_mii=" << res_mii 
-                   << ", possibleMinII=" << possibleMinII 
-                   << ", maxII=" << maxII << " (from YAML config)\n";
       std::vector<Operation *> topologically_sorted_ops =
           getTopologicallySortedOps(func);
       if (topologically_sorted_ops.empty()) {
