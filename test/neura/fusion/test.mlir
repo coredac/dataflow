@@ -2,6 +2,7 @@
 # RUN: mlir-translate --import-llvm %t-kernel.ll -o %t-kernel.mlir
 # RUN: mlir-neura-opt --architecture-spec=%S/../../arch_spec/architecture.yaml --assign-accelerator \
 # RUN:           --lower-llvm-to-neura \
+# RUN:           --promote-func-arg-to-const \
 # RUN:           --canonicalize-live-in \
 # RUN:           --leverage-predicated-value \
 # RUN:           --fold-constant \
@@ -13,6 +14,7 @@
 
 # RUN: mlir-neura-opt --architecture-spec=%S/../../arch_spec/architecture.yaml --assign-accelerator \
 # RUN:           --lower-llvm-to-neura \
+# RUN:           --promote-func-arg-to-const \
 # RUN:           --canonicalize-live-in \
 # RUN:           --leverage-predicated-value \
 # RUN:           --fold-constant \

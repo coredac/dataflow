@@ -17,29 +17,6 @@ using namespace mlir;
 #include "NeuraDialect/NeuraPasses.h.inc"
 
 namespace {
-LogicalResult promoteFunctionArgsToConstants(Region &region) {
-  if (region.empty()) {
-    return success();
-  }
-
-  Block &entry_block = region.front();
-  OpBuilder builder(&entry_block, entry_block.begin());
-
-  // Collects all function arguments.
-  SmallVector<BlockArgument, 4> args(entry_block.getArguments().begin(),
-                                     entry_block.getArguments().end());
-
-  // Creates a constant operation for each function argument.
-  for (auto [idx, arg] : llvm::enumerate(args)) {
-    auto const_op = builder.create<neura::ConstantOp>(
-        arg.getLoc(), arg.getType(),
-        builder.getStringAttr("\%arg" + std::to_string(idx)));
-    arg.replaceAllUsesWith(const_op.getResult());
-  }
-
-  return success();
-}
-
 LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
   if (region.empty()) {
     return success();
@@ -286,8 +263,8 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
         if (needs_update) {
           OpBuilder builder(cond_br_op);
           builder.create<neura::CondBr>(
-              cond_br_op.getLoc(), cond_br_op.getCondition(),
-              true_operands, false_operands, cond_br_op.getTrueDest(),
+              cond_br_op.getLoc(), cond_br_op.getCondition(), true_operands,
+              false_operands, cond_br_op.getTrueDest(),
               cond_br_op.getFalseDest());
           cond_br_op.erase();
         }
@@ -333,11 +310,6 @@ struct CanonicalizeLiveInPass
       }
 
       if (!region || region->empty()) {
-        return;
-      }
-
-      if (failed(promoteFunctionArgsToConstants(*region))) {
-        signalPassFailure();
         return;
       }
 

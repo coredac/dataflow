@@ -18,6 +18,7 @@
 // RUN: --lower-builtin-to-neura \
 // RUN: --lower-llvm-to-neura \
 // RUN: --canonicalize-cast \
+// RUN: --promote-func-arg-to-const \
 // RUN: --canonicalize-live-in \
 // RUN: --leverage-predicated-value \
 // RUN: --transform-ctrl-to-data-flow | FileCheck %s -check-prefix=CTRL2DATA
