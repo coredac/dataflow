@@ -101,6 +101,11 @@ template <typename OpType>
 struct FuseRhsConstantPattern : public OpRewritePattern<OpType> {
   using OpRewritePattern<OpType>::OpRewritePattern;
 
+  // By default, we assume the operation is not commutative.
+  // If the operation is commutative, we can extend this pattern to support
+  // constant folding on the left-hand side operand as well.
+  virtual bool isCommutative() const { return false; }
+
   virtual Operation *
   createOpWithFusedRhsConstant(OpType op, Attribute rhs_const_value,
                                PatternRewriter &rewriter) const = 0;
@@ -110,31 +115,45 @@ struct FuseRhsConstantPattern : public OpRewritePattern<OpType> {
     Value lhs = op.getLhs();
     Value rhs = op.getRhs();
 
-    if (isOriginConstantOp(lhs)) {
-      llvm::errs() << "LHS constant folding not supported yet.\n";
-      return failure();
+    bool lhs_is_const = isOriginConstantOp(lhs);
+    bool rhs_is_const = rhs && isOriginConstantOp(rhs);
+
+    if (rhs_is_const && !lhs_is_const) {
+      auto constant_op = dyn_cast<neura::ConstantOp>(rhs.getDefiningOp());
+
+      Attribute rhs_const_value = getOriginConstantValue(rhs);
+      Operation *fused_op =
+          createOpWithFusedRhsConstant(op, rhs_const_value, rewriter);
+
+      rewriter.replaceOp(op, fused_op->getResults());
+      if (constant_op->use_empty()) {
+        rewriter.eraseOp(constant_op);
+      }
+      return success();
     }
 
-    if (!rhs || !isOriginConstantOp(rhs)) {
-      return failure();
+    if (lhs_is_const && !rhs_is_const && isCommutative()) {
+      auto constant_op = dyn_cast<neura::ConstantOp>(lhs.getDefiningOp());
+
+      Attribute lhs_const_value = getOriginConstantValue(lhs);
+      Operation *fused_op =
+          createOpWithFusedRhsConstant(op, lhs_const_value, rewriter);
+
+      rewriter.replaceOp(op, fused_op->getResults());
+      if (constant_op->use_empty()) {
+        rewriter.eraseOp(constant_op);
+      }
+      return success();
     }
 
-    auto constant_op = dyn_cast<neura::ConstantOp>(rhs.getDefiningOp());
-
-    Attribute rhs_const_value = getOriginConstantValue(rhs);
-    Operation *fused_op =
-        createOpWithFusedRhsConstant(op, rhs_const_value, rewriter);
-
-    rewriter.replaceOp(op, fused_op->getResults());
-    if (constant_op->use_empty()) {
-      rewriter.eraseOp(constant_op);
-    }
-    return success();
+    return failure();
   }
 };
 
 struct FuseAddRhsConstantPattern : public FuseRhsConstantPattern<neura::AddOp> {
   using FuseRhsConstantPattern<neura::AddOp>::FuseRhsConstantPattern;
+
+  bool isCommutative() const override { return true; }
 
   Operation *
   createOpWithFusedRhsConstant(neura::AddOp op, Attribute rhs_const_value,
@@ -163,6 +182,8 @@ struct FuseSubRhsConstantPattern : public FuseRhsConstantPattern<neura::SubOp> {
 
 struct FuseMulRhsConstantPattern : public FuseRhsConstantPattern<neura::MulOp> {
   using FuseRhsConstantPattern<neura::MulOp>::FuseRhsConstantPattern;
+
+  bool isCommutative() const override { return true; }
 
   Operation *
   createOpWithFusedRhsConstant(neura::MulOp op, Attribute rhs_const_value,
@@ -193,6 +214,8 @@ struct FuseICmpRhsConstantPattern
 struct FuseFAddRhsConstantPattern
     : public FuseRhsConstantPattern<neura::FAddOp> {
   using FuseRhsConstantPattern<neura::FAddOp>::FuseRhsConstantPattern;
+
+  bool isCommutative() const override { return true; }
 
   Operation *
   createOpWithFusedRhsConstant(neura::FAddOp op, Attribute rhs_const_value,
