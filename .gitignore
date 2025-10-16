@@ -1,0 +1,19 @@
+# build output
+build/
+
+# intermediate output
+**/Output/
+/test/**/*.yaml
+!arch_spec_example.yaml
+!architecture.yaml
+/test/**/*.asm
+.lit_test_times.txt
+lit.cfg
+*.dot
+
+# vscode config
+.clangd
+.cache
+.vscode
+
+# misc
