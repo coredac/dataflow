@@ -3,7 +3,7 @@ build/
 
 # intermediate output
 **/Output/
-/test/**/*.yaml
+tmp-generated-instructions.yaml
 /test/**/*.asm
 .lit_test_times.txt
 lit.cfg
