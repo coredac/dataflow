@@ -113,13 +113,18 @@ struct FuseRhsConstantPattern : public OpRewritePattern<OpType> {
 
   LogicalResult matchAndRewrite(OpType op,
                                 PatternRewriter &rewriter) const override {
+    if (op->hasAttr("rhs_const_value")) {
+      // Already fused with a constant on the right-hand side.
+      return failure();
+    }
+
     Value lhs = op.getLhs();
     Value rhs = op.getRhs();
 
     bool lhs_is_const = isOriginConstantOp(lhs);
     bool rhs_is_const = rhs && isOriginConstantOp(rhs);
 
-    if (rhs_is_const && !lhs_is_const) {
+    if (rhs_is_const) {
       auto constant_op = dyn_cast<neura::ConstantOp>(rhs.getDefiningOp());
 
       Attribute rhs_const_value = getOriginConstantValue(rhs);
