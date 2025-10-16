@@ -3,7 +3,9 @@ build/
 
 # intermediate output
 **/Output/
-tmp-generated-instructions.yaml
+/test/**/*.yaml
+!arch_spec_example.yaml
+!architecture.yaml
 /test/**/*.asm
 .lit_test_times.txt
 lit.cfg
