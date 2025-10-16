@@ -3,6 +3,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
@@ -33,7 +34,6 @@ struct FuseConstantAndGrantPattern
     // Checks if the constant operation is used by a grant_once or grant_always
     // operation.
     for (auto user : constant_op->getUsers()) {
-      llvm::errs() << "Checking use: " << *user << "\n";
       if (isa<neura::GrantOnceOp>(user) || isa<neura::GrantAlwaysOp>(user)) {
         if (neura::GrantOnceOp grant_once_op =
                 dyn_cast<neura::GrantOnceOp>(user)) {
@@ -107,7 +107,8 @@ struct FuseRhsConstantPattern : public OpRewritePattern<OpType> {
   virtual bool isCommutative() const { return false; }
 
   virtual Operation *
-  createOpWithFusedRhsConstant(OpType op, Attribute rhs_const_value,
+  createOpWithFusedRhsConstant(OpType op, Value non_const_operand,
+                               Attribute rhs_const_value,
                                PatternRewriter &rewriter) const = 0;
 
   LogicalResult matchAndRewrite(OpType op,
@@ -123,7 +124,7 @@ struct FuseRhsConstantPattern : public OpRewritePattern<OpType> {
 
       Attribute rhs_const_value = getOriginConstantValue(rhs);
       Operation *fused_op =
-          createOpWithFusedRhsConstant(op, rhs_const_value, rewriter);
+          createOpWithFusedRhsConstant(op, lhs, rhs_const_value, rewriter);
 
       rewriter.replaceOp(op, fused_op->getResults());
       if (constant_op->use_empty()) {
@@ -137,7 +138,7 @@ struct FuseRhsConstantPattern : public OpRewritePattern<OpType> {
 
       Attribute lhs_const_value = getOriginConstantValue(lhs);
       Operation *fused_op =
-          createOpWithFusedRhsConstant(op, lhs_const_value, rewriter);
+          createOpWithFusedRhsConstant(op, rhs, lhs_const_value, rewriter);
 
       rewriter.replaceOp(op, fused_op->getResults());
       if (constant_op->use_empty()) {
@@ -156,10 +157,11 @@ struct FuseAddRhsConstantPattern : public FuseRhsConstantPattern<neura::AddOp> {
   bool isCommutative() const override { return true; }
 
   Operation *
-  createOpWithFusedRhsConstant(neura::AddOp op, Attribute rhs_const_value,
+  createOpWithFusedRhsConstant(neura::AddOp op, Value non_const_operand,
+                               Attribute rhs_const_value,
                                PatternRewriter &rewriter) const override {
     auto fused_op = rewriter.create<neura::AddOp>(
-        op.getLoc(), op.getResult().getType(), op.getLhs(),
+        op.getLoc(), op.getResult().getType(), non_const_operand,
         /*rhs=*/nullptr);
     addConstantAttribute(fused_op, "rhs_const_value", rhs_const_value);
     return fused_op;
@@ -170,10 +172,11 @@ struct FuseSubRhsConstantPattern : public FuseRhsConstantPattern<neura::SubOp> {
   using FuseRhsConstantPattern<neura::SubOp>::FuseRhsConstantPattern;
 
   Operation *
-  createOpWithFusedRhsConstant(neura::SubOp op, Attribute rhs_const_value,
+  createOpWithFusedRhsConstant(neura::SubOp op, Value non_const_operand,
+                               Attribute rhs_const_value,
                                PatternRewriter &rewriter) const override {
     auto fused_op = rewriter.create<neura::SubOp>(
-        op.getLoc(), op.getResult().getType(), op.getLhs(),
+        op.getLoc(), op.getResult().getType(), non_const_operand,
         /*rhs=*/nullptr);
     addConstantAttribute(fused_op, "rhs_const_value", rhs_const_value);
     return fused_op;
@@ -186,10 +189,11 @@ struct FuseMulRhsConstantPattern : public FuseRhsConstantPattern<neura::MulOp> {
   bool isCommutative() const override { return true; }
 
   Operation *
-  createOpWithFusedRhsConstant(neura::MulOp op, Attribute rhs_const_value,
+  createOpWithFusedRhsConstant(neura::MulOp op, Value non_const_operand,
+                               Attribute rhs_const_value,
                                PatternRewriter &rewriter) const override {
     auto fused_op = rewriter.create<neura::MulOp>(
-        op.getLoc(), op.getResult().getType(), op.getLhs(),
+        op.getLoc(), op.getResult().getType(), non_const_operand,
         /*rhs=*/nullptr);
     addConstantAttribute(fused_op, "rhs_const_value", rhs_const_value);
     return fused_op;
@@ -201,10 +205,11 @@ struct FuseICmpRhsConstantPattern
   using FuseRhsConstantPattern<neura::ICmpOp>::FuseRhsConstantPattern;
 
   Operation *
-  createOpWithFusedRhsConstant(neura::ICmpOp op, Attribute rhs_const_value,
+  createOpWithFusedRhsConstant(neura::ICmpOp op, Value non_const_operand,
+                               Attribute rhs_const_value,
                                PatternRewriter &rewriter) const override {
     auto fused_op = rewriter.create<neura::ICmpOp>(
-        op.getLoc(), op.getResult().getType(), op.getLhs(),
+        op.getLoc(), op.getResult().getType(), non_const_operand,
         /*rhs=*/nullptr, op.getCmpType());
     addConstantAttribute(fused_op, "rhs_const_value", rhs_const_value);
     return fused_op;
@@ -218,10 +223,11 @@ struct FuseFAddRhsConstantPattern
   bool isCommutative() const override { return true; }
 
   Operation *
-  createOpWithFusedRhsConstant(neura::FAddOp op, Attribute rhs_const_value,
+  createOpWithFusedRhsConstant(neura::FAddOp op, Value non_const_operand,
+                               Attribute rhs_const_value,
                                PatternRewriter &rewriter) const override {
     auto fused_op = rewriter.create<neura::FAddOp>(
-        op.getLoc(), op.getResult().getType(), op.getLhs(),
+        op.getLoc(), op.getResult().getType(), non_const_operand,
         /*rhs=*/nullptr);
     addConstantAttribute(fused_op, "rhs_const_value", rhs_const_value);
     return fused_op;
@@ -232,10 +238,11 @@ struct FuseDivRhsConstantPattern : public FuseRhsConstantPattern<neura::DivOp> {
   using FuseRhsConstantPattern<neura::DivOp>::FuseRhsConstantPattern;
 
   Operation *
-  createOpWithFusedRhsConstant(neura::DivOp op, Attribute rhs_const_value,
+  createOpWithFusedRhsConstant(neura::DivOp op, Value non_const_operand,
+                               Attribute rhs_const_value,
                                PatternRewriter &rewriter) const override {
     auto fused_op = rewriter.create<neura::DivOp>(
-        op.getLoc(), op.getResult().getType(), op.getLhs(),
+        op.getLoc(), op.getResult().getType(), non_const_operand,
         /*rhs=*/nullptr);
     addConstantAttribute(fused_op, "rhs_const_value", rhs_const_value);
     return fused_op;
@@ -246,10 +253,11 @@ struct FuseRemRhsConstantPattern : public FuseRhsConstantPattern<neura::RemOp> {
   using FuseRhsConstantPattern<neura::RemOp>::FuseRhsConstantPattern;
 
   Operation *
-  createOpWithFusedRhsConstant(neura::RemOp op, Attribute rhs_const_value,
+  createOpWithFusedRhsConstant(neura::RemOp op, Value non_const_operand,
+                               Attribute rhs_const_value,
                                PatternRewriter &rewriter) const override {
     auto fused_op = rewriter.create<neura::RemOp>(
-        op.getLoc(), op.getResult().getType(), op.getLhs(),
+        op.getLoc(), op.getResult().getType(), non_const_operand,
         /*rhs=*/nullptr);
     addConstantAttribute(fused_op, "rhs_const_value", rhs_const_value);
     return fused_op;
