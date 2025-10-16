@@ -145,7 +145,7 @@ def Neura_LoadOp : Op<NeuraDialect, "load"> {
 
 // Defines a store operation.
 def Neura_StoreOp : Op<NeuraDialect, "store"> {
-  let arguments = (ins AnyType:$value, AnyType:$addr);
+  let arguments = (ins AnyType:$value, Optional<AnyType>:$addr);
   let results = (outs);
   // let assemblyFormat = "$value `,` $addr `,` attr-dict";
 }
@@ -179,9 +179,9 @@ def Neura_StoreIndexedOp: Op<NeuraDialect, "store_indexed"> {
 }
 
 // Defines a pointer computation operation.
-def Neura_GEP : Op<NeuraDialect, "gep"> {
+def Neura_GEP : Op<NeuraDialect, "gep", [AttrSizedOperandSegments]> {
   let summary = "Pointer computation using offset indices";
-  let arguments = (ins AnyType:$base, Variadic<AnyType>:$indicesAndPredicate);
+  let arguments = (ins Optional<AnyType>:$base, Variadic<AnyType>:$indicesAndPredicate);
   let results = (outs AnyType:$result);
   // let assemblyFormat = "$base `[` $indicesAndPredicate `]` `,` $predicate attr-dict";
 }
