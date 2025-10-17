@@ -550,14 +550,14 @@ bool parseArchitectureYAML(llvm::yaml::Document &doc, int &width, int &height, i
     return false;
   }
   
-  auto *rootMap = llvm::dyn_cast<llvm::yaml::MappingNode>(root);
-  if (!rootMap) {
+  auto *root_map = llvm::dyn_cast<llvm::yaml::MappingNode>(root);
+  if (!root_map) {
     llvm::errs() << "[MapToAcceleratorPass] YAML root is not a mapping\n";
     return false;
   }
 
   // Iterate root mapping ONCE; find 'architecture' and 'tile_defaults'.
-  for (auto &key_value_pair : *rootMap) {
+  for (auto &key_value_pair : *root_map) {
     auto *key_node = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(key_value_pair.getKey());
     if (!key_node) continue;
     
