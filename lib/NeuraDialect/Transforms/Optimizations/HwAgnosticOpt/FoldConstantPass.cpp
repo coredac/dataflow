@@ -102,7 +102,7 @@ struct FuseRhsConstantPattern : public OpRewritePattern<OpType> {
   using OpRewritePattern<OpType>::OpRewritePattern;
 
   virtual Operation *
-  createOpWithFusedRhsConstant(OpType op, Attribute rhs_const_value,
+  createOpWithFusedRhsConstant(OpType op, Attribute rhs_value,
                                PatternRewriter &rewriter) const = 0;
 
   LogicalResult matchAndRewrite(OpType op,
@@ -121,9 +121,9 @@ struct FuseRhsConstantPattern : public OpRewritePattern<OpType> {
 
     auto constant_op = dyn_cast<neura::ConstantOp>(rhs.getDefiningOp());
 
-    Attribute rhs_const_value = getOriginConstantValue(rhs);
+    Attribute rhs_value = getOriginConstantValue(rhs);
     Operation *fused_op =
-        createOpWithFusedRhsConstant(op, rhs_const_value, rewriter);
+        createOpWithFusedRhsConstant(op, rhs_value, rewriter);
 
     rewriter.replaceOp(op, fused_op->getResults());
     if (constant_op->use_empty()) {
@@ -137,12 +137,12 @@ struct FuseAddRhsConstantPattern : public FuseRhsConstantPattern<neura::AddOp> {
   using FuseRhsConstantPattern<neura::AddOp>::FuseRhsConstantPattern;
 
   Operation *
-  createOpWithFusedRhsConstant(neura::AddOp op, Attribute rhs_const_value,
+  createOpWithFusedRhsConstant(neura::AddOp op, Attribute rhs_value,
                                PatternRewriter &rewriter) const override {
     auto fused_op = rewriter.create<neura::AddOp>(
         op.getLoc(), op.getResult().getType(), op.getLhs(),
         /*rhs=*/nullptr);
-    addConstantAttribute(fused_op, "rhs_const_value", rhs_const_value);
+    addConstantAttribute(fused_op, "rhs_value", rhs_value);
     return fused_op;
   }
 };
@@ -151,12 +151,12 @@ struct FuseSubRhsConstantPattern : public FuseRhsConstantPattern<neura::SubOp> {
   using FuseRhsConstantPattern<neura::SubOp>::FuseRhsConstantPattern;
 
   Operation *
-  createOpWithFusedRhsConstant(neura::SubOp op, Attribute rhs_const_value,
+  createOpWithFusedRhsConstant(neura::SubOp op, Attribute rhs_value,
                                PatternRewriter &rewriter) const override {
     auto fused_op = rewriter.create<neura::SubOp>(
         op.getLoc(), op.getResult().getType(), op.getLhs(),
         /*rhs=*/nullptr);
-    addConstantAttribute(fused_op, "rhs_const_value", rhs_const_value);
+    addConstantAttribute(fused_op, "rhs_value", rhs_value);
     return fused_op;
   }
 };
@@ -165,12 +165,12 @@ struct FuseMulRhsConstantPattern : public FuseRhsConstantPattern<neura::MulOp> {
   using FuseRhsConstantPattern<neura::MulOp>::FuseRhsConstantPattern;
 
   Operation *
-  createOpWithFusedRhsConstant(neura::MulOp op, Attribute rhs_const_value,
+  createOpWithFusedRhsConstant(neura::MulOp op, Attribute rhs_value,
                                PatternRewriter &rewriter) const override {
     auto fused_op = rewriter.create<neura::MulOp>(
         op.getLoc(), op.getResult().getType(), op.getLhs(),
         /*rhs=*/nullptr);
-    addConstantAttribute(fused_op, "rhs_const_value", rhs_const_value);
+    addConstantAttribute(fused_op, "rhs_value", rhs_value);
     return fused_op;
   }
 };
@@ -180,12 +180,12 @@ struct FuseICmpRhsConstantPattern
   using FuseRhsConstantPattern<neura::ICmpOp>::FuseRhsConstantPattern;
 
   Operation *
-  createOpWithFusedRhsConstant(neura::ICmpOp op, Attribute rhs_const_value,
+  createOpWithFusedRhsConstant(neura::ICmpOp op, Attribute rhs_value,
                                PatternRewriter &rewriter) const override {
     auto fused_op = rewriter.create<neura::ICmpOp>(
         op.getLoc(), op.getResult().getType(), op.getLhs(),
         /*rhs=*/nullptr, op.getCmpType());
-    addConstantAttribute(fused_op, "rhs_const_value", rhs_const_value);
+    addConstantAttribute(fused_op, "rhs_value", rhs_value);
     return fused_op;
   }
 };
@@ -195,12 +195,12 @@ struct FuseFAddRhsConstantPattern
   using FuseRhsConstantPattern<neura::FAddOp>::FuseRhsConstantPattern;
 
   Operation *
-  createOpWithFusedRhsConstant(neura::FAddOp op, Attribute rhs_const_value,
+  createOpWithFusedRhsConstant(neura::FAddOp op, Attribute rhs_value,
                                PatternRewriter &rewriter) const override {
     auto fused_op = rewriter.create<neura::FAddOp>(
         op.getLoc(), op.getResult().getType(), op.getLhs(),
         /*rhs=*/nullptr);
-    addConstantAttribute(fused_op, "rhs_const_value", rhs_const_value);
+    addConstantAttribute(fused_op, "rhs_value", rhs_value);
     return fused_op;
   }
 };
@@ -209,12 +209,12 @@ struct FuseDivRhsConstantPattern : public FuseRhsConstantPattern<neura::DivOp> {
   using FuseRhsConstantPattern<neura::DivOp>::FuseRhsConstantPattern;
 
   Operation *
-  createOpWithFusedRhsConstant(neura::DivOp op, Attribute rhs_const_value,
+  createOpWithFusedRhsConstant(neura::DivOp op, Attribute rhs_value,
                                PatternRewriter &rewriter) const override {
     auto fused_op = rewriter.create<neura::DivOp>(
         op.getLoc(), op.getResult().getType(), op.getLhs(),
         /*rhs=*/nullptr);
-    addConstantAttribute(fused_op, "rhs_const_value", rhs_const_value);
+    addConstantAttribute(fused_op, "rhs_value", rhs_value);
     return fused_op;
   }
 };
@@ -223,12 +223,12 @@ struct FuseRemRhsConstantPattern : public FuseRhsConstantPattern<neura::RemOp> {
   using FuseRhsConstantPattern<neura::RemOp>::FuseRhsConstantPattern;
 
   Operation *
-  createOpWithFusedRhsConstant(neura::RemOp op, Attribute rhs_const_value,
+  createOpWithFusedRhsConstant(neura::RemOp op, Attribute rhs_value,
                                PatternRewriter &rewriter) const override {
     auto fused_op = rewriter.create<neura::RemOp>(
         op.getLoc(), op.getResult().getType(), op.getLhs(),
         /*rhs=*/nullptr);
-    addConstantAttribute(fused_op, "rhs_const_value", rhs_const_value);
+    addConstantAttribute(fused_op, "rhs_value", rhs_value);
     return fused_op;
   }
 };
@@ -261,10 +261,10 @@ struct FuseGepBaseConstantPattern : public OpRewritePattern<neura::GEP> {
     // Creates new GEP with no base but with lhs_value attribute.
     auto fused_gep = rewriter.create<neura::GEP>(
         gep_op.getLoc(), 
-    // TODO: Gather all the attribute -- https://github.com/coredac/dataflow/issues/145
         gep_op.getResult().getType(),
         /*base=*/nullptr,
         indices);
+    // TODO: Gather all the attribute -- https://github.com/coredac/dataflow/issues/145
     addConstantAttribute(fused_gep, "lhs_value", base_const_value);
 
     // Replaces the original GEP.
