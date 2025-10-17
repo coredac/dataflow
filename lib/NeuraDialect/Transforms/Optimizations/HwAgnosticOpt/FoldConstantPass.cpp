@@ -271,7 +271,7 @@ struct FuseRemRhsConstantPattern : public FuseRhsConstantPattern<neura::RemOp> {
 
 // =========================================
 // FuseGepBaseConstantPattern
-// Fold constant base pointer for GEP operation
+// Folds constant base pointer for GEP operation.
 // =========================================
 struct FuseGepBaseConstantPattern : public OpRewritePattern<neura::GEP> {
   using OpRewritePattern<neura::GEP>::OpRewritePattern;
@@ -280,7 +280,7 @@ struct FuseGepBaseConstantPattern : public OpRewritePattern<neura::GEP> {
                                 PatternRewriter &rewriter) const override {
     Value base = gep_op.getBase();
     
-    // Check if base exists and is a constant
+    // Checks if base exists and is a constant.
     if (!base || !isOriginConstantOp(base)) {
       return failure();
     }
@@ -288,24 +288,25 @@ struct FuseGepBaseConstantPattern : public OpRewritePattern<neura::GEP> {
     auto constant_op = dyn_cast<neura::ConstantOp>(base.getDefiningOp());
     Attribute base_const_value = getOriginConstantValue(base);
 
-    // Get all indices (everything after base)
+    // Gets all indices (everything after base).
     SmallVector<Value> indices;
     for (Value operand : gep_op.getIndicesAndPredicate()) {
       indices.push_back(operand);
     }
 
-    // Create new GEP with no base but with const_base_ptr attribute
+    // Creates new GEP with no base but with lhs_value attribute.
     auto fused_gep = rewriter.create<neura::GEP>(
         gep_op.getLoc(), 
+    // TODO: Gather all the attribute -- https://github.com/coredac/dataflow/issues/145
         gep_op.getResult().getType(),
         /*base=*/nullptr,
         indices);
-    addConstantAttribute(fused_gep, "const_base_ptr", base_const_value);
+    addConstantAttribute(fused_gep, "lhs_value", base_const_value);
 
-    // Replace the original GEP
+    // Replaces the original GEP.
     rewriter.replaceOp(gep_op, fused_gep);
     
-    // Clean up constant if no longer used
+    // Cleans up constant if no longer used.
     if (constant_op->use_empty()) {
       rewriter.eraseOp(constant_op);
     }
@@ -316,7 +317,7 @@ struct FuseGepBaseConstantPattern : public OpRewritePattern<neura::GEP> {
 
 // =========================================
 // FuseStoreAddrConstantPattern
-// Fold constant destination pointer for Store operation
+// Folds constant destination pointer for Store operation.
 // =========================================
 struct FuseStoreAddrConstantPattern : public OpRewritePattern<neura::StoreOp> {
   using OpRewritePattern<neura::StoreOp>::OpRewritePattern;
@@ -325,7 +326,7 @@ struct FuseStoreAddrConstantPattern : public OpRewritePattern<neura::StoreOp> {
                                 PatternRewriter &rewriter) const override {
     Value addr = store_op.getAddr();
     
-    // Check if address exists and is a constant
+    // Checks if address exists and is a constant.
     if (!addr || !isOriginConstantOp(addr)) {
       return failure();
     }
@@ -333,17 +334,17 @@ struct FuseStoreAddrConstantPattern : public OpRewritePattern<neura::StoreOp> {
     auto constant_op = dyn_cast<neura::ConstantOp>(addr.getDefiningOp());
     Attribute addr_const_value = getOriginConstantValue(addr);
 
-    // Create new Store with no addr but with const_dst_ptr attribute
+    // Creates new Store with no addr but with rhs_value attribute.
     auto fused_store = rewriter.create<neura::StoreOp>(
         store_op.getLoc(),
-        store_op.getValue(),  // Keep the value operand
-        /*addr=*/nullptr);    // Remove addr operand
-    addConstantAttribute(fused_store, "const_dst_ptr", addr_const_value);
+        store_op.getValue(),  // Keeps the value operand.
+        /*addr=*/nullptr);    // Removes addr operand.
+    addConstantAttribute(fused_store, "rhs_value", addr_const_value);
 
-    // Replace the original Store
+    // Replaces the original Store.
     rewriter.replaceOp(store_op, fused_store);
     
-    // Clean up constant if no longer used
+    // Cleans up constant if no longer used.
     if (constant_op->use_empty()) {
       rewriter.eraseOp(constant_op);
     }

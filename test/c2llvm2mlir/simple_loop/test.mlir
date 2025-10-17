@@ -1,7 +1,7 @@
 // Compiles the original kernel.
 // RUN: clang++ kernel.cpp -o %t-kernel.out
 
-// Compiles the original kernel to mlir, then lower back to llvm, eventually binary.
+// Compiles the original kernel to mlir, then lowers back to llvm, eventually binary.
 // RUN: clang++ -S -emit-llvm -o %t-kernel.ll kernel.cpp
 // RUN: mlir-translate --import-llvm %t-kernel.ll -o %t-kernel.mlir
 // RUN: mlir-opt %t-kernel.mlir | mlir-translate -mlir-to-llvmir -o %t-kernel_back.ll
@@ -16,7 +16,7 @@
 // CHECK: output: [[OUTPUT:[0-9]+\.[0-9]+]]
 // CHECK: output: [[OUTPUT]]
 
-// Test LLVM to NEURA lowering
+// Tests LLVM to NEURA lowering.
 // RUN: clang++ -S -emit-llvm -O3 -fno-unroll-loops -fno-vectorize -ffp-contract=off kernel.cpp -o %t-kernel.ll
 // RUN: mlir-translate --import-llvm %t-kernel.ll -o %t-kernel.mlir
 
@@ -49,8 +49,21 @@
 // CHECK-LLVM2NEURA: dataflow_mode = "predicate"
 // CHECK-LLVM2NEURA: neura.phi
 // CHECK-LLVM2NEURA: neura.gep
+// CHECK-LLVM2NEURA-SAME: lhs_value
 // CHECK-LLVM2NEURA: neura.load
 // CHECK-LLVM2NEURA: neura.fmul
 // CHECK-LLVM2NEURA: neura.fadd
+// CHECK-LLVM2NEURA: neura.store
+// CHECK-LLVM2NEURA-SAME: rhs_value
 
-// CHECK-LLVM2NEURA-MAP: func.func @_Z6kernelPfS_S_(%arg0: !llvm.ptr {llvm.nocapture, llvm.noundef, llvm.readonly}, %arg1: !llvm.ptr {llvm.nocapture, llvm.noundef}, %arg2: !llvm.ptr {llvm.nocapture, llvm.noundef, llvm.readonly}) -> !llvm.void attributes {CConv = #llvm.cconv<ccc>, accelerator = "neura", dataflow_mode = "predicate", linkage = #llvm.linkage<external>, mapping_info = {compiled_ii = 5 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 5 : i32, res_mii = 2 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}, memory_effects = #llvm.memory_effects<other = none, argMem = readwrite, inaccessibleMem = none>, no_unwind, passthrough = ["mustprogress", "nofree", "norecurse", "nosync", ["uwtable", "2"], ["min-legal-vector-width", "0"], ["no-trapping-math", "true"], ["stack-protector-buffer-size", "8"], ["target-cpu", "x86-64"]], target_cpu = "x86-64", target_features = #llvm.target_features<["+cmov", "+cx8", "+fxsr", "+mmx", "+sse", "+sse2", "+x87"]>, tune_cpu = "generic", unnamed_addr = 1 : i64, visibility_ = 0 : i64} {
+// CHECK-LLVM2NEURA-MAP:      func.func @
+// CHECK-LLVM2NEURA-MAP-SAME:  accelerator = "neura"
+// CHECK-LLVM2NEURA-MAP-SAME:  dataflow_mode = "predicate"
+// CHECK-LLVM2NEURA-MAP-SAME:  mapping_info = {
+// CHECK-LLVM2NEURA-MAP-SAME:   compiled_ii = 5 : i32, 
+// CHECK-LLVM2NEURA-MAP-SAME:   mapping_mode = "spatial-temporal"
+// CHECK-LLVM2NEURA-MAP-SAME:   mapping_strategy = "heuristic"
+// CHECK-LLVM2NEURA-MAP-SAME:   rec_mii = 5 : i32
+// CHECK-LLVM2NEURA-MAP-SAME:   res_mii = 2 : i32
+// CHECK-LLVM2NEURA-MAP-SAME:   x_tiles = 4 : i32
+// CHECK-LLVM2NEURA-MAP-SAME:   y_tiles = 4 : i32}
