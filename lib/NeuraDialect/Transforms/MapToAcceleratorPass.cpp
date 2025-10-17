@@ -557,64 +557,64 @@ bool parseArchitectureYAML(llvm::yaml::Document &doc, int &width, int &height, i
   }
 
   // Iterate root mapping ONCE; find 'architecture' and 'tile_defaults'.
-  for (auto &keyValuePair : *rootMap) {
-    auto *keyNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getKey());
-    if (!keyNode) continue;
+  for (auto &key_value_pair : *rootMap) {
+    auto *key_node = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(key_value_pair.getKey());
+    if (!key_node) continue;
     
-    llvm::SmallString<64> keyString;
-    llvm::StringRef keyRef = keyNode->getValue(keyString);
+    llvm::SmallString<64> key_string;
+    llvm::StringRef key_ref = key_node->getValue(key_string);
     
-    if (keyRef == "architecture") {
-      auto *architectureMap = llvm::dyn_cast_or_null<llvm::yaml::MappingNode>(keyValuePair.getValue());
-      if (!architectureMap) continue;
+    if (key_ref == "architecture") {
+      auto *architecture_map = llvm::dyn_cast_or_null<llvm::yaml::MappingNode>(key_value_pair.getValue());
+      if (!architecture_map) continue;
 
       // Iterate architecture mapping ONCE; read width/height in the same pass.
-      for (auto &architectureKeyValuePair : *architectureMap) {
-        auto *architectureKeyNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(architectureKeyValuePair.getKey());
-        if (!architectureKeyNode) continue;
+      for (auto &architecture_key_value_pair : *architecture_map) {
+        auto *architecture_key_node = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(architecture_key_value_pair.getKey());
+        if (!architecture_key_node) continue;
         
-        llvm::SmallString<64> architectureKeyString;
-        llvm::StringRef architectureKeyRef = architectureKeyNode->getValue(architectureKeyString);
-        if (architectureKeyRef == "width" || architectureKeyRef == "height" || architectureKeyRef == "max_allowed_ii_by_hw") {
-          auto *architectureValueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(architectureKeyValuePair.getValue());
-          if (!architectureValueNode) continue;
+        llvm::SmallString<64> architecture_key_string;
+        llvm::StringRef architecture_key_ref = architecture_key_node->getValue(architecture_key_string);
+        if (architecture_key_ref == "width" || architecture_key_ref == "height" || architecture_key_ref == "max_allowed_ii_by_hw") {
+          auto *architecture_value_node = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(architecture_key_value_pair.getValue());
+          if (!architecture_value_node) continue;
           
-          llvm::SmallString<64> architectureValueString;
-          llvm::StringRef architectureValueRef = architectureValueNode->getValue(architectureValueString);
-          long long tempValue = 0;
-          if (!architectureValueRef.getAsInteger(10, tempValue)) {
-            if (architectureKeyRef == "width") width = static_cast<int>(tempValue);
-            if (architectureKeyRef == "height") height = static_cast<int>(tempValue);
-            if (architectureKeyRef == "max_allowed_ii_by_hw") {
-              max_ii = static_cast<int>(tempValue);
+          llvm::SmallString<64> architecture_value_string;
+          llvm::StringRef architecture_value_ref = architecture_value_node->getValue(architecture_value_string);
+          long long temp_value = 0;
+          if (!architecture_value_ref.getAsInteger(10, temp_value)) {
+            if (architecture_key_ref == "width") width = static_cast<int>(temp_value);
+            if (architecture_key_ref == "height") height = static_cast<int>(temp_value);
+            if (architecture_key_ref == "max_allowed_ii_by_hw") {
+              max_ii = static_cast<int>(temp_value);
             }
           }
         } else {
           continue;
         }
       }
-        } else if (keyRef == "tile_defaults") {
-          auto *tile_defaults_map = llvm::dyn_cast_or_null<llvm::yaml::MappingNode>(keyValuePair.getValue());
+        } else if (key_ref == "tile_defaults") {
+          auto *tile_defaults_map = llvm::dyn_cast_or_null<llvm::yaml::MappingNode>(key_value_pair.getValue());
           if (tile_defaults_map) {
             parseTileDefaults(tile_defaults_map, tile_defaults);
           }
-        } else if (keyRef == "tile_overrides") {
-          auto *tile_overrides_seq = llvm::dyn_cast_or_null<llvm::yaml::SequenceNode>(keyValuePair.getValue());
+        } else if (key_ref == "tile_overrides") {
+          auto *tile_overrides_seq = llvm::dyn_cast_or_null<llvm::yaml::SequenceNode>(key_value_pair.getValue());
           if (tile_overrides_seq) {
             parseTileOverrides(tile_overrides_seq, tile_overrides);
           }
-        } else if (keyRef == "link_defaults") {
-          auto *link_defaults_map = llvm::dyn_cast_or_null<llvm::yaml::MappingNode>(keyValuePair.getValue());
+        } else if (key_ref == "link_defaults") {
+          auto *link_defaults_map = llvm::dyn_cast_or_null<llvm::yaml::MappingNode>(key_value_pair.getValue());
           if (link_defaults_map) {
             parseLinkDefaults(link_defaults_map, link_defaults);
           }
-        } else if (keyRef == "link_overrides") {
-          auto *link_overrides_seq = llvm::dyn_cast_or_null<llvm::yaml::SequenceNode>(keyValuePair.getValue());
+        } else if (key_ref == "link_overrides") {
+          auto *link_overrides_seq = llvm::dyn_cast_or_null<llvm::yaml::SequenceNode>(key_value_pair.getValue());
           if (link_overrides_seq) {
             parseLinkOverrides(link_overrides_seq, link_overrides);
           }
-        } else if (keyRef == "base_topology") {
-          auto *topology_node = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getValue());
+        } else if (key_ref == "base_topology") {
+          auto *topology_node = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(key_value_pair.getValue());
           if (topology_node) {
             llvm::SmallString<64> topology_string;
             llvm::StringRef topology_ref = topology_node->getValue(topology_string);
