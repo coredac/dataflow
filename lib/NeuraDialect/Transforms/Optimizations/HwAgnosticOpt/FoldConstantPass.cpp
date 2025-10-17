@@ -270,6 +270,90 @@ struct FuseRemRhsConstantPattern : public FuseRhsConstantPattern<neura::RemOp> {
 };
 
 // =========================================
+// FuseGepBaseConstantPattern
+// Folds constant base pointer for GEP operation.
+// =========================================
+struct FuseGepBaseConstantPattern : public OpRewritePattern<neura::GEP> {
+  using OpRewritePattern<neura::GEP>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(neura::GEP gep_op,
+                                PatternRewriter &rewriter) const override {
+    Value base = gep_op.getBase();
+    
+    // Checks if base exists and is a constant.
+    if (!base || !isOriginConstantOp(base)) {
+      return failure();
+    }
+
+    auto constant_op = dyn_cast<neura::ConstantOp>(base.getDefiningOp());
+    Attribute base_const_value = getOriginConstantValue(base);
+
+    // Gets all indices (everything after base).
+    SmallVector<Value> indices;
+    for (Value operand : gep_op.getIndicesAndPredicate()) {
+      indices.push_back(operand);
+    }
+
+    // Creates new GEP with no base but with lhs_value attribute.
+    auto fused_gep = rewriter.create<neura::GEP>(
+        gep_op.getLoc(), 
+    // TODO: Gather all the attribute -- https://github.com/coredac/dataflow/issues/145
+        gep_op.getResult().getType(),
+        /*base=*/nullptr,
+        indices);
+    addConstantAttribute(fused_gep, "lhs_value", base_const_value);
+
+    // Replaces the original GEP.
+    rewriter.replaceOp(gep_op, fused_gep);
+    
+    // Cleans up constant if no longer used.
+    if (constant_op->use_empty()) {
+      rewriter.eraseOp(constant_op);
+    }
+    
+    return success();
+  }
+};
+
+// =========================================
+// FuseStoreAddrConstantPattern
+// Folds constant destination pointer for Store operation.
+// =========================================
+struct FuseStoreAddrConstantPattern : public OpRewritePattern<neura::StoreOp> {
+  using OpRewritePattern<neura::StoreOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(neura::StoreOp store_op,
+                                PatternRewriter &rewriter) const override {
+    Value addr = store_op.getAddr();
+    
+    // Checks if address exists and is a constant.
+    if (!addr || !isOriginConstantOp(addr)) {
+      return failure();
+    }
+
+    auto constant_op = dyn_cast<neura::ConstantOp>(addr.getDefiningOp());
+    Attribute addr_const_value = getOriginConstantValue(addr);
+
+    // Creates new Store with no addr but with rhs_value attribute.
+    auto fused_store = rewriter.create<neura::StoreOp>(
+        store_op.getLoc(),
+        store_op.getValue(),  // Keeps the value operand.
+        /*addr=*/nullptr);    // Removes addr operand.
+    addConstantAttribute(fused_store, "rhs_value", addr_const_value);
+
+    // Replaces the original Store.
+    rewriter.replaceOp(store_op, fused_store);
+    
+    // Cleans up constant if no longer used.
+    if (constant_op->use_empty()) {
+      rewriter.eraseOp(constant_op);
+    }
+    
+    return success();
+  }
+};
+
+// =========================================
 // FoldConstantPass Implementation
 // =========================================
 struct FoldConstantPass
@@ -294,6 +378,8 @@ struct FoldConstantPass
     patterns.add<FuseRemRhsConstantPattern>(&getContext());
 
     patterns.add<FuseConstantAndGrantPattern>(&getContext());
+    patterns.add<FuseGepBaseConstantPattern>(&getContext());
+    patterns.add<FuseStoreAddrConstantPattern>(&getContext());
     FrozenRewritePatternSet frozen(std::move(patterns));
 
     // Applies to every region inside the module (regardless of func type,
