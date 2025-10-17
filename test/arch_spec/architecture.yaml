@@ -1,9 +1,17 @@
 architecture:
-  name: "NeuraCGRA"
+  name: "NeuraMultiCgra"
   version: "1.0"
-  width: 4
-  height: 4
-  max_allowed_ii_by_hw: 20
+
+multi_cgra_defaults:
+  base_topology: "mesh"
+  rows: 1
+  columns: 1
+
+cgra_defaults:
+  rows: 4
+  columns: 4
+  ctrl_mem_rows: 20
+  base_topology: "mesh"
 
 tile_defaults:
   num_registers: 32
@@ -13,8 +21,6 @@ tile_defaults:
 link_defaults:
   latency: 1
   bandwidth: 32
-
-base_topology: "mesh"
 
 link_overrides:
 
