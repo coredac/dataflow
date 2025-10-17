@@ -1,8 +1,9 @@
 architecture:
   name: "NeuraCGRA"
   version: "1.0"
-  width: 8
-  height: 8
+  width: 4
+  height: 4
+  max_allowed_ii_by_hw: 20
 
 tile_defaults:
   num_registers: 128
