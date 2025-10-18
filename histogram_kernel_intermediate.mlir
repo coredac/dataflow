@@ -8,34 +8,34 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<f80 = dense<128> : vector<2xi64>
     %5 = "neura.constant"() <{value = 1 : i64}> : () -> i64
     %6 = "neura.constant"() <{value = 2 : i64}> : () -> i64
     %7 = "neura.constant"() <{value = 20 : i64}> : () -> i64
-    neura.br %0 : i64 to ^bb1
-  ^bb1(%8: i64):  // 2 preds: ^bb0, ^bb1
-    %9 = "neura.gep"(%arg0, %8) : (!llvm.ptr, i64) -> !llvm.ptr
-    %10 = "neura.load"(%9) : (!llvm.ptr) -> f32
-    %11 = "neura.fadd"(%10, %1) : (f32, f32) -> f32
-    %12 = "neura.fmul"(%11, %2) : (f32, f32) -> f32
-    %13 = llvm.fdiv %12, %3 : f32
-    %14 = llvm.fptosi %13 : f32 to i32
-    %15 = neura.sext %14 : i32 -> i64
-    %16 = "neura.gep"(%arg1, %15) : (!llvm.ptr, i64) -> !llvm.ptr
-    %17 = "neura.load"(%16) : (!llvm.ptr) -> i32
-    %18 = "neura.add"(%17, %4) : (i32, i32) -> i32
-    "neura.store"(%18, %16) : (i32, !llvm.ptr) -> ()
-    %19 = "neura.or"(%8, %5) : (i64, i64) -> i64
-    %20 = "neura.gep"(%arg0, %19) : (!llvm.ptr, i64) -> !llvm.ptr
-    %21 = "neura.load"(%20) : (!llvm.ptr) -> f32
-    %22 = "neura.fadd"(%21, %1) : (f32, f32) -> f32
-    %23 = "neura.fmul"(%22, %2) : (f32, f32) -> f32
-    %24 = llvm.fdiv %23, %3 : f32
-    %25 = llvm.fptosi %24 : f32 to i32
-    %26 = neura.sext %25 : i32 -> i64
-    %27 = "neura.gep"(%arg1, %26) : (!llvm.ptr, i64) -> !llvm.ptr
-    %28 = "neura.load"(%27) : (!llvm.ptr) -> i32
-    %29 = "neura.add"(%28, %4) : (i32, i32) -> i32
-    "neura.store"(%29, %27) : (i32, !llvm.ptr) -> ()
-    %30 = "neura.add"(%8, %6) : (i64, i64) -> i64
-    %31 = "neura.icmp"(%30, %7) <{cmpType = "eq"}> : (i64, i64) -> i1
-    neura.cond_br %31 : i1 then to ^bb2 else %30 : i64 to ^bb1
+    neura.br %0, %arg0, %1, %2, %3, %arg1, %4, %5, %6, %7 : i64, !llvm.ptr, f32, f32, f32, !llvm.ptr, i32, i64, i64, i64 to ^bb1
+  ^bb1(%8: i64, %9: !llvm.ptr, %10: f32, %11: f32, %12: f32, %13: !llvm.ptr, %14: i32, %15: i64, %16: i64, %17: i64):  // 2 preds: ^bb0, ^bb1
+    %18 = "neura.gep"(%9, %8) : (!llvm.ptr, i64) -> !llvm.ptr
+    %19 = "neura.load"(%18) : (!llvm.ptr) -> f32
+    %20 = "neura.fadd"(%19, %10) : (f32, f32) -> f32
+    %21 = "neura.fmul"(%20, %11) : (f32, f32) -> f32
+    %22 = "neura.fdiv"(%21, %12) : (f32, f32) -> f32
+    %23 = "neura.cast"(%22) <{cast_type = "fptosi"}> : (f32) -> i32
+    %24 = neura.sext %23 : i32 -> i64
+    %25 = "neura.gep"(%13, %24) : (!llvm.ptr, i64) -> !llvm.ptr
+    %26 = "neura.load"(%25) : (!llvm.ptr) -> i32
+    %27 = "neura.add"(%26, %14) : (i32, i32) -> i32
+    "neura.store"(%27, %25) : (i32, !llvm.ptr) -> ()
+    %28 = "neura.or"(%8, %15) : (i64, i64) -> i64
+    %29 = "neura.gep"(%9, %28) : (!llvm.ptr, i64) -> !llvm.ptr
+    %30 = "neura.load"(%29) : (!llvm.ptr) -> f32
+    %31 = "neura.fadd"(%30, %10) : (f32, f32) -> f32
+    %32 = "neura.fmul"(%31, %11) : (f32, f32) -> f32
+    %33 = "neura.fdiv"(%32, %12) : (f32, f32) -> f32
+    %34 = "neura.cast"(%33) <{cast_type = "fptosi"}> : (f32) -> i32
+    %35 = neura.sext %34 : i32 -> i64
+    %36 = "neura.gep"(%13, %35) : (!llvm.ptr, i64) -> !llvm.ptr
+    %37 = "neura.load"(%36) : (!llvm.ptr) -> i32
+    %38 = "neura.add"(%37, %14) : (i32, i32) -> i32
+    "neura.store"(%38, %36) : (i32, !llvm.ptr) -> ()
+    %39 = "neura.add"(%8, %16) : (i64, i64) -> i64
+    %40 = "neura.icmp"(%39, %17) <{cmpType = "eq"}> : (i64, i64) -> i1
+    neura.cond_br %40 : i1 then to ^bb2 else %39, %9, %10, %11, %12, %13, %14, %15, %16, %17 : i64, !llvm.ptr, f32, f32, f32, !llvm.ptr, i32, i64, i64, i64 to ^bb1
   ^bb2:  // pred: ^bb1
     "neura.return"() : () -> ()
   }
