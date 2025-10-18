@@ -1,9 +1,3 @@
-[submodule "test/CGRA-Bench"]
-	path = test/benchmark/CGRA-Bench/CGRA-Bench
-	url = https://github.com/tancheng/CGRA-Bench
-[submodule "test/benchmark"]
-	path = test/benchmark
-	url = https://github.com/tancheng/CGRA-Bench.git
 [submodule "test/benchmark/CGRA-Bench"]
 	path = test/benchmark/CGRA-Bench
 	url = https://github.com/tancheng/CGRA-Bench.git
