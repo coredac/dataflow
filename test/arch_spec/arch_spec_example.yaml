@@ -12,7 +12,7 @@ multi_cgra_defaults:
 cgra_defaults:
   rows: 4
   columns: 4
-  ctrl_mem_rows: 20
+  ctrl_mem_items: 20
   base_topology: "mesh"
   memory:
     banks: 4
