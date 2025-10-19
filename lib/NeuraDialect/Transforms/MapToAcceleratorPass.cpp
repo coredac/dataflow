@@ -28,10 +28,20 @@ using namespace mlir::neura;
 #define GEN_PASS_DEF_MAPTOACCELERATOR
 #include "NeuraDialect/NeuraPasses.h.inc"
 
-// Use the TileOverride from ArchitectureSpec.h
+// Utility: Extracts an integer from a YAML ScalarNode. Returns true on success.
+static bool parseYamlScalarInt(const llvm::yaml::Node *node, int &result) {
+  auto *scalar = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(node);
+  if (!scalar) return false;
+  llvm::SmallString<64> value_string;
+  llvm::StringRef value_ref = scalar->getValue(value_string);
+  long long temp_value = 0;
+  if (value_ref.getAsInteger(10, temp_value)) return false;
+  result = static_cast<int>(temp_value);
+  return true;
+}
 
 // Helper function to parse tile defaults.
-bool parseTileDefaults(llvm::yaml::MappingNode *tile_defaults_map, mlir::neura::TileDefaults &tile_defaults) {
+void parseTileDefaults(llvm::yaml::MappingNode *tile_defaults_map, mlir::neura::TileDefaults &tile_defaults) {
   for (auto &key_value_pair : *tile_defaults_map) {
     auto *key_node = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(key_value_pair.getKey());
     if (!key_node) continue;
@@ -40,14 +50,9 @@ bool parseTileDefaults(llvm::yaml::MappingNode *tile_defaults_map, mlir::neura::
     llvm::StringRef key_ref = key_node->getValue(key_string);
     
     if (key_ref == "num_registers") {
-      auto *value_node = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(key_value_pair.getValue());
-      if (value_node) {
-        llvm::SmallString<64> value_string;
-        llvm::StringRef value_ref = value_node->getValue(value_string);
-        long long temp_value = 0;
-        if (!value_ref.getAsInteger(10, temp_value)) {
-          tile_defaults.num_registers = static_cast<int>(temp_value);
-        }
+      int temp_value = 0;
+      if (parseYamlScalarInt(key_value_pair.getValue(), temp_value)) {
+        tile_defaults.num_registers = temp_value;
       }
     } else if (key_ref == "operations") {
       auto *value_node = llvm::dyn_cast_or_null<llvm::yaml::SequenceNode>(key_value_pair.getValue());
@@ -62,249 +67,87 @@ bool parseTileDefaults(llvm::yaml::MappingNode *tile_defaults_map, mlir::neura::
           }
         }
       }
-    } else if (key_ref == "default_ports") {
-      auto *value_node = llvm::dyn_cast_or_null<llvm::yaml::SequenceNode>(key_value_pair.getValue());
-      if (value_node) {
-        tile_defaults.default_ports.clear();
-        for (auto &port_node : *value_node) {
-          auto *port_scalar = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(&port_node);
-          if (port_scalar) {
-            llvm::SmallString<64> port_string;
-            llvm::StringRef port_ref = port_scalar->getValue(port_string);
-            tile_defaults.default_ports.push_back(port_ref.str());
-          }
-        }
-      }
-    }
-  }
-  return true;
-}
-
-// Helper function to parse tile override coordinates and ID.
-void parseTileOverrideCoordinates(llvm::yaml::MappingNode *overrideMap, mlir::neura::TileOverride &override) {
-  for (auto &keyValuePair : *overrideMap) {
-    auto *keyNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getKey());
-    if (!keyNode) continue;
-    
-    llvm::SmallString<64> keyString;
-    llvm::StringRef keyRef = keyNode->getValue(keyString);
-    
-    if (keyRef == "id") {
-      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getValue());
-      if (valueNode) {
-        llvm::SmallString<64> valueString;
-        llvm::StringRef valueRef = valueNode->getValue(valueString);
-        long long tempValue = 0;
-        if (!valueRef.getAsInteger(10, tempValue)) {
-          override.id = static_cast<int>(tempValue);
-        }
-      }
-    } else if (keyRef == "x") {
-      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getValue());
-      if (valueNode) {
-        llvm::SmallString<64> valueString;
-        llvm::StringRef valueRef = valueNode->getValue(valueString);
-        long long tempValue = 0;
-        if (!valueRef.getAsInteger(10, tempValue)) {
-          override.x = static_cast<int>(tempValue);
-        }
-      }
-    } else if (keyRef == "y") {
-      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getValue());
-      if (valueNode) {
-        llvm::SmallString<64> valueString;
-        llvm::StringRef valueRef = valueNode->getValue(valueString);
-        long long tempValue = 0;
-        if (!valueRef.getAsInteger(10, tempValue)) {
-          override.y = static_cast<int>(tempValue);
-        }
-      }
     }
   }
 }
 
 // Helper function to parse tile override operations and registers.
-void parseTileOverrideOperations(llvm::yaml::MappingNode *overrideMap, mlir::neura::TileOverride &override) {
-  for (auto &keyValuePair : *overrideMap) {
-    auto *keyNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getKey());
-    if (!keyNode) continue;
+void parseTileOverrideOperations(llvm::yaml::MappingNode *override_map, mlir::neura::TileOverride &override) {
+  for (auto &key_value_pair : *override_map) {
+    auto *key_node = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(key_value_pair.getKey());
+    if (!key_node) continue;
     
-    llvm::SmallString<64> keyString;
-    llvm::StringRef keyRef = keyNode->getValue(keyString);
+    llvm::SmallString<64> key_string;
+    llvm::StringRef key_ref = key_node->getValue(key_string);
     
-    if (keyRef == "operations") {
-      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::SequenceNode>(keyValuePair.getValue());
-      if (valueNode) {
+    if (key_ref == "operations") {
+      auto *value_node = llvm::dyn_cast_or_null<llvm::yaml::SequenceNode>(key_value_pair.getValue());
+      if (value_node) {
         override.operations.clear();
-        for (auto &operationNode : *valueNode) {
-          auto *operationScalar = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(&operationNode);
-          if (operationScalar) {
+        for (auto &operation_node : *value_node) {
+          auto *operation_scalar = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(&operation_node);
+          if (operation_scalar) {
             llvm::SmallString<64> operationString;
-            llvm::StringRef operationRef = operationScalar->getValue(operationString);
+            llvm::StringRef operationRef = operation_scalar->getValue(operationString);
             override.operations.push_back(operationRef.str());
           }
         }
       }
-    } else if (keyRef == "num_registers") {
-      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getValue());
-      if (valueNode) {
-        llvm::SmallString<64> valueString;
-        llvm::StringRef valueRef = valueNode->getValue(valueString);
-        long long tempValue = 0;
-        if (!valueRef.getAsInteger(10, tempValue)) {
-          override.num_registers = static_cast<int>(tempValue);
-        }
-      }
-    }
-  }
-}
-
-// Helper function to parse tile override ports and memory.
-void parseTileOverridePortsAndMemory(llvm::yaml::MappingNode *overrideMap, mlir::neura::TileOverride &override) {
-  for (auto &keyValuePair : *overrideMap) {
-    auto *keyNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getKey());
-    if (!keyNode) continue;
-    
-    llvm::SmallString<64> keyString;
-    llvm::StringRef keyRef = keyNode->getValue(keyString);
-    
-    if (keyRef == "ports") {
-      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::SequenceNode>(keyValuePair.getValue());
-      if (valueNode) {
-        override.ports.clear();
-        for (auto &portNode : *valueNode) {
-          auto *portScalar = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(&portNode);
-          if (portScalar) {
-            llvm::SmallString<64> portString;
-            llvm::StringRef portRef = portScalar->getValue(portString);
-            override.ports.push_back(portRef.str());
-          }
-        }
-      }
-    } else if (keyRef == "memory") {
-      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::MappingNode>(keyValuePair.getValue());
-      if (valueNode) {
-        for (auto &memoryKeyValuePair : *valueNode) {
-          auto *memoryKeyNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(memoryKeyValuePair.getKey());
-          if (!memoryKeyNode) continue;
-          
-          llvm::SmallString<64> memoryKeyString;
-          llvm::StringRef memoryKeyRef = memoryKeyNode->getValue(memoryKeyString);
-          
-          if (memoryKeyRef == "capacity") {
-            auto *memoryValueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(memoryKeyValuePair.getValue());
-            if (memoryValueNode) {
-              llvm::SmallString<64> memoryValueString;
-              llvm::StringRef memoryValueRef = memoryValueNode->getValue(memoryValueString);
-              long long tempValue = 0;
-              if (!memoryValueRef.getAsInteger(10, tempValue)) {
-                override.memory.capacity = static_cast<int>(tempValue);
-              }
-            }
-          }
-        }
+    } else if (key_ref == "num_registers") {
+      int temp_value = 0;
+      if (parseYamlScalarInt(key_value_pair.getValue(), temp_value)) {
+        override.num_registers = temp_value;
       }
     }
   }
 }
 
 // Helper function to parse a single tile override.
-void parseSingleTileOverride(llvm::yaml::MappingNode *overrideMap, mlir::neura::TileOverride &override) {
-  for (auto &keyValuePair : *overrideMap) {
-    auto *keyNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getKey());
-    if (!keyNode) continue;
+void parseSingleTileOverride(llvm::yaml::MappingNode *override_map, mlir::neura::TileOverride &override) {
+  for (auto &key_value_pair : *override_map) {
+    auto *key_node = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(key_value_pair.getKey());
+    if (!key_node) continue;
     
-    llvm::SmallString<64> keyString;
-    llvm::StringRef keyRef = keyNode->getValue(keyString);
+    llvm::SmallString<64> key_string;
+    llvm::StringRef key_ref = key_node->getValue(key_string);
     
-    if (keyRef == "id") {
-      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getValue());
-      if (valueNode) {
-        llvm::SmallString<64> valueString;
-        llvm::StringRef valueRef = valueNode->getValue(valueString);
-        long long tempValue = 0;
-        if (!valueRef.getAsInteger(10, tempValue)) {
-          override.id = static_cast<int>(tempValue);
-        }
+    if (key_ref == "cgra_x") {
+      int temp_value = 0;
+      if (parseYamlScalarInt(key_value_pair.getValue(), temp_value)) {
+        override.cgra_x = temp_value;
       }
-    } else if (keyRef == "x") {
-      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getValue());
-      if (valueNode) {
-        llvm::SmallString<64> valueString;
-        llvm::StringRef valueRef = valueNode->getValue(valueString);
-        long long tempValue = 0;
-        if (!valueRef.getAsInteger(10, tempValue)) {
-          override.x = static_cast<int>(tempValue);
-        }
+    } else if (key_ref == "cgra_y") {
+      int temp_value = 0;
+      if (parseYamlScalarInt(key_value_pair.getValue(), temp_value)) {
+        override.cgra_y = temp_value;
       }
-    } else if (keyRef == "y") {
-      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getValue());
-      if (valueNode) {
-        llvm::SmallString<64> valueString;
-        llvm::StringRef valueRef = valueNode->getValue(valueString);
-        long long tempValue = 0;
-        if (!valueRef.getAsInteger(10, tempValue)) {
-          override.y = static_cast<int>(tempValue);
-        }
+    } else if (key_ref == "tile_x") {
+      int temp_value = 0;
+      if (parseYamlScalarInt(key_value_pair.getValue(), temp_value)) {
+        override.tile_x = temp_value;
       }
-    } else if (keyRef == "operations") {
-      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::SequenceNode>(keyValuePair.getValue());
-      if (valueNode) {
+    } else if (key_ref == "tile_y") {
+      int temp_value = 0;
+      if (parseYamlScalarInt(key_value_pair.getValue(), temp_value)) {
+        override.tile_y = temp_value;
+      }
+    } else if (key_ref == "operations") {
+      auto *value_node = llvm::dyn_cast_or_null<llvm::yaml::SequenceNode>(key_value_pair.getValue());
+      if (value_node) {
         override.operations.clear();
-        for (auto &operationNode : *valueNode) {
-          auto *operationScalar = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(&operationNode);
-          if (operationScalar) {
+        for (auto &operation_node : *value_node) {
+          auto *operation_scalar = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(&operation_node);
+          if (operation_scalar) {
             llvm::SmallString<64> operationString;
-            llvm::StringRef operationRef = operationScalar->getValue(operationString);
+            llvm::StringRef operationRef = operation_scalar->getValue(operationString);
             override.operations.push_back(operationRef.str());
           }
         }
       }
-    } else if (keyRef == "num_registers") {
-      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getValue());
-      if (valueNode) {
-        llvm::SmallString<64> valueString;
-        llvm::StringRef valueRef = valueNode->getValue(valueString);
-        long long tempValue = 0;
-        if (!valueRef.getAsInteger(10, tempValue)) {
-          override.num_registers = static_cast<int>(tempValue);
-        }
-      }
-    } else if (keyRef == "ports") {
-      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::SequenceNode>(keyValuePair.getValue());
-      if (valueNode) {
-        override.ports.clear();
-        for (auto &portNode : *valueNode) {
-          auto *portScalar = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(&portNode);
-          if (portScalar) {
-            llvm::SmallString<64> portString;
-            llvm::StringRef portRef = portScalar->getValue(portString);
-            override.ports.push_back(portRef.str());
-          }
-        }
-      }
-    } else if (keyRef == "memory") {
-      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::MappingNode>(keyValuePair.getValue());
-      if (valueNode) {
-        for (auto &memoryKeyValuePair : *valueNode) {
-          auto *memoryKeyNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(memoryKeyValuePair.getKey());
-          if (!memoryKeyNode) continue;
-          
-          llvm::SmallString<64> memoryKeyString;
-          llvm::StringRef memoryKeyRef = memoryKeyNode->getValue(memoryKeyString);
-          
-          if (memoryKeyRef == "capacity") {
-            auto *memoryValueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(memoryKeyValuePair.getValue());
-            if (memoryValueNode) {
-              llvm::SmallString<64> memoryValueString;
-              llvm::StringRef memoryValueRef = memoryValueNode->getValue(memoryValueString);
-              long long tempValue = 0;
-              if (!memoryValueRef.getAsInteger(10, tempValue)) {
-                override.memory.capacity = static_cast<int>(tempValue);
-              }
-            }
-          }
-        }
+    } else if (key_ref == "num_registers") {
+      int temp_value = 0;
+      if (parseYamlScalarInt(key_value_pair.getValue(), temp_value)) {
+        override.num_registers = temp_value;
       }
     }
   }
@@ -333,178 +176,65 @@ bool parseLinkDefaults(llvm::yaml::MappingNode *link_defaults_map, mlir::neura::
     llvm::StringRef key_ref = key_node->getValue(key_string);
     
     if (key_ref == "latency") {
-      auto *value_node = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(key_value_pair.getValue());
-      if (value_node) {
-        llvm::SmallString<64> value_string;
-        llvm::StringRef value_ref = value_node->getValue(value_string);
-        long long temp_value = 0;
-        if (!value_ref.getAsInteger(10, temp_value)) {
-          link_defaults.latency = static_cast<int>(temp_value);
-        }
+      int temp_value = 0;
+      if (parseYamlScalarInt(key_value_pair.getValue(), temp_value)) {
+        link_defaults.latency = temp_value;
       }
     } else if (key_ref == "bandwidth") {
-      auto *value_node = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(key_value_pair.getValue());
-      if (value_node) {
-        llvm::SmallString<64> value_string;
-        llvm::StringRef value_ref = value_node->getValue(value_string);
-        long long temp_value = 0;
-        if (!value_ref.getAsInteger(10, temp_value)) {
-          link_defaults.bandwidth = static_cast<int>(temp_value);
-        }
+      int temp_value = 0;
+      if (parseYamlScalarInt(key_value_pair.getValue(), temp_value)) {
+        link_defaults.bandwidth = temp_value;
       }
     }
   }
   return true;
 }
 
-// Helper function to parse link override properties.
-void parseLinkOverrideProperties(llvm::yaml::MappingNode *overrideMap, mlir::neura::LinkOverride &override) {
-  for (auto &keyValuePair : *overrideMap) {
-    auto *keyNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getKey());
-    if (!keyNode) continue;
-    
-    llvm::SmallString<64> keyString;
-    llvm::StringRef keyRef = keyNode->getValue(keyString);
-    
-    if (keyRef == "id") {
-      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getValue());
-      if (valueNode) {
-        llvm::SmallString<64> valueString;
-        llvm::StringRef valueRef = valueNode->getValue(valueString);
-        long long tempValue = 0;
-        if (!valueRef.getAsInteger(10, tempValue)) {
-          override.id = static_cast<int>(tempValue);
-        }
-      }
-    } else if (keyRef == "latency") {
-      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getValue());
-      if (valueNode) {
-        llvm::SmallString<64> valueString;
-        llvm::StringRef valueRef = valueNode->getValue(valueString);
-        long long tempValue = 0;
-        if (!valueRef.getAsInteger(10, tempValue)) {
-          override.latency = static_cast<int>(tempValue);
-        }
-      }
-    } else if (keyRef == "bandwidth") {
-      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getValue());
-      if (valueNode) {
-        llvm::SmallString<64> valueString;
-        llvm::StringRef valueRef = valueNode->getValue(valueString);
-        long long tempValue = 0;
-        if (!valueRef.getAsInteger(10, tempValue)) {
-          override.bandwidth = static_cast<int>(tempValue);
-        }
-      }
-    }
-  }
-}
-
-// Helper function to parse link override tile IDs and existence.
-void parseLinkOverrideTilesAndExistence(llvm::yaml::MappingNode *overrideMap, mlir::neura::LinkOverride &override) {
-  for (auto &keyValuePair : *overrideMap) {
-    auto *keyNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getKey());
-    if (!keyNode) continue;
-    
-    llvm::SmallString<64> keyString;
-    llvm::StringRef keyRef = keyNode->getValue(keyString);
-    
-    if (keyRef == "src_tile_id") {
-      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getValue());
-      if (valueNode) {
-        llvm::SmallString<64> valueString;
-        llvm::StringRef valueRef = valueNode->getValue(valueString);
-        long long tempValue = 0;
-        if (!valueRef.getAsInteger(10, tempValue)) {
-          override.src_tile_id = static_cast<int>(tempValue);
-        }
-      }
-    } else if (keyRef == "dst_tile_id") {
-      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getValue());
-      if (valueNode) {
-        llvm::SmallString<64> valueString;
-        llvm::StringRef valueRef = valueNode->getValue(valueString);
-        long long tempValue = 0;
-        if (!valueRef.getAsInteger(10, tempValue)) {
-          override.dst_tile_id = static_cast<int>(tempValue);
-        }
-      }
-    } else if (keyRef == "existence") {
-      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getValue());
-      if (valueNode) {
-        llvm::SmallString<64> valueString;
-        llvm::StringRef valueRef = valueNode->getValue(valueString);
-        override.existence = (valueRef == "true" || valueRef == "True" || valueRef == "1");
-      }
-    }
-  }
-}
-
 // Helper function to parse a single link override.
-void parseSingleLinkOverride(llvm::yaml::MappingNode *overrideMap, mlir::neura::LinkOverride &override) {
-  for (auto &keyValuePair : *overrideMap) {
-    auto *keyNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getKey());
-    if (!keyNode) continue;
+void parseSingleLinkOverride(llvm::yaml::MappingNode *override_map, mlir::neura::LinkOverride &override) {
+  for (auto &key_value_pair : *override_map) {
+    auto *key_node = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(key_value_pair.getKey());
+    if (!key_node) continue;
     
-    llvm::SmallString<64> keyString;
-    llvm::StringRef keyRef = keyNode->getValue(keyString);
+    llvm::SmallString<64> key_string;
+    llvm::StringRef key_ref = key_node->getValue(key_string);
     
-    if (keyRef == "id") {
-      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getValue());
-      if (valueNode) {
-        llvm::SmallString<64> valueString;
-        llvm::StringRef valueRef = valueNode->getValue(valueString);
-        long long tempValue = 0;
-        if (!valueRef.getAsInteger(10, tempValue)) {
-          override.id = static_cast<int>(tempValue);
-        }
+    if (key_ref == "latency") {
+      int temp_value = 0;
+      if (parseYamlScalarInt(key_value_pair.getValue(), temp_value)) {
+        override.latency = temp_value;
       }
-    } else if (keyRef == "latency") {
-      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getValue());
-      if (valueNode) {
-        llvm::SmallString<64> valueString;
-        llvm::StringRef valueRef = valueNode->getValue(valueString);
-        long long tempValue = 0;
-        if (!valueRef.getAsInteger(10, tempValue)) {
-          override.latency = static_cast<int>(tempValue);
-        }
+    } else if (key_ref == "bandwidth") {
+      int temp_value = 0;
+      if (parseYamlScalarInt(key_value_pair.getValue(), temp_value)) {
+        override.bandwidth = temp_value;
       }
-    } else if (keyRef == "bandwidth") {
-      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getValue());
-      if (valueNode) {
-        llvm::SmallString<64> valueString;
-        llvm::StringRef valueRef = valueNode->getValue(valueString);
-        long long tempValue = 0;
-        if (!valueRef.getAsInteger(10, tempValue)) {
-          override.bandwidth = static_cast<int>(tempValue);
-        }
+    } else if (key_ref == "src_tile_x") {
+      int temp_value = 0;
+      if (parseYamlScalarInt(key_value_pair.getValue(), temp_value)) {
+        override.src_tile_x = temp_value;
       }
-    } else if (keyRef == "src_tile_id") {
-      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getValue());
-      if (valueNode) {
-        llvm::SmallString<64> valueString;
-        llvm::StringRef valueRef = valueNode->getValue(valueString);
-        long long tempValue = 0;
-        if (!valueRef.getAsInteger(10, tempValue)) {
-          override.src_tile_id = static_cast<int>(tempValue);
-        }
+    } else if (key_ref == "src_tile_y") {
+      int temp_value = 0;
+      if (parseYamlScalarInt(key_value_pair.getValue(), temp_value)) {
+        override.src_tile_y = temp_value;
       }
-    } else if (keyRef == "dst_tile_id") {
-      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getValue());
-      if (valueNode) {
-        llvm::SmallString<64> valueString;
-        llvm::StringRef valueRef = valueNode->getValue(valueString);
-        long long tempValue = 0;
-        if (!valueRef.getAsInteger(10, tempValue)) {
-          override.dst_tile_id = static_cast<int>(tempValue);
-        }
+    } else if (key_ref == "dst_tile_x") {
+      int temp_value = 0;
+      if (parseYamlScalarInt(key_value_pair.getValue(), temp_value)) {
+        override.dst_tile_x = temp_value;
       }
-    } else if (keyRef == "existence") {
-      auto *valueNode = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(keyValuePair.getValue());
-      if (valueNode) {
-        llvm::SmallString<64> valueString;
-        llvm::StringRef valueRef = valueNode->getValue(valueString);
-        override.existence = (valueRef == "true" || valueRef == "True" || valueRef == "1");
+    } else if (key_ref == "dst_tile_y") {
+      int temp_value = 0;
+      if (parseYamlScalarInt(key_value_pair.getValue(), temp_value)) {
+        override.dst_tile_y = temp_value;
+      }
+    } else if (key_ref == "existence") {
+      auto *value_node = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(key_value_pair.getValue());
+      if (value_node) {
+        llvm::SmallString<64> value_string;
+        llvm::StringRef value_ref = value_node->getValue(value_string);
+        override.existence = (value_ref == "true" || value_ref == "True" || value_ref == "1");
       }
     }
   }
@@ -538,12 +268,18 @@ mlir::neura::BaseTopology parseTopologyString(const std::string& topology_str) {
 }
 
 // Helper function to parse architecture YAML configuration.
-bool parseArchitectureYAML(llvm::yaml::Document &doc, int &width, int &height, int &max_ii,
-                          mlir::neura::TileDefaults &tile_defaults,
-                          std::vector<mlir::neura::TileOverride> &tile_overrides,
-                          mlir::neura::LinkDefaults &link_defaults,
-                          std::vector<mlir::neura::LinkOverride> &link_overrides,
-                          mlir::neura::BaseTopology &base_topology) {
+bool parseArchitectureYaml(llvm::yaml::Document &doc,
+                           int &multi_cgra_rows,
+                           int &multi_cgra_columns,
+                           mlir::neura::BaseTopology &multi_cgra_base_topology,
+                           int &per_cgra_rows,
+                           int &per_cgra_columns,
+                           mlir::neura::BaseTopology &per_cgra_base_topology,
+                           int &max_ctrl_mem_items,
+                           mlir::neura::TileDefaults &tile_defaults,
+                           std::vector<mlir::neura::TileOverride> &tile_overrides,
+                           mlir::neura::LinkDefaults &link_defaults,
+                           std::vector<mlir::neura::LinkOverride> &link_overrides) {
   auto *root = doc.getRoot();
   if (!root) {
     llvm::errs() << "[MapToAcceleratorPass] Empty YAML document\n";
@@ -567,67 +303,98 @@ bool parseArchitectureYAML(llvm::yaml::Document &doc, int &width, int &height, i
     if (key_ref == "architecture") {
       auto *architecture_map = llvm::dyn_cast_or_null<llvm::yaml::MappingNode>(key_value_pair.getValue());
       if (!architecture_map) continue;
+    } else if (key_ref == "multi_cgra_defaults") {
+      auto *multi_cgra_map = llvm::dyn_cast_or_null<llvm::yaml::MappingNode>(key_value_pair.getValue());
+      if (!multi_cgra_map) continue;
 
       // Iterate architecture mapping ONCE; read width/height in the same pass.
-      for (auto &architecture_key_value_pair : *architecture_map) {
-        auto *architecture_key_node = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(architecture_key_value_pair.getKey());
-        if (!architecture_key_node) continue;
-        
-        llvm::SmallString<64> architecture_key_string;
-        llvm::StringRef architecture_key_ref = architecture_key_node->getValue(architecture_key_string);
-        if (architecture_key_ref == "width" || architecture_key_ref == "height" || architecture_key_ref == "max_allowed_ii_by_hw") {
-          auto *architecture_value_node = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(architecture_key_value_pair.getValue());
-          if (!architecture_value_node) continue;
-          
-          llvm::SmallString<64> architecture_value_string;
-          llvm::StringRef architecture_value_ref = architecture_value_node->getValue(architecture_value_string);
+      for (auto &multi_cgra_map_key_value_pair : *multi_cgra_map) {
+        auto *multi_cgra_map_key_node = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(multi_cgra_map_key_value_pair.getKey());
+        if (!multi_cgra_map_key_node) continue;
+
+        llvm::SmallString<64> multi_cgra_map_key_string;
+        llvm::StringRef multi_cgra_map_key_ref = multi_cgra_map_key_node->getValue(multi_cgra_map_key_string);
+        if (multi_cgra_map_key_ref == "rows" ||
+            multi_cgra_map_key_ref == "columns" || 
+            multi_cgra_map_key_ref == "base_topology") {
+          auto *multi_cgra_map_value_node = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(multi_cgra_map_key_value_pair.getValue());
+          if (!multi_cgra_map_value_node) continue;
+
+          llvm::SmallString<64> multi_cgra_map_value_string;
+          llvm::StringRef multi_cgra_map_value_ref = multi_cgra_map_value_node->getValue(multi_cgra_map_value_string);
           long long temp_value = 0;
-          if (!architecture_value_ref.getAsInteger(10, temp_value)) {
-            if (architecture_key_ref == "width") width = static_cast<int>(temp_value);
-            if (architecture_key_ref == "height") height = static_cast<int>(temp_value);
-            if (architecture_key_ref == "max_allowed_ii_by_hw") {
-              max_ii = static_cast<int>(temp_value);
+          if (!multi_cgra_map_value_ref.getAsInteger(10, temp_value)) {
+            if (multi_cgra_map_key_ref == "rows") {
+              multi_cgra_rows = static_cast<int>(temp_value);
+            }
+            if (multi_cgra_map_key_ref == "columns") {
+              multi_cgra_columns = static_cast<int>(temp_value);
+            }
+            if (multi_cgra_map_key_ref == "base_topology") {
+              multi_cgra_base_topology = parseTopologyString(multi_cgra_map_key_ref.str());
             }
           }
-        } else {
-          continue;
         }
       }
-        } else if (key_ref == "tile_defaults") {
-          auto *tile_defaults_map = llvm::dyn_cast_or_null<llvm::yaml::MappingNode>(key_value_pair.getValue());
-          if (tile_defaults_map) {
-            parseTileDefaults(tile_defaults_map, tile_defaults);
-          }
-        } else if (key_ref == "tile_overrides") {
-          auto *tile_overrides_seq = llvm::dyn_cast_or_null<llvm::yaml::SequenceNode>(key_value_pair.getValue());
-          if (tile_overrides_seq) {
-            parseTileOverrides(tile_overrides_seq, tile_overrides);
-          }
-        } else if (key_ref == "link_defaults") {
-          auto *link_defaults_map = llvm::dyn_cast_or_null<llvm::yaml::MappingNode>(key_value_pair.getValue());
-          if (link_defaults_map) {
-            parseLinkDefaults(link_defaults_map, link_defaults);
-          }
-        } else if (key_ref == "link_overrides") {
-          auto *link_overrides_seq = llvm::dyn_cast_or_null<llvm::yaml::SequenceNode>(key_value_pair.getValue());
-          if (link_overrides_seq) {
-            parseLinkOverrides(link_overrides_seq, link_overrides);
-          }
-        } else if (key_ref == "base_topology") {
-          auto *topology_node = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(key_value_pair.getValue());
-          if (topology_node) {
-            llvm::SmallString<64> topology_string;
-            llvm::StringRef topology_ref = topology_node->getValue(topology_string);
-            base_topology = parseTopologyString(topology_ref.str());
+    } else if (key_ref == "per_cgra_defaults") {
+      auto *per_cgra_map = llvm::dyn_cast_or_null<llvm::yaml::MappingNode>(key_value_pair.getValue());
+      if (!per_cgra_map) continue;
+
+      // Iterate architecture mapping ONCE; read width/height in the same pass.
+      for (auto &per_cgra_map_key_value_pair : *per_cgra_map) {
+        auto *per_cgra_map_key_node = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(per_cgra_map_key_value_pair.getKey());
+        if (!per_cgra_map_key_node) continue;
+
+        llvm::SmallString<64> per_cgra_map_key_string;
+        llvm::StringRef per_cgra_map_key_ref = per_cgra_map_key_node->getValue(per_cgra_map_key_string);
+        if (per_cgra_map_key_ref == "rows" ||
+            per_cgra_map_key_ref == "columns" ||
+            per_cgra_map_key_ref == "base_topology" ||
+            per_cgra_map_key_ref == "ctrl_mem_items") {
+          auto *per_cgra_map_value_node = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(per_cgra_map_key_value_pair.getValue());
+          if (!per_cgra_map_value_node) continue;
+
+          llvm::SmallString<64> per_cgra_map_value_string;
+          llvm::StringRef per_cgra_map_value_ref = per_cgra_map_value_node->getValue(per_cgra_map_value_string);
+          long long temp_value = 0;
+          if (!per_cgra_map_value_ref.getAsInteger(10, temp_value)) {
+            if (per_cgra_map_key_ref == "rows") {
+              per_cgra_rows = static_cast<int>(temp_value);
+            }
+            if (per_cgra_map_key_ref == "columns") {
+              per_cgra_columns = static_cast<int>(temp_value);
+            }
+            if (per_cgra_map_key_ref == "base_topology") {
+              per_cgra_base_topology = parseTopologyString(per_cgra_map_key_ref.str());
+            }
+            if (per_cgra_map_key_ref == "ctrl_mem_items") {
+              max_ctrl_mem_items = static_cast<int>(temp_value);
+            }
           }
         }
+      }
+    } else if (key_ref == "tile_defaults") {
+      auto *tile_defaults_map = llvm::dyn_cast_or_null<llvm::yaml::MappingNode>(key_value_pair.getValue());
+      if (tile_defaults_map) {
+        parseTileDefaults(tile_defaults_map, tile_defaults);
+      }
+    } else if (key_ref == "tile_overrides") {
+      auto *tile_overrides_seq = llvm::dyn_cast_or_null<llvm::yaml::SequenceNode>(key_value_pair.getValue());
+      if (tile_overrides_seq) {
+        parseTileOverrides(tile_overrides_seq, tile_overrides);
+      }
+    } else if (key_ref == "link_defaults") {
+      auto *link_defaults_map = llvm::dyn_cast_or_null<llvm::yaml::MappingNode>(key_value_pair.getValue());
+      if (link_defaults_map) {
+        parseLinkDefaults(link_defaults_map, link_defaults);
+      }
+    } else if (key_ref == "link_overrides") {
+      auto *link_overrides_seq = llvm::dyn_cast_or_null<llvm::yaml::SequenceNode>(key_value_pair.getValue());
+      if (link_overrides_seq) {
+        parseLinkOverrides(link_overrides_seq, link_overrides);
+      }
+    }
   }
-
-  if (width <= 0 || height <= 0) {
-    width = -1;
-    height = -1;
-  }
-
   return true;
 }
 
@@ -670,27 +437,28 @@ struct MapToAcceleratorPass
 
   void runOnOperation() override {
     ModuleOp module = getOperation();
+    llvm::errs() << "[MapToAcceleratorPass] Starting mapping pass...\n";
     std::unique_ptr<Mapping> mapping_strategy;
-    StringRef mapping_strategy_stringRef(mappingStrategy.getValue());
+    StringRef mapping_strategy_string_ref(mappingStrategy.getValue());
     StringRef backtrack_config_stringRef(backtrackConfig.getValue());
-    StringRef mapping_mode_stringRef(mappingMode.getValue());
-    bool is_spatial_only = (mapping_mode_stringRef == "spatial-only");
-    if (is_spatial_only || mapping_mode_stringRef == "spatial-temporal" ||
-        mapping_mode_stringRef.empty()) {
-      if (mapping_mode_stringRef.empty()) {
-        mapping_mode_stringRef = "spatial-temporal";
+    StringRef mapping_mode_string_ref(mappingMode.getValue());
+    bool is_spatial_only = (mapping_mode_string_ref == "spatial-only");
+    if (is_spatial_only || mapping_mode_string_ref == "spatial-temporal" ||
+        mapping_mode_string_ref.empty()) {
+      if (mapping_mode_string_ref.empty()) {
+        mapping_mode_string_ref = "spatial-temporal";
       }
       llvm::errs() << "[MapToAcceleratorPass] Using Mapping Mode: "
-                   << mapping_mode_stringRef << "\n";
+                   << mapping_mode_string_ref << "\n";
     } else {
       llvm::errs() << "[MapToAcceleratorPass] Unsupported mapping mode: "
-                   << mapping_mode_stringRef << "\n";
+                   << mapping_mode_string_ref << "\n";
       return;
     }
 
-    if (mapping_strategy_stringRef == "heuristic" ||
-        mapping_strategy_stringRef.empty()) {
-      mapping_strategy_stringRef = "heuristic";
+    if (mapping_strategy_string_ref == "heuristic" ||
+        mapping_strategy_string_ref.empty()) {
+      mapping_strategy_string_ref = "heuristic";
 
       if (backtrack_config_stringRef == "simple") {
         mapping_strategy = std::make_unique<HeuristicMapping>(1, 1);
@@ -736,56 +504,77 @@ struct MapToAcceleratorPass
       }
     } else {
       llvm::errs() << "[MapToAcceleratorPass] Unsupported mapping strategy: "
-                   << mapping_strategy_stringRef << "\n";
+                   << mapping_strategy_string_ref << "\n";
       return;
     }
 
     // Handle architecture specification file
+    constexpr int kMultiCgraDefaultRows = 1;
+    constexpr int kMultiCgraDefaultColumns = 1;
+    constexpr int kPerCgraDefaultRows = 4;
+    constexpr int kPerCgraDefaultColumns = 4;
+    constexpr int kDefaultMaxCtrlMemItems = 20;
+
     std::string architecture_spec_file = mlir::neura::getArchitectureSpecFile();
-    int yaml_width = -1;
-    int yaml_height = -1;
-    int yaml_max_ii = 20;  // Default max_ii = 20
-    mlir::neura::TileDefaults yaml_tile_defaults;
+    int multi_cgra_rows = kMultiCgraDefaultRows;
+    int multi_cgra_columns = kMultiCgraDefaultColumns;
+    int per_cgra_rows = kPerCgraDefaultRows;
+    int per_cgra_columns = kPerCgraDefaultColumns;
+    int max_ctrl_mem_items = kDefaultMaxCtrlMemItems;
+    mlir::neura::TileDefaults tile_defaults;
     std::vector<mlir::neura::TileOverride> tile_overrides;
-    mlir::neura::LinkDefaults yaml_link_defaults;
+    mlir::neura::LinkDefaults link_defaults;
     std::vector<mlir::neura::LinkOverride> link_overrides;
-    mlir::neura::BaseTopology base_topology = mlir::neura::BaseTopology::MESH; // Default to mesh
+    mlir::neura::BaseTopology multi_cgra_base_topology = mlir::neura::BaseTopology::MESH;
+    mlir::neura::BaseTopology per_cgra_base_topology = mlir::neura::BaseTopology::MESH;
+
     if (!architecture_spec_file.empty()) {
 
       // Use LLVM YAML parser to validate the YAML syntax (no mapping yet)
-      llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> bufferOrErr =
+      llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> buffer_or_err =
           llvm::MemoryBuffer::getFile(architecture_spec_file);
-      if (!bufferOrErr) {
+      if (!buffer_or_err) {
         llvm::errs() << "[MapToAcceleratorPass] Failed to open architecture specification file: "
                      << architecture_spec_file << "\n";
         return;
       }
 
       llvm::SourceMgr sm;
-      sm.AddNewSourceBuffer(std::move(*bufferOrErr), llvm::SMLoc());
-      llvm::yaml::Stream yamlStream(sm.getMemoryBuffer(sm.getMainFileID())->getBuffer(), sm);
+      sm.AddNewSourceBuffer(std::move(*buffer_or_err), llvm::SMLoc());
+      llvm::yaml::Stream yaml_stream(sm.getMemoryBuffer(sm.getMainFileID())->getBuffer(), sm);
 
-      bool parseFailed = false;
-      llvm::yaml::Document &firstDoc = *yamlStream.begin();
-      (void)firstDoc; // ensure document is created
-      if (yamlStream.failed()) {
-        parseFailed = true;
+      bool parse_failed = false;
+      llvm::yaml::Document &yaml_doc = *yaml_stream.begin();
+      (void)yaml_doc; // ensure document is created
+      if (yaml_stream.failed()) {
+        parse_failed = true;
       }
 
-      if (parseFailed) {
+      if (parse_failed) {
         llvm::errs() << "[MapToAcceleratorPass] YAML parse error in: "
                      << architecture_spec_file << "\n";
         return;
       }
 
       // Parse YAML configuration
-      if (!parseArchitectureYAML(firstDoc, yaml_width, yaml_height, yaml_max_ii, yaml_tile_defaults, tile_overrides, yaml_link_defaults, link_overrides, base_topology)) {
+      if (!parseArchitectureYaml(yaml_doc,
+                                 multi_cgra_rows,
+                                 multi_cgra_columns,
+                                 multi_cgra_base_topology,
+                                 per_cgra_rows,
+                                 per_cgra_columns,
+                                 per_cgra_base_topology,
+                                 max_ctrl_mem_items,
+                                 tile_defaults,
+                                 tile_overrides,
+                                 link_defaults,
+                                 link_overrides)) {
         return;
       }
-
     } else {
+      llvm::errs() << "[MapToAcceleratorPass] No architecture specification file provided.\n";
     }
-
+    // assert(false);
     module.walk([&](func::FuncOp func) {
       // Skips functions not targeting the neura accelerator.
       auto accel_attr = func->getAttrOfType<StringAttr>("accelerator");
@@ -801,10 +590,10 @@ struct MapToAcceleratorPass
 
       // If steering mode, enforce spatial-only mapping.
       if (is_steering_mode) {
-        if (mapping_mode_stringRef != "spatial-only") {
+        if (mapping_mode_string_ref != "spatial-only") {
           func.emitError() << "Steering IR mode requires spatial-only mapping, "
                            << "but got mapping mode: "
-                           << mapping_mode_stringRef;
+                           << mapping_mode_string_ref;
           signalPassFailure();
           return;
         }
@@ -841,17 +630,22 @@ struct MapToAcceleratorPass
       } else if (!longest) {
         rec_mii = 1; // No recurrence cycles found, set MII to 1.
       }
-
-      // Construct architecture from YAML configuration
-      int arch_w = (yaml_width > 0 ? yaml_width : 4);
-      int arch_h = (yaml_height > 0 ? yaml_height : 4);
       
       // Always use full constructor with YAML configuration
-      Architecture architecture(arch_w, arch_h, yaml_tile_defaults, tile_overrides, yaml_link_defaults, link_overrides, base_topology);
+      Architecture architecture(multi_cgra_rows,
+                                multi_cgra_columns,
+                                multi_cgra_base_topology,
+                                per_cgra_rows,
+                                per_cgra_columns,
+                                per_cgra_base_topology,
+                                tile_defaults,
+                                tile_overrides,
+                                link_defaults,
+                                link_overrides);
       int res_mii = calculateResMii(func, architecture);
 
-      const int possibleMinII = std::max(rec_mii, res_mii);
-      const int maxII = yaml_max_ii;  // Use YAML config (default 20 if not specified)
+      const int possible_min_ii = std::max(rec_mii, res_mii);
+      const int max_ii = max_ctrl_mem_items;  // Use YAML config (default 20 if not specified)
       
       std::vector<Operation *> topologically_sorted_ops =
           getTopologicallySortedOps(func);
@@ -882,7 +676,7 @@ struct MapToAcceleratorPass
                      << " (ALAP level: " << level << ")\n";
       }
       // assert(false);
-      for (int ii = possibleMinII; ii <= maxII; ++ii) {
+      for (int ii = possible_min_ii; ii <= max_ii; ++ii) {
         llvm::errs()
             << "[MapToAcceleratorPass] Start mapping with target II of " << ii
             << "\n";
@@ -900,14 +694,14 @@ struct MapToAcceleratorPass
               ctx,
               {NamedAttribute(StringAttr::get(ctx, "x_tiles"),
                               IntegerAttr::get(IntegerType::get(ctx, 32),
-                                               architecture.getWidth())),
+                                               architecture.getPerCgraColumns())),
                NamedAttribute(StringAttr::get(ctx, "y_tiles"),
                               IntegerAttr::get(IntegerType::get(ctx, 32),
-                                               architecture.getHeight())),
+                                               architecture.getPerCgraRows())),
                NamedAttribute(StringAttr::get(ctx, "mapping_strategy"),
-                              StringAttr::get(ctx, mapping_strategy_stringRef)),
+                              StringAttr::get(ctx, mapping_strategy_string_ref)),
                NamedAttribute(StringAttr::get(ctx, "mapping_mode"),
-                              StringAttr::get(ctx, mapping_mode_stringRef)),
+                              StringAttr::get(ctx, mapping_mode_string_ref)),
                NamedAttribute(StringAttr::get(ctx, "compiled_ii"),
                               IntegerAttr::get(IntegerType::get(ctx, 32), ii)),
                NamedAttribute(
