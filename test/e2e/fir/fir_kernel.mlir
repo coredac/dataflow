@@ -1,6 +1,6 @@
 // Compiles the original C kernel to mlir, then lowers it via Neura.
 // RUN: clang++ -S -emit-llvm -O0 -o %t-kernel-full.ll %S/../../benchmark/CGRA-Bench/kernels/fir/fir.cpp
-// RUN: llvm-extract --func=_Z6kernelPfS_S_ %t-kernel-full.ll -o %t-kernel-only.ll
+// RUN: llvm-extract --rfunc=".*kernel.*" %t-kernel-full.ll -o %t-kernel-only.ll
 // RUN: mlir-translate --import-llvm %t-kernel-only.ll -o %t-kernel.mlir
 
 // RUN: mlir-neura-opt %t-kernel.mlir \
