@@ -160,7 +160,7 @@ struct LlvmFPToSIToNeuraCast : public OpRewritePattern<mlir::LLVM::FPToSIOp> {
     Value input = op.getArg();
     Type result_type = op.getType();
 
-    // Create a cast operation with "fptosi" as the cast type
+    // Creates a cast operation with "fptosi" as the cast type.
     rewriter.replaceOpWithNewOp<neura::CastOp>(op, result_type, input, 
                                                rewriter.getStringAttr("fptosi"));
     return success();

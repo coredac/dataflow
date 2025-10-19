@@ -1,4 +1,8 @@
-// RUN: mlir-neura-opt %s \
+// Compiles the original C kernel to mlir, then lowers it via Neura.
+// RUN: clang++ -S -emit-llvm -O2 -o %t-kernel.ll histogram_kernel.cpp
+// RUN: mlir-translate --import-llvm %t-kernel.ll -o %t-kernel.mlir
+
+// RUN: mlir-neura-opt %t-kernel.mlir \
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
 // RUN:   --canonicalize-live-in \
@@ -12,9 +16,6 @@
 // RUN: FileCheck %s --input-file=%t-mapping.mlir -check-prefix=MAPPING
 // RUN: FileCheck %s --input-file=tmp-generated-instructions.yaml --check-prefix=YAML
 // RUN: FileCheck %s --input-file=tmp-generated-instructions.asm --check-prefix=ASM
-
-// This test verifies the complete compilation pipeline for histogram kernel
-// from LLVM IR to Neura dialect with code generation.
 
 #loop_annotation = #llvm.loop_annotation<mustProgress = true>
 #tbaa_root = #llvm.tbaa_root<id = "Simple C++ TBAA">
