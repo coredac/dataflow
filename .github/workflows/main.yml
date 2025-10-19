@@ -83,9 +83,6 @@ jobs:
           -DCMAKE_CXX_FLAGS="-std=c++17"
 
         ninja
-        
-        # Add dataflow tools to PATH
-        echo "${{github.workspace}}/build/bin" >> $GITHUB_PATH
 
         # # install clang-12/opt-12
         # - name: install LLVM and Clang for scripts/experiment
