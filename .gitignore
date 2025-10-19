@@ -11,14 +11,6 @@ build/
 lit.cfg
 *.dot
 
-# temporary files
-tmp-*
-*_final.mlir
-*_mapped.mlir
-*_processed.mlir
-*_log.txt
-*.backup
-
 # vscode config
 .clangd
 .cache
