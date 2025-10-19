@@ -1,6 +1,7 @@
 // Compiles the original C kernel to mlir, then lowers it via Neura.
-// RUN: clang++ -S -emit-llvm -O2 -o %t-kernel.ll histogram_kernel.cpp
-// RUN: mlir-translate --import-llvm %t-kernel.ll -o %t-kernel.mlir
+// RUN: clang++ -S -emit-llvm -O2 -o %t-kernel-full.ll %S/../../benchmark/CGRA-Bench/kernels/histogram/histogram.cpp
+// RUN: llvm-extract --func=_Z6kernelPfPi %t-kernel-full.ll -o %t-kernel-only.ll
+// RUN: mlir-translate --import-llvm %t-kernel-only.ll -o %t-kernel.mlir
 
 // RUN: mlir-neura-opt %t-kernel.mlir \
 // RUN:   --assign-accelerator \
