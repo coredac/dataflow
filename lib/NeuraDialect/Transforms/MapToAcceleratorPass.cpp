@@ -11,7 +11,7 @@
 #include "NeuraDialect/NeuraOps.h"
 #include "NeuraDialect/NeuraPasses.h"
 #include "NeuraDialect/NeuraTypes.h"
-#include "NeuraDialect/Util/NeuralYamlKeys.h"
+#include "NeuraDialect/Util/NeuraYamlKeys.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/PatternMatch.h"
