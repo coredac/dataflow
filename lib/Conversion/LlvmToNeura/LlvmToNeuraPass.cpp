@@ -134,6 +134,58 @@ struct LlvmSRemToNeuraRem : public OpRewritePattern<LLVM::SRemOp> {
   }
 };
 
+struct LlvmFDivToNeuraFDiv : public OpRewritePattern<mlir::LLVM::FDivOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mlir::LLVM::FDivOp op,
+                                PatternRewriter &rewriter) const override {
+    Value lhs = op->getOperand(0);
+    Value rhs = op->getOperand(1);
+    Type result_type = op->getResult(0).getType();
+
+    // Only matches scalar float.
+    if (!mlir::isa<FloatType>(result_type))
+      return failure();
+
+    rewriter.replaceOpWithNewOp<neura::FDivOp>(op, result_type, lhs, rhs);
+    return success();
+  }
+};
+
+struct LlvmFPToSIToNeuraCast : public OpRewritePattern<mlir::LLVM::FPToSIOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mlir::LLVM::FPToSIOp op,
+                                PatternRewriter &rewriter) const override {
+    Value input = op.getArg();
+    Type result_type = op.getType();
+
+    // Creates a cast operation with "fptosi" as the cast type.
+    rewriter.replaceOpWithNewOp<neura::CastOp>(op, result_type, input, 
+                                               rewriter.getStringAttr("fptosi"));
+    return success();
+  }
+};
+
+struct LlvmFMulAddToNeuraFMulFAdd : public OpRewritePattern<mlir::LLVM::FMulAddOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mlir::LLVM::FMulAddOp op,
+                                PatternRewriter &rewriter) const override {
+    Value a = op->getOperand(0);
+    Value b = op->getOperand(1);
+    Value c = op->getOperand(2);
+    Type result_type = op->getResult(0).getType();
+
+    // Only matches scalar float.
+    if (!mlir::isa<FloatType>(result_type))
+      return failure();
+
+    rewriter.replaceOpWithNewOp<neura::FMulFAddOp>(op, result_type, a, b, c);
+    return success();
+  }
+};
+
 struct LlvmVFMulToNeuraVFMul : public OpRewritePattern<mlir::LLVM::FMulOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -533,6 +585,9 @@ struct LowerLlvmToNeuraPass
     patterns.add<LlvmShlToNeuraShl>(&getContext());
     patterns.add<LlvmSDivToNeuraDiv>(&getContext());
     patterns.add<LlvmSRemToNeuraRem>(&getContext());
+    patterns.add<LlvmFDivToNeuraFDiv>(&getContext());
+    patterns.add<LlvmFPToSIToNeuraCast>(&getContext());
+    patterns.add<LlvmFMulAddToNeuraFMulFAdd>(&getContext());
 
     FrozenRewritePatternSet frozen(std::move(patterns));
 

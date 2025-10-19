@@ -92,16 +92,23 @@ def Neura_FMulOp : Op<NeuraDialect, "fmul"> {
 
 def Neura_FDivOp : Op<NeuraDialect, "fdiv"> {
   let summary = "Floating division operation";
-  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs);
+  let description = [{
+    Performs a floating-point division operation, computing the result of
+    a / b, where / is the floating-point division operator.
+
+    Example:
+      %result = neura.fdiv %a, %b : f32
+  }];
+  let arguments = (ins AnyType:$lhs, AnyType:$rhs);
   let results = (outs AnyType:$result);
-  // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
+  let traits = [SameOperandsAndResultElementType];
 }
 
 // Defines a bitwise OR operation.
 def Neura_OrOp : Op<NeuraDialect, "or"> {
   let summary = "Bitwise OR operation";
-  let arguments = (ins AnySignlessInteger:$lhs, AnySignlessInteger:$rhs);
-  let results = (outs AnySignlessInteger:$result);
+  let arguments = (ins AnyType:$lhs, AnyType:$rhs);
+  let results = (outs AnyType:$result);
   // let assemblyFormat = "$lhs `,` $rhs `,` attr-dict `:` type($result)";
   let traits = [SameOperandsAndResultElementType];
 }
