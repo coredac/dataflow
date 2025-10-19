@@ -824,8 +824,8 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
 
   for (Tile *tile : architecture.getAllTiles()) {
     if (!tile->canSupportOperation(getOperationKindFromMlirOp(op))) {
-      llvm::errs() << "[calculateAward] Tile: " << tile->getType()
-                   << " does not support operation: " << *op << "\n";
+      llvm::errs() << "[calculateAward] Tile<" << tile->getX() << ", " << tile->getY()
+                   << "> does not support operation: " << *op << "\n";
       continue; // Skip tiles that cannot support the operation.
     }
     int earliest_start_time_step = target_level;
