@@ -340,9 +340,17 @@ def Neura_FAddFAddOp : Op<NeuraDialect, "fadd_fadd"> {
 
 def Neura_FMulFAddOp : Op<NeuraDialect, "fmul_fadd"> {
   let summary = "Fused fadd(fmul(a, b), c)";
-  let arguments = (ins AnyType:$a, AnyType:$b, AnyType:$c);
+  let arguments = (ins AnyType:$a, Optional<AnyType>:$b, AnyType:$c);
   let results = (outs AnyType:$result);
   // let assemblyFormat = "$a `,` $b `,` $c `,` attr-dict `:` type($result)";
+  let traits = [SameOperandsAndResultElementType];
+}
+
+def Neura_MulAddOp : Op<NeuraDialect, "mul_add"> {
+  let summary = "Fused add(mul(a, b), c)";
+  let arguments = (ins AnyType:$a, Optional<AnyType>:$b, AnyType:$c);
+  let results = (outs AnyType:$result);
+  // let assemblyFormat = "$a `,` ($b^)? `,` $c attr-dict `:` type($result)";
   let traits = [SameOperandsAndResultElementType];
 }
 
