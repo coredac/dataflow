@@ -109,9 +109,9 @@ func.func @loop_test() -> f32 {
 // CANONICALIZE-NEXT:     %1 = "neura.constant"() <{value = 0.000000e+00 : f32}> : () -> f32
 // CANONICALIZE-NEXT:     neura.br %0, %1 : i64, f32 to ^bb1
 // CANONICALIZE-NEXT:   ^bb1(%2: i64, %3: f32):  // 2 preds: ^bb0, ^bb1
-// CANONICALIZE-NEXT:     %4 = "neura.fadd"(%3) {rhs_const_value = 3.000000e+00 : f32} : (f32) -> f32
-// CANONICALIZE-NEXT:     %5 = "neura.add"(%2) {rhs_const_value = 1 : i64} : (i64) -> i64
-// CANONICALIZE-NEXT:     %6 = "neura.icmp"(%5) <{cmpType = "slt"}> {rhs_const_value = 10 : i64} : (i64) -> i1
+// CANONICALIZE-NEXT:     %4 = "neura.fadd"(%3) {rhs_value = 3.000000e+00 : f32} : (f32) -> f32
+// CANONICALIZE-NEXT:     %5 = "neura.add"(%2) {rhs_value = 1 : i64} : (i64) -> i64
+// CANONICALIZE-NEXT:     %6 = "neura.icmp"(%5) <{cmpType = "slt"}> {rhs_value = 10 : i64} : (i64) -> i1
 // CANONICALIZE-NEXT:     neura.cond_br %6 : i1 then %5, %4 : i64, f32 to ^bb1 else %4 : f32 to ^bb2
 // CANONICALIZE-NEXT:   ^bb2(%7: f32):  // pred: ^bb1
 // CANONICALIZE-NEXT:     "neura.return"(%7) : (f32) -> ()
@@ -126,9 +126,9 @@ func.func @loop_test() -> f32 {
 // CTRL2DATA-NEXT:     %5 = "neura.phi"(%4, %3) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:     %6 = neura.reserve : !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %7 = "neura.phi"(%6, %1) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %8 = "neura.fadd"(%5) {rhs_const_value = 3.000000e+00 : f32} : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
-// CTRL2DATA-NEXT:     %9 = "neura.add"(%7) {rhs_const_value = 1 : i64} : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %10 = "neura.icmp"(%9) <{cmpType = "slt"}> {rhs_const_value = 10 : i64} : (!neura.data<i64, i1>) -> !neura.data<i1, i1>
+// CTRL2DATA-NEXT:     %8 = "neura.fadd"(%5) {rhs_value = 3.000000e+00 : f32} : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
+// CTRL2DATA-NEXT:     %9 = "neura.add"(%7) {rhs_value = 1 : i64} : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %10 = "neura.icmp"(%9) <{cmpType = "slt"}> {rhs_value = 10 : i64} : (!neura.data<i64, i1>) -> !neura.data<i1, i1>
 // CTRL2DATA-NEXT:     %11 = neura.grant_predicate %9, %10 : !neura.data<i64, i1>, !neura.data<i1, i1> -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     neura.ctrl_mov %11 -> %6 : !neura.data<i64, i1> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %12 = neura.grant_predicate %8, %10 : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
@@ -145,9 +145,9 @@ func.func @loop_test() -> f32 {
 // FUSE-NEXT:     %3 = "neura.phi"(%2, %1) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
 // FUSE-NEXT:     %4 = neura.reserve : !neura.data<i64, i1>
 // FUSE-NEXT:     %5 = "neura.phi"(%4, %0) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
-// FUSE-NEXT:     %6 = "neura.fadd"(%3) {rhs_const_value = 3.000000e+00 : f32} : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
-// FUSE-NEXT:     %7 = "neura.add"(%5) {rhs_const_value = 1 : i64} : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
-// FUSE-NEXT:     %8 = "neura.icmp"(%7) <{cmpType = "slt"}> {rhs_const_value = 10 : i64} : (!neura.data<i64, i1>) -> !neura.data<i1, i1>
+// FUSE-NEXT:     %6 = "neura.fadd"(%3) {rhs_value = 3.000000e+00 : f32} : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
+// FUSE-NEXT:     %7 = "neura.add"(%5) {rhs_value = 1 : i64} : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
+// FUSE-NEXT:     %8 = "neura.icmp"(%7) <{cmpType = "slt"}> {rhs_value = 10 : i64} : (!neura.data<i64, i1>) -> !neura.data<i1, i1>
 // FUSE-NEXT:     %9 = neura.grant_predicate %7, %8 : !neura.data<i64, i1>, !neura.data<i1, i1> -> !neura.data<i64, i1>
 // FUSE-NEXT:     neura.ctrl_mov %9 -> %4 : !neura.data<i64, i1> !neura.data<i64, i1>
 // FUSE-NEXT:     %10 = neura.grant_predicate %6, %8 : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
@@ -167,11 +167,11 @@ func.func @loop_test() -> f32 {
 // MOV-NEXT:     %6 = "neura.data_mov"(%0) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
 // MOV-NEXT:     %7 = "neura.phi"(%5, %6) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
 // MOV-NEXT:     %8 = "neura.data_mov"(%4) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
-// MOV-NEXT:     %9 = "neura.fadd"(%8) {rhs_const_value = 3.000000e+00 : f32} : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
+// MOV-NEXT:     %9 = "neura.fadd"(%8) {rhs_value = 3.000000e+00 : f32} : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
 // MOV-NEXT:     %10 = "neura.data_mov"(%7) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
-// MOV-NEXT:     %11 = "neura.add"(%10) {rhs_const_value = 1 : i64} : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
+// MOV-NEXT:     %11 = "neura.add"(%10) {rhs_value = 1 : i64} : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
 // MOV-NEXT:     %12 = "neura.data_mov"(%11) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
-// MOV-NEXT:     %13 = "neura.icmp"(%12) <{cmpType = "slt"}> {rhs_const_value = 10 : i64} : (!neura.data<i64, i1>) -> !neura.data<i1, i1>
+// MOV-NEXT:     %13 = "neura.icmp"(%12) <{cmpType = "slt"}> {rhs_value = 10 : i64} : (!neura.data<i64, i1>) -> !neura.data<i1, i1>
 // MOV-NEXT:     %14 = "neura.data_mov"(%11) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
 // MOV-NEXT:     %15 = "neura.data_mov"(%13) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
 // MOV-NEXT:     %16 = neura.grant_predicate %14, %15 : !neura.data<i64, i1>, !neura.data<i1, i1> -> !neura.data<i64, i1>
