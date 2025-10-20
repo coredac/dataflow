@@ -196,8 +196,8 @@ module attributes {} {
 // FUSE-NEXT:     %7 = neura.grant_predicate %5, %valid : !neura.data<memref<?xi32>, i1>, !neura.data<i1, i1> -> !neura.data<memref<?xi32>, i1>
 // FUSE-NEXT:     %8 = neura.grant_predicate %3, %valid : !neura.data<memref<?xi32>, i1>, !neura.data<i1, i1> -> !neura.data<memref<?xi32>, i1>
 // FUSE-NEXT:     %9 = neura.load_indexed %7[%nextindex : !neura.data<i64, i1>] !neura.data<memref<?xi32>, i1> : !neura.data<i32, i1>
-// FUSE-NEXT:     %10 = "neura.mul"(%9) {rhs_const_value = 2 : i32} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
-// FUSE-NEXT:     %11 = "neura.add"(%10) {rhs_const_value = 1 : i32} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
+// FUSE-NEXT:     %10 = "neura.mul"(%9) {rhs_value = 2 : i32} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
+// FUSE-NEXT:     %11 = "neura.add"(%10) {rhs_value = 1 : i32} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
 // FUSE-NEXT:     neura.store_indexed %11 to %8[%nextindex : !neura.data<i64, i1>] !neura.data<memref<?xi32>, i1> : !neura.data<i32, i1>
 // FUSE-NEXT:     neura.ctrl_mov %7 -> %4 : !neura.data<memref<?xi32>, i1> !neura.data<memref<?xi32>, i1>
 // FUSE-NEXT:     neura.ctrl_mov %8 -> %2 : !neura.data<memref<?xi32>, i1> !neura.data<memref<?xi32>, i1>
