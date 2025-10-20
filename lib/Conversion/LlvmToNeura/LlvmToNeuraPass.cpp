@@ -134,6 +134,42 @@ struct LlvmSRemToNeuraRem : public OpRewritePattern<LLVM::SRemOp> {
   }
 };
 
+struct LlvmMaxNumToNeuraFMax : public OpRewritePattern<LLVM::MaxNumOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::MaxNumOp op,
+                                PatternRewriter &rewriter) const override {
+    Value lhs = op->getOperand(0);
+    Value rhs = op->getOperand(1);
+    Type resultType = op->getResult(0).getType();
+
+    // Only matches scalar float.
+    if (!mlir::isa<FloatType>(resultType))
+      return failure();
+
+    rewriter.replaceOpWithNewOp<neura::FMaxOp>(op, resultType, lhs, rhs);
+    return success();
+  }
+};
+
+struct LlvmMinNumToNeuraFMin : public OpRewritePattern<LLVM::MinNumOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::MinNumOp op,
+                                PatternRewriter &rewriter) const override {
+    Value lhs = op->getOperand(0);
+    Value rhs = op->getOperand(1);
+    Type resultType = op->getResult(0).getType();
+
+    // Only matches scalar float.
+    if (!mlir::isa<FloatType>(resultType))
+      return failure();
+
+    rewriter.replaceOpWithNewOp<neura::FMinOp>(op, resultType, lhs, rhs);
+    return success();
+  }
+};
+
 struct LlvmFDivToNeuraFDiv : public OpRewritePattern<mlir::LLVM::FDivOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -585,6 +621,8 @@ struct LowerLlvmToNeuraPass
     patterns.add<LlvmShlToNeuraShl>(&getContext());
     patterns.add<LlvmSDivToNeuraDiv>(&getContext());
     patterns.add<LlvmSRemToNeuraRem>(&getContext());
+    patterns.add<LlvmMaxNumToNeuraFMax>(&getContext());
+    patterns.add<LlvmMinNumToNeuraFMin>(&getContext());
     patterns.add<LlvmFDivToNeuraFDiv>(&getContext());
     patterns.add<LlvmFPToSIToNeuraCast>(&getContext());
     patterns.add<LlvmFMulAddToNeuraFMulFAdd>(&getContext());
