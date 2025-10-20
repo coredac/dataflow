@@ -211,7 +211,31 @@ std::vector<PatternWithSelectedInstances> GraMi::mineFrequentSubgraphs() {
   for (auto* edge : graph_->getEdges()) {
     DFGNode* from = edge->getFrom();
     DFGNode* to = edge->getTo();
-    std::string pattern = from->getLabel() + "->" + to->getLabel();
+
+    // Derive labels; if node op is neura.common_pattern, include its pattern_name attribute
+    auto* fromOp = from->getOperation();
+    auto* toOp = to->getOperation();
+
+    auto deriveLabel = [](mlir::Operation* op, const std::string& fallbackLabel) -> std::string {
+      if (!op) return fallbackLabel;
+      // Match op by name to avoid depending on generated accessors
+      auto name = op->getName().getStringRef();
+      if (name.ends_with("common_pattern") || name.contains("neura.common_pattern")) {
+        if (auto attr = op->getAttr("pattern_name")) {
+          if (auto strAttr = mlir::dyn_cast<mlir::StringAttr>(attr)) {
+            return std::string("common_pattern:") + strAttr.getValue().str();
+          }
+        }
+        return std::string("common_pattern");
+      }
+      return fallbackLabel;
+    };
+
+    std::string fromLabel = deriveLabel(fromOp, from->getLabel());
+    std::string toLabel = deriveLabel(toOp, to->getLabel());
+
+    llvm::outs() << "From: " << fromLabel << " To: " << toLabel << "\n";
+    std::string pattern = fromLabel + "->" + toLabel;
     edge_pattern_counts[pattern]++;
     pattern_edges[pattern].push_back(edge);
   }
@@ -1056,16 +1080,27 @@ PatternInstance GraMi::mergePatternInstances(const PatternInstance& instance1,
   
   // Sort operations in topological order based on their positions in the block
   std::sort(all_ops.begin(), all_ops.end(), [](mlir::Operation* a, mlir::Operation* b) {
-    return a->isBeforeInBlock(b);
+    // Only compare operations in the same block
+    if (a->getBlock() == b->getBlock()) {
+      return a->isBeforeInBlock(b);
+    }
+    // If operations are in different blocks, maintain original order
+    return false;
   });
   
   merged_instance.operations = all_ops;
   
   // Set the last operation (the one that comes later in the block)
   if (instance1.lastOp && instance2.lastOp) {
-    if (instance1.lastOp->isBeforeInBlock(instance2.lastOp)) {
-      merged_instance.lastOp = instance2.lastOp;
+    // Only compare if both operations are in the same block
+    if (instance1.lastOp->getBlock() == instance2.lastOp->getBlock()) {
+      if (instance1.lastOp->isBeforeInBlock(instance2.lastOp)) {
+        merged_instance.lastOp = instance2.lastOp;
+      } else {
+        merged_instance.lastOp = instance1.lastOp;
+      }
     } else {
+      // If operations are in different blocks, choose the one from the first instance
       merged_instance.lastOp = instance1.lastOp;
     }
   } else if (instance1.lastOp) {
