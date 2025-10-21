@@ -968,7 +968,28 @@ bool handleFMaxOp(
 
   float lhs_float = static_cast<float>(lhs.value);
   float rhs_float = static_cast<float>(rhs.value);
-  float result_float = std::max(lhs_float, rhs_float);
+  
+  // Get NaN semantic attribute (default is "maxnum")
+  std::string nan_semantic = op.getNanSemantic().str();
+  float result_float;
+  
+  if (nan_semantic == "maxnum") {
+    // maxnum semantic: return non-NaN value when one operand is NaN
+    if (std::isnan(lhs_float) && !std::isnan(rhs_float)) {
+      result_float = rhs_float;
+    } else if (std::isnan(rhs_float) && !std::isnan(lhs_float)) {
+      result_float = lhs_float;
+    } else {
+      result_float = std::max(lhs_float, rhs_float);
+    }
+  } else { // "maximum"
+    // maximum semantic: propagate NaN when any operand is NaN
+    if (std::isnan(lhs_float) || std::isnan(rhs_float)) {
+      result_float = std::nan("");
+    } else {
+      result_float = std::max(lhs_float, rhs_float);
+    }
+  }
 
   PredicatedData result;
   result.value = result_float;
@@ -976,6 +997,7 @@ bool handleFMaxOp(
   result.is_vector = false;
 
   if (isVerboseMode()) {
+    llvm::outs() << "[neura-interpreter]  ├─ NaN semantic: " << nan_semantic << "\n";
     llvm::outs() << "[neura-interpreter]  └─ Result  : value = " << result.value
                  << " [pred = " << result.predicate << "]\n";
   }
@@ -1042,7 +1064,28 @@ bool handleFMinOp(
 
   float lhs_float = static_cast<float>(lhs.value);
   float rhs_float = static_cast<float>(rhs.value);
-  float result_float = std::min(lhs_float, rhs_float);
+  
+  // Get NaN semantic attribute (default is "minnum")
+  std::string nan_semantic = op.getNanSemantic().str();
+  float result_float;
+  
+  if (nan_semantic == "minnum") {
+    // minnum semantic: return non-NaN value when one operand is NaN
+    if (std::isnan(lhs_float) && !std::isnan(rhs_float)) {
+      result_float = rhs_float;
+    } else if (std::isnan(rhs_float) && !std::isnan(lhs_float)) {
+      result_float = lhs_float;
+    } else {
+      result_float = std::min(lhs_float, rhs_float);
+    }
+  } else { // "minimum"
+    // minimum semantic: propagate NaN when any operand is NaN
+    if (std::isnan(lhs_float) || std::isnan(rhs_float)) {
+      result_float = std::nan("");
+    } else {
+      result_float = std::min(lhs_float, rhs_float);
+    }
+  }
 
   PredicatedData result;
   result.value = result_float;
@@ -1050,6 +1093,7 @@ bool handleFMinOp(
   result.is_vector = false;
 
   if (isVerboseMode()) {
+    llvm::outs() << "[neura-interpreter]  ├─ NaN semantic: " << nan_semantic << "\n";
     llvm::outs() << "[neura-interpreter]  └─ Result  : value = " << result.value
                  << " [pred = " << result.predicate << "]\n";
   }

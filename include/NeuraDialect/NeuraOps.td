@@ -109,15 +109,20 @@ def Neura_FMaxOp : Op<NeuraDialect, "fmax"> {
   let summary = "Floating-point maximum operation";
   let description = [{
     Returns the maximum of two floating-point values.
-    Corresponds to llvm.maxnum intrinsic.
+    Supports two NaN propagation semantics:
+    - "maxnum": Returns non-NaN value when one operand is NaN (llvm.maxnum)
+    - "maximum": Propagates NaN when any operand is NaN (llvm.maximum)
     
     Example:
-      %result = neura.fmax %a, %b : f32
+      %result = neura.fmax<"maxnum">(%a, %b : f32) : f32 -> f32
+      %result = neura.fmax<"maximum">(%a, %b : f32) : f32 -> f32
   }];
   let opName = "fmax";
-  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs);
+  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs, 
+                   DefaultValuedAttr<StrAttr, "\"maxnum\"">:$nan_semantic);
   let results = (outs AnyType:$result);
   let traits = [SameOperandsAndResultElementType];
+  let assemblyFormat = "`<` $nan_semantic `>` `(` $lhs (`,` $rhs^ `:` type($rhs))? `)` attr-dict `:` type($lhs) `->` type($result)";
 }
 
 // Defines a floating-point minimum operation.
@@ -125,15 +130,20 @@ def Neura_FMinOp : Op<NeuraDialect, "fmin"> {
   let summary = "Floating-point minimum operation";
   let description = [{
     Returns the minimum of two floating-point values.
-    Corresponds to llvm.minnum intrinsic.
+    Supports two NaN propagation semantics:
+    - "minnum": Returns non-NaN value when one operand is NaN (llvm.minnum)
+    - "minimum": Propagates NaN when any operand is NaN (llvm.minimum)
     
     Example:
-      %result = neura.fmin %a, %b : f32
+      %result = neura.fmin<"minnum">(%a, %b : f32) : f32 -> f32
+      %result = neura.fmin<"minimum">(%a, %b : f32) : f32 -> f32
   }];
   let opName = "fmin";
-  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs);
+  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs,
+                   DefaultValuedAttr<StrAttr, "\"minnum\"">:$nan_semantic);
   let results = (outs AnyType:$result);
   let traits = [SameOperandsAndResultElementType];
+  let assemblyFormat = "`<` $nan_semantic `>` `(` $lhs (`,` $rhs^ `:` type($rhs))? `)` attr-dict `:` type($lhs) `->` type($result)";
 }
 
 // Defines a bitwise OR operation.

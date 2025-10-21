@@ -285,7 +285,7 @@ struct FuseFMaxRhsConstantPattern
                                PatternRewriter &rewriter) const override {
     auto fused_op = rewriter.create<neura::FMaxOp>(
         op.getLoc(), op.getResult().getType(), non_const_operand,
-        /*rhs=*/nullptr);
+        /*rhs=*/nullptr, op.getNanSemantic());
     addConstantAttribute(fused_op, "rhs_value", rhs_value);
     return fused_op;
   }
@@ -303,7 +303,7 @@ struct FuseFMinRhsConstantPattern
                                PatternRewriter &rewriter) const override {
     auto fused_op = rewriter.create<neura::FMinOp>(
         op.getLoc(), op.getResult().getType(), non_const_operand,
-        /*rhs=*/nullptr);
+        /*rhs=*/nullptr, op.getNanSemantic());
     addConstantAttribute(fused_op, "rhs_value", rhs_value);
     return fused_op;
   }
