@@ -272,11 +272,88 @@ struct LlvmVFMulToNeuraVFMul : public OpRewritePattern<mlir::LLVM::FMulOp> {
     Type result_type = op->getResult(0).getType();
 
     // Only matches vector<xf32>.
-    auto vecTy = mlir::dyn_cast<VectorType>(result_type);
-    if (!vecTy || !mlir::isa<FloatType>(vecTy.getElementType()))
+    auto vec_type = mlir::dyn_cast<VectorType>(result_type);
+    if (!vec_type || !mlir::isa<FloatType>(vec_type.getElementType()))
       return failure();
 
     rewriter.replaceOpWithNewOp<neura::VFMulOp>(op, result_type, lhs, rhs);
+    return success();
+  }
+};
+
+struct LlvmVMulToNeuraVMul : public OpRewritePattern<mlir::LLVM::MulOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mlir::LLVM::MulOp op,
+                                PatternRewriter &rewriter) const override {
+    Value lhs = op->getOperand(0);
+    Value rhs = op->getOperand(1);
+    Type result_type = op->getResult(0).getType();
+
+    // Only matches vector<xInt>.
+    auto vec_type = mlir::dyn_cast<VectorType>(result_type);
+    if (!vec_type || !mlir::isa<IntegerType>(vec_type.getElementType()))
+      return failure();
+
+    rewriter.replaceOpWithNewOp<neura::VMulOp>(op, result_type, lhs, rhs);
+    return success();
+  }
+};
+
+struct LlvmVAddToNeuraVAdd : public OpRewritePattern<mlir::LLVM::AddOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mlir::LLVM::AddOp op,
+                                PatternRewriter &rewriter) const override {
+    Value lhs = op->getOperand(0);
+    Value rhs = op->getOperand(1);
+    Type result_type = op->getResult(0).getType();
+
+    // Only matches vector<xInt>.
+    auto vec_type = mlir::dyn_cast<VectorType>(result_type);
+    if (!vec_type || !mlir::isa<IntegerType>(vec_type.getElementType()))
+      return failure();
+
+    rewriter.replaceOpWithNewOp<neura::VAddOp>(op, result_type, lhs, rhs);
+    return success();
+  }
+};
+
+struct LlvmVFAddToNeuraVFAdd : public OpRewritePattern<mlir::LLVM::FAddOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mlir::LLVM::FAddOp op,
+                                PatternRewriter &rewriter) const override {
+    Value lhs = op->getOperand(0);
+    Value rhs = op->getOperand(1);
+    Type result_type = op->getResult(0).getType();
+
+    // Only matches vector<xf32>.
+    auto vec_type = mlir::dyn_cast<VectorType>(result_type);
+    if (!vec_type || !mlir::isa<FloatType>(vec_type.getElementType()))
+      return failure();
+
+    rewriter.replaceOpWithNewOp<neura::VFAddOp>(op, result_type, lhs, rhs);
+    return success();
+  }
+};
+
+// Handles LLVM intrinsic operations like llvm.intr.vector.reduce.add
+// These are generic intrinsic calls, not specific op types
+struct LlvmVectorReduceAddToNeuraVectorReduceAdd : public RewritePattern {
+  LlvmVectorReduceAddToNeuraVectorReduceAdd(MLIRContext *context)
+      : RewritePattern("llvm.intr.vector.reduce.add", 1, context) {}
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    // Check that we have exactly one operand and one result
+    if (op->getNumOperands() != 1 || op->getNumResults() != 1)
+      return failure();
+    
+    Value input = op->getOperand(0);
+    Type result_type = op->getResult(0).getType();
+
+    rewriter.replaceOpWithNewOp<neura::VectorReduceAddOp>(op, result_type, input);
     return success();
   }
 };
@@ -637,11 +714,18 @@ struct LowerLlvmToNeuraPass
     // Adds DRR patterns.
     mlir::neura::llvm2neura::populateWithGenerated(patterns);
     patterns.add<LlvmConstantToNeuraConstant>(&getContext());
+    // Vector operations must be registered before scalar operations
+    // to ensure vector types are matched first
+    patterns.add<LlvmVMulToNeuraVMul>(&getContext());
+    patterns.add<LlvmVAddToNeuraVAdd>(&getContext());
+    patterns.add<LlvmVFMulToNeuraVFMul>(&getContext());
+    patterns.add<LlvmVFAddToNeuraVFAdd>(&getContext());
+    patterns.insert<LlvmVectorReduceAddToNeuraVectorReduceAdd>(&getContext());
+    // Scalar operations
     patterns.add<LlvmAddToNeuraAdd>(&getContext());
     patterns.add<LlvmOrToNeuraOr>(&getContext());
     patterns.add<LlvmFAddToNeuraFAdd>(&getContext());
     patterns.add<LlvmFMulToNeuraFMul>(&getContext());
-    patterns.add<LlvmVFMulToNeuraVFMul>(&getContext());
     patterns.add<LlvmICmpToNeuraICmp>(&getContext());
     patterns.add<LlvmFCmpToNeuraFCmp>(&getContext());
     patterns.add<LlvmGEPToNeuraGEP>(&getContext());
