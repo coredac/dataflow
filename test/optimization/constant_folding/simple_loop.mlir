@@ -54,8 +54,8 @@ module {
 // FOLD-NEXT:   %6 = "neura.cast"(%3) <{cast_type = "sitofp"}> : (i32) -> f32
 // FOLD-NEXT:   %7 = "neura.fmul"(%6) {rhs_value = 2.500000e+00 : f32} : (f32) -> f32
 // FOLD-NEXT:   %8 = "neura.fsub"(%7) {rhs_value = 1.000000e+00 : f32} : (f32) -> f32
-// FOLD-NEXT:   %9 = "neura.fmax"(%8) {rhs_value = 0.000000e+00 : f32} : (f32) -> f32
-// FOLD-NEXT:   %10 = "neura.fmin"(%9) {rhs_value = 1.000000e+01 : f32} : (f32) -> f32
+// FOLD-NEXT:   %9 = neura.fmax<"maxnum"> (%8) {rhs_value = 0.000000e+00 : f32} : f32 -> f32
+// FOLD-NEXT:   %10 = neura.fmin<"minnum"> (%9) {rhs_value = 1.000000e+01 : f32} : f32 -> f32
 // FOLD-NEXT:   %11 = "neura.add"(%1) {rhs_value = 1 : i64} : (i64) -> i64
 // FOLD-NEXT:   neura.br %11 : i64 to ^bb1
 // FOLD-NEXT: ^bb3:  // pred: ^bb1
