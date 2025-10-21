@@ -911,6 +911,198 @@ bool handleFDivOp(
 }
 
 /**
+ * @brief Handles the execution of a Neura floating-point maximum operation
+ *        (neura.fmax) by computing the maximum of floating-point operands.
+ *
+ * This function processes Neura's floating-point maximum operations, which
+ * take 2-3 operands: two floating-point inputs (LHS and RHS) and an optional
+ * predicate operand. It calculates the maximum of the floating-point values
+ * (max(LHS, RHS)), combines the predicates of all operands (including the
+ * optional predicate if present), and stores the result in the value map. The
+ * operation requires at least two operands; fewer will result in an error.
+ *
+ * @param op                             The neura.fmax operation to handle
+ * @param value_to_predicated_data_map   Reference to the map where the result
+ *                                       will be stored, keyed by the
+ * operation's result value
+ * @return bool                          True if the floating-point maximum
+ * is successfully computed; false if there are fewer than 2 operands
+ */
+bool handleFMaxOp(
+    neura::FMaxOp op,
+    llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map) {
+  if (isVerboseMode()) {
+    llvm::outs() << "[neura-interpreter]  Executing neura.fmax:\n";
+  }
+
+  if (op.getNumOperands() < 2) {
+    if (isVerboseMode()) {
+      llvm::errs() << "[neura-interpreter]  └─ neura.fmax expects at least two "
+                      "operands\n";
+    }
+    return false;
+  }
+
+  auto lhs = value_to_predicated_data_map[op.getOperand(0)];
+  auto rhs = value_to_predicated_data_map[op.getOperand(1)];
+
+  if (isVerboseMode()) {
+    llvm::outs() << "[neura-interpreter]  ├─ Operands \n";
+    llvm::outs() << "[neura-interpreter]  │  ├─ LHS  : value = " << lhs.value
+                 << " [pred = " << lhs.predicate << "]\n";
+    llvm::outs() << "[neura-interpreter]  │  └─ RHS  : value = " << rhs.value
+                 << " [pred = " << rhs.predicate << "]\n";
+  }
+
+  bool final_predicate = lhs.predicate && rhs.predicate;
+
+  if (op.getNumOperands() > 2) {
+    auto pred = value_to_predicated_data_map[op.getOperand(2)];
+    final_predicate = final_predicate && pred.predicate && (pred.value != 0.0f);
+    if (isVerboseMode()) {
+      llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
+      llvm::outs() << "[neura-interpreter]  │  └─ Pred : value = " << pred.value
+                   << " [pred = " << pred.predicate << "]\n";
+    }
+  }
+
+  float lhs_float = static_cast<float>(lhs.value);
+  float rhs_float = static_cast<float>(rhs.value);
+  
+  // Get NaN semantic attribute (default is "maxnum")
+  std::string nan_semantic = op.getNanSemantic().str();
+  float result_float;
+  
+  if (nan_semantic == "maxnum") {
+    // maxnum semantic: return non-NaN value when one operand is NaN
+    if (std::isnan(lhs_float) && !std::isnan(rhs_float)) {
+      result_float = rhs_float;
+    } else if (std::isnan(rhs_float) && !std::isnan(lhs_float)) {
+      result_float = lhs_float;
+    } else {
+      result_float = std::max(lhs_float, rhs_float);
+    }
+  } else { // "maximum"
+    // maximum semantic: propagate NaN when any operand is NaN
+    if (std::isnan(lhs_float) || std::isnan(rhs_float)) {
+      result_float = std::nan("");
+    } else {
+      result_float = std::max(lhs_float, rhs_float);
+    }
+  }
+
+  PredicatedData result;
+  result.value = result_float;
+  result.predicate = final_predicate;
+  result.is_vector = false;
+
+  if (isVerboseMode()) {
+    llvm::outs() << "[neura-interpreter]  ├─ NaN semantic: " << nan_semantic << "\n";
+    llvm::outs() << "[neura-interpreter]  └─ Result  : value = " << result.value
+                 << " [pred = " << result.predicate << "]\n";
+  }
+
+  value_to_predicated_data_map[op.getResult()] = result;
+  return true;
+}
+
+/**
+ * @brief Handles the execution of a Neura floating-point minimum operation
+ *        (neura.fmin) by computing the minimum of floating-point operands.
+ *
+ * This function processes Neura's floating-point minimum operations, which
+ * take 2-3 operands: two floating-point inputs (LHS and RHS) and an optional
+ * predicate operand. It calculates the minimum of the floating-point values
+ * (min(LHS, RHS)), combines the predicates of all operands (including the
+ * optional predicate if present), and stores the result in the value map. The
+ * operation requires at least two operands; fewer will result in an error.
+ *
+ * @param op                             The neura.fmin operation to handle
+ * @param value_to_predicated_data_map   Reference to the map where the result
+ *                                       will be stored, keyed by the
+ * operation's result value
+ * @return bool                          True if the floating-point minimum
+ * is successfully computed; false if there are fewer than 2 operands
+ */
+bool handleFMinOp(
+    neura::FMinOp op,
+    llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map) {
+  if (isVerboseMode()) {
+    llvm::outs() << "[neura-interpreter]  Executing neura.fmin:\n";
+  }
+
+  if (op.getNumOperands() < 2) {
+    if (isVerboseMode()) {
+      llvm::errs() << "[neura-interpreter]  └─ neura.fmin expects at least two "
+                      "operands\n";
+    }
+    return false;
+  }
+
+  auto lhs = value_to_predicated_data_map[op.getOperand(0)];
+  auto rhs = value_to_predicated_data_map[op.getOperand(1)];
+
+  if (isVerboseMode()) {
+    llvm::outs() << "[neura-interpreter]  ├─ Operands \n";
+    llvm::outs() << "[neura-interpreter]  │  ├─ LHS  : value = " << lhs.value
+                 << " [pred = " << lhs.predicate << "]\n";
+    llvm::outs() << "[neura-interpreter]  │  └─ RHS  : value = " << rhs.value
+                 << " [pred = " << rhs.predicate << "]\n";
+  }
+
+  bool final_predicate = lhs.predicate && rhs.predicate;
+
+  if (op.getNumOperands() > 2) {
+    auto pred = value_to_predicated_data_map[op.getOperand(2)];
+    final_predicate = final_predicate && pred.predicate && (pred.value != 0.0f);
+    if (isVerboseMode()) {
+      llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
+      llvm::outs() << "[neura-interpreter]  │  └─ Pred : value = " << pred.value
+                   << " [pred = " << pred.predicate << "]\n";
+    }
+  }
+
+  float lhs_float = static_cast<float>(lhs.value);
+  float rhs_float = static_cast<float>(rhs.value);
+  
+  // Get NaN semantic attribute (default is "minnum")
+  std::string nan_semantic = op.getNanSemantic().str();
+  float result_float;
+  
+  if (nan_semantic == "minnum") {
+    // minnum semantic: return non-NaN value when one operand is NaN
+    if (std::isnan(lhs_float) && !std::isnan(rhs_float)) {
+      result_float = rhs_float;
+    } else if (std::isnan(rhs_float) && !std::isnan(lhs_float)) {
+      result_float = lhs_float;
+    } else {
+      result_float = std::min(lhs_float, rhs_float);
+    }
+  } else { // "minimum"
+    // minimum semantic: propagate NaN when any operand is NaN
+    if (std::isnan(lhs_float) || std::isnan(rhs_float)) {
+      result_float = std::nan("");
+    } else {
+      result_float = std::min(lhs_float, rhs_float);
+    }
+  }
+
+  PredicatedData result;
+  result.value = result_float;
+  result.predicate = final_predicate;
+  result.is_vector = false;
+
+  if (isVerboseMode()) {
+    llvm::outs() << "[neura-interpreter]  ├─ NaN semantic: " << nan_semantic << "\n";
+    llvm::outs() << "[neura-interpreter]  └─ Result  : value = " << result.value
+                 << " [pred = " << result.predicate << "]\n";
+  }
+
+  value_to_predicated_data_map[op.getResult()] = result;
+  return true;
+}
+
+/**
  * @brief Handles the execution of a Neura vector floating-point
  * multiplication operation (neura.vfmul) by computing element-wise products
  * of vector operands.
@@ -3131,6 +3323,10 @@ OperationHandleResult handleOperation(
     result.success = handleFMulOp(fmul_op, value_to_predicated_data_map);
   } else if (auto fdiv_op = dyn_cast<neura::FDivOp>(op)) {
     result.success = handleFDivOp(fdiv_op, value_to_predicated_data_map);
+  } else if (auto fmax_op = dyn_cast<neura::FMaxOp>(op)) {
+    result.success = handleFMaxOp(fmax_op, value_to_predicated_data_map);
+  } else if (auto fmin_op = dyn_cast<neura::FMinOp>(op)) {
+    result.success = handleFMinOp(fmin_op, value_to_predicated_data_map);
   } else if (auto vfmul_op = dyn_cast<neura::VFMulOp>(op)) {
     result.success = handleVFMulOp(vfmul_op, value_to_predicated_data_map);
   } else if (auto fadd_fadd_op = dyn_cast<neura::FAddFAddOp>(op)) {

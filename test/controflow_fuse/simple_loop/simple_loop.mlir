@@ -185,23 +185,13 @@ module attributes {} {
 
 
 // FUSE:        func.func @_Z11simple_loopPiS_(%arg0: memref<?xi32>, %arg1: memref<?xi32>) attributes {accelerator = "neura", dataflow_mode = "predicate", llvm.linkage = #llvm.linkage<external>} {
-// FUSE-NEXT:     %0 = "neura.grant_once"() <{constant_value = "%arg0"}> : () -> !neura.data<memref<?xi32>, i1>
-// FUSE-NEXT:     %1 = "neura.grant_once"() <{constant_value = "%arg1"}> : () -> !neura.data<memref<?xi32>, i1>
-// FUSE-NEXT:     %2 = neura.reserve : !neura.data<memref<?xi32>, i1>
-// FUSE-NEXT:     %3 = "neura.phi"(%2, %1) : (!neura.data<memref<?xi32>, i1>, !neura.data<memref<?xi32>, i1>) -> !neura.data<memref<?xi32>, i1>
-// FUSE-NEXT:     %4 = neura.reserve : !neura.data<memref<?xi32>, i1>
-// FUSE-NEXT:     %5 = "neura.phi"(%4, %0) : (!neura.data<memref<?xi32>, i1>, !neura.data<memref<?xi32>, i1>) -> !neura.data<memref<?xi32>, i1>
-// FUSE-NEXT:     %6 = "neura.grant_always"() <{constant_value = true}> : () -> !neura.data<i1, i1>
-// FUSE-NEXT:     %nextindex, %valid = "neura.loop_control"(%6) <{end = 128 : i64, iterationType = "increment", start = 0 : i64, step = 1 : i64}> : (!neura.data<i1, i1>) -> (!neura.data<i64, i1>, !neura.data<i1, i1>)
-// FUSE-NEXT:     %7 = neura.grant_predicate %5, %valid : !neura.data<memref<?xi32>, i1>, !neura.data<i1, i1> -> !neura.data<memref<?xi32>, i1>
-// FUSE-NEXT:     %8 = neura.grant_predicate %3, %valid : !neura.data<memref<?xi32>, i1>, !neura.data<i1, i1> -> !neura.data<memref<?xi32>, i1>
-// FUSE-NEXT:     %9 = neura.load_indexed %7[%nextindex : !neura.data<i64, i1>] !neura.data<memref<?xi32>, i1> : !neura.data<i32, i1>
-// FUSE-NEXT:     %10 = "neura.mul"(%9) {rhs_value = 2 : i32} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
-// FUSE-NEXT:     %11 = "neura.add"(%10) {rhs_value = 1 : i32} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
-// FUSE-NEXT:     neura.store_indexed %11 to %8[%nextindex : !neura.data<i64, i1>] !neura.data<memref<?xi32>, i1> : !neura.data<i32, i1>
-// FUSE-NEXT:     neura.ctrl_mov %7 -> %4 : !neura.data<memref<?xi32>, i1> !neura.data<memref<?xi32>, i1>
-// FUSE-NEXT:     neura.ctrl_mov %8 -> %2 : !neura.data<memref<?xi32>, i1> !neura.data<memref<?xi32>, i1>
+// FUSE-NEXT:     %0 = "neura.grant_always"() <{constant_value = true}> : () -> !neura.data<i1, i1>
+// FUSE-NEXT:     %nextindex, %valid = "neura.loop_control"(%0) <{end = 128 : i64, iterationType = "increment", start = 0 : i64, step = 1 : i64}> : (!neura.data<i1, i1>) -> (!neura.data<i64, i1>, !neura.data<i1, i1>)
+// FUSE-NEXT:     %1 = neura.load_indexed [%nextindex : !neura.data<i64, i1>] {lhs_value = "%arg0"} : !neura.data<i32, i1>
+// FUSE-NEXT:     %2 = "neura.mul"(%1) {rhs_value = 2 : i32} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
+// FUSE-NEXT:     %3 = "neura.add"(%2) {rhs_value = 1 : i32} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
+// FUSE-NEXT:     neura.store_indexed %3 to [%nextindex : !neura.data<i64, i1>] {rhs_value = "%arg1"} : !neura.data<i32, i1>
 // FUSE-NEXT:     "neura.return"() : () -> ()
 // FUSE-NEXT:   }
 
-// FUSE-MAPPING:      func.func @_Z11simple_loopPiS_(%arg0: memref<?xi32>, %arg1: memref<?xi32>) attributes {accelerator = "neura", dataflow_mode = "predicate", llvm.linkage = #llvm.linkage<external>, mapping_info = {compiled_ii = 2 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 2 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {
+// FUSE-MAPPING:      func.func @_Z11simple_loopPiS_(%arg0: memref<?xi32>, %arg1: memref<?xi32>) attributes {accelerator = "neura", dataflow_mode = "predicate", llvm.linkage = #llvm.linkage<external>, mapping_info = {compiled_ii = 1 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 1 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {

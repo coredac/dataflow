@@ -239,6 +239,76 @@ struct FuseFAddRhsConstantPattern
   }
 };
 
+struct FuseFSubRhsConstantPattern
+    : public FuseRhsConstantPattern<neura::FSubOp> {
+  using FuseRhsConstantPattern<neura::FSubOp>::FuseRhsConstantPattern;
+
+  Operation *
+  createOpWithFusedRhsConstant(neura::FSubOp op, Value non_const_operand,
+                               Attribute rhs_value,
+                               PatternRewriter &rewriter) const override {
+    auto fused_op = rewriter.create<neura::FSubOp>(
+        op.getLoc(), op.getResult().getType(), non_const_operand,
+        /*rhs=*/nullptr);
+    addConstantAttribute(fused_op, "rhs_value", rhs_value);
+    return fused_op;
+  }
+};
+
+struct FuseFMulRhsConstantPattern
+    : public FuseRhsConstantPattern<neura::FMulOp> {
+  using FuseRhsConstantPattern<neura::FMulOp>::FuseRhsConstantPattern;
+
+  bool isCommutative() const override { return true; }
+
+  Operation *
+  createOpWithFusedRhsConstant(neura::FMulOp op, Value non_const_operand,
+                               Attribute rhs_value,
+                               PatternRewriter &rewriter) const override {
+    auto fused_op = rewriter.create<neura::FMulOp>(
+        op.getLoc(), op.getResult().getType(), non_const_operand,
+        /*rhs=*/nullptr);
+    addConstantAttribute(fused_op, "rhs_value", rhs_value);
+    return fused_op;
+  }
+};
+
+struct FuseFMaxRhsConstantPattern
+    : public FuseRhsConstantPattern<neura::FMaxOp> {
+  using FuseRhsConstantPattern<neura::FMaxOp>::FuseRhsConstantPattern;
+
+  bool isCommutative() const override { return true; }
+
+  Operation *
+  createOpWithFusedRhsConstant(neura::FMaxOp op, Value non_const_operand,
+                               Attribute rhs_value,
+                               PatternRewriter &rewriter) const override {
+    auto fused_op = rewriter.create<neura::FMaxOp>(
+        op.getLoc(), op.getResult().getType(), non_const_operand,
+        /*rhs=*/nullptr, op.getNanSemantic());
+    addConstantAttribute(fused_op, "rhs_value", rhs_value);
+    return fused_op;
+  }
+};
+
+struct FuseFMinRhsConstantPattern
+    : public FuseRhsConstantPattern<neura::FMinOp> {
+  using FuseRhsConstantPattern<neura::FMinOp>::FuseRhsConstantPattern;
+
+  bool isCommutative() const override { return true; }
+
+  Operation *
+  createOpWithFusedRhsConstant(neura::FMinOp op, Value non_const_operand,
+                               Attribute rhs_value,
+                               PatternRewriter &rewriter) const override {
+    auto fused_op = rewriter.create<neura::FMinOp>(
+        op.getLoc(), op.getResult().getType(), non_const_operand,
+        /*rhs=*/nullptr, op.getNanSemantic());
+    addConstantAttribute(fused_op, "rhs_value", rhs_value);
+    return fused_op;
+  }
+};
+
 struct FuseDivRhsConstantPattern : public FuseRhsConstantPattern<neura::DivOp> {
   using FuseRhsConstantPattern<neura::DivOp>::FuseRhsConstantPattern;
 
@@ -354,6 +424,98 @@ struct FuseStoreAddrConstantPattern : public OpRewritePattern<neura::StoreOp> {
 };
 
 // =========================================
+// FuseLoadIndexedBaseConstantPattern
+// Folds constant base pointer for LoadIndexed operation.
+// =========================================
+struct FuseLoadIndexedBaseConstantPattern
+    : public OpRewritePattern<neura::LoadIndexedOp> {
+  using OpRewritePattern<neura::LoadIndexedOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(neura::LoadIndexedOp load_indexed_op,
+                                PatternRewriter &rewriter) const override {
+    Value base = load_indexed_op.getBase();
+    
+    // Checks if base exists and is a constant.
+    if (!base || !isOriginConstantOp(base)) {
+      return failure();
+    }
+
+    auto constant_op = dyn_cast<neura::ConstantOp>(base.getDefiningOp());
+    Attribute base_const_value = getOriginConstantValue(base);
+
+    // Gets all indices.
+    SmallVector<Value> indices;
+    for (Value idx : load_indexed_op.getIndices()) {
+      indices.push_back(idx);
+    }
+
+    // Creates new LoadIndexed with no base but with lhs_value attribute.
+    auto fused_load_indexed = rewriter.create<neura::LoadIndexedOp>(
+        load_indexed_op.getLoc(),
+        load_indexed_op.getResult().getType(),
+        /*base=*/nullptr,
+        indices);
+    addConstantAttribute(fused_load_indexed, "lhs_value", base_const_value);
+
+    // Replaces the original LoadIndexed.
+    rewriter.replaceOp(load_indexed_op, fused_load_indexed);
+    
+    // Cleans up constant if no longer used.
+    if (constant_op->use_empty()) {
+      rewriter.eraseOp(constant_op);
+    }
+    
+    return success();
+  }
+};
+
+// =========================================
+// FuseStoreIndexedBaseConstantPattern
+// Folds constant base pointer for StoreIndexed operation.
+// =========================================
+struct FuseStoreIndexedBaseConstantPattern
+    : public OpRewritePattern<neura::StoreIndexedOp> {
+  using OpRewritePattern<neura::StoreIndexedOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(neura::StoreIndexedOp store_indexed_op,
+                                PatternRewriter &rewriter) const override {
+    Value base = store_indexed_op.getBase();
+    
+    // Checks if base exists and is a constant.
+    if (!base || !isOriginConstantOp(base)) {
+      return failure();
+    }
+
+    auto constant_op = dyn_cast<neura::ConstantOp>(base.getDefiningOp());
+    Attribute base_const_value = getOriginConstantValue(base);
+
+    // Gets all indices.
+    SmallVector<Value> indices;
+    for (Value idx : store_indexed_op.getIndices()) {
+      indices.push_back(idx);
+    }
+
+    // Creates new StoreIndexed with no base but with rhs_value attribute.
+    auto fused_store_indexed = rewriter.create<neura::StoreIndexedOp>(
+        store_indexed_op.getLoc(),
+        store_indexed_op.getValue(),  // Keeps the value operand.
+        /*base=*/nullptr,
+        indices);
+    addConstantAttribute(fused_store_indexed, "rhs_value", base_const_value);
+
+    // Replaces the original StoreIndexed.
+    rewriter.replaceOp(store_indexed_op, fused_store_indexed);
+    
+    // Cleans up constant if no longer used.
+    if (constant_op->use_empty()) {
+      rewriter.eraseOp(constant_op);
+    }
+    
+    return success();
+  }
+};
+
+// =========================================
 // FoldConstantPass Implementation
 // =========================================
 struct FoldConstantPass
@@ -374,12 +536,18 @@ struct FoldConstantPass
     patterns.add<FuseMulRhsConstantPattern>(&getContext());
     patterns.add<FuseICmpRhsConstantPattern>(&getContext());
     patterns.add<FuseFAddRhsConstantPattern>(&getContext());
+    patterns.add<FuseFSubRhsConstantPattern>(&getContext());
+    patterns.add<FuseFMulRhsConstantPattern>(&getContext());
+    patterns.add<FuseFMaxRhsConstantPattern>(&getContext());
+    patterns.add<FuseFMinRhsConstantPattern>(&getContext());
     patterns.add<FuseDivRhsConstantPattern>(&getContext());
     patterns.add<FuseRemRhsConstantPattern>(&getContext());
 
     patterns.add<FuseConstantAndGrantPattern>(&getContext());
     patterns.add<FuseGepBaseConstantPattern>(&getContext());
     patterns.add<FuseStoreAddrConstantPattern>(&getContext());
+    patterns.add<FuseLoadIndexedBaseConstantPattern>(&getContext());
+    patterns.add<FuseStoreIndexedBaseConstantPattern>(&getContext());
     FrozenRewritePatternSet frozen(std::move(patterns));
 
     // Applies to every region inside the module (regardless of func type,

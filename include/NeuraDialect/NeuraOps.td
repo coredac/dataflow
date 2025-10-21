@@ -84,7 +84,7 @@ def Neura_FSubOp: Op<NeuraDialect, "fsub"> {
 def Neura_FMulOp : Op<NeuraDialect, "fmul"> {
   let summary = "Floating multiplication operation";
   let opName = "fmul";
-  let arguments = (ins AnyType:$lhs, AnyType:$rhs);
+  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs);
   let results = (outs AnyType:$result);
   // let assemblyFormat = "$lhs `,` $rhs `,` attr-dict `:` type($result)";
   // let traits = [SameOperandsAndResultElementType];
@@ -102,6 +102,48 @@ def Neura_FDivOp : Op<NeuraDialect, "fdiv"> {
   let arguments = (ins AnyType:$lhs, AnyType:$rhs);
   let results = (outs AnyType:$result);
   let traits = [SameOperandsAndResultElementType];
+}
+
+// Defines a floating-point maximum operation.
+def Neura_FMaxOp : Op<NeuraDialect, "fmax"> {
+  let summary = "Floating-point maximum operation";
+  let description = [{
+    Returns the maximum of two floating-point values.
+    Supports two NaN propagation semantics:
+    - "maxnum": Returns non-NaN value when one operand is NaN (llvm.maxnum)
+    - "maximum": Propagates NaN when any operand is NaN (llvm.maximum)
+    
+    Example:
+      %result = neura.fmax<"maxnum">(%a, %b : f32) : f32 -> f32
+      %result = neura.fmax<"maximum">(%a, %b : f32) : f32 -> f32
+  }];
+  let opName = "fmax";
+  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs, 
+                   DefaultValuedAttr<StrAttr, "\"maxnum\"">:$nan_semantic);
+  let results = (outs AnyType:$result);
+  let traits = [SameOperandsAndResultElementType];
+  let assemblyFormat = "`<` $nan_semantic `>` `(` $lhs (`,` $rhs^ `:` type($rhs))? `)` attr-dict `:` type($lhs) `->` type($result)";
+}
+
+// Defines a floating-point minimum operation.
+def Neura_FMinOp : Op<NeuraDialect, "fmin"> {
+  let summary = "Floating-point minimum operation";
+  let description = [{
+    Returns the minimum of two floating-point values.
+    Supports two NaN propagation semantics:
+    - "minnum": Returns non-NaN value when one operand is NaN (llvm.minnum)
+    - "minimum": Propagates NaN when any operand is NaN (llvm.minimum)
+    
+    Example:
+      %result = neura.fmin<"minnum">(%a, %b : f32) : f32 -> f32
+      %result = neura.fmin<"minimum">(%a, %b : f32) : f32 -> f32
+  }];
+  let opName = "fmin";
+  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs,
+                   DefaultValuedAttr<StrAttr, "\"minnum\"">:$nan_semantic);
+  let results = (outs AnyType:$result);
+  let traits = [SameOperandsAndResultElementType];
+  let assemblyFormat = "`<` $nan_semantic `>` `(` $lhs (`,` $rhs^ `:` type($rhs))? `)` attr-dict `:` type($lhs) `->` type($result)";
 }
 
 // Defines a bitwise OR operation.
@@ -151,7 +193,7 @@ def Neura_StoreOp : Op<NeuraDialect, "store"> {
 }
 
 // Defines a load operation with integrated address calculation.
-def Neura_LoadIndexedOp: Op<NeuraDialect, "load_indexed">{
+def Neura_LoadIndexedOp: Op<NeuraDialect, "load_indexed", [AttrSizedOperandSegments]>{
   let summary = "Load with integrated address calculation for multi-dimensional arrays";
   let description = [{
     Calculates the address using the base address and indices.
@@ -159,13 +201,13 @@ def Neura_LoadIndexedOp: Op<NeuraDialect, "load_indexed">{
     Example:
       %value = neura.load_indexed %base [%arg1, %arg2] : f32
   }];
-  let arguments = (ins AnyType:$base, Variadic<AnyType>:$indices);
+  let arguments = (ins Optional<AnyType>:$base, Variadic<AnyType>:$indices);
   let results = (outs AnyType:$result);
   let assemblyFormat = "$base `[` $indices `:` type($indices) `]` type($base) attr-dict `:` type($result)";
 }
 
 //Defines a store operation with integrated address calculation.
-def Neura_StoreIndexedOp: Op<NeuraDialect, "store_indexed"> {
+def Neura_StoreIndexedOp: Op<NeuraDialect, "store_indexed", [AttrSizedOperandSegments]> {
   let summary = "Store with integrated address calculation for multi-dimensional arrays";
   let description = [{
     Calculates the address using the base address and indices.
@@ -173,7 +215,7 @@ def Neura_StoreIndexedOp: Op<NeuraDialect, "store_indexed"> {
     Example:
       neura.store_indexed %value, %base [%arg1, %arg2] : f32
   }];
-  let arguments = (ins AnyType:$value, AnyType:$base, Variadic<AnyType>:$indices);
+  let arguments = (ins AnyType:$value, Optional<AnyType>:$base, Variadic<AnyType>:$indices);
   let results = (outs);
   let assemblyFormat = "$value `to` $base `[` $indices `:` type($indices) `]` type($base) attr-dict `:` type($value)";
 }
