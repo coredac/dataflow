@@ -272,8 +272,8 @@ struct LlvmVFMulToNeuraVFMul : public OpRewritePattern<mlir::LLVM::FMulOp> {
     Type result_type = op->getResult(0).getType();
 
     // Only matches vector<xf32>.
-    auto vecTy = mlir::dyn_cast<VectorType>(result_type);
-    if (!vecTy || !mlir::isa<FloatType>(vecTy.getElementType()))
+    auto vec_type = mlir::dyn_cast<VectorType>(result_type);
+    if (!vec_type || !mlir::isa<FloatType>(vec_type.getElementType()))
       return failure();
 
     rewriter.replaceOpWithNewOp<neura::VFMulOp>(op, result_type, lhs, rhs);
@@ -291,8 +291,8 @@ struct LlvmVMulToNeuraVMul : public OpRewritePattern<mlir::LLVM::MulOp> {
     Type result_type = op->getResult(0).getType();
 
     // Only matches vector<xInt>.
-    auto vecTy = mlir::dyn_cast<VectorType>(result_type);
-    if (!vecTy || !mlir::isa<IntegerType>(vecTy.getElementType()))
+    auto vec_type = mlir::dyn_cast<VectorType>(result_type);
+    if (!vec_type || !mlir::isa<IntegerType>(vec_type.getElementType()))
       return failure();
 
     rewriter.replaceOpWithNewOp<neura::VMulOp>(op, result_type, lhs, rhs);
@@ -310,8 +310,8 @@ struct LlvmVAddToNeuraVAdd : public OpRewritePattern<mlir::LLVM::AddOp> {
     Type result_type = op->getResult(0).getType();
 
     // Only matches vector<xInt>.
-    auto vecTy = mlir::dyn_cast<VectorType>(result_type);
-    if (!vecTy || !mlir::isa<IntegerType>(vecTy.getElementType()))
+    auto vec_type = mlir::dyn_cast<VectorType>(result_type);
+    if (!vec_type || !mlir::isa<IntegerType>(vec_type.getElementType()))
       return failure();
 
     rewriter.replaceOpWithNewOp<neura::VAddOp>(op, result_type, lhs, rhs);
@@ -329,8 +329,8 @@ struct LlvmVFAddToNeuraVFAdd : public OpRewritePattern<mlir::LLVM::FAddOp> {
     Type result_type = op->getResult(0).getType();
 
     // Only matches vector<xf32>.
-    auto vecTy = mlir::dyn_cast<VectorType>(result_type);
-    if (!vecTy || !mlir::isa<FloatType>(vecTy.getElementType()))
+    auto vec_type = mlir::dyn_cast<VectorType>(result_type);
+    if (!vec_type || !mlir::isa<FloatType>(vec_type.getElementType()))
       return failure();
 
     rewriter.replaceOpWithNewOp<neura::VFAddOp>(op, result_type, lhs, rhs);
