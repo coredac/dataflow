@@ -344,14 +344,65 @@ def VectorOfAnyFloat :
     "vector of floats"
   >;
 
+def VectorOfAnyInt :
+  TypeConstraint<
+    CPred<
+      "mlir::isa<::mlir::VectorType>($_self) && "
+      "mlir::isa<::mlir::IntegerType>(mlir::cast<::mlir::VectorType>($_self).getElementType())"
+    >,
+    "vector of integers"
+  >;
+
 // Defines a vector multiplication operation.
 def Neura_VFMulOp : Op<NeuraDialect, "vfmul"> {
   let summary = "Vector floating multiplication operation";
   let opName = "vfmul";
-  let arguments = (ins VectorOfAnyFloat:$lhs, VectorOfAnyFloat:$rhs);
-  let results = (outs VectorOfAnyFloat:$result);
+  let arguments = (ins AnyType:$lhs, AnyType:$rhs);
+  let results = (outs AnyType:$result);
   // let assemblyFormat = "$lhs `,` $rhs `,` attr-dict `:` type($result)";
   let traits = [SameOperandsAndResultElementType];
+}
+
+// Defines a vector integer multiplication operation.
+def Neura_VMulOp : Op<NeuraDialect, "vmul"> {
+  let summary = "Vector integer multiplication operation";
+  let opName = "vmul";
+  let arguments = (ins AnyType:$lhs, AnyType:$rhs);
+  let results = (outs AnyType:$result);
+  let traits = [SameOperandsAndResultElementType];
+}
+
+// Defines a vector integer addition operation.
+def Neura_VAddOp : Op<NeuraDialect, "vadd"> {
+  let summary = "Vector integer addition operation";
+  let opName = "vadd";
+  let arguments = (ins AnyType:$lhs, AnyType:$rhs);
+  let results = (outs AnyType:$result);
+  let traits = [SameOperandsAndResultElementType];
+}
+
+// Defines a vector floating addition operation.
+def Neura_VFAddOp : Op<NeuraDialect, "vfadd"> {
+  let summary = "Vector floating addition operation";
+  let opName = "vfadd";
+  let arguments = (ins AnyType:$lhs, AnyType:$rhs);
+  let results = (outs AnyType:$result);
+  let traits = [SameOperandsAndResultElementType];
+}
+
+// Defines a vector reduction add operation (reduces vector to scalar).
+def Neura_VectorReduceAddOp : Op<NeuraDialect, "vector.reduce.add"> {
+  let summary = "Vector reduction add operation - reduces vector to scalar by summing elements";
+  let description = [{
+    Reduces a vector to a scalar by summing all elements.
+    Similar to llvm.intr.vector.reduce.add.
+    
+    Example:
+      %sum = neura.vector.reduce.add %vec : vector<4xi32> -> i32
+  }];
+  let opName = "vector.reduce.add";
+  let arguments = (ins AnyType:$input);
+  let results = (outs AnyType:$result);
 }
 
 // ----------------------------------------------------
