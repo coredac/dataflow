@@ -216,6 +216,12 @@ std::vector<PatternWithSelectedInstances> GraMi::mineFrequentSubgraphs() {
     auto* fromOp = from->getOperation();
     auto* toOp = to->getOperation();
 
+    // Check fromop and topp are in the same region of common_pattern. If so, skip the edge.
+    if (fromOp->getParentRegion() == toOp->getParentRegion() && fromOp->getParentRegion()->getParentOp()->getName().getStringRef().str() == "neura.common_pattern") {
+      continue;
+    }
+
+
     auto deriveLabel = [](mlir::Operation* op, const std::string& fallbackLabel) -> std::string {
       if (!op) return fallbackLabel;
       // Match op by name to avoid depending on generated accessors

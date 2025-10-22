@@ -248,92 +248,7 @@ private:
   // Use the PatternInstance from GraMi header
   using PatternInstance = mlir::neura::PatternInstance;
   
-  // Find all instances of a pattern in a function
-  SmallVector<PatternInstance> findPatternInstances(func::FuncOp func,
-                                                     const mlir::neura::FrequentSubgraph& pattern,
-                                                     mlir::neura::DFGGraph* graph) {
-    SmallVector<PatternInstance> instances;
-    
-    // For simple 2-node edge patterns (A->B)
-    if (pattern.getNodes().size() == 2 && pattern.getEdges().size() == 1) {
-      // Get node labels
-      std::string label0, label1;
-      for (const auto& node_pair : pattern.getNodes()) {
-        if (node_pair.first == 0) label0 = node_pair.second;
-        if (node_pair.first == 1) label1 = node_pair.second;
-      }
-      
-      // Find matching operation pairs in the function
-      func.walk([&](Operation* second_op) {
-        std::string second_label = getOperationPatternLabel(second_op);
-        if (second_label != label1) return;
-        
-        // Check each operand to see if it comes from an operation matching label0
-        for (Value operand : second_op->getOperands()) {
-          Operation* first_op = operand.getDefiningOp();
-          if (!first_op) continue;
-          
-          std::string first_label = getOperationPatternLabel(first_op);
-          if (first_label == label0) {
-            // Found a matching pattern instance
-            PatternInstance instance;
-            instance.operations.push_back(first_op);
-            instance.operations.push_back(second_op);
-            instance.lastOp = second_op;
-            
-            // Build set of operations in this pattern for quick lookup
-            llvm::DenseSet<Operation*> patternOps;
-            patternOps.insert(first_op);
-            patternOps.insert(second_op);
-            
-            // Collect inputs (operands from outside the pattern)
-            llvm::SetVector<Value> input_set;
-            for (Value first_operand : first_op->getOperands()) {
-              input_set.insert(first_operand);
-            }
-            for (Value second_operand : second_op->getOperands()) {
-              // Don't include the edge between first and second
-              if (second_operand.getDefiningOp() != first_op) {
-                input_set.insert(second_operand);
-              }
-            }
-            auto inputs_vec = input_set.takeVector();
-            instance.inputs = std::vector<Value>(inputs_vec.begin(), inputs_vec.end());
-            
-            // Collect outputs: any result from pattern operations that is used outside the pattern
-            llvm::SetVector<Value> output_set;
-            
-            for (Operation* op : instance.operations) {
-              for (Value result : op->getResults()) {
-                // Check if this result is used outside the pattern
-                bool hasExternalUse = false;
-                for (OpOperand& use : result.getUses()) {
-                  Operation* user = use.getOwner();
-                  if (!patternOps.contains(user)) {
-                    hasExternalUse = true;
-                    break;
-                  }
-                }
-                
-                if (hasExternalUse) {
-                  output_set.insert(result);
-                }
-              }
-            }
-            
-            auto outputs_vec = output_set.takeVector();
-            instance.outputs = std::vector<Value>(outputs_vec.begin(), outputs_vec.end());
-            
-            instances.push_back(instance);
-            break;  // Only match once per second_op
-          }
-        }
-      });
-    }
-    
-    return instances;
-  }
-  
+
   // Get operation label for pattern matching (matches DFGExtractor logic)
   std::string getOperationPatternLabel(Operation* op) {
     std::string opName = op->getName().getStringRef().str();
@@ -382,7 +297,10 @@ private:
         for (OpOperand& use : result.getUses()) {
           Operation* user = use.getOwner();
           // If an external user comes before lastOp, we have a domination issue
-          if (!patternOps.contains(user) && user->isBeforeInBlock(lastOp)) {
+          // Only check domination if both operations are in the same block
+          if (!patternOps.contains(user) && 
+              user->getBlock() == lastOp->getBlock() && 
+              user->isBeforeInBlock(lastOp)) {
             llvm::outs() << "    Skipping instance: would violate domination\n";
             llvm::outs() << "      Value from " << op->getName() 
                          << " is used by " << user->getName() 

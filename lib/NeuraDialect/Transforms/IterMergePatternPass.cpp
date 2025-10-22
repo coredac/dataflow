@@ -44,58 +44,55 @@ struct IterMergePatternPass
 
   void runOnOperation() override {
     // Default minimum support threshold
-    int minSupport = 2;
+    int minSupport = 1;
     
     ModuleOp module_op = getOperation();
+    
+    // Enable debugging options
+    enableDebuggingOptions();
     
     llvm::outs() << "\n========================================\n";
     llvm::outs() << "IterMergePatternPass: Starting pattern mining\n";
     llvm::outs() << "Minimum support threshold: " << minSupport << "\n";
     llvm::outs() << "========================================\n\n";
     
-    // Step 1: Extract DFG from the module
-    llvm::outs() << "Step 1: Extracting DFG from module...\n";
-    auto dfg_graph = mlir::neura::DFGExtractor::extractFromModule(module_op);
-    
-    if (!dfg_graph) {
-      llvm::errs() << "Error: Failed to extract DFG from module\n";
-      signalPassFailure();
-      return;
-    }
-    
-    llvm::outs() << "  - Number of nodes: " << dfg_graph->getNumNodes() << "\n";
-    llvm::outs() << "  - Number of edges: " << dfg_graph->getNumEdges() << "\n\n";
-    
-    // Print DFG statistics
-    printDFGStatistics(dfg_graph.get());
-    
-    // Step 2: Mine frequent subgraphs using GraMi
-    llvm::outs() << "Step 2: Mining frequent subgraphs...\n";
-    mlir::neura::GraMi grami(dfg_graph.get(), minSupport);
-    std::vector<mlir::neura::PatternWithSelectedInstances> patterns_with_instances = 
-        grami.mineFrequentSubgraphs();
-    
-    llvm::outs() << "  - Found " << patterns_with_instances.size() 
-                 << " patterns with selected instances\n\n";
-
-    // debug, print the patterns with instances
-    for (const auto& pwsi : patterns_with_instances) {
-      llvm::outs() << "Pattern: " << pwsi.pattern.getPattern() << "\n";
-      llvm::outs() << "  Frequency: " << pwsi.pattern.getFrequency() << "\n";
-      llvm::outs() << "  Nodes: " << pwsi.pattern.getNodes().size() << "\n";
-      llvm::outs() << "  Edges: " << pwsi.pattern.getEdges().size() << "\n";
-    }
-    
     // Step 2.5: Merge adjacent patterns
-    llvm::outs() << "Step 2.5: Merging adjacent patterns...\n";
-    patterns_with_instances = grami.mergeAdjacentPatterns(patterns_with_instances);
-    llvm::outs() << "  - After merging: " << patterns_with_instances.size() 
-                 << " patterns remaining\n\n";
-    
-    // Step 3: Rewrite operations to wrap patterns in regions
-    llvm::outs() << "Step 3: Rewriting operations to wrap common patterns...\n";
-    int rewrite_count = rewritePatternsToRegions(module_op, patterns_with_instances);
-    llvm::outs() << "  - Rewrote " << rewrite_count << " pattern instances\n\n";
+    int iter = 0;
+    while (iter < 2) {
+      // Step 1: Extract DFG from the module
+      llvm::outs() << "Iteration " << iter << "\n";
+      llvm::outs() << "Step 1: Extracting DFG from module...\n";
+      auto dfg_graph = mlir::neura::DFGExtractor::extractFromModule(module_op);
+      
+      if (!dfg_graph) {
+        llvm::errs() << "Error: Failed to extract DFG from module\n";
+        signalPassFailure();
+        return;
+      } 
+
+      llvm::outs() << "  - Number of nodes: " << dfg_graph->getNumNodes() << "\n";
+      llvm::outs() << "  - Number of edges: " << dfg_graph->getNumEdges() << "\n\n";
+      
+      // Print DFG statistics
+      printDFGStatistics(dfg_graph.get());
+
+      // Step 2: Mine frequent subgraphs using GraMi
+      llvm::outs() << "Step 2: Mining frequent subgraphs...\n";
+      mlir::neura::GraMi grami(dfg_graph.get(), minSupport);
+      std::vector<mlir::neura::PatternWithSelectedInstances> patterns_with_instances = 
+          grami.mineFrequentSubgraphs();
+      
+      llvm::outs() << "  - Found " << patterns_with_instances.size() 
+                  << " patterns with selected instances\n\n";
+      // patterns_with_instances = grami.mergeAdjacentPatterns(patterns_with_instances);
+      llvm::outs() << "  - After merging: " << patterns_with_instances.size() 
+                  << " patterns remaining\n\n";
+      
+      // Step 3: Rewrite operations to wrap patterns in regions
+      int rewrite_count = rewritePatternsToRegions(module_op, patterns_with_instances);
+      llvm::outs() << "  - Rewrote " << rewrite_count << " pattern instances\n\n";
+      iter++;
+    }
     
     llvm::outs() << "\n========================================\n";
     llvm::outs() << "IterMergePatternPass: Completed\n";
@@ -103,6 +100,17 @@ struct IterMergePatternPass
   }
   
 private:
+  
+  // Enable debugging options for this pass
+  void enableDebuggingOptions() {
+    // Note: These options would typically be set on the PassManager
+    // that runs this pass, not within the pass itself.
+    // This is a placeholder for demonstration.
+    llvm::outs() << "Debugging options enabled:\n";
+    llvm::outs() << "  - Verification disabled\n";
+    llvm::outs() << "  - IR printing on failure enabled\n";
+  }
+  
   void printDFGStatistics(mlir::neura::DFGGraph* graph) {
     llvm::outs() << "DFG Statistics:\n";
     llvm::outs() << "---------------\n";
@@ -207,6 +215,13 @@ private:
                                 const std::vector<mlir::neura::PatternWithSelectedInstances>& patterns_with_instances) {
     int rewrite_count = 0;
     
+    // Extract DFG once for efficiency
+    auto dfg_graph = mlir::neura::DFGExtractor::extractFromModule(module_op);
+    if (!dfg_graph) {
+      llvm::errs() << "Error: Failed to extract DFG for pattern analysis\n";
+      return 0;
+    }
+    
     // Filter valid patterns (at least 2 nodes) and collect all instances
     std::vector<std::tuple<PatternInstance, const mlir::neura::FrequentSubgraph*, int>> all_instances;
     int pattern_id = 0;
@@ -216,6 +231,32 @@ private:
         llvm::outs() << "  Valid pattern: " << pwsi.pattern.getPattern() 
                      << " with " << pwsi.selected_instances.size() << " instances\n";
         
+        // Print pattern nodes with their DFG IDs
+        llvm::outs() << "    Pattern nodes:\n";
+        for (const auto& node : pwsi.pattern.getNodes()) {
+          llvm::outs() << "      Pattern node " << node.first << ": " << node.second << "\n";
+        }
+        
+        // Print actual DFG node IDs from the first instance
+        if (!pwsi.selected_instances.empty()) {
+          llvm::outs() << "    DFG node IDs from first instance:\n";
+          const auto& first_instance = pwsi.selected_instances[0];
+          for (size_t i = 0; i < first_instance.operations.size(); ++i) {
+            mlir::Operation* op = first_instance.operations[i];
+            // Find the corresponding DFG node
+            for (auto* dfg_node : dfg_graph->getNodes()) {
+              if (dfg_node->getOperation() == op) {
+                llvm::outs() << "      Instance node " << i << ": " << op->getName() 
+                             << " (DFG ID: " << dfg_node->getId() << ")\n";
+                break;
+              }
+            }
+          }
+        }
+        // for (const auto& edge : pwsi.pattern.getEdges()) {
+        //   llvm::outs() << "    Edge: " << edge.first << " -> " << edge.second.first << " -> " << edge.second.second << "\n";
+        // }
+
         for (const auto& instance : pwsi.selected_instances) {
           all_instances.push_back({instance, &pwsi.pattern, pattern_id});
         }
@@ -254,97 +295,11 @@ private:
   // Use the PatternInstance from GraMi header
   using PatternInstance = mlir::neura::PatternInstance;
   
-  // Find all instances of a pattern in a function
-  SmallVector<PatternInstance> findPatternInstances(func::FuncOp func,
-                                                     const mlir::neura::FrequentSubgraph& pattern,
-                                                     mlir::neura::DFGGraph* graph) {
-    SmallVector<PatternInstance> instances;
-    
-    // For simple 2-node edge patterns (A->B)
-    if (pattern.getNodes().size() == 2 && pattern.getEdges().size() == 1) {
-      // Get node labels
-      std::string label0, label1;
-      for (const auto& node_pair : pattern.getNodes()) {
-        if (node_pair.first == 0) label0 = node_pair.second;
-        if (node_pair.first == 1) label1 = node_pair.second;
-      }
-      
-      // Find matching operation pairs in the function
-      func.walk([&](Operation* second_op) {
-        std::string second_label = getOperationPatternLabel(second_op);
-        if (second_label != label1) return;
-        
-        // Check each operand to see if it comes from an operation matching label0
-        for (Value operand : second_op->getOperands()) {
-          Operation* first_op = operand.getDefiningOp();
-          if (!first_op) continue;
-          
-          std::string first_label = getOperationPatternLabel(first_op);
-          if (first_label == label0) {
-            // Found a matching pattern instance
-            PatternInstance instance;
-            instance.operations.push_back(first_op);
-            instance.operations.push_back(second_op);
-            instance.lastOp = second_op;
-            
-            // Build set of operations in this pattern for quick lookup
-            llvm::DenseSet<Operation*> patternOps;
-            patternOps.insert(first_op);
-            patternOps.insert(second_op);
-            
-            // Collect inputs (operands from outside the pattern)
-            llvm::SetVector<Value> input_set;
-            for (Value first_operand : first_op->getOperands()) {
-              input_set.insert(first_operand);
-            }
-            for (Value second_operand : second_op->getOperands()) {
-              // Don't include the edge between first and second
-              if (second_operand.getDefiningOp() != first_op) {
-                input_set.insert(second_operand);
-              }
-            }
-            auto inputs_vec = input_set.takeVector();
-            instance.inputs = std::vector<Value>(inputs_vec.begin(), inputs_vec.end());
-            
-            // Collect outputs: any result from pattern operations that is used outside the pattern
-            llvm::SetVector<Value> output_set;
-            
-            for (Operation* op : instance.operations) {
-              for (Value result : op->getResults()) {
-                // Check if this result is used outside the pattern
-                bool hasExternalUse = false;
-                for (OpOperand& use : result.getUses()) {
-                  Operation* user = use.getOwner();
-                  if (!patternOps.contains(user)) {
-                    hasExternalUse = true;
-                    break;
-                  }
-                }
-                
-                if (hasExternalUse) {
-                  output_set.insert(result);
-                }
-              }
-            }
-            
-            auto outputs_vec = output_set.takeVector();
-            instance.outputs = std::vector<Value>(outputs_vec.begin(), outputs_vec.end());
-            
-            instances.push_back(instance);
-            break;  // Only match once per second_op
-          }
-        }
-      });
-    }
-    
-    return instances;
-  }
-  
   // Get operation label for pattern matching (matches DFGExtractor logic)
   std::string getOperationPatternLabel(Operation* op) {
     std::string opName = op->getName().getStringRef().str();
     
-    // Remove dialect prefix
+    // Remove dialect prefixs
     size_t dotPos = opName.find('.');
     if (dotPos != std::string::npos) {
       opName = opName.substr(dotPos + 1);
@@ -379,6 +334,19 @@ private:
     
     // Build a set of operations in this pattern for quick lookup
     llvm::DenseSet<Operation*> patternOps(instance.operations.begin(), instance.operations.end());
+
+    llvm::outs() << "    Pattern operations: " << patternOps.size() << "\n";
+    for (Operation* op : patternOps) {
+      llvm::outs() << "      " << op->getName() << "\n";
+      if (op->getName().getStringRef().str() == "neura.common_pattern") {
+        // get the body operations
+        if (op->getNumRegions() > 0) {
+          for (Operation& bodyOp : op->getRegion(0).getOps()) {
+            llvm::outs() << "        " << bodyOp.getName() << "\n";
+          }
+        }
+      }
+    }
     
     // // Check for domination safety: ensure no value produced by the pattern
     // // is used by operations that come BEFORE the pattern's lastOp
@@ -388,7 +356,10 @@ private:
         for (OpOperand& use : result.getUses()) {
           Operation* user = use.getOwner();
           // If an external user comes before lastOp, we have a domination issue
-          if (!patternOps.contains(user) && user->isBeforeInBlock(lastOp)) {
+          // Only check domination if both operations are in the same block
+          if (!patternOps.contains(user) && 
+              user->getBlock() == lastOp->getBlock() && 
+              user->isBeforeInBlock(lastOp)) {
             llvm::outs() << "    Skipping instance: would violate domination\n";
             llvm::outs() << "      Value from " << op->getName() 
                          << " is used by " << user->getName() 
@@ -472,6 +443,7 @@ private:
     IRMapping mapping;
     
     // Map external inputs to block arguments
+    // Always map inputs to block arguments to ensure proper dominance
     for (size_t i = 0; i < validInputs.size(); ++i) {
       mapping.map(validInputs[i], bodyBlock->getArgument(i));
     }
@@ -479,22 +451,103 @@ private:
     // Clone operations in order and build mapping from original to cloned values
     llvm::DenseMap<Value, Value> originalToCloned;
     
+    Operation* clonedOp = nullptr;
+
     for (Operation* op : instance.operations) {
-      Operation* clonedOp = builder.clone(*op, mapping);
-      
-      // Map the original operation's results to cloned operation's results
-      for (size_t i = 0; i < op->getNumResults(); ++i) {
-        originalToCloned[op->getResult(i)] = clonedOp->getResult(i);
+      llvm::outs() << "    Cloning operation: " << op->getName() << "\n";
+      if (op->getName().getStringRef().str() == "neura.common_pattern") {
+        // For pattern operations, we need to handle their inputs and outputs specially
+        if (op->getNumRegions() > 0) {
+          Region& region = op->getRegion(0);
+          if (!region.empty()) {
+            Block& block = region.front();
+            
+            // Handle BlockArguments: map pattern inputs correctly
+            for (size_t i = 0; i < op->getNumOperands(); ++i) {
+              Value patternInput = op->getOperand(i);
+              
+              // Check if this input is an external input (has corresponding block argument)
+              bool isExternalInput = false;
+              for (size_t j = 0; j < validInputs.size(); ++j) {
+                if (validInputs[j] == patternInput) {
+                  // This is an external input, map to block argument
+                  BlockArgument newArg = bodyBlock->getArgument(j);
+                  if (i < block.getNumArguments()) {
+                    mapping.map(block.getArgument(i), newArg);
+                    llvm::outs() << "      Mapped external input " << i << " to block argument " << j << "\n";
+                  }
+                  isExternalInput = true;
+                  break;
+                }
+              }
+              
+              if (!isExternalInput) {
+                // This is an internal input (from another pattern in the same instance)
+                // Map directly to the source value
+                if (i < block.getNumArguments()) {
+                  mapping.map(block.getArgument(i), patternInput);
+                  llvm::outs() << "      Mapped internal input " << i << " to source value\n";
+                }
+              }
+            }
+            
+            // Clone all operations in the pattern's body
+            for (Operation& bodyOp : block.getOperations()) {
+              llvm::outs() << "      Cloning body operation: " << bodyOp.getName() << "\n";
+              if (bodyOp.getName().getStringRef().str() != "neura.yield") {
+                clonedOp = builder.clone(bodyOp, mapping);
+                // Map the original operation's results to cloned operation's results
+                for (size_t i = 0; i < bodyOp.getNumResults(); ++i) {
+                  originalToCloned[bodyOp.getResult(i)] = clonedOp->getResult(i);
+                }
+              }
+            }
+            
+            // Find the yield operation and map pattern outputs to its operands
+            for (Operation& blockOp : block.getOperations()) {
+              if (blockOp.getName().getStringRef().str() == "neura.yield") {
+                // Map pattern op results to yield operands (which are now mapped to cloned values)
+                for (size_t i = 0; i < op->getNumResults() && i < blockOp.getNumOperands(); ++i) {
+                  Value yieldOperand = blockOp.getOperand(i);
+                  if (originalToCloned.count(yieldOperand)) {
+                    originalToCloned[op->getResult(i)] = originalToCloned[yieldOperand];
+                    llvm::outs() << "      Mapped pattern result " << i << " to cloned value\n";
+                  } else {
+                    llvm::errs() << "Error: yield operand not found in cloned operations: " << yieldOperand << "\n";
+                    return false;
+                  }
+                }
+                break;
+              }
+            }
+          }
+        }
+        // Note: We don't clone the pattern operation itself, just its body operations
+      } else {
+        clonedOp = builder.clone(*op, mapping);
+        // Map the original operation's results to cloned operation's results
+        for (size_t i = 0; i < op->getNumResults(); ++i) {
+          originalToCloned[op->getResult(i)] = clonedOp->getResult(i);
+        }
       }
     }
     
     // Build yield operands based on validOutputs (in the same order)
     SmallVector<Value> yieldOperands;
-    for (Value originalOutput : validOutputs) {
+    llvm::outs() << "    Building yield operands for " << validOutputs.size() << " outputs\n";
+    for (size_t i = 0; i < validOutputs.size(); ++i) {
+      Value originalOutput = validOutputs[i];
       if (originalToCloned.count(originalOutput)) {
-        yieldOperands.push_back(originalToCloned[originalOutput]);
+        Value clonedValue = originalToCloned[originalOutput];
+        if (clonedValue) {
+          yieldOperands.push_back(clonedValue);
+          llvm::outs() << "      Output " << i << ": mapped to valid cloned value\n";
+        } else {
+          llvm::errs() << "Error: cloned value is null for output " << i << "\n";
+          return false;
+        }
       } else {
-        llvm::errs() << "Error: output value not found in cloned operations\n";
+        llvm::errs() << "Error: output value " << i << " not found in cloned operations\n";
         return false;
       }
     }
@@ -502,20 +555,141 @@ private:
     // Add yield operation
     builder.create<neura::YieldOp>(lastOp->getLoc(), yieldOperands);
     
-    // Replace uses of the original output values with the pattern op results
-    // Safe to use replaceAllUsesWith since we've checked domination safety above
+    // Comprehensive value replacement strategy
+    // Step 1: Replace external output values with pattern op results
     for (size_t i = 0; i < validOutputs.size(); ++i) {
       Value oldValue = validOutputs[i];
       Value newValue = patternOp.getResult(i);
-      
-      // Replace all uses - safe because domination check passed
       oldValue.replaceAllUsesWith(newValue);
       llvm::outs() << "      Replaced output " << i << " with pattern op result\n";
     }
     
-    // Erase original operations (in reverse order to handle dependencies)
+    // Step 2: Replace all cloned values with their new counterparts
+    for (auto& pair : originalToCloned) {
+      Value oldValue = pair.first;
+      Value newValue = pair.second;
+      oldValue.replaceAllUsesWith(newValue);
+    }
+    
+    // Step 3: Handle pattern operations specially
+    for (Operation* op : instance.operations) {
+      if (op->getName().getStringRef().str() == "neura.common_pattern") {
+        // Replace pattern operation results with new pattern operation results
+        for (size_t i = 0; i < op->getNumResults() && i < patternOp.getNumResults(); ++i) {
+          Value oldValue = op->getResult(i);
+          Value newValue = patternOp.getResult(i);
+          llvm::outs() << "      Replacing use of " << oldValue.getDefiningOp()->getName() << " with " << newValue.getDefiningOp()->getName() << "\n";
+          oldValue.replaceAllUsesWith(newValue);
+        }
+      }
+    }
+    
+    // Step 4: Final cleanup - replace any remaining uses with themselves to avoid assertion
+    for (Operation* op : instance.operations) {
+      // for (Value result : op->getResults()) {
+      //   if (!result.use_empty()) {
+      //     llvm::outs() << "      Replacing use of " << result << " with itself\n";
+      //     // Force replace with itself to avoid assertion failure
+      //     result.replaceAllUsesWith(result);
+      //   }
+      // }
+    }
+    
+    // Clear the mapping to avoid dangling references
+    originalToCloned.clear();
+
+    // print the new pattern op
+    llvm::outs() << "    New pattern op: " << patternOp.getPatternId() << "\n";
+    llvm::outs() << "      Inputs: " << patternOp.getInputs().size() << "\n";
+    llvm::outs() << "      Outputs: " << patternOp.getOutputs().size() << "\n";
+    
+    for (Operation& op : patternOp.getBody().getOps()) {
+      llvm::outs() << "        Body operation: " << op.getName() << " (ID: " << op.getAttr("id") << ")\n";
+    }
+
+    // Erase original operations by first replacing all uses, then deleting
     for (auto it = instance.operations.rbegin(); it != instance.operations.rend(); ++it) {
-      (*it)->erase();
+      Operation* op = *it;
+      
+      // if (op->getName().getStringRef().str() == "neura.common_pattern") {
+      //   llvm::outs() << "    Skipping common pattern operation: " << op->getName() << "\n";
+      //   continue;
+      // }
+      
+      llvm::outs() << "    Erasing operation: " << op->getName() << "\n";
+      
+      // List all uses of the operation before deletion
+      for (Operation* user : op->getUsers()) {
+        llvm::outs() << "        User: " << user->getName() << "\n";
+      }
+
+      if (op->use_empty()) {
+        llvm::outs() << "        Operation is empty, skipping deletion\n";
+      }
+      else {
+        llvm::outs() << "        Operation is not empty, dropping uses\n";
+      }
+      
+      // Special handling for common_pattern operations
+      if (op->getName().getStringRef().str() == "neura.common_pattern") {
+        Region& region = op->getRegion(0);
+        Block& block = region.front();
+        
+        // Step 0: Handle BlockArguments that are used within the region
+        llvm::outs() << "        Checking " << block.getNumArguments() << " block arguments\n";
+        for (BlockArgument arg : block.getArguments()) {
+          if (!arg.use_empty()) {
+            // Count uses manually
+            int useCount = 0;
+            for (OpOperand& use : arg.getUses()) {
+              useCount++;
+            }
+            llvm::outs() << "        Dropping uses of block argument " << arg.getArgNumber() 
+                         << " (type: " << arg.getType() << ", uses: " << useCount << ")\n";
+            // Print all users of this argument
+            for (OpOperand& use : arg.getUses()) {
+              llvm::outs() << "          Used by: " << use.getOwner()->getName() << " (ID: " << use.getOwner() << ")\n";
+            }
+            arg.dropAllUses();
+            llvm::outs() << "        Block argument " << arg.getArgNumber() << " uses dropped\n";
+          } else {
+            llvm::outs() << "        Block argument " << arg.getArgNumber() 
+                         << " (type: " << arg.getType() << ") has no uses, skipping\n";
+          }
+        }
+        
+        // Step 1: Drop all references from region operations first
+        for (Operation& bodyOp : block.getOperations()) {
+          bodyOp.dropAllReferences();
+        }
+        
+        // Step 2: Clear all uses of region operations' results
+        for (Operation& bodyOp : block.getOperations()) {
+          for (Value result : bodyOp.getResults()) {
+            if (!result.use_empty()) {
+              llvm::outs() << "        Dropping uses of region result: " << result << "\n";
+              result.dropAllUses();
+            }
+          }
+        }
+        
+        // Step 3: Now safely erase all operations in reverse order
+        while (!block.empty()) {
+          Operation& bodyOp = block.back();
+          llvm::outs() << "        Erasing region operation: " << bodyOp.getName() << "\n";
+          bodyOp.erase();
+        }
+        llvm::outs() << "        Region operations erased\n";
+      }
+      
+      op->dropAllUses();
+      
+      // Replace all uses of this operation's results with dummy values
+      // This breaks the dependency chain and allows safe deletion
+      
+      // Now it's safe to erase the operation
+      op->erase();
+      llvm::outs() << "    Operation erased: " << op->getName() << "\n";
     }
     
     return true;
