@@ -252,9 +252,9 @@ Tile *FunctionUnit::getTile() const { return this->tile; }
 // Register
 //===----------------------------------------------------------------------===//
 
-Register::Register(int global_id, int per_tile_id) : id(global_id), per_tile_id(per_tile_id) {}
+Register::Register(int global_id, int per_tile_id) : global_id(global_id), per_tile_id(per_tile_id) {}
 
-int Register::getId() const { return id; }
+int Register::getId() const { return global_id; }
 
 int Register::getPerTileId() const { return per_tile_id; }
 
@@ -343,9 +343,9 @@ void Architecture::createRegisterFileCluster(Tile *tile, int num_registers, int 
   const int k_num_regs_per_regfile = 8;  // Keep this fixed for now.
   const int k_num_regfiles_per_cluster = num_registers / k_num_regs_per_regfile;
   
-  // If global_id_start is specified, use it instead of the passed reference.
+  // If global_id_start is specified, ensures it doesn't go backwards.
   if (global_id_start >= 0) {
-    num_already_assigned_global_registers = global_id_start;
+    num_already_assigned_global_registers = std::max(num_already_assigned_global_registers, global_id_start);
   }
   
   RegisterFileCluster *register_file_cluster = new RegisterFileCluster(tile->getId());

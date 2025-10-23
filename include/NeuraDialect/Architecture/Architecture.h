@@ -281,7 +281,7 @@ public:
   RegisterFile *getRegisterFile() const;
 
 private:
-  int id;
+  int global_id;
   int per_tile_id;
   RegisterFile *register_file;
 };
