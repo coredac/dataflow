@@ -343,10 +343,8 @@ void Architecture::createRegisterFileCluster(Tile *tile, int num_registers, int 
   const int k_num_regs_per_regfile = 8;  // Keep this fixed for now.
   const int k_num_regfiles_per_cluster = num_registers / k_num_regs_per_regfile;
   
-  // If global_id_start is specified, ensures it doesn't go backwards.
-  if (global_id_start >= 0) {
-    num_already_assigned_global_registers = std::max(num_already_assigned_global_registers, global_id_start);
-  }
+  // Ensures global register IDs are monotonically increasing.
+  num_already_assigned_global_registers = std::max(num_already_assigned_global_registers, global_id_start);
   
   RegisterFileCluster *register_file_cluster = new RegisterFileCluster(tile->getId());
 
