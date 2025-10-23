@@ -57,6 +57,11 @@ OperationKind getOperationKindFromMlirOp(Operation *op) {
   if (isa<neura::FAddFAddOp>(op)) return FAddFAdd;
   if (isa<neura::FMulFAddOp>(op)) return FMulFAdd;
   
+  // Steering control fused operations
+  if (isa<neura::CarryInvariantOp>(op)) return ICarryInvariant;
+  if (isa<neura::ConditionalSelectOp>(op)) return IConditionalSelect;
+  if (isa<neura::InvariantGroupOp>(op)) return IInvariantGroup;
+  
   // Control flow operations
   if (isa<neura::ReturnOp>(op)) return IReturn;
   if (isa<neura::PhiOp>(op)) return IPhi;
@@ -625,9 +630,15 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
 
 Operation *mlir::neura::getMaterializedProducer(Value operand) {
   Operation *producer = operand.getDefiningOp();
-  assert(isa<neura::DataMovOp>(producer) &&
-         "Expected operand to be defined by a DataMovOp");
-  // Finds the actual producer.
+  
+  // In steering mode, some operations (like constants, carry, invariant, etc.)
+  // may not be wrapped by DataMovOp. Return them directly.
+  if (!isa<neura::DataMovOp>(producer)) {
+    // This is likely a steering mode operation that doesn't need DataMovOp wrapping
+    return producer;
+  }
+  
+  // For operations wrapped by DataMovOp, find the actual producer.
   auto mov_op = dyn_cast<neura::DataMovOp>(producer);
   auto materialized_producer = mov_op.getOperand().getDefiningOp();
   return materialized_producer;
@@ -758,6 +769,16 @@ bool mlir::neura::isMaterializedReserveUser(Operation *user) {
     return true;
   }
   if (isa<neura::CarryOp>(user)) {
+    return true;
+  }
+  // Fused steering control operations
+  if (isa<neura::CarryInvariantOp>(user)) {
+    return true;
+  }
+  if (isa<neura::ConditionalSelectOp>(user)) {
+    return true;
+  }
+  if (isa<neura::InvariantGroupOp>(user)) {
     return true;
   }
   return false;
@@ -961,8 +982,14 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
         continue;
       }
       Operation *data_move = operand.getDefiningOp();
-      assert(isa<neura::DataMovOp>(data_move) &&
-             "Expected a DataMovOp as operand producer");
+      
+      // In steering mode, some operands may not be DataMovOp (e.g., constants, carry, etc.)
+      if (!isa<neura::DataMovOp>(data_move)) {
+        // Skip non-DataMovOp operands in steering mode
+        llvm::errs() << "Skipping non-DataMovOp operand in steering mode\n";
+        continue;
+      }
+      
       Operation *producer = getMaterializedProducer(operand);
       MappingLoc src_loc = mapping_state.getAllLocsOfOp(producer).back();
 

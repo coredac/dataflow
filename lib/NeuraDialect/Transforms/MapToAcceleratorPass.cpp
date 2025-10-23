@@ -667,6 +667,13 @@ struct MapToAcceleratorPass
           "customized=max_loc,max_depth (default "
           "max_loc=5, max_depth=3)"),
       llvm::cl::init("customized")};
+  Option<bool> allowSteeringSpatialTemporal{
+      *this, "allow-steering-spatial-temporal",
+      llvm::cl::desc(
+          "Allow spatial-temporal mapping for steering-based dataflow mode. "
+          "By default, steering mode only allows spatial-only mapping. "
+          "Use this flag to enable spatial-temporal mapping for analysis purposes."),
+      llvm::cl::init(false)};
 
   void runOnOperation() override {
     ModuleOp module = getOperation();
@@ -799,18 +806,27 @@ struct MapToAcceleratorPass
       bool is_steering_mode =
           (dataflow_mode_attr && dataflow_mode_attr.getValue() == "steering");
 
-      // If steering mode, enforce spatial-only mapping.
+      // If steering mode, enforce spatial-only mapping unless explicitly allowed.
       if (is_steering_mode) {
         if (mapping_mode_stringRef != "spatial-only") {
-          func.emitError() << "Steering IR mode requires spatial-only mapping, "
-                           << "but got mapping mode: "
-                           << mapping_mode_stringRef;
-          signalPassFailure();
-          return;
+          if (!allowSteeringSpatialTemporal.getValue()) {
+            func.emitError() << "Steering IR mode requires spatial-only mapping, "
+                             << "but got mapping mode: "
+                             << mapping_mode_stringRef << ". "
+                             << "Use --allow-steering-spatial-temporal to override this constraint.";
+            signalPassFailure();
+            return;
+          } else {
+            llvm::errs() << "[MapToAcceleratorPass] WARNING: Using " 
+                         << mapping_mode_stringRef 
+                         << " mapping for steering mode function (explicitly allowed): "
+                         << func.getName() << "\n";
+          }
+        } else {
+          llvm::errs() << "[MapToAcceleratorPass] Using spatial-only mapping for "
+                          "steering mode function: "
+                       << func.getName() << "\n";
         }
-        llvm::errs() << "[MapToAcceleratorPass] Using spatial-only mapping for "
-                        "steering mode function: "
-                     << func.getName() << "\n";
       }
 
       // Collects and reports recurrence cycles found in the function.
