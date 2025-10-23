@@ -60,6 +60,7 @@ struct Tile {
 struct ArrayConfig {
   int columns;
   int rows;
+  int compiled_ii = -1;
   std::vector<Tile> cores;
 };
 
@@ -317,6 +318,15 @@ struct GenerateCodePass
     return {columns, rows};
   }
 
+  int getCompiledII(func::FuncOp function) {
+    if (auto mapping_info = function->getAttrOfType<DictionaryAttr>("mapping_info")) {
+      if (auto compiled_ii = dyn_cast_or_null<IntegerAttr>(mapping_info.get("compiled_ii"))) {
+        return compiled_ii.getInt();
+      }
+    }
+    return -1;
+  }
+
   // ---------- Single-walk indexing ----------.
   // Do everything that needs walks in a single pass:.
   //   - record operation_placements.
@@ -571,8 +581,8 @@ struct GenerateCodePass
     }
   }
 
-  ArrayConfig buildArrayConfig(int columns, int rows) {
-    ArrayConfig config{columns, rows, {}};
+  ArrayConfig buildArrayConfig(int columns, int rows, int compiled_ii = -1) {
+    ArrayConfig config{columns, rows, compiled_ii, {}};
     std::map<std::pair<int,int>, std::vector<Instruction>> tile_insts;
 
     // Flattens and sorts by timesteps.
@@ -600,7 +610,11 @@ struct GenerateCodePass
     llvm::raw_fd_ostream yaml_out("tmp-generated-instructions.yaml", ec);
     if (ec) return;
 
-    yaml_out << "array_config:\n  columns: " << config.columns << "\n  rows: " << config.rows << "\n  cores:\n";
+    yaml_out << "array_config:\n  columns: " << config.columns << "\n  rows: " << config.rows;
+    if (config.compiled_ii >= 0) {
+      yaml_out << "\n  compiled_ii: " << config.compiled_ii;
+    }
+    yaml_out << "\n  cores:\n";
     for (const Tile &core : config.cores) {
       yaml_out << "    - column: " << core.col_idx << "\n      row: " << core.row_idx
                << "\n      core_id: \"" << core.core_id << "\"\n      entries:\n";
@@ -656,6 +670,10 @@ struct GenerateCodePass
     std::error_code ec;
     llvm::raw_fd_ostream asm_out("tmp-generated-instructions.asm", ec);
     if (ec) return;
+
+    if (config.compiled_ii >= 0) {
+      asm_out << "# Compiled II: " << config.compiled_ii << "\n\n";
+    }
 
     for (const Tile &core : config.cores) {
       asm_out << "PE(" << core.col_idx << "," << core.row_idx << "):\n";
@@ -765,7 +783,8 @@ struct GenerateCodePass
         expandMovImpl<true>(op,  topo, reserve_to_phi_map);
       logUnresolvedOperands();
 
-      ArrayConfig config = buildArrayConfig(columns, rows);
+      int compiled_ii = getCompiledII(func);
+      ArrayConfig config = buildArrayConfig(columns, rows, compiled_ii);
       writeYAMLOutput(config);
       writeASMOutput(config);
     }
