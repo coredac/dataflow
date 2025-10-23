@@ -260,9 +260,12 @@ private:
 
 class Register : public BasicResource {
 public:
-  Register(int id);
+  Register(int id, int local_id);
 
   int getId() const override;
+  
+  int getLocalId() const;
+  void setLocalId(int local_id);
 
   std::string getType() const override { return "register"; }
 
@@ -280,6 +283,7 @@ public:
 
 private:
   int id;
+  int local_id;
   RegisterFile *register_file;
 };
 

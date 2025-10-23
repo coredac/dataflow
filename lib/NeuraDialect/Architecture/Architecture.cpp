@@ -252,9 +252,13 @@ Tile *FunctionUnit::getTile() const { return this->tile; }
 // Register
 //===----------------------------------------------------------------------===//
 
-Register::Register(int id) { this->id = id; }
+Register::Register(int id, int local_id) : id(id), local_id(local_id) {}
 
 int Register::getId() const { return id; }
+
+int Register::getLocalId() const { return local_id; }
+
+void Register::setLocalId(int local_id) { this->local_id = local_id; }
 
 Tile *Register::getTile() const {
   return this->register_file ? register_file->getTile() : nullptr;
@@ -344,10 +348,11 @@ void Architecture::createRegisterFileCluster(Tile *tile, int num_registers, int 
   RegisterFileCluster *register_file_cluster = new RegisterFileCluster(tile->getId());
 
   // Creates registers as a register file.
+  int local_reg_id = 0;
   for (int file_idx = 0; file_idx < k_num_regfiles_per_cluster; ++file_idx) {
     RegisterFile *register_file = new RegisterFile(file_idx);
     for (int reg_idx = 0; reg_idx < k_num_regs_per_regfile; ++reg_idx) {
-      Register *reg = new Register(reg_id++);
+      Register *reg = new Register(reg_id++, local_reg_id++);
       register_file->addRegister(reg);
     }
     register_file_cluster->addRegisterFile(register_file);
@@ -388,10 +393,11 @@ void Architecture::recreateRegisterFileCluster(Tile *tile, int num_registers) {
   
   // Creates registers with new capacity.
   int reg_id = tile->getId() * 1000;  // Use tile ID as base to avoid conflicts.
+  int local_reg_id = 0;
   for (int file_idx = 0; file_idx < kNumRegfilesPerCluster; ++file_idx) {
     RegisterFile *register_file = new RegisterFile(file_idx);
     for (int reg_idx = 0; reg_idx < kNumRegsPerRegfile; ++reg_idx) {
-      Register *reg = new Register(reg_id++);
+      Register *reg = new Register(reg_id++, local_reg_id++);
       register_file->addRegister(reg);
     }
     new_register_file_cluster->addRegisterFile(register_file);

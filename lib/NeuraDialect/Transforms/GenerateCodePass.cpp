@@ -110,8 +110,9 @@ static std::optional<int> getMappedRegId(Operation *op) {
       auto resource_attr = dyn_cast_or_null<StringAttr>(location_dict.get("resource"));
       if (!resource_attr) continue;
       if (resource_attr.getValue() == "register" || resource_attr.getValue() == "reg") {
-        if (auto register_id = dyn_cast_or_null<IntegerAttr>(location_dict.get("id")))
-          return register_id.getInt();
+        if (auto local_register_id = dyn_cast_or_null<IntegerAttr>(location_dict.get("local_register_id"))) {
+          return local_register_id.getInt();
+        }
       }
     }
   }
@@ -249,10 +250,10 @@ static SmallVector<RegStep, 4> collectRegSteps(Operation *op) {
       auto resource_attr = dyn_cast_or_null<StringAttr>(location_dict.get("resource"));
       if (!resource_attr) continue;
       if (resource_attr.getValue() == "register" || resource_attr.getValue() == "reg") {
-        auto register_id = dyn_cast_or_null<IntegerAttr>(location_dict.get("id"));
+        auto local_register_id = dyn_cast_or_null<IntegerAttr>(location_dict.get("local_register_id"));
         auto time_step = dyn_cast_or_null<IntegerAttr>(location_dict.get("time_step"));
-        if (!register_id || !time_step) continue;
-        steps.push_back({(int)register_id.getInt(), (int)time_step.getInt()});
+        if (!local_register_id || !time_step) continue;
+        steps.push_back({(int)local_register_id.getInt(), (int)time_step.getInt()});
       }
     }
   }
