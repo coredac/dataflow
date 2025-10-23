@@ -252,13 +252,11 @@ Tile *FunctionUnit::getTile() const { return this->tile; }
 // Register
 //===----------------------------------------------------------------------===//
 
-Register::Register(int id, int local_id) : id(id), local_id(local_id) {}
+Register::Register(int global_id, int per_tile_id) : id(global_id), per_tile_id(per_tile_id) {}
 
 int Register::getId() const { return id; }
 
-int Register::getLocalId() const { return local_id; }
-
-void Register::setLocalId(int local_id) { this->local_id = local_id; }
+int Register::getPerTileId() const { return per_tile_id; }
 
 Tile *Register::getTile() const {
   return this->register_file ? register_file->getTile() : nullptr;
@@ -341,9 +339,14 @@ void Architecture::initializeTiles(int per_cgra_rows, int per_cgra_columns) {
 }
 
 // Creates register file cluster for a tile.
-void Architecture::createRegisterFileCluster(Tile *tile, int num_registers, int &reg_id) {
+void Architecture::createRegisterFileCluster(Tile *tile, int num_registers, int &num_already_assigned_global_registers, int global_id_start) {
   const int k_num_regs_per_regfile = 8;  // Keep this fixed for now.
   const int k_num_regfiles_per_cluster = num_registers / k_num_regs_per_regfile;
+  
+  // If global_id_start is specified, use it instead of the passed reference.
+  if (global_id_start >= 0) {
+    num_already_assigned_global_registers = global_id_start;
+  }
   
   RegisterFileCluster *register_file_cluster = new RegisterFileCluster(tile->getId());
 
@@ -351,9 +354,9 @@ void Architecture::createRegisterFileCluster(Tile *tile, int num_registers, int 
   int local_reg_id = 0;
   for (int file_idx = 0; file_idx < k_num_regfiles_per_cluster; ++file_idx) {
     RegisterFile *register_file = new RegisterFile(file_idx);
-    for (int reg_idx = 0; reg_idx < k_num_regs_per_regfile; ++reg_idx) {
-      Register *reg = new Register(reg_id++, local_reg_id++);
-      register_file->addRegister(reg);
+    for (int reg = 0; reg < k_num_regs_per_regfile; ++reg) {
+      Register *new_register = new Register(num_already_assigned_global_registers++, local_reg_id++);
+      register_file->addRegister(new_register);
     }
     register_file_cluster->addRegisterFile(register_file);
   }
@@ -363,13 +366,13 @@ void Architecture::createRegisterFileCluster(Tile *tile, int num_registers, int 
 
 // Configures default tile settings.
 void Architecture::configureDefaultTileSettings(const TileDefaults& tile_defaults) {
-  int reg_id = 0;
+  int num_already_assigned_global_registers = 0;
   for (int y = 0; y < getPerCgraRows(); ++y) {
     for (int x = 0; x < getPerCgraColumns(); ++x) {
       Tile *tile = getTile(x, y);
       
       // Creates register file cluster with default capacity.
-      createRegisterFileCluster(tile, tile_defaults.num_registers, reg_id);
+      createRegisterFileCluster(tile, tile_defaults.num_registers, num_already_assigned_global_registers);
       
       // Configures function units based on tile_defaults.operations.
       configureTileFunctionUnits(tile, tile_defaults.operations);
@@ -377,35 +380,6 @@ void Architecture::configureDefaultTileSettings(const TileDefaults& tile_default
   }
 }
 
-// Recreates register file cluster with new capacity.
-void Architecture::recreateRegisterFileCluster(Tile *tile, int num_registers) {
-  constexpr int kNumRegsPerRegfile = 8;  // Keep this fixed for now.
-  const int kNumRegfilesPerCluster = num_registers / kNumRegsPerRegfile;
-
-  // Removes existing register file cluster.
-  if (tile->getRegisterFileCluster()) {
-    delete tile->getRegisterFileCluster();
-  }
-  
-  // Creates new register file cluster with override capacity.
-  RegisterFileCluster *new_register_file_cluster = 
-      new RegisterFileCluster(tile->getId());
-  
-  // Creates registers with new capacity.
-  int reg_id = tile->getId() * 1000;  // Use tile ID as base to avoid conflicts.
-  int local_reg_id = 0;
-  for (int file_idx = 0; file_idx < kNumRegfilesPerCluster; ++file_idx) {
-    RegisterFile *register_file = new RegisterFile(file_idx);
-    for (int reg_idx = 0; reg_idx < kNumRegsPerRegfile; ++reg_idx) {
-      Register *reg = new Register(reg_id++, local_reg_id++);
-      register_file->addRegister(reg);
-    }
-    new_register_file_cluster->addRegisterFile(register_file);
-  }
-  
-  // Adds new register file cluster to the tile.
-  tile->addRegisterFileCluster(new_register_file_cluster);
-}
 
 // Applies tile overrides to modify specific tiles.
 void Architecture::applyTileOverrides(const std::vector<TileOverride>& tile_overrides) {
@@ -423,7 +397,15 @@ void Architecture::applyTileOverrides(const std::vector<TileOverride>& tile_over
       
       // Overrides num_registers if specified.
       if (override.num_registers > 0) {
-        recreateRegisterFileCluster(tile, override.num_registers);
+        // Removes existing register file cluster.
+        if (tile->getRegisterFileCluster()) {
+          delete tile->getRegisterFileCluster();
+        }
+        
+        // Creates new register file cluster with override capacity.
+        // Uses tile ID as base to avoid conflicts with existing registers.
+        int dummy_ref = 0;  // Not used when global_id_start is specified.
+        createRegisterFileCluster(tile, override.num_registers, dummy_ref, tile->getId() * 1000);
       }
     }
   }
