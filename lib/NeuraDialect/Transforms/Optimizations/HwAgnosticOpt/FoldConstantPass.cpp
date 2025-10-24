@@ -428,126 +428,157 @@ struct FuseStoreConstantPattern
 };
 
 // Pattern for LoadIndexed operation (base + indices)
+// Only folds the base, never folds indices (required by assemblyFormat)
 struct FuseLoadIndexedConstantPattern
-    : public GenericFuseConstantPattern<neura::LoadIndexedOp> {
-  using GenericFuseConstantPattern<neura::LoadIndexedOp>::GenericFuseConstantPattern;
+    : public OpRewritePattern<neura::LoadIndexedOp> {
+  using OpRewritePattern<neura::LoadIndexedOp>::OpRewritePattern;
   
-  // LoadIndexed uses lhs_value for base (operand 0)
-  std::string getAttributeName(size_t operand_idx, size_t total_operands) const override {
-    if (operand_idx == 0) {
-      return "lhs_value";
-    } else {
-      return "operand_" + std::to_string(operand_idx) + "_value";
+  LogicalResult matchAndRewrite(neura::LoadIndexedOp op,
+                                PatternRewriter &rewriter) const override {
+    // Check if already folded
+    if (op->hasAttr("lhs_value")) {
+      return failure();
     }
-  }
-  
-  Operation *createOpWithFoldedConstants(
-      neura::LoadIndexedOp op, ArrayRef<Value> all_operands,
-      PatternRewriter &rewriter) const override {
-    // LoadIndexed: operand 0 is base, rest are indices
-    Value base = all_operands[0];
+    
+    // Only check if base is a constant
+    Value base = op.getBase();
+    if (!base || !isOriginConstantOp(base)) {
+      return failure();
+    }
+    
+    auto constant_op = dyn_cast<neura::ConstantOp>(base.getDefiningOp());
+    Attribute base_value = getOriginConstantValue(base);
+    
+    // Keep all indices unchanged (never fold indices)
     SmallVector<Value> indices;
-    for (size_t i = 1; i < all_operands.size(); ++i) {
-      if (all_operands[i]) {
-        indices.push_back(all_operands[i]);
-      }
+    for (Value idx : op.getIndices()) {
+      indices.push_back(idx);
     }
     
-    // Build operand list and calculate segment sizes
-    SmallVector<Value> operands;
-    int32_t num_base = 0;
-    if (base) {
-      operands.push_back(base);
-      num_base = 1;
-    }
-    for (Value idx : indices) {
-      operands.push_back(idx);
-    }
-    int32_t num_indices = indices.size();
-    
-    // Create operation with proper operandSegmentSizes
+    // Create new LoadIndexed without base
     OperationState state(op.getLoc(), op.getOperationName());
-    state.addOperands(operands);
+    state.addOperands(indices);  // Only indices, no base
     state.addTypes(op->getResultTypes());
     
-    // Copy attributes except operandSegmentSizes
+    // Copy all attributes except operandSegmentSizes
     for (auto attr : op->getAttrs()) {
       if (attr.getName() != "operandSegmentSizes") {
         state.addAttribute(attr.getName(), attr.getValue());
       }
     }
     
-    // Set the correct operandSegmentSizes
-    state.addAttribute("operandSegmentSizes", 
-                      rewriter.getDenseI32ArrayAttr({num_base, num_indices}));
+    // Add the folded base value
+    state.addAttribute("lhs_value", base_value);
     
-    return rewriter.create(state);
+    // Set operandSegmentSizes: 0 base, N indices
+    state.addAttribute("operandSegmentSizes", 
+                      rewriter.getDenseI32ArrayAttr({0, static_cast<int32_t>(indices.size())}));
+    
+    Operation *new_op = rewriter.create(state);
+    rewriter.replaceOp(op, new_op->getResults());
+    
+    // Clean up constant if no longer used
+    if (constant_op->use_empty()) {
+      rewriter.eraseOp(constant_op);
+    }
+    
+    return success();
   }
 };
 
 // Pattern for StoreIndexed operation (value, base, indices...)
+// Only folds value and base, never folds indices (required by assemblyFormat)
 struct FuseStoreIndexedConstantPattern
-    : public GenericFuseConstantPattern<neura::StoreIndexedOp> {
-  using GenericFuseConstantPattern<neura::StoreIndexedOp>::GenericFuseConstantPattern;
+    : public OpRewritePattern<neura::StoreIndexedOp> {
+  using OpRewritePattern<neura::StoreIndexedOp>::OpRewritePattern;
   
-  // StoreIndexed uses lhs_value for value (operand 0) and rhs_value for base (operand 1)
-  std::string getAttributeName(size_t operand_idx, size_t total_operands) const override {
-    if (operand_idx == 0) {
-      return "lhs_value";
-    } else if (operand_idx == 1) {
-      return "rhs_value";
-    } else {
-      return "operand_" + std::to_string(operand_idx) + "_value";
-    }
-  }
-  
-  Operation *createOpWithFoldedConstants(
-      neura::StoreIndexedOp op, ArrayRef<Value> all_operands,
-      PatternRewriter &rewriter) const override {
-    // StoreIndexed: operand 0 is value, operand 1 is base, rest are indices
-    Value value = all_operands[0];
-    Value base = all_operands.size() > 1 ? all_operands[1] : Value();
-    SmallVector<Value> indices;
-    for (size_t i = 2; i < all_operands.size(); ++i) {
-      if (all_operands[i]) {
-        indices.push_back(all_operands[i]);
-      }
+  LogicalResult matchAndRewrite(neura::StoreIndexedOp op,
+                                PatternRewriter &rewriter) const override {
+    // Check if already folded
+    if (op->hasAttr("lhs_value") || op->hasAttr("rhs_value")) {
+      return failure();
     }
     
-    // Build operand list and calculate segment sizes
+    // Check which of value/base are constants
+    Value value = op.getValue();
+    Value base = op.getBase();
+    
+    bool value_is_const = value && isOriginConstantOp(value);
+    bool base_is_const = base && isOriginConstantOp(base);
+    
+    // Nothing to fold if neither is constant
+    if (!value_is_const && !base_is_const) {
+      return failure();
+    }
+    
+    // Keep all indices unchanged (never fold indices)
+    SmallVector<Value> indices;
+    for (Value idx : op.getIndices()) {
+      indices.push_back(idx);
+    }
+    
+    // Build the new operand list
     SmallVector<Value> operands;
     int32_t num_value = 0;
-    if (value) {
+    int32_t num_base = 0;
+    
+    if (!value_is_const && value) {
       operands.push_back(value);
       num_value = 1;
     }
-    int32_t num_base = 0;
-    if (base) {
+    
+    if (!base_is_const && base) {
       operands.push_back(base);
       num_base = 1;
     }
+    
     for (Value idx : indices) {
       operands.push_back(idx);
     }
     int32_t num_indices = indices.size();
     
-    // Create operation with proper operandSegmentSizes
+    // Create new StoreIndexed
     OperationState state(op.getLoc(), op.getOperationName());
     state.addOperands(operands);
     state.addTypes(op->getResultTypes());
     
-    // Copy attributes except operandSegmentSizes
+    // Copy all attributes except operandSegmentSizes
     for (auto attr : op->getAttrs()) {
       if (attr.getName() != "operandSegmentSizes") {
         state.addAttribute(attr.getName(), attr.getValue());
       }
     }
     
-    // Set the correct operandSegmentSizes
+    // Add folded constant attributes
+    if (value_is_const) {
+      state.addAttribute("lhs_value", getOriginConstantValue(value));
+    }
+    if (base_is_const) {
+      state.addAttribute("rhs_value", getOriginConstantValue(base));
+    }
+    
+    // Set operandSegmentSizes: num_value, num_base, num_indices
     state.addAttribute("operandSegmentSizes", 
                       rewriter.getDenseI32ArrayAttr({num_value, num_base, num_indices}));
     
-    return rewriter.create(state);
+    Operation *new_op = rewriter.create(state);
+    rewriter.replaceOp(op, new_op->getResults());
+    
+    // Clean up unused constants
+    if (value_is_const) {
+      auto const_op = value.getDefiningOp();
+      if (const_op->use_empty()) {
+        rewriter.eraseOp(const_op);
+      }
+    }
+    if (base_is_const) {
+      auto const_op = base.getDefiningOp();
+      if (const_op->use_empty()) {
+        rewriter.eraseOp(const_op);
+      }
+    }
+    
+    return success();
   }
 };
 
