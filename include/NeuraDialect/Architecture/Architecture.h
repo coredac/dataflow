@@ -260,9 +260,11 @@ private:
 
 class Register : public BasicResource {
 public:
-  Register(int id);
+  Register(int global_id, int per_tile_id);
 
   int getId() const override;
+  
+  int getPerTileId() const;
 
   std::string getType() const override { return "register"; }
 
@@ -279,7 +281,8 @@ public:
   RegisterFile *getRegisterFile() const;
 
 private:
-  int id;
+  int global_id;
+  int per_tile_id;
   RegisterFile *register_file;
 };
 
@@ -406,8 +409,7 @@ private:
   void applyTileOverrides(const std::vector<TileOverride>& tile_overrides);
   void createLinks(const LinkDefaults& link_defaults, BaseTopology base_topology);
   void applyLinkOverrides(const std::vector<LinkOverride>& link_overrides);
-  void createRegisterFileCluster(Tile *tile, int num_registers, int &reg_id);
-  void recreateRegisterFileCluster(Tile *tile, int num_registers);
+  void createRegisterFileCluster(Tile *tile, int num_registers, int &num_already_assigned_global_registers, int global_id_start = -1);
   bool linkExists(Tile *src_tile, Tile *dst_tile);
   
   // Helper methods for creating different topology links.

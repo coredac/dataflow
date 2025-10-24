@@ -501,6 +501,7 @@ struct LlvmReturnToNeuraReturn : public OpRewritePattern<LLVM::ReturnOp> {
   }
 };
 
+
 struct FuncReturnToNeuraReturn : public OpRewritePattern<func::ReturnOp> {
   using OpRewritePattern::OpRewritePattern;
 

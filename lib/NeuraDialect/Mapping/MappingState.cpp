@@ -263,13 +263,21 @@ void MappingState::encodeMappingState() {
         mapping_entries.push_back(dict);
       } else if (loc.resource->getKind() == ResourceKind::Register) {
         kind_str = "register";
+        Register *reg = static_cast<Register *>(loc.resource);
+        int global_id = loc.resource->getId();
+        int per_tile_register_id = reg->getPerTileId();
+        
         auto dict = mlir::DictionaryAttr::get(
             ctx, {mlir::NamedAttribute(mlir::StringAttr::get(ctx, "resource"),
                                        mlir::StringAttr::get(ctx, kind_str)),
                   mlir::NamedAttribute(
                       mlir::StringAttr::get(ctx, "id"),
                       mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
-                                             loc.resource->getId())),
+                                             global_id)),
+                  mlir::NamedAttribute(
+                      mlir::StringAttr::get(ctx, "per_tile_register_id"),
+                      mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
+                                             per_tile_register_id)),
                   mlir::NamedAttribute(
                       mlir::StringAttr::get(ctx, "time_step"),
                       mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),

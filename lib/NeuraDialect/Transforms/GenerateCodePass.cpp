@@ -60,6 +60,7 @@ struct Tile {
 struct ArrayConfig {
   int columns;
   int rows;
+  int compiled_ii = -1;
   std::vector<Tile> cores;
 };
 
@@ -109,8 +110,9 @@ static std::optional<int> getMappedRegId(Operation *op) {
       auto resource_attr = dyn_cast_or_null<StringAttr>(location_dict.get("resource"));
       if (!resource_attr) continue;
       if (resource_attr.getValue() == "register" || resource_attr.getValue() == "reg") {
-        if (auto register_id = dyn_cast_or_null<IntegerAttr>(location_dict.get("id")))
-          return register_id.getInt();
+        if (auto per_tile_register_id = dyn_cast_or_null<IntegerAttr>(location_dict.get("per_tile_register_id"))) {
+          return per_tile_register_id.getInt();
+        }
       }
     }
   }
@@ -248,10 +250,10 @@ static SmallVector<RegStep, 4> collectRegSteps(Operation *op) {
       auto resource_attr = dyn_cast_or_null<StringAttr>(location_dict.get("resource"));
       if (!resource_attr) continue;
       if (resource_attr.getValue() == "register" || resource_attr.getValue() == "reg") {
-        auto register_id = dyn_cast_or_null<IntegerAttr>(location_dict.get("id"));
+        auto per_tile_register_id = dyn_cast_or_null<IntegerAttr>(location_dict.get("per_tile_register_id"));
         auto time_step = dyn_cast_or_null<IntegerAttr>(location_dict.get("time_step"));
-        if (!register_id || !time_step) continue;
-        steps.push_back({(int)register_id.getInt(), (int)time_step.getInt()});
+        if (!per_tile_register_id || !time_step) continue;
+        steps.push_back({(int)per_tile_register_id.getInt(), (int)time_step.getInt()});
       }
     }
   }
@@ -315,6 +317,15 @@ struct GenerateCodePass
       if (auto y_tiles = dyn_cast_or_null<IntegerAttr>(mapping_info.get("y_tiles"))) rows   = y_tiles.getInt();
     }
     return {columns, rows};
+  }
+
+  int getCompiledII(func::FuncOp function) {
+    if (auto mapping_info = function->getAttrOfType<DictionaryAttr>("mapping_info")) {
+      if (auto compiled_ii = dyn_cast_or_null<IntegerAttr>(mapping_info.get("compiled_ii"))) {
+        return compiled_ii.getInt();
+      }
+    }
+    return -1;
   }
 
   // ---------- Single-walk indexing ----------.
@@ -571,8 +582,8 @@ struct GenerateCodePass
     }
   }
 
-  ArrayConfig buildArrayConfig(int columns, int rows) {
-    ArrayConfig config{columns, rows, {}};
+  ArrayConfig buildArrayConfig(int columns, int rows, int compiled_ii = -1) {
+    ArrayConfig config{columns, rows, compiled_ii, {}};
     std::map<std::pair<int,int>, std::vector<Instruction>> tile_insts;
 
     // Flattens and sorts by timesteps.
@@ -600,7 +611,11 @@ struct GenerateCodePass
     llvm::raw_fd_ostream yaml_out("tmp-generated-instructions.yaml", ec);
     if (ec) return;
 
-    yaml_out << "array_config:\n  columns: " << config.columns << "\n  rows: " << config.rows << "\n  cores:\n";
+    yaml_out << "array_config:\n  columns: " << config.columns << "\n  rows: " << config.rows;
+    if (config.compiled_ii >= 0) {
+      yaml_out << "\n  compiled_ii: " << config.compiled_ii;
+    }
+    yaml_out << "\n  cores:\n";
     for (const Tile &core : config.cores) {
       yaml_out << "    - column: " << core.col_idx << "\n      row: " << core.row_idx
                << "\n      core_id: \"" << core.core_id << "\"\n      entries:\n";
@@ -656,6 +671,10 @@ struct GenerateCodePass
     std::error_code ec;
     llvm::raw_fd_ostream asm_out("tmp-generated-instructions.asm", ec);
     if (ec) return;
+
+    if (config.compiled_ii >= 0) {
+      asm_out << "# Compiled II: " << config.compiled_ii << "\n\n";
+    }
 
     for (const Tile &core : config.cores) {
       asm_out << "PE(" << core.col_idx << "," << core.row_idx << "):\n";
@@ -765,7 +784,8 @@ struct GenerateCodePass
         expandMovImpl<true>(op,  topo, reserve_to_phi_map);
       logUnresolvedOperands();
 
-      ArrayConfig config = buildArrayConfig(columns, rows);
+      int compiled_ii = getCompiledII(func);
+      ArrayConfig config = buildArrayConfig(columns, rows, compiled_ii);
       writeYAMLOutput(config);
       writeASMOutput(config);
     }

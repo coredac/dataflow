@@ -196,6 +196,7 @@ func.func @loop_test() -> f32 {
 // YAML:      array_config:
 // YAML-NEXT:   columns: 4
 // YAML-NEXT:   rows: 4
+// YAML-NEXT:   compiled_ii: 5
 // YAML-NEXT:   cores:
 // YAML-NEXT:     - column: 0
 // YAML-NEXT:       row: 1
