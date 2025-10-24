@@ -485,11 +485,42 @@ void transformControlFlowToDataFlow(Region &region, ControlFlowInfo &ctrl_info,
   }
 
   // Flattens blocks into the entry block.
+  // Sort blocks by reverse post-order traversal to maintain SSA dominance
   Block *entry_block = &region.front();
   SmallVector<Block *> blocks_to_flatten;
-  for (Block &block : region) {
-    if (&block != entry_block) {
-      blocks_to_flatten.push_back(&block);
+  
+  // Use reverse post-order: visit successors before predecessors
+  // This ensures that when we move blocks, definitions come before uses
+  llvm::SetVector<Block *> visited;
+  SmallVector<Block *> rpo_order;
+  
+  std::function<void(Block*)> rpo_traverse = [&](Block *block) {
+    if (!visited.insert(block)) {
+      return;
+    }
+    
+    // Visit successors first (post-order)
+    Operation *terminator = block->getTerminator();
+    if (auto br = dyn_cast<neura::Br>(terminator)) {
+      rpo_traverse(br.getDest());
+    } else if (auto cond_br = dyn_cast<neura::CondBr>(terminator)) {
+      rpo_traverse(cond_br.getTrueDest());
+      rpo_traverse(cond_br.getFalseDest());
+    }
+    
+    // Add to reverse post-order
+    rpo_order.push_back(block);
+  };
+  
+  rpo_traverse(entry_block);
+  
+  // Reverse to get correct order (forward traversal)
+  std::reverse(rpo_order.begin(), rpo_order.end());
+  
+  // Collect non-entry blocks in RPO order
+  for (Block *block : rpo_order) {
+    if (block != entry_block) {
+      blocks_to_flatten.push_back(block);
     }
   }
 
