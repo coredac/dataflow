@@ -264,9 +264,9 @@ struct LlvmSelectToNeuraSel : public OpRewritePattern<LLVM::SelectOp> {
     Value false_value = op.getFalseValue();
     Type result_type = op.getType();
 
-    // Note: neura.sel has different argument order: (ifTrue, ifFalse, cond)
+    // neura.sel now follows the same order as llvm.select: (cond, ifTrue, ifFalse)
     rewriter.replaceOpWithNewOp<neura::SelOp>(op, result_type, 
-                                               true_value, false_value, cond);
+                                               cond, true_value, false_value);
     return success();
   }
 };

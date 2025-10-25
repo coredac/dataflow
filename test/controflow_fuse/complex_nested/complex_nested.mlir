@@ -138,7 +138,7 @@ module attributes {} {
 // CHECK-NEXT:   ^bb15:  // pred: ^bb14
 // CHECK-NEXT:     %45 = neura.load_indexed %arg0[%43, %38, %9 : index, index, index] memref<?x32x32xi32> : i32
 // CHECK-NEXT:     %46 = "neura.icmp"(%45, %42) <{cmpType = "sgt"}> : (i32, i32) -> i1
-// CHECK-NEXT:     %47 = "neura.sel"(%45, %42, %46) : (i32, i32, i1) -> i32
+// CHECK-NEXT:     %47 = "neura.sel"(%46, %45, %42) : (i1, i32, i32) -> i32
 // CHECK-NEXT:     %48 = "neura.add"(%43, %0) : (index, index) -> index
 // CHECK-NEXT:     %49 = "neura.cast"(%48) <{cast_type = "index_to_int"}> : (index) -> i64
 // CHECK-NEXT:     neura.br %49, %47 : i64, i32 to ^bb14
@@ -559,7 +559,7 @@ module attributes {} {
 // CTRL2DATA-NEXT:     neura.ctrl_mov %338 -> %144 : !neura.data<i32, i1> !neura.data<i32, i1>
 // CTRL2DATA-NEXT:     %343 = neura.load_indexed %311[%312, %313, %314 : !neura.data<i64, i1>, !neura.data<i64, i1>, !neura.data<i64, i1>] !neura.data<memref<?x32x32xi32>, i1> : !neura.data<i32, i1>
 // CTRL2DATA-NEXT:     %344 = "neura.icmp"(%343, %315) <{cmpType = "sgt"}> : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i1, i1>
-// CTRL2DATA-NEXT:     %345 = "neura.sel"(%343, %315, %344) : (!neura.data<i32, i1>, !neura.data<i32, i1>, !neura.data<i1, i1>) -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %345 = "neura.sel"(%344, %343, %315) : (!neura.data<i1, i1>, !neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
 // CTRL2DATA-NEXT:     %346 = "neura.add"(%312, %316) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     neura.ctrl_mov %346 -> %308 : !neura.data<i64, i1> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     neura.ctrl_mov %345 -> %306 : !neura.data<i32, i1> !neura.data<i32, i1>

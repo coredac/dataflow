@@ -253,9 +253,9 @@ def Neura_Br : Op<NeuraDialect, "br", [Terminator]> {
 }
 
 def Neura_SelOp : Op<NeuraDialect, "sel"> {
-  let arguments = (ins AnyType:$ifTrue, AnyType:$ifFalse, AnyType:$cond);
+  let arguments = (ins AnyType:$cond, AnyType:$ifTrue, AnyType:$ifFalse);
   let results = (outs AnyType:$result);
-  // let assemblyFormat = "$ifTrue `,` $ifFalse `,` $cond attr-dict `:` type($ifTrue)";
+  // let assemblyFormat = "$cond `,` $ifTrue `,` $ifFalse attr-dict `:` type($result)";
 }
 
 def Neura_NotOp : Op<NeuraDialect, "not"> {

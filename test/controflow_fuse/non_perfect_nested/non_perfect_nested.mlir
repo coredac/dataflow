@@ -92,7 +92,7 @@ module attributes {} {
 // CHECK-NEXT:     %19 = "neura.mul"(%7, %18) : (i32, i32) -> i32
 // CHECK-NEXT:     %20 = "neura.sub"(%17, %19) : (i32, i32) -> i32
 // CHECK-NEXT:     %21 = "neura.icmp"(%20, %11) <{cmpType = "eq"}> : (i32, i32) -> i1
-// CHECK-NEXT:     %22 = "neura.sel"(%7, %6, %21) : (i32, i32, i1) -> i32
+// CHECK-NEXT:     %22 = "neura.sel"(%21, %7, %6) : (i1, i32, i32) -> i32
 // CHECK-NEXT:     %23 = "neura.cast"(%12) <{cast_type = "index_to_int"}> : (index) -> i64
 // CHECK-NEXT:     neura.br %23, %8, %9, %11 : i64, i32, i32, i32 to ^bb3
 // CHECK-NEXT:   ^bb3(%24: i64, %25: i32, %26: i32, %27: i32):  // 2 preds: ^bb2, ^bb4
@@ -106,9 +106,9 @@ module attributes {} {
 // CHECK-NEXT:     %32 = neura.load_indexed %arg0[%15, %28 : index, index] memref<?x128xi32> : i32
 // CHECK-NEXT:     %33 = "neura.add"(%27, %32) : (i32, i32) -> i32
 // CHECK-NEXT:     %34 = "neura.icmp"(%32, %26) <{cmpType = "sgt"}> : (i32, i32) -> i1
-// CHECK-NEXT:     %35 = "neura.sel"(%32, %26, %34) : (i32, i32, i1) -> i32
+// CHECK-NEXT:     %35 = "neura.sel"(%34, %32, %26) : (i1, i32, i32) -> i32
 // CHECK-NEXT:     %36 = "neura.icmp"(%32, %25) <{cmpType = "slt"}> : (i32, i32) -> i1
-// CHECK-NEXT:     %37 = "neura.sel"(%32, %25, %36) : (i32, i32, i1) -> i32
+// CHECK-NEXT:     %37 = "neura.sel"(%36, %32, %25) : (i1, i32, i32) -> i32
 // CHECK-NEXT:     %38 = "neura.add"(%28, %3) : (index, index) -> index
 // CHECK-NEXT:     %39 = "neura.cast"(%38) <{cast_type = "index_to_int"}> : (index) -> i64
 // CHECK-NEXT:     neura.br %39, %37, %35, %33 : i64, i32, i32, i32 to ^bb3
@@ -222,7 +222,7 @@ module attributes {} {
 // CTRL2DATA-NEXT:     %81 = "neura.mul"(%64, %80) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
 // CTRL2DATA-NEXT:     %82 = "neura.sub"(%79, %81) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
 // CTRL2DATA-NEXT:     %83 = "neura.icmp"(%82, %65) <{cmpType = "eq"}> : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i1, i1>
-// CTRL2DATA-NEXT:     %84 = "neura.sel"(%64, %66, %83) : (!neura.data<i32, i1>, !neura.data<i32, i1>, !neura.data<i1, i1>) -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %84 = "neura.sel"(%83, %64, %66) : (!neura.data<i1, i1>, !neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
 // CTRL2DATA-NEXT:     %85 = neura.reserve : !neura.data<i32, i1>
 // CTRL2DATA-NEXT:     %86 = "neura.phi"(%85, %69) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
 // CTRL2DATA-NEXT:     %87 = neura.reserve : !neura.data<i32, i1>
@@ -402,9 +402,9 @@ module attributes {} {
 // CTRL2DATA-NEXT:     %239 = neura.load_indexed %128[%129, %130 : !neura.data<i64, i1>, !neura.data<i64, i1>] !neura.data<memref<?x128xi32>, i1> : !neura.data<i32, i1>
 // CTRL2DATA-NEXT:     %240 = "neura.add"(%133, %239) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
 // CTRL2DATA-NEXT:     %241 = "neura.icmp"(%239, %134) <{cmpType = "sgt"}> : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i1, i1>
-// CTRL2DATA-NEXT:     %242 = "neura.sel"(%239, %134, %241) : (!neura.data<i32, i1>, !neura.data<i32, i1>, !neura.data<i1, i1>) -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %242 = "neura.sel"(%241, %239, %134) : (!neura.data<i1, i1>, !neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
 // CTRL2DATA-NEXT:     %243 = "neura.icmp"(%239, %135) <{cmpType = "slt"}> : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i1, i1>
-// CTRL2DATA-NEXT:     %244 = "neura.sel"(%239, %135, %243) : (!neura.data<i32, i1>, !neura.data<i32, i1>, !neura.data<i1, i1>) -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %244 = "neura.sel"(%243, %239, %135) : (!neura.data<i1, i1>, !neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
 // CTRL2DATA-NEXT:     %245 = "neura.add"(%130, %136) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     neura.ctrl_mov %245 -> %125 : !neura.data<i64, i1> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     neura.ctrl_mov %244 -> %123 : !neura.data<i32, i1> !neura.data<i32, i1>
