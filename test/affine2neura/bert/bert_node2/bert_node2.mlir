@@ -52,7 +52,7 @@ module attributes {} {
 // CHECK-NEXT: ^bb4:  // pred: ^bb3
 // CHECK-NEXT:  %16 = neura.load_indexed %arg0[%7, %10 : index, index] memref<?x128xi32> : i32
 // CHECK-NEXT:  %17 = "neura.icmp"(%16, %6) <{cmpType = "sge"}> : (i32, i32) -> i1
-// CHECK-NEXT:  %18 = "neura.sel"(%4, %16, %17) : (i32, i32, i1) -> i32
+// CHECK-NEXT:  %18 = "neura.sel"(%17, %4, %16) : (i1, i32, i32) -> i32
 // CHECK-NEXT:  neura.cond_br %17 : i1 then to ^bb5 else to ^bb6
 // CHECK-NEXT: ^bb5:  // pred: ^bb4
 // CHECK-NEXT:  neura.br %3 : i1 to ^bb7
@@ -62,7 +62,7 @@ module attributes {} {
 // CHECK-NEXT: ^bb7(%20: i1):  // 2 preds: ^bb5, ^bb6
 // CHECK-NEXT:  neura.br to ^bb8
 // CHECK-NEXT: ^bb8:  // pred: ^bb7
-// CHECK-NEXT:  %21 = "neura.sel"(%5, %18, %20) : (i32, i32, i1) -> i32
+// CHECK-NEXT:  %21 = "neura.sel"(%20, %5, %18) : (i1, i32, i32) -> i32
 // CHECK-NEXT:  %22 = "neura.cast"(%21) <{cast_type = "int_to_index"}> : (i32) -> index
 // CHECK-NEXT:  %23 = neura.load_indexed %arg1[%22, %14 : index, index] memref<?x768xf32> : f32
 // CHECK-NEXT:  neura.store_indexed %23 to %arg2[%7, %10, %14 : index, index, index] memref<?x128x768xf32> : f32

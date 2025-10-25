@@ -76,6 +76,17 @@ struct LlvmFSubToNeuraFSub : public OpRewritePattern<mlir::LLVM::FSubOp> {
   }
 };
 
+struct LlvmAndToNeuraAnd : public OpRewritePattern<mlir::LLVM::AndOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mlir::LLVM::AndOp op,
+                                PatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<neura::AndOp>(op, op.getType(), op.getLhs(),
+                                              op.getRhs());
+    return success();
+  }
+};
+
 struct LlvmOrToNeuraOr : public OpRewritePattern<mlir::LLVM::OrOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -239,6 +250,23 @@ struct LlvmFPToSIToNeuraCast : public OpRewritePattern<mlir::LLVM::FPToSIOp> {
     // Creates a cast operation with "fptosi" as the cast type.
     rewriter.replaceOpWithNewOp<neura::CastOp>(op, result_type, input, 
                                                rewriter.getStringAttr("fptosi"));
+    return success();
+  }
+};
+
+struct LlvmSelectToNeuraSel : public OpRewritePattern<LLVM::SelectOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::SelectOp op,
+                                PatternRewriter &rewriter) const override {
+    Value cond = op.getCondition();
+    Value true_value = op.getTrueValue();
+    Value false_value = op.getFalseValue();
+    Type result_type = op.getType();
+
+    // neura.sel now follows the same order as llvm.select: (cond, ifTrue, ifFalse)
+    rewriter.replaceOpWithNewOp<neura::SelOp>(op, result_type, 
+                                               cond, true_value, false_value);
     return success();
   }
 };
@@ -724,6 +752,7 @@ struct LowerLlvmToNeuraPass
     patterns.insert<LlvmVectorReduceAddToNeuraVectorReduceAdd>(&getContext());
     // Scalar operations
     patterns.add<LlvmAddToNeuraAdd>(&getContext());
+    patterns.add<LlvmAndToNeuraAnd>(&getContext());
     patterns.add<LlvmOrToNeuraOr>(&getContext());
     patterns.add<LlvmFAddToNeuraFAdd>(&getContext());
     patterns.add<LlvmFMulToNeuraFMul>(&getContext());
@@ -753,6 +782,7 @@ struct LowerLlvmToNeuraPass
     patterns.add<LlvmFDivToNeuraFDiv>(&getContext());
     patterns.add<LlvmFPToSIToNeuraCast>(&getContext());
     patterns.add<LlvmFMulAddToNeuraFMulFAdd>(&getContext());
+    patterns.add<LlvmSelectToNeuraSel>(&getContext());
 
     FrozenRewritePatternSet frozen(std::move(patterns));
 

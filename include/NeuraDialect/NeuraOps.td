@@ -147,6 +147,14 @@ def Neura_FMinOp : Op<NeuraDialect, "fmin"> {
 }
 
 // Defines a bitwise OR operation.
+def Neura_AndOp : Op<NeuraDialect, "and"> {
+  let summary = "Bitwise AND operation";
+  let arguments = (ins AnyType:$lhs, AnyType:$rhs);
+  let results = (outs AnyType:$result);
+  // let assemblyFormat = "$lhs `,` $rhs `,` attr-dict `:` type($result)";
+  let traits = [SameOperandsAndResultElementType];
+}
+
 def Neura_OrOp : Op<NeuraDialect, "or"> {
   let summary = "Bitwise OR operation";
   let arguments = (ins AnyType:$lhs, AnyType:$rhs);
@@ -245,9 +253,9 @@ def Neura_Br : Op<NeuraDialect, "br", [Terminator]> {
 }
 
 def Neura_SelOp : Op<NeuraDialect, "sel"> {
-  let arguments = (ins AnyType:$ifTrue, AnyType:$ifFalse, AnyType:$cond);
+  let arguments = (ins AnyType:$cond, AnyType:$ifTrue, AnyType:$ifFalse);
   let results = (outs AnyType:$result);
-  // let assemblyFormat = "$ifTrue `,` $ifFalse `,` $cond attr-dict `:` type($ifTrue)";
+  // let assemblyFormat = "$cond `,` $ifTrue `,` $ifFalse attr-dict `:` type($result)";
 }
 
 def Neura_NotOp : Op<NeuraDialect, "not"> {

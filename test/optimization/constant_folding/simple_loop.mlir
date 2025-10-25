@@ -48,8 +48,8 @@ module {
 // FOLD-NEXT:   neura.cond_br %2 : i1 then to ^bb2 else to ^bb3
 // FOLD-NEXT: ^bb2:  // pred: ^bb1
 // FOLD-NEXT:   %3 = neura.load_indexed [%1 : i64] {lhs_value = "%arg0"} : i32
-// FOLD-NEXT:   %4 = "neura.mul"(%3) {rhs_value = 2 : i32} : (i32) -> i32
-// FOLD-NEXT:   %5 = "neura.add"(%3) {rhs_value = 1 : i32} : (i32) -> i32
+// FOLD-NEXT:   %4 = "neura.mul"(%3) {lhs_value = 2 : i32} : (i32) -> i32
+// FOLD-NEXT:   %5 = "neura.add"(%3) {lhs_value = 1 : i32} : (i32) -> i32
 // FOLD-NEXT:   neura.store_indexed %5 to [%1 : i64] {rhs_value = "%arg1"} : i32
 // FOLD-NEXT:   %6 = "neura.cast"(%3) <{cast_type = "sitofp"}> : (i32) -> f32
 // FOLD-NEXT:   %7 = "neura.fmul"(%6) {rhs_value = 2.500000e+00 : f32} : (f32) -> f32
