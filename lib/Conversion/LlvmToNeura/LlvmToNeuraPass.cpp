@@ -571,37 +571,6 @@ struct LlvmReturnToNeuraReturn : public OpRewritePattern<LLVM::ReturnOp> {
   }
 };
 
-// struct LlvmXOrToNeuraOr : public OpRewritePattern<LLVM::XOrOp> {
-//   using OpRewritePattern::OpRewritePattern;
-
-//   LogicalResult matchAndRewrite(LLVM::XOrOp op,
-//                                 PatternRewriter &rewriter) const override {
-//     // Gets operands.
-//     Value lhs = op.getLhs();
-//     Value rhs = op.getRhs();
-//     Type result_type = op.getType();
-
-//     // Replaces with neura.or operation.
-//     rewriter.replaceOpWithNewOp<neura::OrOp>(op, result_type, lhs, rhs);
-//     return success();
-//   }
-// };
-
-// struct LlvmAndToNeuraMul : public OpRewritePattern<LLVM::AndOp> {
-//   using OpRewritePattern::OpRewritePattern;
-
-//   LogicalResult matchAndRewrite(LLVM::AndOp op,
-//                                 PatternRewriter &rewriter) const override {
-//     // Gets operands.
-//     Value lhs = op.getLhs();
-//     Value rhs = op.getRhs();
-//     Type result_type = op.getType();
-
-//     // For boolean AND, uses multiplication (a AND b = a * b for boolean values).
-//     rewriter.replaceOpWithNewOp<neura::MulOp>(op, result_type, lhs, rhs);
-//     return success();
-//   }
-// };
 
 struct LlvmFNegToNeuraFSub : public OpRewritePattern<LLVM::FNegOp> {
   using OpRewritePattern::OpRewritePattern;
@@ -639,82 +608,8 @@ struct LlvmSubToNeuraSub : public OpRewritePattern<LLVM::SubOp> {
   }
 };
 
-// struct LlvmAllocaToNeuraOps : public OpRewritePattern<LLVM::AllocaOp> {
-//   using OpRewritePattern::OpRewritePattern;
 
-//   LogicalResult matchAndRewrite(LLVM::AllocaOp op,
-//                                 PatternRewriter &rewriter) const override {
-//     // For CGRA, we don't need stack allocation - just erase the alloca
-//     // The values will be handled through registers and data movement
-//     rewriter.eraseOp(op);
-//     return success();
-//   }
-// };
 
-// struct LlvmLShrToNeuraShl : public OpRewritePattern<LLVM::LShrOp> {
-//   using OpRewritePattern::OpRewritePattern;
-
-//   LogicalResult matchAndRewrite(LLVM::LShrOp op,
-//                                 PatternRewriter &rewriter) const override {
-//     // Gets operands.
-//     Value lhs = op.getLhs();
-//     Value rhs = op.getRhs();
-//     Type result_type = op.getType();
-//     Location loc = op.getLoc();
-
-//     // Implements logical right shift as left shift with negative amount.
-//     // lshr(x, n) = shl(x, -n).
-//     // Creates constant 0.
-//     auto zero_attr = rewriter.getIntegerAttr(rhs.getType(), 0);
-//     auto zero_const = rewriter.create<neura::ConstantOp>(loc, rhs.getType(), zero_attr);
-    
-//     // Negates the shift amount: -n = 0 - n.
-//     auto neg_rhs = rewriter.create<neura::SubOp>(loc, rhs.getType(), zero_const, rhs);
-    
-//     // Replaces with shl(lhs, -rhs).
-//     rewriter.replaceOpWithNewOp<neura::ShlOp>(op, result_type, lhs, neg_rhs);
-//     return success();
-//   }
-// };
-
-// struct LlvmSelectToNeuraOps : public OpRewritePattern<LLVM::SelectOp> {
-//   using OpRewritePattern::OpRewritePattern;
-
-//   LogicalResult matchAndRewrite(LLVM::SelectOp op,
-//                                 PatternRewriter &rewriter) const override {
-//     // Gets operands: condition, true_value, false_value.
-//     Value condition = op.getCondition();
-//     Value true_value = op.getTrueValue();
-//     Value false_value = op.getFalseValue();
-//     Type result_type = op.getType();
-//     Location loc = op.getLoc();
-
-//     // Implements: result = condition * true_value + (1 - condition) * false_value.
-//     // For i1 (boolean), this works perfectly since i1 is 0 or 1.
-    
-//     // Step 1: Computes condition * true_value.
-//     auto cond_times_true = rewriter.create<neura::MulOp>(
-//         loc, result_type, condition, true_value);
-    
-//     // Step 2: Creates constant 1.
-//     auto one_attr = rewriter.getIntegerAttr(result_type, 1);
-//     auto one_const = rewriter.create<neura::ConstantOp>(loc, result_type, one_attr);
-    
-//     // Step 3: Computes (1 - condition).
-//     auto not_condition = rewriter.create<neura::SubOp>(
-//         loc, result_type, one_const, condition);
-    
-//     // Step 4: Computes (1 - condition) * false_value.
-//     auto not_cond_times_false = rewriter.create<neura::MulOp>(
-//         loc, result_type, not_condition, false_value);
-    
-//     // Step 5: Computes result = cond_times_true + not_cond_times_false.
-//     rewriter.replaceOpWithNewOp<neura::AddOp>(
-//         op, result_type, cond_times_true, not_cond_times_false);
-    
-//     return success();
-//   }
-// };
 
 struct FuncReturnToNeuraReturn : public OpRewritePattern<func::ReturnOp> {
   using OpRewritePattern::OpRewritePattern;
@@ -970,13 +865,8 @@ struct LowerLlvmToNeuraPass
     patterns.add<LlvmFMulAddToNeuraFMulFAdd>(&getContext());
     patterns.add<LlvmSelectToNeuraSel>(&getContext());
     patterns.insert<LlvmMemsetToNeuraOps>(&getContext());
-    // patterns.add<LlvmXOrToNeuraOr>(&getContext());
-    // patterns.add<LlvmAndToNeuraMul>(&getContext());
     patterns.add<LlvmFNegToNeuraFSub>(&getContext());
     patterns.add<LlvmSubToNeuraSub>(&getContext());
-    // patterns.add<LlvmAllocaToNeuraOps>(&getContext());
-    // patterns.add<LlvmLShrToNeuraShl>(&getContext());
-    // patterns.add<LlvmSelectToNeuraOps>(&getContext());
 
     FrozenRewritePatternSet frozen(std::move(patterns));
 
