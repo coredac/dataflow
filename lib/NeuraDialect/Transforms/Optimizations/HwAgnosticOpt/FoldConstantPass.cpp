@@ -354,7 +354,6 @@ struct FuseGEPConstantPattern : public GenericFuseConstantPattern<neura::GEP> {
 struct FuseLoadIndexedConstantPattern
     : public OpRewritePattern<neura::LoadIndexedOp> {
   using OpRewritePattern<neura::LoadIndexedOp>::OpRewritePattern;
-  
   LogicalResult matchAndRewrite(neura::LoadIndexedOp op,
                                 PatternRewriter &rewriter) const override {
     // Checks if already folded.
@@ -367,10 +366,8 @@ struct FuseLoadIndexedConstantPattern
     if (!base || !isOriginConstantOp(base)) {
       return failure();
     }
-    
     auto constant_op = dyn_cast<neura::ConstantOp>(base.getDefiningOp());
     Attribute base_value = getOriginConstantValue(base);
-    
     // Keeps all indices unchanged (never fold indices).
     SmallVector<Value> indices;
     for (Value idx : op.getIndices()) {
@@ -413,7 +410,6 @@ struct FuseLoadIndexedConstantPattern
 struct FuseStoreIndexedConstantPattern
     : public OpRewritePattern<neura::StoreIndexedOp> {
   using OpRewritePattern<neura::StoreIndexedOp>::OpRewritePattern;
-  
   LogicalResult matchAndRewrite(neura::StoreIndexedOp op,
                                 PatternRewriter &rewriter) const override {
     // Checks if already folded.
