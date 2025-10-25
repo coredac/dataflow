@@ -277,72 +277,17 @@ DEFINE_BINARY_OP_PATTERN(FAdd, FAddOp)
 DEFINE_BINARY_OP_PATTERN(FSub, FSubOp)
 // Generates: FuseFMulConstantPattern.
 DEFINE_BINARY_OP_PATTERN(FMul, FMulOp)
-
-// Special case for ICmp with cmp_type attribute.
-struct FuseICmpConstantPattern
-    : public GenericFuseConstantPattern<neura::ICmpOp> {
-  using GenericFuseConstantPattern<neura::ICmpOp>::GenericFuseConstantPattern;
-  
-  Operation *createOpWithFoldedConstants(
-      neura::ICmpOp op, ArrayRef<Value> non_const_operands,
-      PatternRewriter &rewriter) const override {
-    // Use generic Operation create and copy attributes.
-    OperationState state(op.getLoc(), op.getOperationName());
-    state.addOperands(non_const_operands);
-    state.addTypes(op->getResultTypes());
-    // Copy attributes except operandSegmentSizes (will be auto-generated).
-    for (auto attr : op->getAttrs()) {
-      if (attr.getName() != "operandSegmentSizes") {
-        state.addAttribute(attr.getName(), attr.getValue());
-      }
-    }
-    return rewriter.create(state);
-  }
-};
-
-// Special case for FMax with nan_semantic attribute.
-struct FuseFMaxConstantPattern
-    : public GenericFuseConstantPattern<neura::FMaxOp> {
-  using GenericFuseConstantPattern<neura::FMaxOp>::GenericFuseConstantPattern;
-  
-  Operation *createOpWithFoldedConstants(
-      neura::FMaxOp op, ArrayRef<Value> non_const_operands,
-      PatternRewriter &rewriter) const override {
-    // Use generic Operation create and copy attributes.
-    OperationState state(op.getLoc(), op.getOperationName());
-    state.addOperands(non_const_operands);
-    state.addTypes(op->getResultTypes());
-    // Copy attributes except operandSegmentSizes (will be auto-generated).
-    for (auto attr : op->getAttrs()) {
-      if (attr.getName() != "operandSegmentSizes") {
-        state.addAttribute(attr.getName(), attr.getValue());
-      }
-    }
-    return rewriter.create(state);
-  }
-};
-
-// Special case for FMin with nan_semantic attribute.
-struct FuseFMinConstantPattern
-    : public GenericFuseConstantPattern<neura::FMinOp> {
-  using GenericFuseConstantPattern<neura::FMinOp>::GenericFuseConstantPattern;
-  
-  Operation *createOpWithFoldedConstants(
-      neura::FMinOp op, ArrayRef<Value> non_const_operands,
-      PatternRewriter &rewriter) const override {
-    // Use generic Operation create and copy attributes.
-    OperationState state(op.getLoc(), op.getOperationName());
-    state.addOperands(non_const_operands);
-    state.addTypes(op->getResultTypes());
-    // Copy attributes except operandSegmentSizes (will be auto-generated).
-    for (auto attr : op->getAttrs()) {
-      if (attr.getName() != "operandSegmentSizes") {
-        state.addAttribute(attr.getName(), attr.getValue());
-      }
-    }
-    return rewriter.create(state);
-  }
-};
+// Generates: FuseICmpConstantPattern.
+// Note: ICmpOp has a cmp_type attribute that is automatically preserved.
+DEFINE_BINARY_OP_PATTERN(ICmp, ICmpOp)
+// Generates: FuseFMaxConstantPattern.
+// Note: FMaxOp has a nan_semantic attribute that is automatically preserved.
+DEFINE_BINARY_OP_PATTERN(FMax, FMaxOp)
+// Generates: FuseFMinConstantPattern.
+// Note: FMinOp has a nan_semantic attribute that is automatically preserved.
+DEFINE_BINARY_OP_PATTERN(FMin, FMinOp)
+// Generates: FuseStoreConstantPattern.
+DEFINE_BINARY_OP_PATTERN(Store, StoreOp)
 
 // Pattern for GEP operation (base + indices).
 struct FuseGEPConstantPattern : public GenericFuseConstantPattern<neura::GEP> {
@@ -400,39 +345,6 @@ struct FuseGEPConstantPattern : public GenericFuseConstantPattern<neura::GEP> {
     state.addAttribute("operandSegmentSizes", 
                       rewriter.getDenseI32ArrayAttr({num_base, num_indices}));
     
-    return rewriter.create(state);
-  }
-};
-
-// Pattern for Store operation (value, addr).
-struct FuseStoreConstantPattern
-    : public GenericFuseConstantPattern<neura::StoreOp> {
-  using GenericFuseConstantPattern<neura::StoreOp>::GenericFuseConstantPattern;
-  
-  // Store uses lhs_value for value (operand 0) and rhs_value for addr (operand 1).
-  std::string getAttributeName(size_t operand_idx, size_t total_operands) const override {
-    if (operand_idx == 0) {
-      return "lhs_value";
-    } else if (operand_idx == 1) {
-      return "rhs_value";
-    } else {
-      return "operand_" + std::to_string(operand_idx) + "_value";
-    }
-  }
-  
-  Operation *createOpWithFoldedConstants(
-      neura::StoreOp op, ArrayRef<Value> non_const_operands,
-      PatternRewriter &rewriter) const override {
-    // Use generic Operation create and copy attributes.
-    OperationState state(op.getLoc(), op.getOperationName());
-    state.addOperands(non_const_operands);
-    state.addTypes(op->getResultTypes());
-    // Copy attributes except operandSegmentSizes (will be auto-generated).
-    for (auto attr : op->getAttrs()) {
-      if (attr.getName() != "operandSegmentSizes") {
-        state.addAttribute(attr.getName(), attr.getValue());
-      }
-    }
     return rewriter.create(state);
   }
 };
