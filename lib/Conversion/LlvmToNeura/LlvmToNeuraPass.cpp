@@ -291,21 +291,18 @@ struct LlvmFMulAddToNeuraFMulFAdd : public OpRewritePattern<mlir::LLVM::FMulAddO
 };
 
 // Handles LLVM intrinsic memset operations
-struct LlvmMemsetToNeuraOps : public RewritePattern {
-  LlvmMemsetToNeuraOps(MLIRContext *context)
-      : RewritePattern("llvm.intr.memset", 1, context) {}
+struct LlvmMemsetToNeuraOps : public OpRewritePattern<LLVM::MemsetOp> {
+  using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(Operation *op,
+  LogicalResult matchAndRewrite(LLVM::MemsetOp op,
                                 PatternRewriter &rewriter) const override {
     // Get the operands: dest, value, len, isvolatile
-    auto dest = op->getOperand(0);
-    auto value = op->getOperand(1);
+    auto dest = op.getDst();
+    auto value = op.getVal();
     // Note: len and isvolatile are not used in this simplified implementation
     // but are kept for future enhancement
-    (void)op->getOperand(2); // len - not used in current implementation
-    if (op->getNumOperands() > 3) {
-      (void)op->getOperand(3); // isvolatile - not used in current implementation
-    }
+    (void)op.getLen(); // len - not used in current implementation
+    (void)op.getIsVolatile(); // isvolatile - not used in current implementation
     
     // For CGRA, we can implement memset as a simple store operation
     // Create a constant for the value to set (use the actual value if available)
@@ -318,13 +315,13 @@ struct LlvmMemsetToNeuraOps : public RewritePattern {
     }
     
     auto valueConst = rewriter.create<neura::ConstantOp>(
-        op->getLoc(), rewriter.getI8Type(), valueAttr);
+        op.getLoc(), rewriter.getI8Type(), valueAttr);
     
     // Create a store operation to set the memory
     // Note: This is a simplified implementation
     // In a real implementation, we might need to handle the length parameter
     auto storeOp = rewriter.create<neura::StoreOp>(
-        op->getLoc(), valueConst, dest);
+        op.getLoc(), valueConst, dest);
     
     // Replace the memset with the store operation
     rewriter.replaceOp(op, storeOp->getResults());
@@ -572,6 +569,7 @@ struct LlvmReturnToNeuraReturn : public OpRewritePattern<LLVM::ReturnOp> {
 };
 
 
+
 struct LlvmFNegToNeuraFSub : public OpRewritePattern<LLVM::FNegOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -607,7 +605,6 @@ struct LlvmSubToNeuraSub : public OpRewritePattern<LLVM::SubOp> {
     return success();
   }
 };
-
 
 
 
@@ -864,9 +861,10 @@ struct LowerLlvmToNeuraPass
     patterns.add<LlvmFPToSIToNeuraCast>(&getContext());
     patterns.add<LlvmFMulAddToNeuraFMulFAdd>(&getContext());
     patterns.add<LlvmSelectToNeuraSel>(&getContext());
-    patterns.insert<LlvmMemsetToNeuraOps>(&getContext());
+    patterns.add<LlvmMemsetToNeuraOps>(&getContext());
     patterns.add<LlvmFNegToNeuraFSub>(&getContext());
     patterns.add<LlvmSubToNeuraSub>(&getContext());
+
 
     FrozenRewritePatternSet frozen(std::move(patterns));
 
