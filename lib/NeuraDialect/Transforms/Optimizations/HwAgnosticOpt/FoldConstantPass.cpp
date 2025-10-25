@@ -234,13 +234,48 @@ struct GenericFuseConstantPattern : public OpRewritePattern<OpType> {
   };
 
 // Define patterns for all binary arithmetic operations.
+// 
+// Note: The macro DEFINE_BINARY_OP_PATTERN expands to create a complete pattern class.
+// For example, DEFINE_BINARY_OP_PATTERN(Add, AddOp) expands to:
+//
+//   struct FuseAddConstantPattern
+//       : public GenericFuseConstantPattern<neura::AddOp> {
+//     using GenericFuseConstantPattern<neura::AddOp>::GenericFuseConstantPattern;
+//     
+//     Operation *createOpWithFoldedConstants(
+//         neura::AddOp op, ArrayRef<Value> non_const_operands,
+//         PatternRewriter &rewriter) const override {
+//       // Use generic Operation create and copy attributes.
+//       OperationState state(op.getLoc(), op.getOperationName());
+//       state.addOperands(non_const_operands);
+//       state.addTypes(op->getResultTypes());
+//       // Copy attributes except operandSegmentSizes (will be auto-generated).
+//       for (auto attr : op->getAttrs()) {
+//         if (attr.getName() != "operandSegmentSizes") {
+//           state.addAttribute(attr.getName(), attr.getValue());
+//         }
+//       }
+//       return rewriter.create(state);
+//     }
+//   };
+//
+// All other binary operations (Sub, Mul, Div, etc.) follow the same pattern,
+// so we use the macro to avoid code duplication.
+// Generates: FuseAddConstantPattern.
 DEFINE_BINARY_OP_PATTERN(Add, AddOp)
+// Generates: FuseSubConstantPattern.
 DEFINE_BINARY_OP_PATTERN(Sub, SubOp)
+// Generates: FuseMulConstantPattern.
 DEFINE_BINARY_OP_PATTERN(Mul, MulOp)
+// Generates: FuseDivConstantPattern.
 DEFINE_BINARY_OP_PATTERN(Div, DivOp)
+// Generates: FuseRemConstantPattern.
 DEFINE_BINARY_OP_PATTERN(Rem, RemOp)
+// Generates: FuseFAddConstantPattern.
 DEFINE_BINARY_OP_PATTERN(FAdd, FAddOp)
+// Generates: FuseFSubConstantPattern.
 DEFINE_BINARY_OP_PATTERN(FSub, FSubOp)
+// Generates: FuseFMulConstantPattern.
 DEFINE_BINARY_OP_PATTERN(FMul, FMulOp)
 
 // Special case for ICmp with cmp_type attribute.
