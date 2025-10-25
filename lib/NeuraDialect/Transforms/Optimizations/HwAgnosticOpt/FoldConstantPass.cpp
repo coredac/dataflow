@@ -58,15 +58,19 @@ void addConstantAttribute(Operation *op, StringRef attr_name,
 // Generic Constant Folding Framework
 // =========================================
 
-// Structure to hold information about which operands to fold
+// Structure to hold information about which operands to fold.
 struct OperandFoldingInfo {
-  SmallVector<size_t> const_operand_indices;   // Indices of constant operands to fold
-  SmallVector<Attribute> const_values;          // Corresponding constant values
-  SmallVector<Value> all_operands;              // All operands (nullptr for folded ones)
-  SmallVector<Operation *> const_ops_to_clean;  // Constant ops to potentially clean up
+  // Indices of constant operands to fold.
+  SmallVector<size_t> const_operand_indices;
+  // Corresponding constant values.
+  SmallVector<Attribute> const_values;
+  // All operands (nullptr for folded ones).
+  SmallVector<Value> all_operands;
+  // Constant ops to potentially clean up.
+  SmallVector<Operation *> const_ops_to_clean;
 };
 
-// Analyzes operands from right to left and determines which to fold
+// Analyzes operands from right to left and determines which to fold.
 OperandFoldingInfo analyzeOperandsForFolding(Operation *op) {
   OperandFoldingInfo info;
   
@@ -75,7 +79,7 @@ OperandFoldingInfo analyzeOperandsForFolding(Operation *op) {
     return info;
   }
   
-  // First pass: identify which operands are constants
+  // First pass: identify which operands are constants.
   SmallVector<bool> is_const(num_operands, false);
   bool has_non_const = false;
   
@@ -87,8 +91,8 @@ OperandFoldingInfo analyzeOperandsForFolding(Operation *op) {
     }
   }
   
-  // Second pass: decide which constants to fold
-  // Build all_operands array (nullptr for folded operands)
+  // Second pass: decide which constants to fold.
+  // Build all_operands array (nullptr for folded operands).
   info.all_operands.resize(num_operands);
   
   for (size_t i = 0; i < num_operands; ++i) {
@@ -96,18 +100,18 @@ OperandFoldingInfo analyzeOperandsForFolding(Operation *op) {
     
     if (is_const[i]) {
       // If this is operand 0 and there are no other non-const operands,
-      // we must keep it (MLIR operations need at least one operand)
+      // we must keep it (MLIR operations need at least one operand).
       if (i == 0 && !has_non_const) {
         info.all_operands[i] = operand;
       } else {
-        // This operand will be folded - mark as nullptr
+        // This operand will be folded - mark as nullptr.
         info.all_operands[i] = nullptr;
         info.const_operand_indices.push_back(i);
         info.const_values.push_back(getOriginConstantValue(operand));
         info.const_ops_to_clean.push_back(operand.getDefiningOp());
       }
     } else {
-      // This operand is not a constant, keep it
+      // This operand is not a constant, keep it.
       info.all_operands[i] = operand;
     }
   }
@@ -115,19 +119,19 @@ OperandFoldingInfo analyzeOperandsForFolding(Operation *op) {
   return info;
 }
 
-// Gets the attribute name for a given operand index
-// For binary operations, uses "lhs_value" and "rhs_value"
-// For other operations, uses "operand_N_value"
+// Gets the attribute name for a given operand index.
+// For binary operations, uses "lhs_value" and "rhs_value".
+// For other operations, uses "operand_N_value".
 std::string getAttributeNameForOperandIndex(size_t index, size_t total_operands) {
   if (total_operands == 2) {
-    // Binary operation: use lhs_value/rhs_value
+    // Binary operation: use lhs_value/rhs_value.
     if (index == 0) {
       return "lhs_value";
     } else {
       return "rhs_value";
     }
   } else {
-    // Multi-operand operation: use operand_N_value
+    // Multi-operand operation: use operand_N_value.
     return "operand_" + std::to_string(index) + "_value";
   }
 }
@@ -139,28 +143,28 @@ template <typename OpType>
 struct GenericFuseConstantPattern : public OpRewritePattern<OpType> {
   using OpRewritePattern<OpType>::OpRewritePattern;
 
-  // Virtual function to get attribute name for a given operand index
-  // Default implementation uses binary naming (lhs/rhs) or operand_N naming
-  // Derived classes can override this for custom naming
+  // Virtual function to get attribute name for a given operand index.
+  // Default implementation uses binary naming (lhs/rhs) or operand_N naming.
+  // Derived classes can override this for custom naming.
   virtual std::string getAttributeName(size_t operand_idx, size_t total_operands) const {
     return getAttributeNameForOperandIndex(operand_idx, total_operands);
   }
 
   LogicalResult matchAndRewrite(OpType op,
                                 PatternRewriter &rewriter) const override {
-    // Get the original number of operands before folding
+    // Get the original number of operands before folding.
     size_t num_operands = op->getNumOperands();
     
-    // Analyze operands to determine which can be folded
+    // Analyze operands to determine which can be folded.
     OperandFoldingInfo fold_info = analyzeOperandsForFolding(op);
     
-    // If no constant operands found, nothing to do
+    // If no constant operands found, nothing to do.
     if (fold_info.const_operand_indices.empty()) {
       return failure();
     }
     
-    // Check if any operands have already been folded
-    // Look for any attribute ending with "_value" which indicates constant folding
+    // Check if any operands have already been folded.
+    // Look for any attribute ending with "_value" which indicates constant folding.
     for (auto attr : op->getAttrs()) {
       StringRef attr_name = attr.getName().getValue();
       if (attr_name.ends_with("_value")) {
@@ -168,7 +172,7 @@ struct GenericFuseConstantPattern : public OpRewritePattern<OpType> {
       }
     }
     
-    // Create the new operation with all operands (nullptr for folded ones)
+    // Create the new operation with all operands (nullptr for folded ones).
     Operation *new_op = createOpWithFoldedConstants(
         op, fold_info.all_operands, rewriter);
     
@@ -176,7 +180,7 @@ struct GenericFuseConstantPattern : public OpRewritePattern<OpType> {
       return failure();
     }
     
-    // Add constant attributes for each folded operand
+    // Add constant attributes for each folded operand.
     for (size_t i = 0; i < fold_info.const_operand_indices.size(); ++i) {
       size_t operand_idx = fold_info.const_operand_indices[i];
       Attribute const_value = fold_info.const_values[i];
@@ -185,10 +189,10 @@ struct GenericFuseConstantPattern : public OpRewritePattern<OpType> {
       addConstantAttribute(new_op, attr_name, const_value);
     }
     
-    // Replace the old operation
+    // Replace the old operation.
     rewriter.replaceOp(op, new_op->getResults());
     
-    // Clean up unused constant operations
+    // Clean up unused constant operations.
     for (Operation *const_op : fold_info.const_ops_to_clean) {
       if (const_op->use_empty()) {
         rewriter.eraseOp(const_op);
@@ -198,8 +202,8 @@ struct GenericFuseConstantPattern : public OpRewritePattern<OpType> {
     return success();
   }
   
-  // Virtual function to create the operation with folded constants
-  // Must be implemented by derived classes
+  // Virtual function to create the operation with folded constants.
+  // Must be implemented by derived classes.
   virtual Operation *
   createOpWithFoldedConstants(OpType op, ArrayRef<Value> non_const_operands,
                               PatternRewriter &rewriter) const = 0;
@@ -209,7 +213,7 @@ struct GenericFuseConstantPattern : public OpRewritePattern<OpType> {
 // Specialized Patterns for Specific Operations
 // =========================================
 
-// Helper macro to define a pattern for a binary operation
+// Helper macro to define a pattern for a binary operation.
 #define DEFINE_BINARY_OP_PATTERN(OP_NAME, OP_TYPE)                            \
   struct Fuse##OP_NAME##ConstantPattern                                       \
       : public GenericFuseConstantPattern<neura::OP_TYPE> {                   \
@@ -217,16 +221,16 @@ struct GenericFuseConstantPattern : public OpRewritePattern<OpType> {
     Operation *createOpWithFoldedConstants(                                   \
         neura::OP_TYPE op, ArrayRef<Value> all_operands,                     \
         PatternRewriter &rewriter) const override {                           \
-      /* Extract only non-null operands */                                    \
+      /* Extract only non-null operands. */                                   \
       SmallVector<Value> operands;                                            \
       for (Value v : all_operands) {                                          \
         if (v) operands.push_back(v);                                         \
       }                                                                        \
-      /* Use generic Operation create and copy attributes */                  \
+      /* Use generic Operation create and copy attributes. */                 \
       OperationState state(op.getLoc(), op.getOperationName());               \
       state.addOperands(operands);                                            \
       state.addTypes(op->getResultTypes());                                   \
-      /* Copy attributes except operandSegmentSizes (will be auto-generated) */ \
+      /* Copy attributes except operandSegmentSizes (will be auto-generated). */ \
       for (auto attr : op->getAttrs()) {                                      \
         if (attr.getName() != "operandSegmentSizes") {                        \
           state.addAttribute(attr.getName(), attr.getValue());                \
@@ -236,7 +240,7 @@ struct GenericFuseConstantPattern : public OpRewritePattern<OpType> {
     }                                                                         \
   };
 
-// Define patterns for all binary arithmetic operations
+// Define patterns for all binary arithmetic operations.
 DEFINE_BINARY_OP_PATTERN(Add, AddOp)
 DEFINE_BINARY_OP_PATTERN(Sub, SubOp)
 DEFINE_BINARY_OP_PATTERN(Mul, MulOp)
@@ -246,7 +250,7 @@ DEFINE_BINARY_OP_PATTERN(FAdd, FAddOp)
 DEFINE_BINARY_OP_PATTERN(FSub, FSubOp)
 DEFINE_BINARY_OP_PATTERN(FMul, FMulOp)
 
-// Special case for ICmp with cmp_type attribute
+// Special case for ICmp with cmp_type attribute.
 struct FuseICmpConstantPattern
     : public GenericFuseConstantPattern<neura::ICmpOp> {
   using GenericFuseConstantPattern<neura::ICmpOp>::GenericFuseConstantPattern;
@@ -254,17 +258,17 @@ struct FuseICmpConstantPattern
   Operation *createOpWithFoldedConstants(
       neura::ICmpOp op, ArrayRef<Value> all_operands,
       PatternRewriter &rewriter) const override {
-    // Extract only non-null operands
+    // Extract only non-null operands.
     SmallVector<Value> operands;
     for (Value v : all_operands) {
       if (v) operands.push_back(v);
     }
     
-    // Use generic Operation create and copy attributes
+    // Use generic Operation create and copy attributes.
     OperationState state(op.getLoc(), op.getOperationName());
     state.addOperands(operands);
     state.addTypes(op->getResultTypes());
-    // Copy attributes except operandSegmentSizes (will be auto-generated)
+    // Copy attributes except operandSegmentSizes (will be auto-generated).
     for (auto attr : op->getAttrs()) {
       if (attr.getName() != "operandSegmentSizes") {
         state.addAttribute(attr.getName(), attr.getValue());
@@ -274,7 +278,7 @@ struct FuseICmpConstantPattern
   }
 };
 
-// Special case for FMax with nan_semantic attribute
+// Special case for FMax with nan_semantic attribute.
 struct FuseFMaxConstantPattern
     : public GenericFuseConstantPattern<neura::FMaxOp> {
   using GenericFuseConstantPattern<neura::FMaxOp>::GenericFuseConstantPattern;
@@ -282,17 +286,17 @@ struct FuseFMaxConstantPattern
   Operation *createOpWithFoldedConstants(
       neura::FMaxOp op, ArrayRef<Value> all_operands,
       PatternRewriter &rewriter) const override {
-    // Extract only non-null operands
+    // Extract only non-null operands.
     SmallVector<Value> operands;
     for (Value v : all_operands) {
       if (v) operands.push_back(v);
     }
     
-    // Use generic Operation create and copy attributes
+    // Use generic Operation create and copy attributes.
     OperationState state(op.getLoc(), op.getOperationName());
     state.addOperands(operands);
     state.addTypes(op->getResultTypes());
-    // Copy attributes except operandSegmentSizes (will be auto-generated)
+    // Copy attributes except operandSegmentSizes (will be auto-generated).
     for (auto attr : op->getAttrs()) {
       if (attr.getName() != "operandSegmentSizes") {
         state.addAttribute(attr.getName(), attr.getValue());
@@ -302,7 +306,7 @@ struct FuseFMaxConstantPattern
   }
 };
 
-// Special case for FMin with nan_semantic attribute
+// Special case for FMin with nan_semantic attribute.
 struct FuseFMinConstantPattern
     : public GenericFuseConstantPattern<neura::FMinOp> {
   using GenericFuseConstantPattern<neura::FMinOp>::GenericFuseConstantPattern;
@@ -310,17 +314,17 @@ struct FuseFMinConstantPattern
   Operation *createOpWithFoldedConstants(
       neura::FMinOp op, ArrayRef<Value> all_operands,
       PatternRewriter &rewriter) const override {
-    // Extract only non-null operands
+    // Extract only non-null operands.
     SmallVector<Value> operands;
     for (Value v : all_operands) {
       if (v) operands.push_back(v);
     }
     
-    // Use generic Operation create and copy attributes
+    // Use generic Operation create and copy attributes.
     OperationState state(op.getLoc(), op.getOperationName());
     state.addOperands(operands);
     state.addTypes(op->getResultTypes());
-    // Copy attributes except operandSegmentSizes (will be auto-generated)
+    // Copy attributes except operandSegmentSizes (will be auto-generated).
     for (auto attr : op->getAttrs()) {
       if (attr.getName() != "operandSegmentSizes") {
         state.addAttribute(attr.getName(), attr.getValue());
@@ -330,11 +334,11 @@ struct FuseFMinConstantPattern
   }
 };
 
-// Pattern for GEP operation (base + indices)
+// Pattern for GEP operation (base + indices).
 struct FuseGEPConstantPattern : public GenericFuseConstantPattern<neura::GEP> {
   using GenericFuseConstantPattern<neura::GEP>::GenericFuseConstantPattern;
   
-  // GEP always uses lhs_value for base (operand 0)
+  // GEP always uses lhs_value for base (operand 0).
   std::string getAttributeName(size_t operand_idx, size_t total_operands) const override {
     if (operand_idx == 0) {
       return "lhs_value";
@@ -346,7 +350,7 @@ struct FuseGEPConstantPattern : public GenericFuseConstantPattern<neura::GEP> {
   Operation *createOpWithFoldedConstants(
       neura::GEP op, ArrayRef<Value> all_operands,
       PatternRewriter &rewriter) const override {
-    // GEP: operand 0 is base, rest are indices
+    // GEP: operand 0 is base, rest are indices.
     Value base = all_operands[0];
     SmallVector<Value> indices;
     for (size_t i = 1; i < all_operands.size(); ++i) {
@@ -355,7 +359,7 @@ struct FuseGEPConstantPattern : public GenericFuseConstantPattern<neura::GEP> {
       }
     }
     
-    // Build operand list and calculate segment sizes
+    // Build operand list and calculate segment sizes.
     SmallVector<Value> operands;
     int32_t num_base = 0;
     if (base) {
@@ -367,19 +371,19 @@ struct FuseGEPConstantPattern : public GenericFuseConstantPattern<neura::GEP> {
     }
     int32_t num_indices = indices.size();
     
-    // Create operation with proper operandSegmentSizes
+    // Create operation with proper operandSegmentSizes.
     OperationState state(op.getLoc(), op.getOperationName());
     state.addOperands(operands);
     state.addTypes(op->getResultTypes());
     
-    // Copy attributes except operandSegmentSizes
+    // Copy attributes except operandSegmentSizes.
     for (auto attr : op->getAttrs()) {
       if (attr.getName() != "operandSegmentSizes") {
         state.addAttribute(attr.getName(), attr.getValue());
       }
     }
     
-    // Set the correct operandSegmentSizes
+    // Set the correct operandSegmentSizes.
     state.addAttribute("operandSegmentSizes", 
                       rewriter.getDenseI32ArrayAttr({num_base, num_indices}));
     
@@ -387,12 +391,12 @@ struct FuseGEPConstantPattern : public GenericFuseConstantPattern<neura::GEP> {
   }
 };
 
-// Pattern for Store operation (value, addr)
+// Pattern for Store operation (value, addr).
 struct FuseStoreConstantPattern
     : public GenericFuseConstantPattern<neura::StoreOp> {
   using GenericFuseConstantPattern<neura::StoreOp>::GenericFuseConstantPattern;
   
-  // Store uses lhs_value for value (operand 0) and rhs_value for addr (operand 1)
+  // Store uses lhs_value for value (operand 0) and rhs_value for addr (operand 1).
   std::string getAttributeName(size_t operand_idx, size_t total_operands) const override {
     if (operand_idx == 0) {
       return "lhs_value";
@@ -406,18 +410,18 @@ struct FuseStoreConstantPattern
   Operation *createOpWithFoldedConstants(
       neura::StoreOp op, ArrayRef<Value> all_operands,
       PatternRewriter &rewriter) const override {
-    // Store has two operands: value (operand 0) and addr (operand 1)
-    // Build operand list with only non-null values
+    // Store has two operands: value (operand 0) and addr (operand 1).
+    // Build operand list with only non-null values.
     SmallVector<Value> operands;
     for (Value v : all_operands) {
       if (v) operands.push_back(v);
     }
     
-    // Use generic Operation create and copy attributes
+    // Use generic Operation create and copy attributes.
     OperationState state(op.getLoc(), op.getOperationName());
     state.addOperands(operands);
     state.addTypes(op->getResultTypes());
-    // Copy attributes except operandSegmentSizes (will be auto-generated)
+    // Copy attributes except operandSegmentSizes (will be auto-generated).
     for (auto attr : op->getAttrs()) {
       if (attr.getName() != "operandSegmentSizes") {
         state.addAttribute(attr.getName(), attr.getValue());
@@ -427,20 +431,20 @@ struct FuseStoreConstantPattern
   }
 };
 
-// Pattern for LoadIndexed operation (base + indices)
-// Only folds the base, never folds indices (required by assemblyFormat)
+// Pattern for LoadIndexed operation (base + indices).
+// Only folds the base, never folds indices (required by assemblyFormat).
 struct FuseLoadIndexedConstantPattern
     : public OpRewritePattern<neura::LoadIndexedOp> {
   using OpRewritePattern<neura::LoadIndexedOp>::OpRewritePattern;
   
   LogicalResult matchAndRewrite(neura::LoadIndexedOp op,
                                 PatternRewriter &rewriter) const override {
-    // Check if already folded
+    // Check if already folded.
     if (op->hasAttr("lhs_value")) {
       return failure();
     }
     
-    // Only check if base is a constant
+    // Only check if base is a constant.
     Value base = op.getBase();
     if (!base || !isOriginConstantOp(base)) {
       return failure();
@@ -449,35 +453,35 @@ struct FuseLoadIndexedConstantPattern
     auto constant_op = dyn_cast<neura::ConstantOp>(base.getDefiningOp());
     Attribute base_value = getOriginConstantValue(base);
     
-    // Keep all indices unchanged (never fold indices)
+    // Keep all indices unchanged (never fold indices).
     SmallVector<Value> indices;
     for (Value idx : op.getIndices()) {
       indices.push_back(idx);
     }
     
-    // Create new LoadIndexed without base
+    // Create new LoadIndexed without base.
     OperationState state(op.getLoc(), op.getOperationName());
-    state.addOperands(indices);  // Only indices, no base
+    state.addOperands(indices);  // Only indices, no base.
     state.addTypes(op->getResultTypes());
     
-    // Copy all attributes except operandSegmentSizes
+    // Copy all attributes except operandSegmentSizes.
     for (auto attr : op->getAttrs()) {
       if (attr.getName() != "operandSegmentSizes") {
         state.addAttribute(attr.getName(), attr.getValue());
       }
     }
     
-    // Add the folded base value
+    // Add the folded base value.
     state.addAttribute("lhs_value", base_value);
     
-    // Set operandSegmentSizes: 0 base, N indices
+    // Set operandSegmentSizes: 0 base, N indices.
     state.addAttribute("operandSegmentSizes", 
                       rewriter.getDenseI32ArrayAttr({0, static_cast<int32_t>(indices.size())}));
     
     Operation *new_op = rewriter.create(state);
     rewriter.replaceOp(op, new_op->getResults());
     
-    // Clean up constant if no longer used
+    // Clean up constant if no longer used.
     if (constant_op->use_empty()) {
       rewriter.eraseOp(constant_op);
     }
@@ -486,38 +490,38 @@ struct FuseLoadIndexedConstantPattern
   }
 };
 
-// Pattern for StoreIndexed operation (value, base, indices...)
-// Only folds value and base, never folds indices (required by assemblyFormat)
+// Pattern for StoreIndexed operation (value, base, indices...).
+// Only folds value and base, never folds indices (required by assemblyFormat).
 struct FuseStoreIndexedConstantPattern
     : public OpRewritePattern<neura::StoreIndexedOp> {
   using OpRewritePattern<neura::StoreIndexedOp>::OpRewritePattern;
   
   LogicalResult matchAndRewrite(neura::StoreIndexedOp op,
                                 PatternRewriter &rewriter) const override {
-    // Check if already folded
+    // Check if already folded.
     if (op->hasAttr("lhs_value") || op->hasAttr("rhs_value")) {
       return failure();
     }
     
-    // Check which of value/base are constants
+    // Check which of value/base are constants.
     Value value = op.getValue();
     Value base = op.getBase();
     
     bool value_is_const = value && isOriginConstantOp(value);
     bool base_is_const = base && isOriginConstantOp(base);
     
-    // Nothing to fold if neither is constant
+    // Nothing to fold if neither is constant.
     if (!value_is_const && !base_is_const) {
       return failure();
     }
     
-    // Keep all indices unchanged (never fold indices)
+    // Keep all indices unchanged (never fold indices).
     SmallVector<Value> indices;
     for (Value idx : op.getIndices()) {
       indices.push_back(idx);
     }
     
-    // Build the new operand list
+    // Build the new operand list.
     SmallVector<Value> operands;
     int32_t num_value = 0;
     int32_t num_base = 0;
@@ -537,19 +541,19 @@ struct FuseStoreIndexedConstantPattern
     }
     int32_t num_indices = indices.size();
     
-    // Create new StoreIndexed
+    // Create new StoreIndexed.
     OperationState state(op.getLoc(), op.getOperationName());
     state.addOperands(operands);
     state.addTypes(op->getResultTypes());
     
-    // Copy all attributes except operandSegmentSizes
+    // Copy all attributes except operandSegmentSizes.
     for (auto attr : op->getAttrs()) {
       if (attr.getName() != "operandSegmentSizes") {
         state.addAttribute(attr.getName(), attr.getValue());
       }
     }
     
-    // Add folded constant attributes
+    // Add folded constant attributes.
     if (value_is_const) {
       state.addAttribute("lhs_value", getOriginConstantValue(value));
     }
@@ -557,14 +561,14 @@ struct FuseStoreIndexedConstantPattern
       state.addAttribute("rhs_value", getOriginConstantValue(base));
     }
     
-    // Set operandSegmentSizes: num_value, num_base, num_indices
+    // Set operandSegmentSizes: num_value, num_base, num_indices.
     state.addAttribute("operandSegmentSizes", 
                       rewriter.getDenseI32ArrayAttr({num_value, num_base, num_indices}));
     
     Operation *new_op = rewriter.create(state);
     rewriter.replaceOp(op, new_op->getResults());
     
-    // Clean up unused constants
+    // Clean up unused constants.
     if (value_is_const) {
       auto const_op = value.getDefiningOp();
       if (const_op->use_empty()) {
@@ -644,7 +648,7 @@ struct FoldConstantPass
     ModuleOp module_op = getOperation();
     RewritePatternSet patterns(&getContext());
 
-    // Add generic constant folding patterns for all operations
+    // Add generic constant folding patterns for all operations.
     patterns.add<FuseAddConstantPattern>(&getContext());
     patterns.add<FuseSubConstantPattern>(&getContext());
     patterns.add<FuseMulConstantPattern>(&getContext());
@@ -657,13 +661,13 @@ struct FoldConstantPass
     patterns.add<FuseFMaxConstantPattern>(&getContext());
     patterns.add<FuseFMinConstantPattern>(&getContext());
     
-    // Add patterns for memory operations
+    // Add patterns for memory operations.
     patterns.add<FuseGEPConstantPattern>(&getContext());
     patterns.add<FuseStoreConstantPattern>(&getContext());
     patterns.add<FuseLoadIndexedConstantPattern>(&getContext());
     patterns.add<FuseStoreIndexedConstantPattern>(&getContext());
     
-    // Add pattern for grant operations (post-transform)
+    // Add pattern for grant operations (post-transform).
     patterns.add<FuseConstantAndGrantPattern>(&getContext());
     
     FrozenRewritePatternSet frozen(std::move(patterns));
