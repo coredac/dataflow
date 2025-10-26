@@ -4,11 +4,7 @@
 // RUN:   -I %S/../../benchmark/CGRA-Bench/kernels/bicg -DSMALL_DATASET \
 // RUN:   -o %t-kernel-full.ll %S/../../benchmark/CGRA-Bench/kernels/bicg/bicg.c
 
-// Extract only the kernel function(s). PolyBench typically uses kernel_bicg,
-// so a regex keeps this robust across name variants.
 // RUN: llvm-extract --rfunc=".*kernel.*" %t-kernel-full.ll -o %t-kernel-only.ll
-
-// Import the LLVM IR into MLIR (LLVM dialect).
 // RUN: mlir-translate --import-llvm %t-kernel-only.ll -o %t-kernel.mlir
 
 // Lower and map to the Neura accelerator, then generate code.
@@ -20,9 +16,27 @@
 // RUN:   --promote-func-arg-to-const \
 // RUN:   --fold-constant \
 // RUN:   -o %t-before-canonicalize.mlir
-
-// Check the IR before canonicalize-live-in to verify constant folding behavior
 // RUN: FileCheck %s --input-file=%t-before-canonicalize.mlir -check-prefix=BEFORE_CANONICALIZE
+
+
+// RUN: mlir-neura-opt %t-kernel.mlir \
+// RUN:   --assign-accelerator \
+// RUN:   --lower-llvm-to-neura \
+// RUN:   --promote-func-arg-to-const \
+// RUN:   --fold-constant \
+// RUN:   --canonicalize-live-in \
+// RUN:   --leverage-predicated-value \
+// RUN:   --transform-ctrl-to-data-flow \
+// RUN:   --fold-constant \
+// RUN:   --insert-data-mov \
+// RUN:   --map-to-accelerator="mapping-strategy=heuristic" \
+// RUN:   --architecture-spec=%S/../../arch_spec/architecture.yaml \
+// RUN:   --generate-code -o %t-mapping.mlir
+// RUN: FileCheck %s --input-file=%t-mapping.mlir -check-prefix=MAPPING
+// RUN: FileCheck %s --input-file=tmp-generated-instructions.yaml --check-prefix=YAML
+// RUN: FileCheck %s --input-file=tmp-generated-instructions.asm --check-prefix=ASM
+
+
 // BEFORE_CANONICALIZE: module attributes
 // BEFORE_CANONICALIZE: func.func @kernel
 // BEFORE_CANONICALIZE: %0 = "neura.constant"() <{value = "%arg0"}> : () -> i32
@@ -77,45 +91,27 @@
 // BEFORE_CANONICALIZE: }
 // BEFORE_CANONICALIZE: }
 
-// RUN: mlir-neura-opt %t-kernel.mlir \
-// RUN:   --assign-accelerator \
-// RUN:   --lower-llvm-to-neura \
-// RUN:   --promote-func-arg-to-const \
-// RUN:   --fold-constant \
-// RUN:   --canonicalize-live-in \
-// RUN:   --leverage-predicated-value \
-// RUN:   --transform-ctrl-to-data-flow \
-// RUN:   --fold-constant \
-// RUN:   --insert-data-mov \
-// RUN:   --map-to-accelerator="mapping-strategy=heuristic" \
-// RUN:   --architecture-spec=%S/../../arch_spec/architecture.yaml \
-// RUN:   --generate-code -o %t-mapping.mlir
 
-// Sanity-check the mapped MLIR contains a module/func and neura ops.
-// RUN: FileCheck %s --input-file=%t-mapping.mlir -check-prefix=MAPPING
-// MAPPING: module
-// MAPPING: func.func
-// MAPPING: neura.
-// MAPPING: neura.return
+//MAPPING: module
+//MAPPING: func.func
+//MAPPING: neura.
+//MAPPING: neura.return
 
-// Verify the generated YAML/ASM artifacts look well-formed.
-// RUN: FileCheck %s --input-file=tmp-generated-instructions.yaml --check-prefix=YAML
-// YAML: array_config:
+// YAML:      array_config:
 // YAML-NEXT:   columns: 4
 // YAML-NEXT:   rows: 4
 // YAML-NEXT:   compiled_ii: 12
 // YAML-NEXT:   cores:
-// YAML-NEXT:   - column: 0
-// YAML-NEXT:     row: 0
-// YAML-NEXT:     core_id: "0"
-// YAML-NEXT:     entries:
-// YAML-NEXT:     - entry_id: "entry0"
-// YAML-NEXT:       instructions:
-// YAML-NEXT:       - timestep: 0
-// YAML-NEXT:         operations:
-// YAML-NEXT:         - opcode: "CONSTANT"
+// YAML-NEXT:     - column: 0
+// YAML-NEXT:       row: 0
+// YAML-NEXT:       core_id: "0"
+// YAML-NEXT:       entries:
+// YAML-NEXT:         - entry_id: "entry0"
+// YAML-NEXT:           instructions:
+// YAML-NEXT:             - timestep: 0
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "CONSTANT"
 
-// RUN: FileCheck %s --input-file=tmp-generated-instructions.asm --check-prefix=ASM
 // ASM:      PE(0,0):
 // ASM-NEXT: {
 // ASM-NEXT:   CONSTANT, [#0] -> [EAST, RED]

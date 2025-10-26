@@ -80,6 +80,15 @@ def Neura_FSubOp: Op<NeuraDialect, "fsub"> {
   let traits = [SameOperandsAndResultElementType];
 }
 
+// Defines a floating-point negation operation.
+def Neura_FNegOp : Op<NeuraDialect, "fneg"> {
+  let summary = "Floating negation operation";
+  let opName = "fneg";
+  let arguments = (ins AnyType:$operand);
+  let results = (outs AnyType:$result);
+  let traits = [SameOperandsAndResultElementType];
+}
+
 // Defines a floating-point multiplication operation.
 def Neura_FMulOp : Op<NeuraDialect, "fmul"> {
   let summary = "Floating multiplication operation";
