@@ -568,8 +568,6 @@ struct LlvmReturnToNeuraReturn : public OpRewritePattern<LLVM::ReturnOp> {
   }
 };
 
-
-
 struct LlvmFNegToNeuraFSub : public OpRewritePattern<LLVM::FNegOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -606,7 +604,62 @@ struct LlvmSubToNeuraSub : public OpRewritePattern<LLVM::SubOp> {
   }
 };
 
+// TODO: Implement LlvmXOrToNeuraOr - used in ADPCM coder and FFT kernels
+//       llvm.xor operations appear in:
+//       - adpcm_coder-kernel.mlir (line 104: %87 = llvm.xor %29, %19 : i1)
+//       - fft_kernel.mlir (line 19: %11 = llvm.xor %10, %3 : i32)
+//       Implementation: xor(a, b) = or(a, b) for boolean values
 
+// TODO: Implement LlvmAndToNeuraMul - used in ADPCM coder and MVT kernels
+//       llvm.and operations appear in:
+//       - adpcm_coder-kernel.mlir (lines 55, 94: bitwise AND operations)
+//       - mvt-kernel.mlir (lines 44, 47, 50, 53: vector and scalar AND operations)
+//       Implementation: and(a, b) = mul(a, b) for boolean values
+
+// TODO: Implement LlvmAllocaToNeuraOps - used in DTW kernel
+//       llvm.alloca operations appear in:
+//       - dtw-kernel-O0.mlir (lines 19-23: multiple stack allocations)
+//       Implementation: For CGRA, erase alloca or convert to register allocation
+
+// TODO: Implement LlvmLShrToNeuraShl - used in ADPCM coder/decoder and FFT kernels
+//       llvm.lshr operations appear in:
+//       - adpcm_coder-kernel.mlir (line 54: %42 = llvm.lshr %40, %7 : i32)
+//       - adpcm_decoder-kernel.ll (line 35: %30 = lshr i32 %29, 4)
+//       - fft_kernel.mlir (line 67: %49 = llvm.lshr %7, %1 : i32)
+//       Implementation: Need proper logical right shift (lshr(x,n) != shl(x,-n))
+
+// TODO: Implement LlvmAShrToNeuraAShr - used in ADPCM coder/decoder kernels
+//       llvm.ashr operations appear in:
+//       - adpcm_coder-kernel.mlir (lines 57, 63, 70: multiple ashr operations)
+//       - adpcm_decoder-kernel.ll (lines 49, 56, 61: ashr i32 %20, 3/1/2)
+//       Implementation: Need proper arithmetic right shift (preserves sign bit)
+
+
+struct LlvmSMaxToNeuraSMax : public OpRewritePattern<LLVM::SMaxOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::SMaxOp op,
+                                PatternRewriter &rewriter) const override {
+    // Gets operands.
+    Value lhs = op.getA();
+    Value rhs = op.getB();
+    Type result_type = op.getType();
+    Location loc = op.getLoc();
+
+    // Implements smax(a, b) = a >= b ? a : b
+    auto cmp = rewriter.create<neura::ICmpOp>(loc, rewriter.getI1Type(), 
+                                             lhs, rhs,
+                                             rewriter.getStringAttr("sge"));
+    
+    // Select: a >= b ? a : b
+    rewriter.replaceOpWithNewOp<neura::SelOp>(op, result_type, cmp, lhs, rhs);
+    return success();
+  }
+};
+
+// TODO: Implement LlvmAbsToNeuraAbs - used in ADPCM coder kernel
+//       llvm.intr.abs operations appear in adpcm_coder-kernel.mlir  
+//       Implementation: abs(x) = x >= 0 ? x : -x (using ICmpOp + SelOp)
 
 struct FuncReturnToNeuraReturn : public OpRewritePattern<func::ReturnOp> {
   using OpRewritePattern::OpRewritePattern;
@@ -676,6 +729,46 @@ struct LlvmZExtToNeuraZExt : public OpRewritePattern<LLVM::ZExtOp> {
     Type resultType = op.getType();
 
     rewriter.replaceOpWithNewOp<neura::ZExtOp>(op, resultType, input);
+    return success();
+  }
+};
+
+struct LlvmTruncToNeuraCast : public OpRewritePattern<LLVM::TruncOp> {
+  using OpRewritePattern<LLVM::TruncOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::TruncOp op,
+                                PatternRewriter &rewriter) const override {
+    // Trunc is a simple cast operation
+    auto result = rewriter.create<neura::CastOp>(
+        op.getLoc(), op.getType(), op.getArg(),
+        rewriter.getStringAttr("trunc"));
+    rewriter.replaceOp(op, result.getResult());
+    return success();
+  }
+};
+
+struct LlvmUDivToNeuraDiv : public OpRewritePattern<LLVM::UDivOp> {
+  using OpRewritePattern<LLVM::UDivOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::UDivOp op,
+                                PatternRewriter &rewriter) const override {
+    // UDiv is unsigned division
+    auto result = rewriter.create<neura::DivOp>(
+        op.getLoc(), op.getType(), op.getLhs(), op.getRhs());
+    rewriter.replaceOp(op, result.getResult());
+    return success();
+  }
+};
+
+struct LlvmURemToNeuraRem : public OpRewritePattern<LLVM::URemOp> {
+  using OpRewritePattern<LLVM::URemOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::URemOp op,
+                                PatternRewriter &rewriter) const override {
+    // URem is unsigned remainder
+    auto result = rewriter.create<neura::RemOp>(
+        op.getLoc(), op.getType(), op.getLhs(), op.getRhs());
+    rewriter.replaceOp(op, result.getResult());
     return success();
   }
 };
@@ -864,6 +957,18 @@ struct LowerLlvmToNeuraPass
     patterns.add<LlvmMemsetToNeuraOps>(&getContext());
     patterns.add<LlvmFNegToNeuraFSub>(&getContext());
     patterns.add<LlvmSubToNeuraSub>(&getContext());
+    patterns.add<LlvmTruncToNeuraCast>(&getContext());
+    patterns.add<LlvmUDivToNeuraDiv>(&getContext());
+    patterns.add<LlvmURemToNeuraRem>(&getContext());
+    patterns.add<LlvmSMaxToNeuraSMax>(&getContext());
+    // TODO: Add more LLVM to Neura conversion patterns as needed
+    // patterns.add<LlvmXOrToNeuraOr>(&getContext());     // TODO: Used in ADPCM coder + FFT kernels
+    // patterns.add<LlvmAndToNeuraMul>(&getContext());    // TODO: Used in ADPCM coder + MVT kernels  
+    // patterns.add<LlvmAllocaToNeuraOps>(&getContext()); // TODO: Used in DTW kernel
+    // TODO: Fix right shift implementations - current implementations are incorrect
+    // patterns.add<LlvmLShrToNeuraShl>(&getContext());  // TODO: Used in ADPCM coder/decoder + FFT kernels
+    // patterns.add<LlvmAShrToNeuraAShr>(&getContext()); // TODO: Used in ADPCM coder/decoder kernels
+    // patterns.add<LlvmAbsToNeuraAbs>(&getContext());   // TODO: Used in ADPCM coder kernel
 
 
     FrozenRewritePatternSet frozen(std::move(patterns));
