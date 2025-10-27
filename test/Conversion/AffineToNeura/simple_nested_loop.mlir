@@ -18,5 +18,7 @@ module {
 // CHECK-SAME: <{end = 128 : i64, iterationType = "increment", start = 0 : i64, step = 1 : i64}>
 // CHECK: %[[INNER_IDX:.*]], %[[INNER_VALID:.*]] = neura.loop_control
 // CHECK-SAME: <{end = 128 : i64, iterationType = "increment", start = 0 : i64, step = 1 : i64}>
-// CHECK: affine.load
-// CHECK: affine.store
+// CHECK: neura.load_indexed
+// CHECK: neura.store_indexed
+// CHECK-NOT: affine.load
+// CHECK-NOT: affine.store

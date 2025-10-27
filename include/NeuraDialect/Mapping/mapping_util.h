@@ -12,6 +12,10 @@ OperationKind getOperationKindFromMlirOp(Operation *op);
 // Returns true if the operation does not need CGRA tile placement.
 bool is_non_materialized(Operation *op);
 
+// Returns true if the operation is a steering-mode operation that doesn't
+// require DataMovOp wrapping (e.g., constants, carry, invariant, etc.).
+bool is_steering_unwrapped_op(Operation *op);
+
 // Returns true if the operation is a materialized reserve user, i.e.,
 // phi, invariant, carry.
 bool isMaterializedReserveUser(Operation *op);
