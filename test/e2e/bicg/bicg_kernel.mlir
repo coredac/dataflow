@@ -17,6 +17,7 @@
 // RUN:   --fold-constant \
 // RUN:   -o %t-before-canonicalize.mlir
 // RUN: FileCheck %s --input-file=%t-before-canonicalize.mlir -check-prefix=BEFORE_CANONICALIZE
+// RUN: FileCheck %s --input-file=%t-before-canonicalize.mlir --check-prefix=MEMSET-CHECK
 
 
 // RUN: mlir-neura-opt %t-kernel.mlir \
@@ -41,55 +42,59 @@
 // BEFORE_CANONICALIZE: func.func @kernel
 // BEFORE_CANONICALIZE: %0 = "neura.constant"() <{value = "%arg0"}> : () -> i32
 // BEFORE_CANONICALIZE: %1 = "neura.constant"() <{value = "%arg1"}> : () -> i32
-// BEFORE_CANONICALIZE: %2 = "neura.constant"() <{value = 0 : i64}> : () -> i64
-// BEFORE_CANONICALIZE: %3 = "neura.icmp"(%0) <{cmpType = "sgt"}> {rhs_value = 0 : i32} : (i32) -> i1
-// BEFORE_CANONICALIZE: neura.cond_br %3 : i1 then to ^bb1 else to ^bb2
+// BEFORE_CANONICALIZE: %2 = "neura.constant"() <{value = "%arg3"}> : () -> !llvm.ptr
+// BEFORE_CANONICALIZE: %3 = "neura.constant"() <{value = "%arg4"}> : () -> !llvm.ptr
+// BEFORE_CANONICALIZE: %4 = "neura.constant"() <{value = 3 : i64}> : () -> i64
+// BEFORE_CANONICALIZE: %5 = "neura.constant"() <{value = 0 : i8}> : () -> i8
+// BEFORE_CANONICALIZE: %6 = "neura.constant"() <{value = 0 : i64}> : () -> i64
+// BEFORE_CANONICALIZE: %7 = "neura.icmp"(%0) <{cmpType = "sgt"}> {rhs_value = 0 : i32} : (i32) -> i1
+// BEFORE_CANONICALIZE: neura.cond_br %7 : i1 then to ^bb1 else to ^bb2
 // BEFORE_CANONICALIZE: ^bb1:  // pred: ^bb0
-// BEFORE_CANONICALIZE: %4 = "neura.constant"() <{value = 0 : i8}> : () -> i8
-// BEFORE_CANONICALIZE: "neura.store"(%4) {rhs_value = "%arg3"} : (i8) -> ()
-// BEFORE_CANONICALIZE: %5 = "neura.icmp"(%1) <{cmpType = "sgt"}> {rhs_value = 0 : i32} : (i32) -> i1
-// BEFORE_CANONICALIZE: neura.cond_br %5 : i1 then to ^bb4 else to ^bb8
+// BEFORE_CANONICALIZE: %8 = neura.zext %0 : i32 -> i64
+// BEFORE_CANONICALIZE: %9 = "neura.shl"(%8, %4) : (i64, i64) -> i64
+// BEFORE_CANONICALIZE: "neura.memset"(%2, %5, %9) <{is_volatile = false}> : (!llvm.ptr, i8, i64) -> ()
+// BEFORE_CANONICALIZE: %10 = "neura.icmp"(%1) <{cmpType = "sgt"}> {rhs_value = 0 : i32} : (i32) -> i1
+// BEFORE_CANONICALIZE: neura.cond_br %10 : i1 then to ^bb4 else to ^bb8
 // BEFORE_CANONICALIZE: ^bb2:  // pred: ^bb0
-// BEFORE_CANONICALIZE: %6 = "neura.icmp"(%1) <{cmpType = "sgt"}> {rhs_value = 0 : i32} : (i32) -> i1
-// BEFORE_CANONICALIZE: neura.cond_br %6 : i1 then to ^bb3 else to ^bb8
+// BEFORE_CANONICALIZE: %11 = "neura.icmp"(%1) <{cmpType = "sgt"}> {rhs_value = 0 : i32} : (i32) -> i1
+// BEFORE_CANONICALIZE: neura.cond_br %11 : i1 then to ^bb3 else to ^bb8
 // BEFORE_CANONICALIZE: ^bb3:  // pred: ^bb2
-// BEFORE_CANONICALIZE: %7 = "neura.constant"() <{value = 0 : i8}> : () -> i8
-// BEFORE_CANONICALIZE: "neura.store"(%7) {rhs_value = "%arg4"} : (i8) -> ()
+// BEFORE_CANONICALIZE: %12 = neura.zext %1 : i32 -> i64
+// BEFORE_CANONICALIZE: %13 = "neura.shl"(%12, %4) : (i64, i64) -> i64
+// BEFORE_CANONICALIZE: "neura.memset"(%3, %5, %13) <{is_volatile = false}> : (!llvm.ptr, i8, i64) -> ()
 // BEFORE_CANONICALIZE: neura.br to ^bb8
 // BEFORE_CANONICALIZE: ^bb4:  // pred: ^bb1
-// BEFORE_CANONICALIZE: %8 = neura.zext %1 : i32 -> i64
-// BEFORE_CANONICALIZE: %9 = neura.zext %0 : i32 -> i64
-// BEFORE_CANONICALIZE: neura.br %2 : i64 to ^bb5
-// BEFORE_CANONICALIZE: ^bb5(%10: i64):  // 2 preds: ^bb4, ^bb7
-// BEFORE_CANONICALIZE: %11 = "neura.gep"(%10) <{operandSegmentSizes = array<i32: 0, 1>}> {lhs_value = "%arg4"} : (i64) -> !llvm.ptr
-// BEFORE_CANONICALIZE: "neura.store"(%11) {lhs_value = 0.000000e+00 : f64} : (!llvm.ptr) -> ()
-// BEFORE_CANONICALIZE: %12 = "neura.gep"(%10) <{operandSegmentSizes = array<i32: 0, 1>}> {lhs_value = "%arg6"} : (i64) -> !llvm.ptr
-// BEFORE_CANONICALIZE: neura.br %2 : i64 to ^bb6
-// BEFORE_CANONICALIZE: ^bb6(%13: i64):  // 2 preds: ^bb5, ^bb6
-// BEFORE_CANONICALIZE: %14 = "neura.gep"(%13) <{operandSegmentSizes = array<i32: 0, 1>}> {lhs_value = "%arg3"} : (i64) -> !llvm.ptr
-// BEFORE_CANONICALIZE: %15 = "neura.load"(%14) : (!llvm.ptr) -> f64
-// BEFORE_CANONICALIZE: %16 = "neura.load"(%12) : (!llvm.ptr) -> f64
-// BEFORE_CANONICALIZE: %17 = "neura.gep"(%10, %13) <{operandSegmentSizes = array<i32: 0, 2>}> {lhs_value = "%arg2"} : (i64, i64) -> !llvm.ptr
-// BEFORE_CANONICALIZE: %18 = "neura.load"(%17) : (!llvm.ptr) -> f64
-// BEFORE_CANONICALIZE: %19 = "neura.fmul_fadd"(%16, %18, %15) : (f64, f64, f64) -> f64
-// BEFORE_CANONICALIZE: "neura.store"(%19, %14) : (f64, !llvm.ptr) -> ()
-// BEFORE_CANONICALIZE: %20 = "neura.load"(%11) : (!llvm.ptr) -> f64
-// BEFORE_CANONICALIZE: %21 = "neura.load"(%17) : (!llvm.ptr) -> f64
-// BEFORE_CANONICALIZE: %22 = "neura.gep"(%13) <{operandSegmentSizes = array<i32: 0, 1>}> {lhs_value = "%arg5"} : (i64) -> !llvm.ptr
-// BEFORE_CANONICALIZE: %23 = "neura.load"(%22) : (!llvm.ptr) -> f64
-// BEFORE_CANONICALIZE: %24 = "neura.fmul_fadd"(%21, %23, %20) : (f64, f64, f64) -> f64
-// BEFORE_CANONICALIZE: "neura.store"(%24, %11) : (f64, !llvm.ptr) -> ()
-// BEFORE_CANONICALIZE: %25 = "neura.add"(%13) {rhs_value = 1 : i64} : (i64) -> i64
-// BEFORE_CANONICALIZE: %26 = "neura.icmp"(%25, %9) <{cmpType = "eq"}> : (i64, i64) -> i1
-// BEFORE_CANONICALIZE: neura.cond_br %26 : i1 then to ^bb7 else %25 : i64 to ^bb6
+// BEFORE_CANONICALIZE: %14 = neura.zext %1 : i32 -> i64
+// BEFORE_CANONICALIZE: %15 = neura.zext %0 : i32 -> i64
+// BEFORE_CANONICALIZE: neura.br %6 : i64 to ^bb5
+// BEFORE_CANONICALIZE: ^bb5(%16: i64):  // 2 preds: ^bb4, ^bb7
+// BEFORE_CANONICALIZE: %17 = "neura.gep"(%16) <{operandSegmentSizes = array<i32: 0, 1>}> {lhs_value = "%arg4"} : (i64) -> !llvm.ptr
+// BEFORE_CANONICALIZE: "neura.store"(%17) {lhs_value = 0.000000e+00 : f64} : (!llvm.ptr) -> ()
+// BEFORE_CANONICALIZE: %18 = "neura.gep"(%16) <{operandSegmentSizes = array<i32: 0, 1>}> {lhs_value = "%arg6"} : (i64) -> !llvm.ptr
+// BEFORE_CANONICALIZE: neura.br %6 : i64 to ^bb6
+// BEFORE_CANONICALIZE: ^bb6(%19: i64):  // 2 preds: ^bb5, ^bb6
+// BEFORE_CANONICALIZE: %20 = "neura.gep"(%19) <{operandSegmentSizes = array<i32: 0, 1>}> {lhs_value = "%arg3"} : (i64) -> !llvm.ptr
+// BEFORE_CANONICALIZE: %21 = "neura.load"(%20) : (!llvm.ptr) -> f64
+// BEFORE_CANONICALIZE: %22 = "neura.load"(%18) : (!llvm.ptr) -> f64
+// BEFORE_CANONICALIZE: %23 = "neura.gep"(%16, %19) <{operandSegmentSizes = array<i32: 0, 2>}> {lhs_value = "%arg2"} : (i64, i64) -> !llvm.ptr
+// BEFORE_CANONICALIZE: %24 = "neura.load"(%23) : (!llvm.ptr) -> f64
+// BEFORE_CANONICALIZE: %25 = "neura.fmul_fadd"(%22, %24, %21) : (f64, f64, f64) -> f64
+// BEFORE_CANONICALIZE: "neura.store"(%25, %20) : (f64, !llvm.ptr) -> ()
+// BEFORE_CANONICALIZE: %26 = "neura.load"(%17) : (!llvm.ptr) -> f64
+// BEFORE_CANONICALIZE: %27 = "neura.load"(%23) : (!llvm.ptr) -> f64
+// BEFORE_CANONICALIZE: %28 = "neura.gep"(%19) <{operandSegmentSizes = array<i32: 0, 1>}> {lhs_value = "%arg5"} : (i64) -> !llvm.ptr
+// BEFORE_CANONICALIZE: %29 = "neura.load"(%28) : (!llvm.ptr) -> f64
+// BEFORE_CANONICALIZE: %30 = "neura.fmul_fadd"(%27, %29, %26) : (f64, f64, f64) -> f64
+// BEFORE_CANONICALIZE: "neura.store"(%30, %17) : (f64, !llvm.ptr) -> ()
+// BEFORE_CANONICALIZE: %31 = "neura.add"(%19) {rhs_value = 1 : i64} : (i64) -> i64
+// BEFORE_CANONICALIZE: %32 = "neura.icmp"(%31, %15) <{cmpType = "eq"}> : (i64, i64) -> i1
+// BEFORE_CANONICALIZE: neura.cond_br %32 : i1 then to ^bb7 else %31 : i64 to ^bb6
 // BEFORE_CANONICALIZE: ^bb7:  // pred: ^bb6
-// BEFORE_CANONICALIZE: %27 = "neura.add"(%10) {rhs_value = 1 : i64} : (i64) -> i64
-// BEFORE_CANONICALIZE: %28 = "neura.icmp"(%27, %8) <{cmpType = "eq"}> : (i64, i64) -> i1
-// BEFORE_CANONICALIZE: neura.cond_br %28 : i1 then to ^bb8 else %27 : i64 to ^bb5
+// BEFORE_CANONICALIZE: %33 = "neura.add"(%16) {rhs_value = 1 : i64} : (i64) -> i64
+// BEFORE_CANONICALIZE: %34 = "neura.icmp"(%33, %14) <{cmpType = "eq"}> : (i64, i64) -> i1
+// BEFORE_CANONICALIZE: neura.cond_br %34 : i1 then to ^bb8 else %33 : i64 to ^bb5
 // BEFORE_CANONICALIZE: ^bb8:  // 4 preds: ^bb1, ^bb2, ^bb3, ^bb7
 // BEFORE_CANONICALIZE: "neura.return"() : () -> ()
-// BEFORE_CANONICALIZE: }
-// BEFORE_CANONICALIZE: }
 
 
 //MAPPING: module
@@ -122,3 +127,5 @@
 // ASM-NEXT: {
 // ASM-NEXT:   GRANT_ONCE, [#0] -> [NORTH, RED]
 // ASM-NEXT: } (t=3)
+
+// MEMSET-CHECK: "neura.memset"

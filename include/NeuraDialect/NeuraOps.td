@@ -209,6 +209,21 @@ def Neura_StoreOp : Op<NeuraDialect, "store"> {
   // let assemblyFormat = "$value `,` $addr `,` attr-dict";
 }
 
+// Defines a memset operation for setting a block of memory.
+def Neura_MemsetOp : Op<NeuraDialect, "memset"> {
+  let summary = "Memset operation that sets a block of memory to a value";
+  let description = [{
+    Sets len bytes of memory starting at dest to the given value.
+    This is a semantic operation that RTL can lower to appropriate hardware implementation.
+    Example:
+      neura.memset %dest, %value, %len {is_volatile = false} : !neura.data<ptr, i1>, i8, i64
+  }];
+  let arguments = (ins AnyType:$dest, AnyType:$value, AnyType:$len, 
+                   BoolAttr:$is_volatile);
+  let results = (outs);
+  // let assemblyFormat = "$dest `,` $value `,` $len attr-dict `:` type($dest) `,` type($value) `,` type($len)";
+}
+
 // Defines a load operation with integrated address calculation.
 def Neura_LoadIndexedOp: Op<NeuraDialect, "load_indexed", [AttrSizedOperandSegments]>{
   let summary = "Load with integrated address calculation for multi-dimensional arrays";

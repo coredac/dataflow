@@ -296,37 +296,17 @@ struct LlvmMemsetToNeuraOps : public OpRewritePattern<LLVM::MemsetOp> {
 
   LogicalResult matchAndRewrite(LLVM::MemsetOp op,
                                 PatternRewriter &rewriter) const override {
-    // Gets the operands: dest, value, len, isvolatile.
+    // Gets all operands: dest, value, len, is_volatile.
     auto dest = op.getDst();
     auto value = op.getVal();
-    // Note: len and isvolatile are not used in this simplified implementation
-    // but are kept for future enhancement.
-    (void)op.getLen(); // len - not used in current implementation.
-    (void)op.getIsVolatile(); // isvolatile - not used in current implementation.
+    auto len = op.getLen();
+    auto is_volatile = op.getIsVolatile();
     
-    // For CGRA, implements memset as a simple store operation.
-    // Creates a constant for the value to set (uses the actual value if available).
-    Attribute value_attr;
-    if (auto const_op = value.getDefiningOp<neura::ConstantOp>()) {
-      value_attr = const_op->getAttr("value");
-    } else {
-      // Defaults to 0 if it can't determine the value.
-      value_attr = rewriter.getI8IntegerAttr(0);
-    }
-    
-    auto value_const = rewriter.create<neura::ConstantOp>(
-        op.getLoc(), rewriter.getI8Type(), value_attr);
-    
-    // Creates a store operation to set the memory.
-    // Note: This is a simplified implementation.
-    // TODO: Handles the length parameter for proper memset semantics.
-    //       Currently only performs a single store operation.
-    //       Consider implementing a loop or vectorized stores for len > 1.
-    auto store_op = rewriter.create<neura::StoreOp>(
-        op.getLoc(), value_const, dest);
-    
-    // Replaces the memset with the store operation.
-    rewriter.replaceOp(op, store_op->getResults());
+    // Creates neura.memset operation with full semantics.
+    // Passes all operands to the hardware-specific operation.
+    // The RTL layer can implement this as appropriate for the target hardware.
+    rewriter.replaceOpWithNewOp<neura::MemsetOp>(op, dest, value, len, 
+                                                   is_volatile);
     return success();
   }
 };
