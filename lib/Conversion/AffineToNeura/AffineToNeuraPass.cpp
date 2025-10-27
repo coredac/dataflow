@@ -9,7 +9,6 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Region.h"
@@ -23,8 +22,6 @@
 
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraOps.h"
-#include "mlir/Transforms/RegionUtils.h"
-#include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/raw_ostream.h"
 #include <memory>
 
@@ -203,136 +200,61 @@ struct AffineApplyLowering : public OpRewritePattern<affine::AffineApplyOp> {
   }
 };
 
-LogicalResult lowerAffineFor(affine::AffineForOp for_op, OpBuilder &builder,
-                             IRMapping &value_mapping) {
-  llvm::errs() << "[affine2neura] Lowering AffineForOp: " << for_op << "\n";
-  Location loc = for_op.getLoc();
-  IndexType index_type = builder.getIndexType();
+struct AffineForLowering : public OpRewritePattern<affine::AffineForOp> {
+  using OpRewritePattern<affine::AffineForOp>::OpRewritePattern;
+  
+  LogicalResult matchAndRewrite(affine::AffineForOp for_op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = for_op.getLoc();
 
-  // 1 Extract1 loop parameters (lower bound, upper bound, step)
-  Value lower_bound_val;
-  if (for_op.hasConstantLowerBound()) {
-    int64_t lower_bound_constant = for_op.getConstantLowerBound();
-    lower_bound_val = builder.create<neura::ConstantOp>(
-        loc, index_type, builder.getIndexAttr(lower_bound_constant));
-  } else {
-    // If the lower bound is not constant, we need to use affine.apply
-    affine::AffineBound lower_bound = for_op.getLowerBound();
-    AffineMap lower_bound_map = lower_bound.getMap();
-    ValueRange lower_bound_operands = for_op.getLowerBoundOperands();
-    lower_bound_val = builder.create<affine::AffineApplyOp>(
-        loc, lower_bound_map, lower_bound_operands);
-  }
-
-  Value upper_bound_val;
-  if (for_op.hasConstantUpperBound()) {
-    int64_t upper_bound_constant = for_op.getConstantUpperBound();
-    upper_bound_val = builder.create<neura::ConstantOp>(
-        loc, index_type, builder.getIndexAttr(upper_bound_constant));
-  } else {
-    // For non-constant upper bounds, we also use affine.apply
-    affine::AffineBound upper_bound = for_op.getUpperBound();
-    AffineMap upper_bound_map = upper_bound.getMap();
-    ValueRange upper_bound_operands = for_op.getUpperBoundOperands();
-    upper_bound_val = builder.create<affine::AffineApplyOp>(
-        loc, upper_bound_map, upper_bound_operands);
-  }
-
-  Value step_val = builder.create<neura::ConstantOp>(
-      loc, index_type, builder.getIndexAttr(for_op.getStepAsInt()));
-
-  // 2 Creates the block structure
-  Block *origin_block = builder.getInsertionBlock();
-  auto origin_point = builder.getInsertionPoint();
-  Region *parent_region = origin_block->getParent();
-
-  // 2.1 Creates the header block
-  Block *header_block = builder.createBlock(
-      parent_region, std::next(Region::iterator(origin_block)), {index_type},
-      {loc});
-  // 2.2 Creates the body block
-  Block *body_block = builder.createBlock(
-      parent_region, std::next(Region::iterator(header_block)), {index_type},
-      {loc});
-  // 2.3 Creates the exit block
-  Block *exit_block = builder.createBlock(
-      parent_region, std::next(Region::iterator(body_block)));
-  // 2.4 Creates the continue block
-  Block *continue_block = origin_block->splitBlock(origin_point);
-
-  // 3 Connects the blocks
-  // 3.1 Connects origin_block -> header_block
-  builder.setInsertionPointToEnd(origin_block);
-  builder.create<neura::Br>(loc, ValueRange{lower_bound_val}, header_block);
-
-  // 3.2 Connects header_block -> body_block
-  builder.setInsertionPointToEnd(header_block);
-  SmallVector<Value> body_args;
-  body_args.push_back(header_block->getArgument(0)); // current index
-  builder.create<neura::LoopControlOp>(
-      loc, header_block->getArgument(0), step_val, upper_bound_val,
-      builder.getStringAttr("lt"), body_args, body_block, exit_block);
-
-  // 3.3 Clones the body of the original affine.for operation
-  // Assumes the body of the affine.for operation is a single block
-  // So we need to guarantee the sequence of handling the nested affine.for
-  // operations is correct. (From outermost to innermost)
-  builder.setInsertionPointToStart(body_block);
-  Value current_index = body_block->getArgument(0);
-  if (!for_op.getRegion().empty()) {
-    Block &source_block = for_op.getRegion().front();
-    IRMapping mapping;
-    mapping.map(source_block.getArgument(0), current_index);
-    for (Operation &op : llvm::make_range(source_block.begin(),
-                                          std::prev(source_block.end()))) {
-      Operation *cloned_op = builder.clone(op, mapping);
-      for (unsigned i = 0; i < op.getNumResults(); ++i)
-        mapping.map(op.getResult(i), cloned_op->getResult(i));
-    }
-  }
-
-  // 3.4 Connects body_block -> header_block
-  builder.setInsertionPointToEnd(body_block);
-  builder.create<neura::Br>(loc, ValueRange{current_index}, header_block);
-
-  // 3.5 Connects exit_block -> continue_block
-  builder.setInsertionPointToEnd(exit_block);
-  builder.create<neura::Br>(loc, ValueRange{}, continue_block);
-
-  builder.setInsertionPointToStart(continue_block);
-
-  for_op.erase();
-
-  return success();
-}
-
-affine::AffineForOp findOuterMostAffineFor(func::FuncOp &func_op) {
-  // Find the outermost affine.for operation
-  affine::AffineForOp top_for_op = nullptr;
-  func_op.walk([&](affine::AffineForOp for_op) {
-    // Checks if this for_op has any AffineForOp parent
-    Operation *parent_op = for_op->getParentOp();
-    bool has_affine_for_parent = false;
-
-    while (parent_op) {
-      if (isa<affine::AffineForOp>(parent_op)) {
-        has_affine_for_parent = true;
-        break;
-      }
-      parent_op = parent_op->getParentOp();
+    // Extract loop bounds - must be constant for now
+    if (!for_op.hasConstantLowerBound() || !for_op.hasConstantUpperBound()) {
+      return for_op.emitError(
+          "[affine2neura] Non-constant loop bounds not supported yet");
     }
 
-    // If it has no AffineForOp parent, it's a Ftop-level loop
-    if (!has_affine_for_parent) {
-      top_for_op = for_op;            // Store the found operation
-      return WalkResult::interrupt(); // Stop walking
-    }
+    int64_t lower_bound = for_op.getConstantLowerBound();
+    int64_t upper_bound = for_op.getConstantUpperBound();
+    int64_t step = for_op.getStepAsInt();
 
-    return WalkResult::advance(); // Continue walking
-  });
+    // For now, always create a grant_once for each loop
+    // TODO: optimize nested loops to reuse parent's valid signal
+    Type i1_type = rewriter.getI1Type();
+    Value parent_valid = rewriter.create<neura::GrantOnceOp>(
+        loc, i1_type, /*value=*/Value(), /*constant_value=*/nullptr);
 
-  return top_for_op; // Return the found operation
-}
+    // Create loop_control operation
+    auto index_type = rewriter.getIndexType();
+    
+    auto loop_control = rewriter.create<neura::LoopControlOp>(
+        loc,
+        /*resultTypes=*/TypeRange{index_type, i1_type},
+        /*parentValid=*/parent_valid,
+        /*iterationType=*/rewriter.getStringAttr("increment"),
+        /*start=*/rewriter.getI64IntegerAttr(lower_bound),
+        /*end=*/rewriter.getI64IntegerAttr(upper_bound),
+        /*step=*/rewriter.getI64IntegerAttr(step));
+
+    Value loop_index = loop_control.getResult(0);
+    // Value loop_valid = loop_control.getResult(1);  // Will be used for nested loops
+
+    // Replace uses of the induction variable
+    for_op.getInductionVar().replaceAllUsesWith(loop_index);
+
+    // Inline the body operations before the for_op
+    Block &body_block = for_op.getRegion().front();
+    Operation *terminator = body_block.getTerminator();
+    rewriter.eraseOp(terminator);  // Remove affine.yield first
+    
+    rewriter.inlineBlockBefore(&body_block, for_op.getOperation(),
+                               body_block.getArguments());
+    
+    // Erase the for_op
+    rewriter.eraseOp(for_op);
+
+    return success();
+  }
+};
 
 struct LowerAffineToNeuraPass
     : public PassWrapper<LowerAffineToNeuraPass, OperationPass<ModuleOp>> {
@@ -351,38 +273,29 @@ struct LowerAffineToNeuraPass
   void runOnOperation() override {
     ModuleOp module_op = getOperation();
     MLIRContext *context = module_op.getContext();
-    IRMapping mapping;
-    module_op.walk(
-        [&](func::FuncOp func_op) {
-          if (func_op->hasAttr(mlir::accel::kAcceleratorAttr)) {
-            auto target = func_op->getAttrOfType<StringAttr>(
-                mlir::accel::kAcceleratorAttr);
-            if (target && target.getValue() == mlir::accel::kNeuraTarget) {
-              while (affine::AffineForOp outer_for_op =
-                         findOuterMostAffineFor(func_op)) {
-                llvm::errs()
-                    << "[affine2neura] Find outermost affine.for operation: "
-                    << outer_for_op << "\n";
-                OpBuilder builder(outer_for_op);
-                if (failed(lowerAffineFor(outer_for_op, builder, mapping))) {
-                  outer_for_op.emitError("[affine2neura] Failed to lower "
-                                         "outermost affine.for operation");
-                  signalPassFailure();
-                }
-              }
 
-              RewritePatternSet patterns(context);
-              patterns.add<AffineLoadLowering, AffineStoreLowering>(context);
+    module_op.walk([&](func::FuncOp func_op) {
+      // Check if function targets neura accelerator, or apply to all if no attribute
+      if (func_op->hasAttr(mlir::accel::kAcceleratorAttr)) {
+        auto target = func_op->getAttrOfType<StringAttr>(
+            mlir::accel::kAcceleratorAttr);
+        if (!target || target.getValue() != mlir::accel::kNeuraTarget) {
+          return;  // Skip this function
+        }
+      }
+      // If no accelerator attribute, apply the pass anyway (for testing)
+      
+      RewritePatternSet patterns(context);
+      patterns.add<AffineForLowering, AffineLoadLowering, 
+                   AffineStoreLowering, AffineApplyLowering>(context);
 
-              if (failed(applyPatternsGreedily(func_op.getOperation(),
-                                               std::move(patterns)))) {
-                func_op.emitError("[affine2neura] Failed to lower affine "
-                                    "operations to Neura dialect");
-                signalPassFailure();
-              }
-            }
-          }
-        });
+      if (failed(applyPatternsGreedily(func_op.getOperation(),
+                                       std::move(patterns)))) {
+        func_op.emitError("[affine2neura] Failed to lower affine "
+                          "operations to Neura dialect");
+        signalPassFailure();
+      }
+    });
   }
 };
 } // namespace
