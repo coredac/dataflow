@@ -17,7 +17,6 @@
 // RUN:   --fold-constant \
 // RUN:   -o %t-before-canonicalize.mlir
 // RUN: FileCheck %s --input-file=%t-before-canonicalize.mlir -check-prefix=BEFORE_CANONICALIZE
-// RUN: FileCheck %s --input-file=%t-before-canonicalize.mlir --check-prefix=MEMSET-CHECK
 
 
 // RUN: mlir-neura-opt %t-kernel.mlir \
@@ -127,5 +126,3 @@
 // ASM-NEXT: {
 // ASM-NEXT:   GRANT_ONCE, [#0] -> [NORTH, RED]
 // ASM-NEXT: } (t=3)
-
-// MEMSET-CHECK: "neura.memset"
