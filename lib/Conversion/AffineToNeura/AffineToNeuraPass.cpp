@@ -47,7 +47,7 @@ LogicalResult convertAffineMapToIndices(AffineMap map, ValueRange map_operands,
       IntegerAttr value_attr =
           rewriter.getIntegerAttr(index_type, const_expr.getValue());
       new_indices.push_back(rewriter.create<neura::ConstantOp>(
-          loc, index_type, value_attr, nullptr)); // nullptr is for predicated bit
+          loc, index_type, value_attr));
     } else if (AffineDimExpr dim_expr = dyn_cast<AffineDimExpr>(expr)) {
       if (dim_expr.getPosition() >= map.getNumDims() ||
           dim_expr.getPosition() >=
@@ -109,7 +109,7 @@ struct AffineLoadLowering : public OpRewritePattern<affine::AffineLoadOp> {
 
     // Create the neura.load_indexed operation
    LoadIndexedOp new_load_op = rewriter.create<neura::LoadIndexedOp>(
-        loc, load_op.getType(), memref, ValueRange{new_indices}, nullptr); // nullptr is for predicated bit
+        loc, load_op.getType(), memref, ValueRange{new_indices});
 
     rewriter.replaceOp(load_op, new_load_op.getResult());
     return success();
@@ -146,7 +146,7 @@ struct AffineStoreLowering : public OpRewritePattern<affine::AffineStoreOp> {
     }
 
     rewriter.create<neura::StoreIndexedOp>(loc, value, memref,
-                                           ValueRange{newIndices}, nullptr); // nullptr is for predicated bit
+                                           ValueRange{newIndices});
     rewriter.eraseOp(store_op);
     return success();
   }
@@ -160,6 +160,12 @@ struct AffineApplyLowering : public OpRewritePattern<affine::AffineApplyOp> {
     ValueRange operands = apply_op.getMapOperands();
     Location loc = apply_op.getLoc();
 
+    // AffineMap can have multiple results when used in affine.for or affine.if,
+    // but AffineApplyOp always has exactly one result.
+    // Example with multiple results (in affine.for context):
+    //   affine_map<(d0, d1) -> (d0 + 1, d1 * 2)>
+    // However, AffineApplyOp would use single-result maps like:
+    //   affine_map<(d0) -> (d0 + 1)>
     if (map.getNumResults() != 1) {
       return apply_op.emitError(
           "[affine2neura] AffineApplyOp must have a single result");
@@ -179,11 +185,9 @@ struct AffineApplyLowering : public OpRewritePattern<affine::AffineApplyOp> {
             neura::ConstantOp cstVal = rewriter.create<neura::ConstantOp>(
                 loc, rewriter.getIndexType(),
                 rewriter.getIntegerAttr(rewriter.getIndexType(),
-                                        cst.getValue()),
-                nullptr); // nullptr is for predicated bit
+                                        cst.getValue()));
             neura::AddOp addOp = rewriter.create<neura::AddOp>(
-                loc, cstVal.getType(), operands[dim.getPosition()], cstVal,
-                nullptr); // nullptr is for predicated bit
+                loc, cstVal.getType(), operands[dim.getPosition()], cstVal);
             rewriter.replaceOp(apply_op, addOp.getResult());
             return success();
           }
@@ -210,7 +214,7 @@ LogicalResult lowerAffineFor(affine::AffineForOp for_op, OpBuilder &builder,
   if (for_op.hasConstantLowerBound()) {
     int64_t lower_bound_constant = for_op.getConstantLowerBound();
     lower_bound_val = builder.create<neura::ConstantOp>(
-        loc, index_type, builder.getIndexAttr(lower_bound_constant), nullptr); // nullptr is for predicated bit
+        loc, index_type, builder.getIndexAttr(lower_bound_constant));
   } else {
     // If the lower bound is not constant, we need to use affine.apply
     affine::AffineBound lower_bound = for_op.getLowerBound();
@@ -224,7 +228,7 @@ LogicalResult lowerAffineFor(affine::AffineForOp for_op, OpBuilder &builder,
   if (for_op.hasConstantUpperBound()) {
     int64_t upper_bound_constant = for_op.getConstantUpperBound();
     upper_bound_val = builder.create<neura::ConstantOp>(
-        loc, index_type, builder.getIndexAttr(upper_bound_constant), nullptr); // nullptr is for predicated bit
+        loc, index_type, builder.getIndexAttr(upper_bound_constant));
   } else {
     // For non-constant upper bounds, we also use affine.apply
     affine::AffineBound upper_bound = for_op.getUpperBound();
@@ -235,7 +239,7 @@ LogicalResult lowerAffineFor(affine::AffineForOp for_op, OpBuilder &builder,
   }
 
   Value step_val = builder.create<neura::ConstantOp>(
-      loc, index_type, builder.getIndexAttr(for_op.getStepAsInt()), nullptr); // nullptr is for predicated bit
+      loc, index_type, builder.getIndexAttr(for_op.getStepAsInt()));
 
   // 2 Creates the block structure
   Block *origin_block = builder.getInsertionBlock();
