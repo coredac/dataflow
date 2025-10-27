@@ -80,6 +80,15 @@ def Neura_FSubOp: Op<NeuraDialect, "fsub"> {
   let traits = [SameOperandsAndResultElementType];
 }
 
+// Defines a floating-point negation operation.
+def Neura_FNegOp : Op<NeuraDialect, "fneg"> {
+  let summary = "Floating negation operation";
+  let opName = "fneg";
+  let arguments = (ins AnyType:$operand);
+  let results = (outs AnyType:$result);
+  let traits = [SameOperandsAndResultElementType];
+}
+
 // Defines a floating-point multiplication operation.
 def Neura_FMulOp : Op<NeuraDialect, "fmul"> {
   let summary = "Floating multiplication operation";
@@ -198,6 +207,21 @@ def Neura_StoreOp : Op<NeuraDialect, "store"> {
   let arguments = (ins AnyType:$value, Optional<AnyType>:$addr);
   let results = (outs);
   // let assemblyFormat = "$value `,` $addr `,` attr-dict";
+}
+
+// Defines a memset operation for setting a block of memory.
+def Neura_MemsetOp : Op<NeuraDialect, "memset"> {
+  let summary = "Memset operation that sets a block of memory to a value";
+  let description = [{
+    Sets len bytes of memory starting at dest to the given value.
+    This is a semantic operation that RTL can lower to appropriate hardware implementation.
+    Example:
+      neura.memset %dest, %value, %len {is_volatile = false} : !neura.data<ptr, i1>, i8, i64
+  }];
+  let arguments = (ins AnyType:$dest, AnyType:$value, AnyType:$len, 
+                   BoolAttr:$is_volatile);
+  let results = (outs);
+  // let assemblyFormat = "$dest `,` $value `,` $len attr-dict `:` type($dest) `,` type($value) `,` type($len)";
 }
 
 // Defines a load operation with integrated address calculation.

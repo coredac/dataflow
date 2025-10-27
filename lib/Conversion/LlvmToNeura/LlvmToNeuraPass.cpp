@@ -24,7 +24,7 @@ using namespace mlir;
 using namespace mlir::neura;
 
 namespace {
-// Lowers integer add from mlir.llvm.add to nuera.add. We provide the lowering
+// Lowers integer add from mlir.llvm.add to nuera.add. Provides the lowering
 // here instead of tablegen due to that mlir.llvm.add uses an EnumProperty
 // (IntegerOverflowFlags) defined via MLIR interfaces — which DRR cannot match
 // on or extract from.
@@ -123,9 +123,9 @@ struct LlvmSDivToNeuraDiv : public OpRewritePattern<LLVM::SDivOp> {
                                 PatternRewriter &rewriter) const override {
     Value lhs = op.getLhs();
     Value rhs = op.getRhs();
-    Type resultType = op.getType();
+    Type result_type = op.getType();
 
-    rewriter.replaceOpWithNewOp<neura::DivOp>(op, resultType, lhs, rhs);
+    rewriter.replaceOpWithNewOp<neura::DivOp>(op, result_type, lhs, rhs);
     return success();
   }
 };
@@ -137,10 +137,10 @@ struct LlvmSRemToNeuraRem : public OpRewritePattern<LLVM::SRemOp> {
                                 PatternRewriter &rewriter) const override {
     Value lhs = op.getLhs();
     Value rhs = op.getRhs();
-    Type resultType = op.getType();
+    Type result_type = op.getType();
 
-    // Create neura.rem operation to replace llvm.srem
-    rewriter.replaceOpWithNewOp<neura::RemOp>(op, resultType, lhs, rhs);
+    // Creates neura.rem operation to replace llvm.srem.
+    rewriter.replaceOpWithNewOp<neura::RemOp>(op, result_type, lhs, rhs);
     return success();
   }
 };
@@ -152,13 +152,13 @@ struct LlvmMaxNumToNeuraFMax : public OpRewritePattern<LLVM::MaxNumOp> {
                                 PatternRewriter &rewriter) const override {
     Value lhs = op->getOperand(0);
     Value rhs = op->getOperand(1);
-    Type resultType = op->getResult(0).getType();
+    Type result_type = op->getResult(0).getType();
 
     // Only matches scalar float.
-    if (!mlir::isa<FloatType>(resultType))
+    if (!mlir::isa<FloatType>(result_type))
       return failure();
 
-    rewriter.replaceOpWithNewOp<neura::FMaxOp>(op, resultType, lhs, rhs,
+    rewriter.replaceOpWithNewOp<neura::FMaxOp>(op, result_type, lhs, rhs,
                                                rewriter.getStringAttr("maxnum"));
     return success();
   }
@@ -171,13 +171,13 @@ struct LlvmMaximumToNeuraFMax : public OpRewritePattern<LLVM::MaximumOp> {
                                 PatternRewriter &rewriter) const override {
     Value lhs = op->getOperand(0);
     Value rhs = op->getOperand(1);
-    Type resultType = op->getResult(0).getType();
+    Type result_type = op->getResult(0).getType();
 
     // Only matches scalar float.
-    if (!mlir::isa<FloatType>(resultType))
+    if (!mlir::isa<FloatType>(result_type))
       return failure();
 
-    rewriter.replaceOpWithNewOp<neura::FMaxOp>(op, resultType, lhs, rhs,
+    rewriter.replaceOpWithNewOp<neura::FMaxOp>(op, result_type, lhs, rhs,
                                                rewriter.getStringAttr("maximum"));
     return success();
   }
@@ -190,13 +190,13 @@ struct LlvmMinNumToNeuraFMin : public OpRewritePattern<LLVM::MinNumOp> {
                                 PatternRewriter &rewriter) const override {
     Value lhs = op->getOperand(0);
     Value rhs = op->getOperand(1);
-    Type resultType = op->getResult(0).getType();
+    Type result_type = op->getResult(0).getType();
 
     // Only matches scalar float.
-    if (!mlir::isa<FloatType>(resultType))
+    if (!mlir::isa<FloatType>(result_type))
       return failure();
 
-    rewriter.replaceOpWithNewOp<neura::FMinOp>(op, resultType, lhs, rhs,
+    rewriter.replaceOpWithNewOp<neura::FMinOp>(op, result_type, lhs, rhs,
                                                rewriter.getStringAttr("minnum"));
     return success();
   }
@@ -209,13 +209,13 @@ struct LlvmMinimumToNeuraFMin : public OpRewritePattern<LLVM::MinimumOp> {
                                 PatternRewriter &rewriter) const override {
     Value lhs = op->getOperand(0);
     Value rhs = op->getOperand(1);
-    Type resultType = op->getResult(0).getType();
+    Type result_type = op->getResult(0).getType();
 
     // Only matches scalar float.
-    if (!mlir::isa<FloatType>(resultType))
+    if (!mlir::isa<FloatType>(result_type))
       return failure();
 
-    rewriter.replaceOpWithNewOp<neura::FMinOp>(op, resultType, lhs, rhs,
+    rewriter.replaceOpWithNewOp<neura::FMinOp>(op, result_type, lhs, rhs,
                                                rewriter.getStringAttr("minimum"));
     return success();
   }
@@ -286,6 +286,27 @@ struct LlvmFMulAddToNeuraFMulFAdd : public OpRewritePattern<mlir::LLVM::FMulAddO
       return failure();
 
     rewriter.replaceOpWithNewOp<neura::FMulFAddOp>(op, result_type, a, b, c);
+    return success();
+  }
+};
+
+// Handles LLVM intrinsic memset operations.
+struct LlvmMemsetToNeuraOps : public OpRewritePattern<LLVM::MemsetOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::MemsetOp op,
+                                PatternRewriter &rewriter) const override {
+    // Gets all operands: dest, value, len, is_volatile.
+    auto dest = op.getDst();
+    auto value = op.getVal();
+    auto len = op.getLen();
+    auto is_volatile = op.getIsVolatile();
+    
+    // Creates neura.memset operation with full semantics.
+    // Passes all operands to the hardware-specific operation.
+    // The RTL layer can implement this as appropriate for the target hardware.
+    rewriter.replaceOpWithNewOp<neura::MemsetOp>(op, dest, value, len, 
+                                                   is_volatile);
     return success();
   }
 };
@@ -366,15 +387,15 @@ struct LlvmVFAddToNeuraVFAdd : public OpRewritePattern<mlir::LLVM::FAddOp> {
   }
 };
 
-// Handles LLVM intrinsic operations like llvm.intr.vector.reduce.add
-// These are generic intrinsic calls, not specific op types
+// Handles LLVM intrinsic operations like llvm.intr.vector.reduce.add.
+// These are generic intrinsic calls, not specific op types.
 struct LlvmVectorReduceAddToNeuraVectorReduceAdd : public RewritePattern {
   LlvmVectorReduceAddToNeuraVectorReduceAdd(MLIRContext *context)
       : RewritePattern("llvm.intr.vector.reduce.add", 1, context) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
-    // Check that we have exactly one operand and one result
+    // Checks that we have exactly one operand and one result.
     if (op->getNumOperands() != 1 || op->getNumResults() != 1)
       return failure();
     
@@ -394,10 +415,10 @@ struct LlvmICmpToNeuraICmp : public OpRewritePattern<LLVM::ICmpOp> {
     auto pred = op.getPredicate();
     auto lhs = op.getLhs();
     auto rhs = op.getRhs();
-    auto resultType = op.getType();
+    auto result_type = op.getType();
 
     rewriter.replaceOpWithNewOp<neura::ICmpOp>(
-        op, resultType, lhs, rhs,
+        op, result_type, lhs, rhs,
         rewriter.getStringAttr(LLVM::stringifyICmpPredicate(pred)));
     return success();
   }
@@ -411,10 +432,10 @@ struct LlvmFCmpToNeuraFCmp : public OpRewritePattern<LLVM::FCmpOp> {
     auto pred = op.getPredicate();
     auto lhs = op.getLhs();
     auto rhs = op.getRhs();
-    auto resultType = op.getType();
+    auto result_type = op.getType();
 
     rewriter.replaceOpWithNewOp<neura::FCmpOp>(
-        op, resultType, lhs, rhs,
+        op, result_type, lhs, rhs,
         rewriter.getStringAttr(LLVM::stringifyFCmpPredicate(pred)));
     return success();
   }
@@ -426,26 +447,26 @@ struct LlvmGEPToNeuraGEP : public OpRewritePattern<mlir::LLVM::GEPOp> {
   LogicalResult matchAndRewrite(mlir::LLVM::GEPOp op,
                                 PatternRewriter &rewriter) const override {
     Value base = op.getBase();
-    SmallVector<Value> indexValues;
+    SmallVector<Value> index_values;
 
-    for (auto gepIndex : op.getIndices()) {
-      if (auto val = gepIndex.dyn_cast<Value>()) {
-        indexValues.push_back(val);
-      } else if (auto intAttr = gepIndex.dyn_cast<IntegerAttr>()) {
+    for (auto gep_index : op.getIndices()) {
+      if (auto val = gep_index.dyn_cast<Value>()) {
+        index_values.push_back(val);
+      } else if (auto int_attr = gep_index.dyn_cast<IntegerAttr>()) {
         // Creates constant operation state manually.
         OperationState state(op.getLoc(),
                              neura::ConstantOp::getOperationName());
-        state.addAttribute("value", intAttr);
+        state.addAttribute("value", int_attr);
         state.addTypes(rewriter.getIndexType());
         Value cst = rewriter.create(state)->getResult(0);
-        indexValues.push_back(cst);
+        index_values.push_back(cst);
       } else {
         return op.emitOpError("Unsupported GEP index kind");
       }
     }
 
     rewriter.replaceOpWithNewOp<neura::GEP>(op, op.getType(), base,
-                                            indexValues);
+                                            index_values);
     return success();
   }
 };
@@ -456,8 +477,8 @@ struct LlvmLoadToNeuraLoad : public OpRewritePattern<mlir::LLVM::LoadOp> {
   LogicalResult matchAndRewrite(mlir::LLVM::LoadOp op,
                                 PatternRewriter &rewriter) const override {
     Value ptr = op.getAddr(); // getPointer() is deprecated.
-    Type resultType = op.getResult().getType();
-    rewriter.replaceOpWithNewOp<neura::LoadOp>(op, resultType, ptr);
+    Type result_type = op.getResult().getType();
+    rewriter.replaceOpWithNewOp<neura::LoadOp>(op, result_type, ptr);
     return success();
   }
 };
@@ -479,25 +500,25 @@ struct LlvmCondBrToNeuraCondBr : public OpRewritePattern<LLVM::CondBrOp> {
   LogicalResult matchAndRewrite(LLVM::CondBrOp op,
                                 PatternRewriter &rewriter) const override {
     // Gets the source operation's successors (basic blocks).
-    Block *trueDest = op.getTrueDest();
-    Block *falseDest = op.getFalseDest();
+    Block *true_dest = op.getTrueDest();
+    Block *false_dest = op.getFalseDest();
 
     // Gets the operands for each destination.
-    ValueRange trueOperands = op.getTrueDestOperands();
-    ValueRange falseOperands = op.getFalseDestOperands();
+    ValueRange true_operands = op.getTrueDestOperands();
+    ValueRange false_operands = op.getFalseDestOperands();
 
     // Creates the new operation with proper successors.
-    auto newOp = rewriter.create<neura::CondBr>(
+    auto new_op = rewriter.create<neura::CondBr>(
         op.getLoc(),       // Location
         op.getCondition(), // Condition
-        trueOperands,      // True destination operands
-        falseOperands,     // False destination operands
-        trueDest,          // True destination block
-        falseDest          // False destination block
+        true_operands,      // True destination operands
+        false_operands,     // False destination operands
+        true_dest,          // True destination block
+        false_dest          // False destination block
     );
 
     // Replaces the old op with the new one.
-    rewriter.replaceOp(op, newOp->getResults());
+    rewriter.replaceOp(op, new_op->getResults());
 
     return success();
   }
@@ -510,10 +531,10 @@ struct LlvmBrToNeuraBr : public OpRewritePattern<LLVM::BrOp> {
                                 PatternRewriter &rewriter) const override {
     // Gets the destination block and its operands.
     Block *dest = op.getDest();
-    ValueRange destOperands = op.getDestOperands();
+    ValueRange dest_operands = op.getDestOperands();
 
     // Creates the new Neura_Br operation.
-    rewriter.replaceOpWithNewOp<neura::Br>(op, destOperands, dest);
+    rewriter.replaceOpWithNewOp<neura::Br>(op, dest_operands, dest);
 
     return success();
   }
@@ -529,6 +550,93 @@ struct LlvmReturnToNeuraReturn : public OpRewritePattern<LLVM::ReturnOp> {
   }
 };
 
+struct LlvmFNegToNeuraFNeg : public OpRewritePattern<LLVM::FNegOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::FNegOp op,
+                                PatternRewriter &rewriter) const override {
+    // Gets operand.
+    Value operand = op.getOperand();
+    Type result_type = op.getType();
+
+    // Replaces with neura.fneg operation.
+    rewriter.replaceOpWithNewOp<neura::FNegOp>(op, result_type, operand);
+    return success();
+  }
+};
+
+struct LlvmSubToNeuraSub : public OpRewritePattern<LLVM::SubOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::SubOp op,
+                                PatternRewriter &rewriter) const override {
+    // Gets operands.
+    Value lhs = op.getLhs();
+    Value rhs = op.getRhs();
+    Type result_type = op.getType();
+
+    // Replaces with neura.sub.
+    rewriter.replaceOpWithNewOp<neura::SubOp>(op, result_type, lhs, rhs);
+    return success();
+  }
+};
+
+// TODO: Implements LlvmXOrToNeuraOr. Used in ADPCM coder and FFT kernels.
+//       llvm.xor operations appear in:
+//       - adpcm_coder-kernel.mlir (line 104: %87 = llvm.xor %29, %19 : i1)
+//       - fft_kernel.mlir (line 19: %11 = llvm.xor %10, %3 : i32)
+//       Implementation: xor(a, b) = or(a, b) for boolean values.
+
+// TODO: Implements LlvmAndToNeuraMul. Used in ADPCM coder and MVT kernels.
+//       llvm.and operations appear in:
+//       - adpcm_coder-kernel.mlir (lines 55, 94: bitwise AND operations)
+//       - mvt-kernel.mlir (lines 44, 47, 50, 53: vector and scalar AND operations)
+//       Implementation: and(a, b) = mul(a, b) for boolean values.
+
+// TODO: Implements LlvmAllocaToNeuraOps. Used in DTW kernel.
+//       llvm.alloca operations appear in:
+//       - dtw-kernel-O0.mlir (lines 19-23: multiple stack allocations)
+//       Implementation: For CGRA, erases alloca or converts to register allocation.
+
+// TODO: Implements LlvmLShrToNeuraShl. Used in ADPCM coder/decoder and FFT kernels.
+//       llvm.lshr operations appear in:
+//       - adpcm_coder-kernel.mlir (line 54: %42 = llvm.lshr %40, %7 : i32)
+//       - adpcm_decoder-kernel.ll (line 35: %30 = lshr i32 %29, 4)
+//       - fft_kernel.mlir (line 67: %49 = llvm.lshr %7, %1 : i32)
+//       Implementation: Needs proper logical right shift (lshr(x,n) != shl(x,-n)).
+
+// TODO: Implements LlvmAShrToNeuraAShr. Used in ADPCM coder/decoder kernels.
+//       llvm.ashr operations appear in:
+//       - adpcm_coder-kernel.mlir (lines 57, 63, 70: multiple ashr operations)
+//       - adpcm_decoder-kernel.ll (lines 49, 56, 61: ashr i32 %20, 3/1/2)
+//       Implementation: Needs proper arithmetic right shift (preserves sign bit).
+
+
+struct LlvmSMaxToNeuraSMax : public OpRewritePattern<LLVM::SMaxOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::SMaxOp op,
+                                PatternRewriter &rewriter) const override {
+    // Gets operands.
+    Value lhs = op.getA();
+    Value rhs = op.getB();
+    Type result_type = op.getType();
+    Location loc = op.getLoc();
+
+    // Implements smax(a, b) = a >= b ? a : b.
+    auto cmp = rewriter.create<neura::ICmpOp>(loc, rewriter.getI1Type(), 
+                                             lhs, rhs,
+                                             rewriter.getStringAttr("sge"));
+    
+    // Selects: a >= b ? a : b.
+    rewriter.replaceOpWithNewOp<neura::SelOp>(op, result_type, cmp, lhs, rhs);
+    return success();
+  }
+};
+
+// TODO: Implements LlvmAbsToNeuraAbs. Used in ADPCM coder kernel.
+//       llvm.intr.abs operations appear in adpcm_coder-kernel.mlir.
+//       Implementation: abs(x) = x >= 0 ? x : -x (using ICmpOp + SelOp).
 
 struct FuncReturnToNeuraReturn : public OpRewritePattern<func::ReturnOp> {
   using OpRewritePattern::OpRewritePattern;
@@ -553,8 +661,8 @@ struct LlvmConstantToNeuraConstant : public OpRewritePattern<LLVM::ConstantOp> {
     state.addTypes(op.getType());
 
     // Creates the operation and replaces.
-    Operation *newOp = rewriter.create(state);
-    rewriter.replaceOp(op, newOp->getResults());
+    Operation *new_op = rewriter.create(state);
+    rewriter.replaceOp(op, new_op->getResults());
     return success();
   }
 };
@@ -565,13 +673,13 @@ struct LlvmAllocaToNeuraAlloca : public OpRewritePattern<LLVM::AllocaOp> {
   LogicalResult matchAndRewrite(LLVM::AllocaOp op,
                                 PatternRewriter &rewriter) const override {
     Value size = op.getArraySize();
-    Type resultType = op.getType();
+    Type result_type = op.getType();
 
     // Converts the size to neura.data<i32, i1> if it's not already.
     // Assumes the size is already in the right format.
     // Handles type conversion here.
 
-    rewriter.replaceOpWithNewOp<neura::AllocaOp>(op, resultType, size);
+    rewriter.replaceOpWithNewOp<neura::AllocaOp>(op, result_type, size);
     return success();
   }
 };
@@ -582,9 +690,9 @@ struct LlvmSExtToNeuraSExt : public OpRewritePattern<LLVM::SExtOp> {
   LogicalResult matchAndRewrite(LLVM::SExtOp op,
                                 PatternRewriter &rewriter) const override {
     Value input = op.getArg();
-    Type resultType = op.getType();
+    Type result_type = op.getType();
 
-    rewriter.replaceOpWithNewOp<neura::SExtOp>(op, resultType, input);
+    rewriter.replaceOpWithNewOp<neura::SExtOp>(op, result_type, input);
     return success();
   }
 };
@@ -595,9 +703,49 @@ struct LlvmZExtToNeuraZExt : public OpRewritePattern<LLVM::ZExtOp> {
   LogicalResult matchAndRewrite(LLVM::ZExtOp op,
                                 PatternRewriter &rewriter) const override {
     Value input = op.getArg();
-    Type resultType = op.getType();
+    Type result_type = op.getType();
 
-    rewriter.replaceOpWithNewOp<neura::ZExtOp>(op, resultType, input);
+    rewriter.replaceOpWithNewOp<neura::ZExtOp>(op, result_type, input);
+    return success();
+  }
+};
+
+struct LlvmTruncToNeuraCast : public OpRewritePattern<LLVM::TruncOp> {
+  using OpRewritePattern<LLVM::TruncOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::TruncOp op,
+                                PatternRewriter &rewriter) const override {
+    // Trunc is a simple cast operation.
+    auto result = rewriter.create<neura::CastOp>(
+        op.getLoc(), op.getType(), op.getArg(),
+        rewriter.getStringAttr("trunc"));
+    rewriter.replaceOp(op, result.getResult());
+    return success();
+  }
+};
+
+struct LlvmUDivToNeuraDiv : public OpRewritePattern<LLVM::UDivOp> {
+  using OpRewritePattern<LLVM::UDivOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::UDivOp op,
+                                PatternRewriter &rewriter) const override {
+    // UDiv is unsigned division.
+    auto result = rewriter.create<neura::DivOp>(
+        op.getLoc(), op.getType(), op.getLhs(), op.getRhs());
+    rewriter.replaceOp(op, result.getResult());
+    return success();
+  }
+};
+
+struct LlvmURemToNeuraRem : public OpRewritePattern<LLVM::URemOp> {
+  using OpRewritePattern<LLVM::URemOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::URemOp op,
+                                PatternRewriter &rewriter) const override {
+    // URem is unsigned remainder.
+    auto result = rewriter.create<neura::RemOp>(
+        op.getLoc(), op.getType(), op.getLhs(), op.getRhs());
+    rewriter.replaceOp(op, result.getResult());
     return success();
   }
 };
@@ -609,9 +757,9 @@ struct LlvmMulToNeuraMul : public OpRewritePattern<LLVM::MulOp> {
                                 PatternRewriter &rewriter) const override {
     Value lhs = op.getLhs();
     Value rhs = op.getRhs();
-    Type resultType = op.getType();
+    Type result_type = op.getType();
 
-    rewriter.replaceOpWithNewOp<neura::MulOp>(op, resultType, lhs, rhs);
+    rewriter.replaceOpWithNewOp<neura::MulOp>(op, result_type, lhs, rhs);
     return success();
   }
 };
@@ -623,9 +771,9 @@ struct LlvmShlToNeuraShl : public OpRewritePattern<LLVM::ShlOp> {
                                 PatternRewriter &rewriter) const override {
     Value lhs = op.getLhs();
     Value rhs = op.getRhs();
-    Type resultType = op.getType();
+    Type result_type = op.getType();
 
-    rewriter.replaceOpWithNewOp<neura::ShlOp>(op, resultType, lhs, rhs);
+    rewriter.replaceOpWithNewOp<neura::ShlOp>(op, result_type, lhs, rhs);
     return success();
   }
 };
@@ -642,15 +790,15 @@ struct LlvmFuncToNeuraFunc : public OpRewritePattern<LLVM::LLVMFuncOp> {
     }
 
     // Converts LLVMFunctionType to FunctionType.
-    auto llvmFuncType = op.getFunctionType();
-    auto funcType = rewriter.getFunctionType(llvmFuncType.getParams(),
-                                             llvmFuncType.getReturnType());
+    auto llvm_func_type = op.getFunctionType();
+    auto func_type = rewriter.getFunctionType(llvm_func_type.getParams(),
+                                             llvm_func_type.getReturnType());
 
     // Creates the new func.func operation using OperationState to have full
     // control.
     OperationState state(op.getLoc(), func::FuncOp::getOperationName());
     state.addAttribute("sym_name", rewriter.getStringAttr(op.getName()));
-    state.addAttribute("function_type", TypeAttr::get(funcType));
+    state.addAttribute("function_type", TypeAttr::get(func_type));
 
     // Copies ALL attributes from the original llvm.func exactly as they are.
     // Skips function type and name attributes as they are handled separately.
@@ -668,14 +816,14 @@ struct LlvmFuncToNeuraFunc : public OpRewritePattern<LLVM::LLVMFuncOp> {
     state.addRegion();
 
 
-    auto newFunc = cast<func::FuncOp>(rewriter.create(state));
+    auto new_func = cast<func::FuncOp>(rewriter.create(state));
 
     // Moves the function body.
-    rewriter.inlineRegionBefore(op.getBody(), newFunc.getBody(),
-                                newFunc.getBody().end());
+    rewriter.inlineRegionBefore(op.getBody(), new_func.getBody(),
+                                new_func.getBody().end());
 
     // Replaces the old function.
-    rewriter.replaceOp(op, newFunc);
+    rewriter.replaceOp(op, new_func);
     return success();
   }
 };
@@ -698,25 +846,25 @@ struct LlvmCallToFuncCall : public OpRewritePattern<LLVM::CallOp> {
     }
 
     // Looks for a func.func with the same name.
-    func::FuncOp funcOp = module.lookupSymbol<func::FuncOp>(callee.value());
-    if (!funcOp) {
+    func::FuncOp func_op = module.lookupSymbol<func::FuncOp>(callee.value());
+    if (!func_op) {
       return failure();
     }
 
     // Gets the result types from the function signature.
-    auto resultTypes = funcOp.getFunctionType().getResults();
+    auto result_types = func_op.getFunctionType().getResults();
 
 
     // Converts the call to func.call.
-    auto newCall = rewriter.create<func::CallOp>(
-        op.getLoc(), resultTypes, callee.value(), op.getArgOperands());
+    auto new_call = rewriter.create<func::CallOp>(
+        op.getLoc(), result_types, callee.value(), op.getArgOperands());
 
     // Replaces the old call with the new one.
     // Handles both cases: calls with results and calls without results.
     if (op.getNumResults() == 0) {
       rewriter.eraseOp(op);
     } else {
-      rewriter.replaceOp(op, newCall->getResults());
+      rewriter.replaceOp(op, new_call->getResults());
     }
 
     return success();
@@ -744,13 +892,13 @@ struct LowerLlvmToNeuraPass
     mlir::neura::llvm2neura::populateWithGenerated(patterns);
     patterns.add<LlvmConstantToNeuraConstant>(&getContext());
     // Vector operations must be registered before scalar operations
-    // to ensure vector types are matched first
+    // to ensure vector types are matched first.
     patterns.add<LlvmVMulToNeuraVMul>(&getContext());
     patterns.add<LlvmVAddToNeuraVAdd>(&getContext());
     patterns.add<LlvmVFMulToNeuraVFMul>(&getContext());
     patterns.add<LlvmVFAddToNeuraVFAdd>(&getContext());
     patterns.insert<LlvmVectorReduceAddToNeuraVectorReduceAdd>(&getContext());
-    // Scalar operations
+    // Scalar operations.
     patterns.add<LlvmAddToNeuraAdd>(&getContext());
     patterns.add<LlvmAndToNeuraAnd>(&getContext());
     patterns.add<LlvmOrToNeuraOr>(&getContext());
@@ -783,6 +931,22 @@ struct LowerLlvmToNeuraPass
     patterns.add<LlvmFPToSIToNeuraCast>(&getContext());
     patterns.add<LlvmFMulAddToNeuraFMulFAdd>(&getContext());
     patterns.add<LlvmSelectToNeuraSel>(&getContext());
+    patterns.add<LlvmMemsetToNeuraOps>(&getContext());
+    patterns.add<LlvmFNegToNeuraFNeg>(&getContext());
+    patterns.add<LlvmSubToNeuraSub>(&getContext());
+    patterns.add<LlvmTruncToNeuraCast>(&getContext());
+    patterns.add<LlvmUDivToNeuraDiv>(&getContext());
+    patterns.add<LlvmURemToNeuraRem>(&getContext());
+    patterns.add<LlvmSMaxToNeuraSMax>(&getContext());
+    // TODO: Adds more LLVM to Neura conversion patterns as needed.
+    // patterns.add<LlvmXOrToNeuraOr>(&getContext());     // TODO: Uses in ADPCM coder + FFT kernels.
+    // patterns.add<LlvmAndToNeuraMul>(&getContext());    // TODO: Uses in ADPCM coder + MVT kernels.
+    // patterns.add<LlvmAllocaToNeuraOps>(&getContext()); // TODO: Uses in DTW kernel.
+    // TODO: Fixes right shift implementations. Current implementations are incorrect.
+    // patterns.add<LlvmLShrToNeuraShl>(&getContext());  // TODO: Uses in ADPCM coder/decoder + FFT kernels.
+    // patterns.add<LlvmAShrToNeuraAShr>(&getContext()); // TODO: Uses in ADPCM coder/decoder kernels.
+    // patterns.add<LlvmAbsToNeuraAbs>(&getContext());   // TODO: Uses in ADPCM coder kernel.
+
 
     FrozenRewritePatternSet frozen(std::move(patterns));
 
