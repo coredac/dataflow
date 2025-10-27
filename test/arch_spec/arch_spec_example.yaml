@@ -1,72 +1,78 @@
 architecture:
-  name: "NeuraCGRA"
+  name: "NeuraMultiCgra"
   version: "1.0"
-  width: 4
-  height: 4
-  max_allowed_ii_by_hw: 20
+
+multi_cgra_defaults:
+  base_topology: "mesh"
+  rows: 2
+  columns: 2
+  memory:
+    capacity: 2048
+
+cgra_defaults:
+  rows: 4
+  columns: 4
+  ctrl_mem_items: 20
+  base_topology: "mesh"
+  memory:
+    banks: 4
 
 tile_defaults:
   num_registers: 128
-  default_ports: ["N", "S", "W", "E"]
   operations: ["add", "mul", "sub", "div", "rem", "fadd", "fmul", "fsub", "fdiv", "or", "not", "icmp", "fcmp", "sel", "cast", "sext", "zext", "shl", "vfmul", "fadd_fadd", "fmul_fadd", "data_mov", "ctrl_mov", "reserve", "grant_predicate", "grant_once", "grant_always", "loop_control", "phi", "constant"]  # comprehensive operation set
 
 link_defaults:
   latency: 1
   bandwidth: 32
 
-base_topology: "mesh"
-
 link_overrides:
-  - id: 1
+  - src_cgra_x: 0
+    src_cgra_y: 0
+    dst_cgra_x: 0
+    dst_cgra_y: 0
+    src_tile_x: 0
+    src_tile_y: 0
+    dst_tile_x: 1
+    dst_tile_y: 1
     latency: 2
     bandwidth: 32
-    src_tile_id: 0
-    dst_tile_id: 9
     existence: true
 
-  - id: 2
-    latency: 3
+  - src_cgra_x: 1
+    src_cgra_y: 0
+    dst_cgra_x: 1
+    dst_cgra_y: 0
+    src_tile_x: 1
+    src_tile_y: 1
+    dst_tile_x: 0
+    dst_tile_y: 0
+    latency: 2
     bandwidth: 32
-    src_tile_id: 0
-    dst_tile_id: 8
-    existence: true
-
-  - latency: 3
-    bandwidth: 32
-    src_tile_id: 0
-    dst_tile_id: 1
     existence: true
 
 tile_overrides:
-  - id: 0
-    x: 0
-    y: 0
+  - cgra_x: 0
+    cgra_y: 0
+    tile_x: 0
+    tile_y: 0
     operations: ["load"]
     num_registers: 32
-    ports: ["S", "E"]
+    existence: true
 
-  - id: 3
-    x: 3
-    y: 0
+  - cgra_x: 1
+    cgra_y: 0
+    tile_x: 3
+    tile_y: 0
     operations: ["store"]
     num_registers: 32
-    ports: ["W"]
+    existence: true
 
-  - id: 5
-    x: 1
-    y: 1
-    operations: ["add", "mul"]
+  - cgra_x: 1
+    cgra_y: 0
+    tile_x: 1
+    tile_y: 1
     num_registers: 32
-    memory:
-      capacity: 2048
-    ports: ["N", "S", "E", "W"]  # optional: matches defaults
-
-  - id: 6
-    x: 2
-    y: 1
-    operations: []
-    num_registers: 32
-    ports: ["E", "W"]
+    existence: false
 
 extensions:
   placeholder: false

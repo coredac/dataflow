@@ -369,22 +369,31 @@ struct LinkOverride;
 class Architecture {
 public:
   // Single constructor - handles all cases internally.
-  Architecture(int width, int height, 
-               const TileDefaults& tile_defaults,
-               const std::vector<TileOverride>& tile_overrides,
-               const LinkDefaults& link_defaults,
-               const std::vector<LinkOverride>& link_overrides,
-               BaseTopology base_topology = BaseTopology::MESH);
+  Architecture(int multi_cgra_rows,
+               int multi_cgra_columns,
+               BaseTopology multi_cgra_base_topology = BaseTopology::MESH,
+               int per_cgra_rows = 4,
+               int per_cgra_columns = 4,
+               BaseTopology per_cgra_base_topology = BaseTopology::MESH,
+               const TileDefaults& tile_defaults = TileDefaults(),
+               const std::vector<TileOverride>& tile_overrides = std::vector<TileOverride>(),
+               const LinkDefaults& link_defaults = LinkDefaults(),
+               const std::vector<LinkOverride>& link_overrides = std::vector<LinkOverride>());
 
   Tile *getTile(int id);
   Tile *getTile(int x, int y);
 
-  int getWidth() const { return width; }
-  int getHeight() const { return height; }
+  int getMultiCgraRows() const { return multi_cgra_rows_; }
+  int getMultiCgraColumns() const { return multi_cgra_columns_; }
+  int getPerCgraRows() const { return per_cgra_rows_; }
+  int getPerCgraColumns() const { return per_cgra_columns_; }
 
   Link *getLink(int id);
+  Link *getLink(int src_tile_x, int src_tile_y, int dst_tile_x, int dst_tile_y);
   void removeLink(int link_id);
-  
+  void removeLink(Tile *src_tile, Tile *dst_tile);
+  void removeLink(int src_tile_x, int src_tile_y, int dst_tile_x, int dst_tile_y);
+
   // Tile management.
   void removeTile(int tile_id);
 
@@ -394,7 +403,7 @@ public:
 
 private:
   // Helper methods for constructor initialization.
-  void initializeTiles(int width, int height);
+  void initializeTiles(int rows, int columns);
   void configureDefaultTileSettings(const TileDefaults& tile_defaults);
   void applyTileOverrides(const std::vector<TileOverride>& tile_overrides);
   void createLinks(const LinkDefaults& link_defaults, BaseTopology base_topology);
@@ -412,13 +421,15 @@ private:
 
   // Architecture components: tiles, links, and their mappings.
   // Ports and memory are now modeled as part of Tile class.
-  std::map<int, std::unique_ptr<Tile>> tile_storage;  // Owns tiles, key is unique tile_id.
-  std::map<int, std::unique_ptr<Link>> link_storage;  // Owns links, key is unique link_id.
-  std::unordered_map<int, Tile *> id_to_tile;  // Maps unique tile_id to Tile pointer.
-  std::unordered_map<std::pair<int, int>, Tile *, PairHash> coord_to_tile;  // Maps (x,y) coordinates to Tile pointer.
+  std::map<int, std::unique_ptr<Tile>> tile_storage_;  // Owns tiles, key is unique tile_id.
+  std::map<int, std::unique_ptr<Link>> link_storage_;  // Owns links, key is unique link_id.
+  std::unordered_map<int, Tile *> id_to_tile_;  // Maps unique tile_id to Tile pointer.
+  std::unordered_map<std::pair<int, int>, Tile *, PairHash> coord_to_tile_;  // Maps (x,y) coordinates to Tile pointer.
 
-  int width;
-  int height;
+  int multi_cgra_rows_;
+  int multi_cgra_columns_;
+  int per_cgra_rows_;
+  int per_cgra_columns_;
 };
 
 } // namespace neura

@@ -129,7 +129,7 @@ struct FuseGepLoadPattern : public OpRewritePattern<neura::LoadOp> {
 
     // Creates the fused operation with base and indices from gep.
     SmallVector<Value> indexValues;
-    for (auto gepIndex : gep_op.getIndicesAndPredicate()) {
+    for (auto gepIndex : gep_op.getIndices()) {
       indexValues.push_back(gepIndex);
     }
     
@@ -161,7 +161,7 @@ struct FuseGepStorePattern : public OpRewritePattern<neura::StoreOp> {
 
     // Creates the fused operation with base and indices from gep.
     SmallVector<Value> indexValues;
-    for (auto gepIndex : gep_op.getIndicesAndPredicate()) {
+    for (auto gepIndex : gep_op.getIndices()) {
       indexValues.push_back(gepIndex);
     }
     

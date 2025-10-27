@@ -162,9 +162,9 @@ struct Topology {
   DenseMap<int, std::pair<int,int>> tile_location;  // tileId -> (x,y).
   DenseMap<std::pair<int,int>, int> coord_to_tile;  // (x,y) -> tileId.
 
-  StringRef getDirBetween(int srcTid, int dstTid) const {
-    auto [src_x, src_y] = tile_location.lookup(srcTid);
-    auto [dst_x, dst_y] = tile_location.lookup(dstTid);
+  StringRef getDirBetween(int src_tile_id, int dst_tile_id) const {
+    auto [src_x, src_y] = tile_location.lookup(src_tile_id);
+    auto [dst_x, dst_y] = tile_location.lookup(dst_tile_id);
     int dc = dst_x - src_x, dr = dst_y - src_y;
     if (dc == 1 && dr == 0) return "EAST";
     if (dc == -1 && dr == 0) return "WEST";
@@ -192,19 +192,24 @@ struct Topology {
   }
 };
 
-static Topology getTopologyFromArchitecture(int columns, int rows) {
+static Topology getTopologyFromArchitecture(int per_cgra_rows, int per_cgra_columns) {
   Topology topo;
-  mlir::neura::Architecture arch(columns, rows, mlir::neura::TileDefaults{}, 
-                                 std::vector<mlir::neura::TileOverride>{}, 
-                                 mlir::neura::LinkDefaults{}, 
-                                 std::vector<mlir::neura::LinkOverride>{},
-                                 mlir::neura::BaseTopology::MESH);
+  mlir::neura::Architecture architecture(1,
+                                         1,
+                                         mlir::neura::BaseTopology::MESH,
+                                         per_cgra_rows,
+                                         per_cgra_columns,
+                                         mlir::neura::BaseTopology::MESH,
+                                         mlir::neura::TileDefaults{},
+                                         std::vector<mlir::neura::TileOverride>{},
+                                         mlir::neura::LinkDefaults{},
+                                         std::vector<mlir::neura::LinkOverride>{});
 
-  for (auto *tile : arch.getAllTiles()) {
+  for (auto *tile : architecture.getAllTiles()) {
     topo.tile_location[tile->getId()] = {tile->getX(), tile->getY()};
     topo.coord_to_tile[{tile->getX(), tile->getY()}] = tile->getId();
   }
-  for (auto *link : arch.getAllLinks()) {
+  for (auto *link : architecture.getAllLinks()) {
     auto *src_tile = link->getSrcTile();
     auto *dst_tile = link->getDstTile();
     topo.link_ends[link->getId()] = {src_tile->getId(), dst_tile->getId()};

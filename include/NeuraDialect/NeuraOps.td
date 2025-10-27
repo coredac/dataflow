@@ -84,7 +84,7 @@ def Neura_FSubOp: Op<NeuraDialect, "fsub"> {
 def Neura_FMulOp : Op<NeuraDialect, "fmul"> {
   let summary = "Floating multiplication operation";
   let opName = "fmul";
-  let arguments = (ins AnyType:$lhs, AnyType:$rhs);
+  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs);
   let results = (outs AnyType:$result);
   // let assemblyFormat = "$lhs `,` $rhs `,` attr-dict `:` type($result)";
   // let traits = [SameOperandsAndResultElementType];
@@ -92,16 +92,65 @@ def Neura_FMulOp : Op<NeuraDialect, "fmul"> {
 
 def Neura_FDivOp : Op<NeuraDialect, "fdiv"> {
   let summary = "Floating division operation";
-  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs);
+  let description = [{
+    Performs a floating-point division operation, computing the result of
+    a / b, where / is the floating-point division operator.
+
+    Example:
+      %result = neura.fdiv %a, %b : f32
+  }];
+  let arguments = (ins AnyType:$lhs, AnyType:$rhs);
   let results = (outs AnyType:$result);
-  // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
+  let traits = [SameOperandsAndResultElementType];
+}
+
+// Defines a floating-point maximum operation.
+def Neura_FMaxOp : Op<NeuraDialect, "fmax"> {
+  let summary = "Floating-point maximum operation";
+  let description = [{
+    Returns the maximum of two floating-point values.
+    Supports two NaN propagation semantics:
+    - "maxnum": Returns non-NaN value when one operand is NaN (llvm.maxnum)
+    - "maximum": Propagates NaN when any operand is NaN (llvm.maximum)
+    
+    Example:
+      %result = neura.fmax<"maxnum">(%a, %b : f32) : f32 -> f32
+      %result = neura.fmax<"maximum">(%a, %b : f32) : f32 -> f32
+  }];
+  let opName = "fmax";
+  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs, 
+                   DefaultValuedAttr<StrAttr, "\"maxnum\"">:$nan_semantic);
+  let results = (outs AnyType:$result);
+  let traits = [SameOperandsAndResultElementType];
+  let assemblyFormat = "`<` $nan_semantic `>` `(` $lhs (`,` $rhs^ `:` type($rhs))? `)` attr-dict `:` type($lhs) `->` type($result)";
+}
+
+// Defines a floating-point minimum operation.
+def Neura_FMinOp : Op<NeuraDialect, "fmin"> {
+  let summary = "Floating-point minimum operation";
+  let description = [{
+    Returns the minimum of two floating-point values.
+    Supports two NaN propagation semantics:
+    - "minnum": Returns non-NaN value when one operand is NaN (llvm.minnum)
+    - "minimum": Propagates NaN when any operand is NaN (llvm.minimum)
+    
+    Example:
+      %result = neura.fmin<"minnum">(%a, %b : f32) : f32 -> f32
+      %result = neura.fmin<"minimum">(%a, %b : f32) : f32 -> f32
+  }];
+  let opName = "fmin";
+  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs,
+                   DefaultValuedAttr<StrAttr, "\"minnum\"">:$nan_semantic);
+  let results = (outs AnyType:$result);
+  let traits = [SameOperandsAndResultElementType];
+  let assemblyFormat = "`<` $nan_semantic `>` `(` $lhs (`,` $rhs^ `:` type($rhs))? `)` attr-dict `:` type($lhs) `->` type($result)";
 }
 
 // Defines a bitwise OR operation.
 def Neura_OrOp : Op<NeuraDialect, "or"> {
   let summary = "Bitwise OR operation";
-  let arguments = (ins AnySignlessInteger:$lhs, AnySignlessInteger:$rhs);
-  let results = (outs AnySignlessInteger:$result);
+  let arguments = (ins AnyType:$lhs, AnyType:$rhs);
+  let results = (outs AnyType:$result);
   // let assemblyFormat = "$lhs `,` $rhs `,` attr-dict `:` type($result)";
   let traits = [SameOperandsAndResultElementType];
 }
@@ -138,13 +187,13 @@ def Neura_LoadOp : Op<NeuraDialect, "load"> {
 
 // Defines a store operation.
 def Neura_StoreOp : Op<NeuraDialect, "store"> {
-  let arguments = (ins AnyType:$value, AnyType:$addr);
+  let arguments = (ins AnyType:$value, Optional<AnyType>:$addr);
   let results = (outs);
   // let assemblyFormat = "$value `,` $addr `,` attr-dict";
 }
 
 // Defines a load operation with integrated address calculation.
-def Neura_LoadIndexedOp: Op<NeuraDialect, "load_indexed">{
+def Neura_LoadIndexedOp: Op<NeuraDialect, "load_indexed", [AttrSizedOperandSegments]>{
   let summary = "Load with integrated address calculation for multi-dimensional arrays";
   let description = [{
     Calculates the address using the base address and indices.
@@ -152,13 +201,13 @@ def Neura_LoadIndexedOp: Op<NeuraDialect, "load_indexed">{
     Example:
       %value = neura.load_indexed %base [%arg1, %arg2] : f32
   }];
-  let arguments = (ins AnyType:$base, Variadic<AnyType>:$indices);
+  let arguments = (ins Optional<AnyType>:$base, Variadic<AnyType>:$indices);
   let results = (outs AnyType:$result);
   let assemblyFormat = "$base `[` $indices `:` type($indices) `]` type($base) attr-dict `:` type($result)";
 }
 
 //Defines a store operation with integrated address calculation.
-def Neura_StoreIndexedOp: Op<NeuraDialect, "store_indexed"> {
+def Neura_StoreIndexedOp: Op<NeuraDialect, "store_indexed", [AttrSizedOperandSegments]> {
   let summary = "Store with integrated address calculation for multi-dimensional arrays";
   let description = [{
     Calculates the address using the base address and indices.
@@ -166,17 +215,17 @@ def Neura_StoreIndexedOp: Op<NeuraDialect, "store_indexed"> {
     Example:
       neura.store_indexed %value, %base [%arg1, %arg2] : f32
   }];
-  let arguments = (ins AnyType:$value, AnyType:$base, Variadic<AnyType>:$indices);
+  let arguments = (ins AnyType:$value, Optional<AnyType>:$base, Variadic<AnyType>:$indices);
   let results = (outs);
   let assemblyFormat = "$value `to` $base `[` $indices `:` type($indices) `]` type($base) attr-dict `:` type($value)";
 }
 
 // Defines a pointer computation operation.
-def Neura_GEP : Op<NeuraDialect, "gep"> {
+def Neura_GEP : Op<NeuraDialect, "gep", [AttrSizedOperandSegments]> {
   let summary = "Pointer computation using offset indices";
-  let arguments = (ins AnyType:$base, Variadic<AnyType>:$indicesAndPredicate);
+  let arguments = (ins Optional<AnyType>:$base, Variadic<AnyType>:$indices);
   let results = (outs AnyType:$result);
-  // let assemblyFormat = "$base `[` $indicesAndPredicate `]` `,` $predicate attr-dict";
+  // let assemblyFormat = "$base `[` $indices `]` `,` $predicate attr-dict";
 }
 
 // Defines a conditional branch operation.
@@ -286,23 +335,56 @@ def Neura_ShlOp : Op<NeuraDialect, "shl"> {
 // ----------------------------------------------------
 // Defines vector operations.
 
-def VectorOfAnyFloat :
-  TypeConstraint<
-    CPred<
-      "mlir::isa<::mlir::VectorType>($_self) && "
-      "mlir::isa<::mlir::FloatType>(mlir::cast<::mlir::VectorType>($_self).getElementType())"
-    >,
-    "vector of floats"
-  >;
-
 // Defines a vector multiplication operation.
 def Neura_VFMulOp : Op<NeuraDialect, "vfmul"> {
   let summary = "Vector floating multiplication operation";
   let opName = "vfmul";
-  let arguments = (ins VectorOfAnyFloat:$lhs, VectorOfAnyFloat:$rhs);
-  let results = (outs VectorOfAnyFloat:$result);
+  let arguments = (ins AnyType:$lhs, AnyType:$rhs);
+  let results = (outs AnyType:$result);
   // let assemblyFormat = "$lhs `,` $rhs `,` attr-dict `:` type($result)";
   let traits = [SameOperandsAndResultElementType];
+}
+
+// Defines a vector integer multiplication operation.
+def Neura_VMulOp : Op<NeuraDialect, "vmul"> {
+  let summary = "Vector integer multiplication operation";
+  let opName = "vmul";
+  let arguments = (ins AnyType:$lhs, AnyType:$rhs);
+  let results = (outs AnyType:$result);
+  let traits = [SameOperandsAndResultElementType];
+}
+
+// Defines a vector integer addition operation.
+def Neura_VAddOp : Op<NeuraDialect, "vadd"> {
+  let summary = "Vector integer addition operation";
+  let opName = "vadd";
+  let arguments = (ins AnyType:$lhs, AnyType:$rhs);
+  let results = (outs AnyType:$result);
+  let traits = [SameOperandsAndResultElementType];
+}
+
+// Defines a vector floating addition operation.
+def Neura_VFAddOp : Op<NeuraDialect, "vfadd"> {
+  let summary = "Vector floating addition operation";
+  let opName = "vfadd";
+  let arguments = (ins AnyType:$lhs, AnyType:$rhs);
+  let results = (outs AnyType:$result);
+  let traits = [SameOperandsAndResultElementType];
+}
+
+// Defines a vector reduction add operation (reduces vector to scalar).
+def Neura_VectorReduceAddOp : Op<NeuraDialect, "vector.reduce.add"> {
+  let summary = "Vector reduction add operation - reduces vector to scalar by summing elements";
+  let description = [{
+    Reduces a vector to a scalar by summing all elements.
+    Similar to llvm.intr.vector.reduce.add.
+    
+    Example:
+      %sum = neura.vector.reduce.add %vec : vector<4xi32> -> i32
+  }];
+  let opName = "vector.reduce.add";
+  let arguments = (ins AnyType:$input);
+  let results = (outs AnyType:$result);
 }
 
 // ----------------------------------------------------

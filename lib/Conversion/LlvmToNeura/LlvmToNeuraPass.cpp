@@ -134,6 +134,134 @@ struct LlvmSRemToNeuraRem : public OpRewritePattern<LLVM::SRemOp> {
   }
 };
 
+struct LlvmMaxNumToNeuraFMax : public OpRewritePattern<LLVM::MaxNumOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::MaxNumOp op,
+                                PatternRewriter &rewriter) const override {
+    Value lhs = op->getOperand(0);
+    Value rhs = op->getOperand(1);
+    Type resultType = op->getResult(0).getType();
+
+    // Only matches scalar float.
+    if (!mlir::isa<FloatType>(resultType))
+      return failure();
+
+    rewriter.replaceOpWithNewOp<neura::FMaxOp>(op, resultType, lhs, rhs,
+                                               rewriter.getStringAttr("maxnum"));
+    return success();
+  }
+};
+
+struct LlvmMaximumToNeuraFMax : public OpRewritePattern<LLVM::MaximumOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::MaximumOp op,
+                                PatternRewriter &rewriter) const override {
+    Value lhs = op->getOperand(0);
+    Value rhs = op->getOperand(1);
+    Type resultType = op->getResult(0).getType();
+
+    // Only matches scalar float.
+    if (!mlir::isa<FloatType>(resultType))
+      return failure();
+
+    rewriter.replaceOpWithNewOp<neura::FMaxOp>(op, resultType, lhs, rhs,
+                                               rewriter.getStringAttr("maximum"));
+    return success();
+  }
+};
+
+struct LlvmMinNumToNeuraFMin : public OpRewritePattern<LLVM::MinNumOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::MinNumOp op,
+                                PatternRewriter &rewriter) const override {
+    Value lhs = op->getOperand(0);
+    Value rhs = op->getOperand(1);
+    Type resultType = op->getResult(0).getType();
+
+    // Only matches scalar float.
+    if (!mlir::isa<FloatType>(resultType))
+      return failure();
+
+    rewriter.replaceOpWithNewOp<neura::FMinOp>(op, resultType, lhs, rhs,
+                                               rewriter.getStringAttr("minnum"));
+    return success();
+  }
+};
+
+struct LlvmMinimumToNeuraFMin : public OpRewritePattern<LLVM::MinimumOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::MinimumOp op,
+                                PatternRewriter &rewriter) const override {
+    Value lhs = op->getOperand(0);
+    Value rhs = op->getOperand(1);
+    Type resultType = op->getResult(0).getType();
+
+    // Only matches scalar float.
+    if (!mlir::isa<FloatType>(resultType))
+      return failure();
+
+    rewriter.replaceOpWithNewOp<neura::FMinOp>(op, resultType, lhs, rhs,
+                                               rewriter.getStringAttr("minimum"));
+    return success();
+  }
+};
+
+struct LlvmFDivToNeuraFDiv : public OpRewritePattern<mlir::LLVM::FDivOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mlir::LLVM::FDivOp op,
+                                PatternRewriter &rewriter) const override {
+    Value lhs = op->getOperand(0);
+    Value rhs = op->getOperand(1);
+    Type result_type = op->getResult(0).getType();
+
+    // Only matches scalar float.
+    if (!mlir::isa<FloatType>(result_type))
+      return failure();
+
+    rewriter.replaceOpWithNewOp<neura::FDivOp>(op, result_type, lhs, rhs);
+    return success();
+  }
+};
+
+struct LlvmFPToSIToNeuraCast : public OpRewritePattern<mlir::LLVM::FPToSIOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mlir::LLVM::FPToSIOp op,
+                                PatternRewriter &rewriter) const override {
+    Value input = op.getArg();
+    Type result_type = op.getType();
+
+    // Creates a cast operation with "fptosi" as the cast type.
+    rewriter.replaceOpWithNewOp<neura::CastOp>(op, result_type, input, 
+                                               rewriter.getStringAttr("fptosi"));
+    return success();
+  }
+};
+
+struct LlvmFMulAddToNeuraFMulFAdd : public OpRewritePattern<mlir::LLVM::FMulAddOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mlir::LLVM::FMulAddOp op,
+                                PatternRewriter &rewriter) const override {
+    Value a = op->getOperand(0);
+    Value b = op->getOperand(1);
+    Value c = op->getOperand(2);
+    Type result_type = op->getResult(0).getType();
+
+    // Only matches scalar float.
+    if (!mlir::isa<FloatType>(result_type))
+      return failure();
+
+    rewriter.replaceOpWithNewOp<neura::FMulFAddOp>(op, result_type, a, b, c);
+    return success();
+  }
+};
+
 struct LlvmVFMulToNeuraVFMul : public OpRewritePattern<mlir::LLVM::FMulOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -144,11 +272,88 @@ struct LlvmVFMulToNeuraVFMul : public OpRewritePattern<mlir::LLVM::FMulOp> {
     Type result_type = op->getResult(0).getType();
 
     // Only matches vector<xf32>.
-    auto vecTy = mlir::dyn_cast<VectorType>(result_type);
-    if (!vecTy || !mlir::isa<FloatType>(vecTy.getElementType()))
+    auto vec_type = mlir::dyn_cast<VectorType>(result_type);
+    if (!vec_type || !mlir::isa<FloatType>(vec_type.getElementType()))
       return failure();
 
     rewriter.replaceOpWithNewOp<neura::VFMulOp>(op, result_type, lhs, rhs);
+    return success();
+  }
+};
+
+struct LlvmVMulToNeuraVMul : public OpRewritePattern<mlir::LLVM::MulOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mlir::LLVM::MulOp op,
+                                PatternRewriter &rewriter) const override {
+    Value lhs = op->getOperand(0);
+    Value rhs = op->getOperand(1);
+    Type result_type = op->getResult(0).getType();
+
+    // Only matches vector<xInt>.
+    auto vec_type = mlir::dyn_cast<VectorType>(result_type);
+    if (!vec_type || !mlir::isa<IntegerType>(vec_type.getElementType()))
+      return failure();
+
+    rewriter.replaceOpWithNewOp<neura::VMulOp>(op, result_type, lhs, rhs);
+    return success();
+  }
+};
+
+struct LlvmVAddToNeuraVAdd : public OpRewritePattern<mlir::LLVM::AddOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mlir::LLVM::AddOp op,
+                                PatternRewriter &rewriter) const override {
+    Value lhs = op->getOperand(0);
+    Value rhs = op->getOperand(1);
+    Type result_type = op->getResult(0).getType();
+
+    // Only matches vector<xInt>.
+    auto vec_type = mlir::dyn_cast<VectorType>(result_type);
+    if (!vec_type || !mlir::isa<IntegerType>(vec_type.getElementType()))
+      return failure();
+
+    rewriter.replaceOpWithNewOp<neura::VAddOp>(op, result_type, lhs, rhs);
+    return success();
+  }
+};
+
+struct LlvmVFAddToNeuraVFAdd : public OpRewritePattern<mlir::LLVM::FAddOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mlir::LLVM::FAddOp op,
+                                PatternRewriter &rewriter) const override {
+    Value lhs = op->getOperand(0);
+    Value rhs = op->getOperand(1);
+    Type result_type = op->getResult(0).getType();
+
+    // Only matches vector<xf32>.
+    auto vec_type = mlir::dyn_cast<VectorType>(result_type);
+    if (!vec_type || !mlir::isa<FloatType>(vec_type.getElementType()))
+      return failure();
+
+    rewriter.replaceOpWithNewOp<neura::VFAddOp>(op, result_type, lhs, rhs);
+    return success();
+  }
+};
+
+// Handles LLVM intrinsic operations like llvm.intr.vector.reduce.add
+// These are generic intrinsic calls, not specific op types
+struct LlvmVectorReduceAddToNeuraVectorReduceAdd : public RewritePattern {
+  LlvmVectorReduceAddToNeuraVectorReduceAdd(MLIRContext *context)
+      : RewritePattern("llvm.intr.vector.reduce.add", 1, context) {}
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    // Check that we have exactly one operand and one result
+    if (op->getNumOperands() != 1 || op->getNumResults() != 1)
+      return failure();
+    
+    Value input = op->getOperand(0);
+    Type result_type = op->getResult(0).getType();
+
+    rewriter.replaceOpWithNewOp<neura::VectorReduceAddOp>(op, result_type, input);
     return success();
   }
 };
@@ -509,11 +714,18 @@ struct LowerLlvmToNeuraPass
     // Adds DRR patterns.
     mlir::neura::llvm2neura::populateWithGenerated(patterns);
     patterns.add<LlvmConstantToNeuraConstant>(&getContext());
+    // Vector operations must be registered before scalar operations
+    // to ensure vector types are matched first
+    patterns.add<LlvmVMulToNeuraVMul>(&getContext());
+    patterns.add<LlvmVAddToNeuraVAdd>(&getContext());
+    patterns.add<LlvmVFMulToNeuraVFMul>(&getContext());
+    patterns.add<LlvmVFAddToNeuraVFAdd>(&getContext());
+    patterns.insert<LlvmVectorReduceAddToNeuraVectorReduceAdd>(&getContext());
+    // Scalar operations
     patterns.add<LlvmAddToNeuraAdd>(&getContext());
     patterns.add<LlvmOrToNeuraOr>(&getContext());
     patterns.add<LlvmFAddToNeuraFAdd>(&getContext());
     patterns.add<LlvmFMulToNeuraFMul>(&getContext());
-    patterns.add<LlvmVFMulToNeuraVFMul>(&getContext());
     patterns.add<LlvmICmpToNeuraICmp>(&getContext());
     patterns.add<LlvmFCmpToNeuraFCmp>(&getContext());
     patterns.add<LlvmGEPToNeuraGEP>(&getContext());
@@ -533,6 +745,13 @@ struct LowerLlvmToNeuraPass
     patterns.add<LlvmShlToNeuraShl>(&getContext());
     patterns.add<LlvmSDivToNeuraDiv>(&getContext());
     patterns.add<LlvmSRemToNeuraRem>(&getContext());
+    patterns.add<LlvmMaxNumToNeuraFMax>(&getContext());
+    patterns.add<LlvmMaximumToNeuraFMax>(&getContext());
+    patterns.add<LlvmMinNumToNeuraFMin>(&getContext());
+    patterns.add<LlvmMinimumToNeuraFMin>(&getContext());
+    patterns.add<LlvmFDivToNeuraFDiv>(&getContext());
+    patterns.add<LlvmFPToSIToNeuraCast>(&getContext());
+    patterns.add<LlvmFMulAddToNeuraFMulFAdd>(&getContext());
 
     FrozenRewritePatternSet frozen(std::move(patterns));
 
