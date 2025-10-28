@@ -30,97 +30,49 @@ struct DirectDataflowLiveIn {
   Block *using_block;
 };
 
-bool isIfElseMergePattern(Block *condition_block, Block *merge_block,
-                          DominanceInfo &dom_info,
-                          PostDominanceInfo &post_dom_info) {
-  // 1. condition_block must dominate merge_block.
-  if (!dom_info.dominates(condition_block, merge_block)) {
-    return false;
-  }
-
-  // 2. merge_block must post-dominate condition_block.
-  if (!post_dom_info.postDominates(merge_block, condition_block)) {
-    return false;
-  }
-
-  // 3. condition_block must end with a conditional branch to two distinct
-  // blocks, both of which must eventually lead to merge_block.
-  Operation *term_op = condition_block->getTerminator();
-  neura::CondBr cond_br_op = dyn_cast<neura::CondBr>(term_op);
-  if (!cond_br_op) {
-    return false;
-  }
-
-  // 4. merge_block must have at least two predecessors: the true and false
-  // branches from condition_block.
-  if (std::distance(merge_block->pred_begin(), merge_block->pred_end()) < 2) {
-    return false;
-  }
-
-  // 5. Validates that both branches from condition_block can reach merge_block.
-  Block *true_dest = cond_br_op.getTrueDest();
-  Block *false_dest = cond_br_op.getFalseDest();
-
-  bool true_dest_reaches_merge = (true_dest == merge_block);
-  if (!true_dest_reaches_merge) {
-    for (Block *pred : merge_block->getPredecessors()) {
-      if (pred == true_dest || dom_info.dominates(true_dest, pred)) {
-        true_dest_reaches_merge = true;
-        break;
-      }
-    }
-  }
-
-  bool false_dest_reaches_merge = (false_dest == merge_block);
-  if (!false_dest_reaches_merge) {
-    for (Block *pred : merge_block->getPredecessors()) {
-      if (pred == false_dest || dom_info.dominates(false_dest, pred)) {
-        false_dest_reaches_merge = true;
-        break;
-      }
-    }
-  }
-
-  return true_dest_reaches_merge && false_dest_reaches_merge;
-}
-
 bool pathsCrossConditionalBranch(Block *defining_block, Block *using_block,
                                  DominanceInfo &dom_info,
                                  PostDominanceInfo &post_dom_info) {
+
   // 1. defining_block must dominate using_block.
-  // 这保证了从函数入口到using_block的所有路径都经过defining_block
+  // This ensures that all paths to using_block go through defining_block.
   if (!dom_info.dominates(defining_block, using_block)) {
     return false;
   }
 
-  // 2. using_block必须后支配defining_block
-  // 这保证了从defining_block出发的所有路径最终都会到达using_block
+  // 2. using_block must post-dominate defining_block.
+  // This ensures that all paths from defining_block eventually reach
+  // using_block.
   if (!post_dom_info.postDominates(using_block, defining_block)) {
     return false;
   }
 
-  // 3.
-  // 如果defining_block和using_block相同，或者using_block是defining_block的直接后继
-  // 那么路径上没有条件分支
+  // 3. If defining_block and using_block are the same, or using_block is a
+  // direct successor of defining_block, then there are no conditional branches
+  // on the path.
   if (defining_block == using_block) {
     return false;
   }
 
   if (defining_block == &defining_block->getParent()->front()) {
-    // 如果defining_block是region的入口块，则不考虑为跨越条件分支
+    // If defining_block is the entry block of the region, it is not considered
+    // as crossing a conditional branch.
+    // Avoids violating assertions in TransformCtrlToDataFlowPass.cpp.
     return false;
   }
 
-  // 检查是否是直接后继（没有中间块）
+  // 4. Checks if using_block is a direct successor (no intermediate blocks) of
+  // defining_block.
   for (Block *succ : defining_block->getSuccessors()) {
     if (succ == using_block) {
-      // 直接后继，检查defining_block的终止符
       Operation *term_op = defining_block->getTerminator();
-      // 如果是无条件分支，则没有跨越条件分支
+      // If the terminator is an unconditional branch, then no conditional
+      // branch exists on the path.
       if (isa<neura::Br>(term_op)) {
         return false;
       }
-      // 如果是条件分支，但两个目标都是using_block，也算没有真正的分支
+      // If it is a conditional branch, but both targets are using_block, it is
+      // also considered no real branch.
       if (auto cond_br = dyn_cast<neura::CondBr>(term_op)) {
         if (cond_br.getTrueDest() == using_block &&
             cond_br.getFalseDest() == using_block) {
@@ -130,31 +82,28 @@ bool pathsCrossConditionalBranch(Block *defining_block, Block *using_block,
     }
   }
 
-  // 4. 寻找defining_block和using_block之间是否存在条件分支
-  // 遍历从defining_block开始的所有被其支配且支配using_block的块
+  // 5. Finds any conditional branch on the paths from defining_block to
+  // using_block.
   bool found_conditional_branch = false;
   Block *conditional_branch_block = nullptr;
 
-  // 获取region中的所有块
   Region *region = defining_block->getParent();
   for (Block &block : region->getBlocks()) {
-    // 跳过defining_block和using_block本身
     if (&block == defining_block || &block == using_block) {
       continue;
     }
 
-    // 检查这个块是否在defining_block到using_block的路径上
-    // 条件：defining_block支配它，且它支配using_block
+    // Checks if this block is on the path from defining_block to using_block.
     if (dom_info.dominates(defining_block, &block) &&
         dom_info.dominates(&block, using_block)) {
 
-      // 检查这个块的终止符是否是条件分支
+      // Checks if this block's terminator is a conditional branch.
       Operation *term_op = block.getTerminator();
       if (auto cond_br = dyn_cast<neura::CondBr>(term_op)) {
         Block *true_dest = cond_br.getTrueDest();
         Block *false_dest = cond_br.getFalseDest();
 
-        // 确保两个分支目标不同（真正的条件分支）
+        // Ensures both branch targets are different (true conditional branch)
         if (true_dest != false_dest) {
           found_conditional_branch = true;
           conditional_branch_block = &block;
@@ -164,13 +113,11 @@ bool pathsCrossConditionalBranch(Block *defining_block, Block *using_block,
     }
   }
 
-  // 5. 额外检查：defining_block本身的终止符
+  // 6. Checks the terminator of defining_block itself.
   Operation *defining_term = defining_block->getTerminator();
   if (auto cond_br = dyn_cast<neura::CondBr>(defining_term)) {
     Block *true_dest = cond_br.getTrueDest();
     Block *false_dest = cond_br.getFalseDest();
-
-    // 如果defining_block有条件分支且两个目标不同
     if (true_dest != false_dest) {
       found_conditional_branch = true;
       conditional_branch_block = defining_block;
@@ -181,9 +128,8 @@ bool pathsCrossConditionalBranch(Block *defining_block, Block *using_block,
     return false;
   }
 
-  // 6. **Key constraint**: Verify that BOTH branches eventually reach
-  // using_block
-  //    WITHOUT creating a loop back to conditional_branch_block or earlier.
+  // 7. Key Constraint: Verifies that BOTH branches eventually reach using_block
+  // WITHOUT creating a loop back to conditional_branch_block or earlier.
   assert(conditional_branch_block &&
          "Must have found a conditional branch block");
 
@@ -194,9 +140,8 @@ bool pathsCrossConditionalBranch(Block *defining_block, Block *using_block,
   Block *true_dest = cond_br.getTrueDest();
   Block *false_dest = cond_br.getFalseDest();
 
-  // **Critical check**: If either branch target is the conditional_branch_block
-  // itself or any block that dominates it, this is a loop back edge, not an
-  // if-else pattern.
+  // Checks loop back edge: If either branch goes back to the conditional branch
+  // block or any of its dominators, it creates a loop.
   if (true_dest == conditional_branch_block ||
       dom_info.dominates(true_dest, conditional_branch_block)) {
     llvm::errs()
@@ -211,7 +156,7 @@ bool pathsCrossConditionalBranch(Block *defining_block, Block *using_block,
     return false;
   }
 
-  // Now check if both branches reach using_block.
+  // Checks if both branches can reach using_block.
   bool true_reaches = (true_dest == using_block);
   if (!true_reaches) {
     if (dom_info.dominates(true_dest, using_block)) {
@@ -241,9 +186,6 @@ bool pathsCrossConditionalBranch(Block *defining_block, Block *using_block,
   }
 
   if (!true_reaches || !false_reaches) {
-    llvm::errs() << "[CanoLiveIn] Not both branches reach using block\n";
-    llvm::errs() << "  True branch reaches: " << true_reaches << "\n";
-    llvm::errs() << "  False branch reaches: " << false_reaches << "\n";
     return false;
   }
 
@@ -256,7 +198,6 @@ identifyDirectDataflowLiveIns(Region &region, DominanceInfo &dom_info,
   DenseMap<Block *, SmallVector<DirectDataflowLiveIn>>
       using_block_to_direct_dataflow_live_ins;
   for (Block &block : region.getBlocks()) {
-    llvm::errs() << "[CanoLiveIn] Analyzing block:\n" << block << "\n";
     // Skips the entry block.
     if (&block == &region.front()) {
       continue;
@@ -282,8 +223,6 @@ identifyDirectDataflowLiveIns(Region &region, DominanceInfo &dom_info,
 
     // Checks each live-in value to see if it has direct dataflow dependency.
     for (Value live_in : live_ins) {
-      llvm::errs() << "[CanoLiveIn] Checking live-in value: " << live_in
-                   << "\n";
       Block *defining_block = nullptr;
 
       if (auto block_arg = dyn_cast<BlockArgument>(live_in)) {
@@ -296,10 +235,6 @@ identifyDirectDataflowLiveIns(Region &region, DominanceInfo &dom_info,
       }
 
       if (!defining_block) {
-        llvm::errs()
-            << "[CanoLiveIn] Error: Unable to find defining block for live-in "
-               "value: "
-            << live_in << "\n";
         continue;
       }
 
@@ -312,11 +247,6 @@ identifyDirectDataflowLiveIns(Region &region, DominanceInfo &dom_info,
 
         using_block_to_direct_dataflow_live_ins[&block].push_back(
             direct_dataflow_live_in);
-
-        llvm::errs() << "[CanoLiveIn] Found direct dataflow live-in value: \n";
-        llvm::errs() << "  Value: " << live_in << "\n";
-        llvm::errs() << "  Defining Block: \n" << *defining_block << "\n";
-        llvm::errs() << "  Using Block: \n" << block << "\n";
       }
     }
   }
