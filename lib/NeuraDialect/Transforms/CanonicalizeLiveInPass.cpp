@@ -106,6 +106,11 @@ bool pathsCrossConditionalBranch(Block *defining_block, Block *using_block,
     return false;
   }
 
+  if (defining_block == &defining_block->getParent()->front()) {
+    // 如果defining_block是region的入口块，则不考虑为跨越条件分支
+    return false;
+  }
+
   // 检查是否是直接后继（没有中间块）
   for (Block *succ : defining_block->getSuccessors()) {
     if (succ == using_block) {
