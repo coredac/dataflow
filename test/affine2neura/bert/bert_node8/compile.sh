@@ -1,1 +1,0 @@
-/home/lucas/Project/NeuraCompiler/thirdparty/Polygeist/build/bin/cgeist ./bert_node8.cpp -S --raise-scf-to-affine -o ./bert_node8.mlir
