@@ -49,7 +49,7 @@ LogicalResult convertAffineMapToIndices(AffineMap map, ValueRange map_operands,
       if (dim_expr.getPosition() >= map.getNumDims() ||
           dim_expr.getPosition() >=
               map_operands
-                  .size()) { // Check against mapOperands size for safety
+                  .size()) { // Checks against mapOperands size for safety.
         return failure();
       }
       new_indices.push_back(map_operands[dim_expr.getPosition()]);
@@ -61,7 +61,7 @@ LogicalResult convertAffineMapToIndices(AffineMap map, ValueRange map_operands,
       new_indices.push_back(map_operands[symbol_operand_index]);
     } else {
       // For more complex affine expressions (e.g., d0 + c1),
-      // materialize the result using affine.apply.
+      // materializes the result using affine.apply.
       // This is a temporary workaround for complex expressions.
       // TODO: Handle more complex expressions.
       llvm::errs() << "[affine2neura] Complex affine expression: " << expr
@@ -84,7 +84,7 @@ struct AffineLoadLowering : public OpRewritePattern<affine::AffineLoadOp> {
     auto memref = load_op.getMemref();
     AffineMap map = load_op.getAffineMap();
     ValueRange map_operands = load_op.getMapOperands();
-    // Gets the indices for the load operation
+    // Gets the indices for the load operation.
     SmallVector<Value> new_indices;
     if (failed(convertAffineMapToIndices(map, map_operands, loc, rewriter,
                                          new_indices))) {
@@ -104,7 +104,7 @@ struct AffineLoadLowering : public OpRewritePattern<affine::AffineLoadOp> {
              << memref_type.getRank() << ")";
     }
 
-    // Create the neura.load_indexed operation
+    // Creates the neura.load_indexed operation.
    LoadIndexedOp new_load_op = rewriter.create<neura::LoadIndexedOp>(
         loc, load_op.getType(), memref, ValueRange{new_indices});
 
@@ -169,8 +169,8 @@ struct AffineApplyLowering : public OpRewritePattern<affine::AffineApplyOp> {
     }
 
     AffineExpr expr = map.getResult(0);
-    // Handle simple affine expressions like d0 + cst
-    // TODO: Handle more complex expressions
+    // Handles simple affine expressions like d0 + cst.
+    // TODO: Handle more complex expressions.
     if (isa<AffineBinaryOpExpr>(expr)) {
       AffineBinaryOpExpr bin_expr = dyn_cast<AffineBinaryOpExpr>(expr);
       if (bin_expr.getKind() == AffineExprKind::Add) {
@@ -192,7 +192,7 @@ struct AffineApplyLowering : public OpRewritePattern<affine::AffineApplyOp> {
       }
     }
 
-    // You can add more cases here for different affine expressions
+    // You can add more cases here for different affine expressions.
     // For now, we will just emit an error for unsupported expressions.
     return apply_op.emitError("[affine2neura] Unsupported complex affine "
                               "expression in AffineApplyOp.\n")
@@ -207,7 +207,7 @@ struct AffineForLowering : public OpRewritePattern<affine::AffineForOp> {
                                 PatternRewriter &rewriter) const override {
     Location loc = for_op.getLoc();
 
-    // Extract loop bounds - must be constant for now
+    // Extracts loop bounds - must be constant for now.
     if (!for_op.hasConstantLowerBound() || !for_op.hasConstantUpperBound()) {
       return for_op.emitError(
           "[affine2neura] Non-constant loop bounds not supported yet");
@@ -217,13 +217,13 @@ struct AffineForLowering : public OpRewritePattern<affine::AffineForOp> {
     int64_t upper_bound = for_op.getConstantUpperBound();
     int64_t step = for_op.getStepAsInt();
 
-    // For now, always create a grant_once for each loop
-    // TODO: optimize nested loops to reuse parent's valid signal
+    // For now, always creates a grant_once for each loop.
+    // TODO: Optimize nested loops to reuse parent's valid signal.
     Type i1_type = rewriter.getI1Type();
     Value parent_valid = rewriter.create<neura::GrantOnceOp>(
         loc, i1_type, /*value=*/Value(), /*constant_value=*/nullptr);
 
-    // Create loop_control operation
+    // Creates loop_control operation.
     auto index_type = rewriter.getIndexType();
     
     auto loop_control = rewriter.create<neura::LoopControlOp>(
@@ -236,20 +236,20 @@ struct AffineForLowering : public OpRewritePattern<affine::AffineForOp> {
         /*step=*/rewriter.getI64IntegerAttr(step));
 
     Value loop_index = loop_control.getResult(0);
-    // Value loop_valid = loop_control.getResult(1);  // Will be used for nested loops
+    // Value loop_valid = loop_control.getResult(1);  // Will be used for nested loops.
 
-    // Replace uses of the induction variable
+    // Replaces uses of the induction variable.
     for_op.getInductionVar().replaceAllUsesWith(loop_index);
 
-    // Inline the body operations before the for_op
+    // Inlines the body operations before the for_op.
     Block &body_block = for_op.getRegion().front();
     Operation *terminator = body_block.getTerminator();
-    rewriter.eraseOp(terminator);  // Remove affine.yield first
+    rewriter.eraseOp(terminator);  // Removes affine.yield first.
     
     rewriter.inlineBlockBefore(&body_block, for_op.getOperation(),
                                body_block.getArguments());
     
-    // Erase the for_op
+    // Erases the for_op.
     rewriter.eraseOp(for_op);
 
     return success();
@@ -275,15 +275,15 @@ struct LowerAffineToNeuraPass
     MLIRContext *context = module_op.getContext();
 
     module_op.walk([&](func::FuncOp func_op) {
-      // Check if function targets neura accelerator, or apply to all if no attribute
+      // Checks if function targets neura accelerator, or applies to all if no attribute.
       if (func_op->hasAttr(mlir::accel::kAcceleratorAttr)) {
         auto target = func_op->getAttrOfType<StringAttr>(
             mlir::accel::kAcceleratorAttr);
         if (!target || target.getValue() != mlir::accel::kNeuraTarget) {
-          return;  // Skip this function
+          return;  // Skips this function.
         }
       }
-      // If no accelerator attribute, apply the pass anyway (for testing)
+      // If no accelerator attribute, applies the pass anyway (for testing).
       
       RewritePatternSet patterns(context);
       patterns.add<AffineForLowering, AffineLoadLowering, 
