@@ -30,6 +30,221 @@ struct DirectDataflowLiveIn {
   Block *using_block;
 };
 
+bool isIfElseMergePattern(Block *condition_block, Block *merge_block,
+                          DominanceInfo &dom_info,
+                          PostDominanceInfo &post_dom_info) {
+  // 1. condition_block must dominate merge_block.
+  if (!dom_info.dominates(condition_block, merge_block)) {
+    return false;
+  }
+
+  // 2. merge_block must post-dominate condition_block.
+  if (!post_dom_info.postDominates(merge_block, condition_block)) {
+    return false;
+  }
+
+  // 3. condition_block must end with a conditional branch to two distinct
+  // blocks, both of which must eventually lead to merge_block.
+  Operation *term_op = condition_block->getTerminator();
+  neura::CondBr cond_br_op = dyn_cast<neura::CondBr>(term_op);
+  if (!cond_br_op) {
+    return false;
+  }
+
+  // 4. merge_block must have at least two predecessors: the true and false
+  // branches from condition_block.
+  if (std::distance(merge_block->pred_begin(), merge_block->pred_end()) < 2) {
+    return false;
+  }
+
+  // 5. Validates that both branches from condition_block can reach merge_block.
+  Block *true_dest = cond_br_op.getTrueDest();
+  Block *false_dest = cond_br_op.getFalseDest();
+
+  bool true_dest_reaches_merge = (true_dest == merge_block);
+  if (!true_dest_reaches_merge) {
+    for (Block *pred : merge_block->getPredecessors()) {
+      if (pred == true_dest || dom_info.dominates(true_dest, pred)) {
+        true_dest_reaches_merge = true;
+        break;
+      }
+    }
+  }
+
+  bool false_dest_reaches_merge = (false_dest == merge_block);
+  if (!false_dest_reaches_merge) {
+    for (Block *pred : merge_block->getPredecessors()) {
+      if (pred == false_dest || dom_info.dominates(false_dest, pred)) {
+        false_dest_reaches_merge = true;
+        break;
+      }
+    }
+  }
+
+  return true_dest_reaches_merge && false_dest_reaches_merge;
+}
+
+bool pathsCrossConditionalBranch(Block *defining_block, Block *using_block,
+                                 DominanceInfo &dom_info,
+                                 PostDominanceInfo &post_dom_info) {
+  // 1. defining_block must dominate using_block.
+  // 这保证了从函数入口到using_block的所有路径都经过defining_block
+  if (!dom_info.dominates(defining_block, using_block)) {
+    return false;
+  }
+
+  // 2. using_block必须后支配defining_block
+  // 这保证了从defining_block出发的所有路径最终都会到达using_block
+  if (!post_dom_info.postDominates(using_block, defining_block)) {
+    return false;
+  }
+
+  // 3.
+  // 如果defining_block和using_block相同，或者using_block是defining_block的直接后继
+  // 那么路径上没有条件分支
+  if (defining_block == using_block) {
+    return false;
+  }
+
+  // 检查是否是直接后继（没有中间块）
+  for (Block *succ : defining_block->getSuccessors()) {
+    if (succ == using_block) {
+      // 直接后继，检查defining_block的终止符
+      Operation *term_op = defining_block->getTerminator();
+      // 如果是无条件分支，则没有跨越条件分支
+      if (isa<neura::Br>(term_op)) {
+        return false;
+      }
+      // 如果是条件分支，但两个目标都是using_block，也算没有真正的分支
+      if (auto cond_br = dyn_cast<neura::CondBr>(term_op)) {
+        if (cond_br.getTrueDest() == using_block &&
+            cond_br.getFalseDest() == using_block) {
+          return false;
+        }
+      }
+    }
+  }
+
+  // 4. 寻找defining_block和using_block之间是否存在条件分支
+  // 遍历从defining_block开始的所有被其支配且支配using_block的块
+  bool found_conditional_branch = false;
+  Block *conditional_branch_block = nullptr;
+
+  // 获取region中的所有块
+  Region *region = defining_block->getParent();
+  for (Block &block : region->getBlocks()) {
+    // 跳过defining_block和using_block本身
+    if (&block == defining_block || &block == using_block) {
+      continue;
+    }
+
+    // 检查这个块是否在defining_block到using_block的路径上
+    // 条件：defining_block支配它，且它支配using_block
+    if (dom_info.dominates(defining_block, &block) &&
+        dom_info.dominates(&block, using_block)) {
+
+      // 检查这个块的终止符是否是条件分支
+      Operation *term_op = block.getTerminator();
+      if (auto cond_br = dyn_cast<neura::CondBr>(term_op)) {
+        Block *true_dest = cond_br.getTrueDest();
+        Block *false_dest = cond_br.getFalseDest();
+
+        // 确保两个分支目标不同（真正的条件分支）
+        if (true_dest != false_dest) {
+          found_conditional_branch = true;
+          conditional_branch_block = &block;
+          break;
+        }
+      }
+    }
+  }
+
+  // 5. 额外检查：defining_block本身的终止符
+  Operation *defining_term = defining_block->getTerminator();
+  if (auto cond_br = dyn_cast<neura::CondBr>(defining_term)) {
+    Block *true_dest = cond_br.getTrueDest();
+    Block *false_dest = cond_br.getFalseDest();
+
+    // 如果defining_block有条件分支且两个目标不同
+    if (true_dest != false_dest) {
+      found_conditional_branch = true;
+      conditional_branch_block = defining_block;
+    }
+  }
+
+  if (!found_conditional_branch) {
+    return false;
+  }
+
+  // 6. **Key constraint**: Verify that BOTH branches eventually reach
+  // using_block
+  //    WITHOUT creating a loop back to conditional_branch_block or earlier.
+  assert(conditional_branch_block &&
+         "Must have found a conditional branch block");
+
+  Operation *cond_term = conditional_branch_block->getTerminator();
+  auto cond_br = dyn_cast<neura::CondBr>(cond_term);
+  assert(cond_br && "Must be a conditional branch");
+
+  Block *true_dest = cond_br.getTrueDest();
+  Block *false_dest = cond_br.getFalseDest();
+
+  // **Critical check**: If either branch target is the conditional_branch_block
+  // itself or any block that dominates it, this is a loop back edge, not an
+  // if-else pattern.
+  if (true_dest == conditional_branch_block ||
+      dom_info.dominates(true_dest, conditional_branch_block)) {
+    llvm::errs()
+        << "[CanoLiveIn] True branch creates a back edge (loop pattern)\n";
+    return false;
+  }
+
+  if (false_dest == conditional_branch_block ||
+      dom_info.dominates(false_dest, conditional_branch_block)) {
+    llvm::errs()
+        << "[CanoLiveIn] False branch creates a back edge (loop pattern)\n";
+    return false;
+  }
+
+  // Now check if both branches reach using_block.
+  bool true_reaches = (true_dest == using_block);
+  if (!true_reaches) {
+    if (dom_info.dominates(true_dest, using_block)) {
+      true_reaches = true;
+    } else {
+      for (Block *pred : using_block->getPredecessors()) {
+        if (pred == true_dest || dom_info.dominates(true_dest, pred)) {
+          true_reaches = true;
+          break;
+        }
+      }
+    }
+  }
+
+  bool false_reaches = (false_dest == using_block);
+  if (!false_reaches) {
+    if (dom_info.dominates(false_dest, using_block)) {
+      false_reaches = true;
+    } else {
+      for (Block *pred : using_block->getPredecessors()) {
+        if (pred == false_dest || dom_info.dominates(false_dest, pred)) {
+          false_reaches = true;
+          break;
+        }
+      }
+    }
+  }
+
+  if (!true_reaches || !false_reaches) {
+    llvm::errs() << "[CanoLiveIn] Not both branches reach using block\n";
+    llvm::errs() << "  True branch reaches: " << true_reaches << "\n";
+    llvm::errs() << "  False branch reaches: " << false_reaches << "\n";
+    return false;
+  }
+
+  return true;
+}
+
 DenseMap<Block *, SmallVector<DirectDataflowLiveIn>>
 identifyDirectDataflowLiveIns(Region &region, DominanceInfo &dom_info,
                               PostDominanceInfo &post_dom_info) {
@@ -65,11 +280,9 @@ identifyDirectDataflowLiveIns(Region &region, DominanceInfo &dom_info,
       llvm::errs() << "[CanoLiveIn] Checking live-in value: " << live_in
                    << "\n";
       Block *defining_block = nullptr;
-      bool is_block_arg = false;
 
       if (auto block_arg = dyn_cast<BlockArgument>(live_in)) {
         defining_block = block_arg.getOwner();
-        is_block_arg = true;
       } else {
         Operation *def_op = live_in.getDefiningOp();
         if (def_op) {
@@ -85,44 +298,21 @@ identifyDirectDataflowLiveIns(Region &region, DominanceInfo &dom_info,
         continue;
       }
 
-      // Step 1: BB_a dominates BB_b.
-      if (!dom_info.dominates(defining_block, &block)) {
-        llvm::errs() << "[CanoLiveIn] Info: Defining block does not dominate "
-                        "using block for live-in "
-                        "value: "
-                     << live_in << "\n";
-        continue;
+      if (pathsCrossConditionalBranch(defining_block, &block, dom_info,
+                                      post_dom_info)) {
+        DirectDataflowLiveIn direct_dataflow_live_in;
+        direct_dataflow_live_in.value = live_in;
+        direct_dataflow_live_in.defining_block = defining_block;
+        direct_dataflow_live_in.using_block = &block;
+
+        using_block_to_direct_dataflow_live_ins[&block].push_back(
+            direct_dataflow_live_in);
+
+        llvm::errs() << "[CanoLiveIn] Found direct dataflow live-in value: \n";
+        llvm::errs() << "  Value: " << live_in << "\n";
+        llvm::errs() << "  Defining Block: \n" << *defining_block << "\n";
+        llvm::errs() << "  Using Block: \n" << block << "\n";
       }
-
-      // Step 2: BB_b post-dominates BB_a.
-      if (!post_dom_info.postDominates(&block, defining_block)) {
-        llvm::errs() << "[CanoLiveIn] Info: Using block does not post-dominate "
-                        "defining block for live-in "
-                        "value: "
-                     << live_in << "\n";
-        continue;
-      }
-
-      // Step 3: Checks if the live-in value is a block argument defined in the
-      // defining block.
-      if (is_block_arg) {
-        llvm::errs() << "[CanoLiveIn] Info: Live-in value is a block argument: "
-                     << live_in << "\n";
-        // continue;
-      }
-
-      DirectDataflowLiveIn direct_dataflow_live_in;
-      direct_dataflow_live_in.value = live_in;
-      direct_dataflow_live_in.defining_block = defining_block;
-      direct_dataflow_live_in.using_block = &block;
-
-      using_block_to_direct_dataflow_live_ins[&block].push_back(
-          direct_dataflow_live_in);
-
-      llvm::errs() << "[CanoLiveIn] Found direct dataflow live-in value: \n";
-      llvm::errs() << "  Value: " << live_in << "\n";
-      llvm::errs() << "  Defining Block: \n" << *defining_block << "\n";
-      llvm::errs() << "  Using Block: \n" << block << "\n";
     }
   }
   return using_block_to_direct_dataflow_live_ins;
@@ -308,28 +498,6 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region,
     }
   }
 
-  // Adds block arguments for direct dataflow live-in values.
-  // for (auto &[block, dataflow_live_ins] : direct_dataflow_live_ins) {
-  //   if (original_num_args.find(block) == original_num_args.end()) {
-  //     original_num_args[block] = block->getNumArguments();
-  //   }
-
-  //   for (auto &dataflow_live_in : dataflow_live_ins) {
-  //     block->addArgument(dataflow_live_in.value.getType(),
-  //                        dataflow_live_in.value.getLoc());
-  //     unsigned index = block->getNumArguments() - 1;
-  //     block_value_to_arg[{block, dataflow_live_in.value}] =
-  //         block->getArgument(index);
-  //     llvm::errs()
-  //         << "[CanoLiveIn] Added block argument for direct dataflow live-in "
-  //            "value: \n";
-  //     llvm::errs() << "  Value: " << dataflow_live_in.value << "\n";
-  //     llvm::errs() << "  Defining Block: \n"
-  //                  << *dataflow_live_in.defining_block << "\n";
-  //     llvm::errs() << "  Using Block: \n" << *block << "\n";
-  //   }
-  // }
-
   // Updates all operations in the region to use the new block arguments
   // instead of the live-in values.
   for (auto &[block, live_ins] : all_live_ins) {
@@ -429,72 +597,6 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region,
       }
     }
   }
-
-  // for (auto &[use_block, directFlows] : direct_dataflow_live_ins) {
-  //   for (auto &flow : directFlows) {
-  //     Block *def_block = flow.defining_block;
-  //     Value value = flow.value;
-
-  //     // 检查def_block是否是use_block的直接前驱
-  //     bool is_direct_pred = false;
-  //     for (Block *pred : use_block->getPredecessors()) {
-  //       if (pred == def_block) {
-  //         is_direct_pred = true;
-  //         break;
-  //       }
-  //     }
-
-  //     if (is_direct_pred) {
-  //       // 情况1：def_block直接跳转到use_block
-  //       // 需要更新def_block的终止符，添加value作为操作数
-  //       Operation *term_op = def_block->getTerminator();
-
-  //       if (auto br_op = dyn_cast<neura::Br>(term_op)) {
-  //         if (br_op.getDest() == use_block) {
-  //           SmallVector<Value> new_operands(br_op.getOperands().begin(),
-  //                                           br_op.getOperands().end());
-  //           new_operands.push_back(value);
-
-  //           OpBuilder builder(br_op);
-  //           builder.create<neura::Br>(br_op.getLoc(), new_operands,
-  //           use_block); br_op.erase();
-
-  //           llvm::errs() << "更新直接前驱的Br终止符，添加直接数据流操作数\n";
-  //         }
-  //       } else if (auto cond_br_op = dyn_cast<neura::CondBr>(term_op)) {
-  //         SmallVector<Value> true_operands(cond_br_op.getTrueArgs().begin(),
-  //                                          cond_br_op.getTrueArgs().end());
-  //         SmallVector<Value>
-  //         false_operands(cond_br_op.getFalseArgs().begin(),
-  //                                           cond_br_op.getFalseArgs().end());
-
-  //         if (cond_br_op.getTrueDest() == use_block) {
-  //           true_operands.push_back(value);
-  //         }
-  //         if (cond_br_op.getFalseDest() == use_block) {
-  //           false_operands.push_back(value);
-  //         }
-
-  //         OpBuilder builder(cond_br_op);
-  //         builder.create<neura::CondBr>(
-  //             cond_br_op.getLoc(), cond_br_op.getCondition(), true_operands,
-  //             false_operands, cond_br_op.getTrueDest(),
-  //             cond_br_op.getFalseDest());
-  //         cond_br_op.erase();
-
-  //         llvm::errs() <<
-  //         "更新直接前驱的CondBr终止符，添加直接数据流操作数\n";
-  //       }
-  //     } else {
-  //       // 情况2：def_block不是use_block的直接前驱
-  //       // 需要找到从def_block到use_block路径上的所有中间块，并传递value
-  //       // 这个情况比较复杂，但在满足后支配条件下，通常不会发生
-  //       llvm::errs() <<
-  //       "警告：直接数据流live-in的定义块不是使用块的直接前驱\n";
-  //     }
-  //   }
-  // }
-
   return success();
 }
 
