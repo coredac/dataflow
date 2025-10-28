@@ -1,11 +1,11 @@
 //===- LoopNestAnalysis.h - Analyze affine loop nests ----------*- C++ -*-===//
 //
-// 循环嵌套分析 - 用于分析affine循环的层次结构和完美嵌套特性
+// Loop nest analysis for affine loops.
 // 
-// 功能：
-// 1. 构建循环层次树（父子关系、嵌套深度）
-// 2. 识别完美嵌套 vs 非完美嵌套
-// 3. 支持循环valid信号重用优化
+// Features:
+// 1. Build loop hierarchy tree (parent-child relationships, nesting depth)
+// 2. Identify perfect vs imperfect nesting
+// 3. Support valid signal reuse optimization for nested loops
 //
 //===----------------------------------------------------------------------===//
 #ifndef CONVERSION_AFFINE_TO_NEURA_LOOP_NEST_ANALYSIS_H
@@ -21,57 +21,57 @@
 namespace mlir {
 namespace neura {
 
-/// 循环信息结构体 - 存储单个循环的所有分析信息
+/// Loop information structure - Stores all analysis information for a single loop.
 struct LoopInfo {
-  affine::AffineForOp loop;              // 循环操作本身
-  LoopInfo *parent = nullptr;            // 父循环（若为nullptr则是顶层循环）
-  llvm::SmallVector<LoopInfo *, 4> children;  // 子循环列表
-  unsigned depth = 0;                    // 嵌套深度（0=顶层）
-  bool isPerfectNest = true;             // 是否为完美嵌套
+  affine::AffineForOp loop;              // The loop operation itself.
+  LoopInfo *parent = nullptr;            // Parent loop (nullptr if top-level).
+  llvm::SmallVector<LoopInfo *, 4> children;  // Child loops list.
+  unsigned depth = 0;                    // Nesting depth (0=top-level).
+  bool isPerfectNest = true;             // Whether it is a perfect nest.
   
-  // 非完美嵌套的操作列表
-  llvm::SmallVector<Operation *, 4> operationsBeforeChild;  // 子循环前的操作
-  llvm::SmallVector<Operation *, 4> operationsAfterChild;   // 子循环后的操作
+  // Operations list for imperfect nesting.
+  llvm::SmallVector<Operation *, 4> operationsBeforeChild;  // Operations before child loops.
+  llvm::SmallVector<Operation *, 4> operationsAfterChild;   // Operations after child loops.
   
   LoopInfo(affine::AffineForOp loop) : loop(loop) {}
 };
 
-/// 循环嵌套分析类
+/// Loop nest analysis class.
 /// 
-/// 用途：为AffineToNeura pass提供循环层次结构信息，支持优化决策
+/// Purpose: Provides loop hierarchy information for AffineToNeura pass to support optimization decisions.
 /// 
-/// 使用示例：
+/// Usage example:
 ///   LoopNestAnalysis analysis(func_op);
-///   analysis.dump();  // 打印分析结果
+///   analysis.dump();  // Prints analysis results.
 ///   LoopInfo *info = analysis.getLoopInfo(loop);
 ///   if (info && info->parent) {
-///     // 这是嵌套循环，可以重用父循环的valid信号
+///     // This is a nested loop, can reuse parent's valid signal.
 ///   }
 class LoopNestAnalysis {
 public:
-  /// 构造函数 - 对给定函数进行循环嵌套分析
+  /// Constructor - Performs loop nest analysis on the given function.
   explicit LoopNestAnalysis(func::FuncOp func);
   
-  /// 查询接口
-  LoopInfo *getLoopInfo(affine::AffineForOp loop) const;  // 获取循环信息
-  llvm::ArrayRef<LoopInfo *> getTopLevelLoops() const { return topLevelLoops; }  // 获取顶层循环
-  llvm::ArrayRef<std::unique_ptr<LoopInfo>> getAllLoops() const { return allLoops; }  // 获取所有循环
-  bool isPerfectNest(affine::AffineForOp loop) const;  // 检查是否完美嵌套
-  LoopInfo *getParentLoop(affine::AffineForOp loop) const;  // 获取父循环
-  llvm::ArrayRef<LoopInfo *> getChildLoops(affine::AffineForOp loop) const;  // 获取子循环
+  /// Query interfaces.
+  LoopInfo *getLoopInfo(affine::AffineForOp loop) const;  // Gets loop information.
+  llvm::ArrayRef<LoopInfo *> getTopLevelLoops() const { return topLevelLoops; }  // Gets top-level loops.
+  llvm::ArrayRef<std::unique_ptr<LoopInfo>> getAllLoops() const { return allLoops; }  // Gets all loops.
+  bool isPerfectNest(affine::AffineForOp loop) const;  // Checks if perfect nest.
+  LoopInfo *getParentLoop(affine::AffineForOp loop) const;  // Gets parent loop.
+  llvm::ArrayRef<LoopInfo *> getChildLoops(affine::AffineForOp loop) const;  // Gets child loops.
   
-  /// 调试接口 - 打印分析结果
+  /// Debug interface - Prints analysis results.
   void dump() const;
 
 private:
-  /// 内部分析方法
-  void buildLoopNestTree(func::FuncOp func);  // 构建循环层次树
-  void analyzePerfectNests();  // 分析完美嵌套特性
+  /// Internal analysis methods.
+  void buildLoopNestTree(func::FuncOp func);  // Builds loop hierarchy tree.
+  void analyzePerfectNests();  // Analyzes perfect nest characteristics.
   
-  /// 数据成员
-  llvm::DenseMap<Operation *, LoopInfo *> loopMap;  // 循环快速查找表
-  llvm::SmallVector<std::unique_ptr<LoopInfo>, 8> allLoops;  // 所有循环（拥有所有权）
-  llvm::SmallVector<LoopInfo *, 4> topLevelLoops;  // 顶层循环指针列表
+  /// Data members.
+  llvm::DenseMap<Operation *, LoopInfo *> loopMap;  // Loop fast lookup table.
+  llvm::SmallVector<std::unique_ptr<LoopInfo>, 8> allLoops;  // All loops (owns ownership).
+  llvm::SmallVector<LoopInfo *, 4> topLevelLoops;  // Top-level loop pointers list.
 };
 
 } // namespace neura
