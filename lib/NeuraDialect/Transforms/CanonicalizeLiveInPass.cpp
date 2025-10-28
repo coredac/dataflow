@@ -3,11 +3,15 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/Block.h"
+#include "mlir/IR/Dominance.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Region.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "llvm/ADT/SetVector.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/raw_ostream.h"
 #include <cassert>
 #include <string>
 
@@ -17,24 +21,150 @@ using namespace mlir;
 #include "NeuraDialect/NeuraPasses.h.inc"
 
 namespace {
-LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
+struct DirectDataflowLiveIn {
+  // The live-in value.
+  Value value;
+  // The block where the live-in value is defined.
+  Block *defining_block;
+  // The block where the live-in value is used.
+  Block *using_block;
+};
+
+DenseMap<Block *, SmallVector<DirectDataflowLiveIn>>
+identifyDirectDataflowLiveIns(Region &region, DominanceInfo &dom_info,
+                              PostDominanceInfo &post_dom_info) {
+  DenseMap<Block *, SmallVector<DirectDataflowLiveIn>>
+      using_block_to_direct_dataflow_live_ins;
+  for (Block &block : region.getBlocks()) {
+    llvm::errs() << "[CanoLiveIn] Analyzing block:\n" << block << "\n";
+    // Skips the entry block.
+    if (&block == &region.front()) {
+      continue;
+    }
+
+    // Collects direct live-in values for the block.
+    SetVector<Value> live_ins;
+    for (Operation &op : block.getOperations()) {
+      for (Value operand : op.getOperands()) {
+        // If the operand is defined in another block, it is a live-in value.
+        if (auto block_arg = dyn_cast<BlockArgument>(operand)) {
+          if (block_arg.getOwner() != &block) {
+            live_ins.insert(operand);
+          }
+        } else {
+          Operation *def_op = operand.getDefiningOp();
+          if (def_op && def_op->getBlock() != &block) {
+            live_ins.insert(operand);
+          }
+        }
+      }
+    }
+
+    // Checks each live-in value to see if it has direct dataflow dependency.
+    for (Value live_in : live_ins) {
+      llvm::errs() << "[CanoLiveIn] Checking live-in value: " << live_in
+                   << "\n";
+      Block *defining_block = nullptr;
+      bool is_block_arg = false;
+
+      if (auto block_arg = dyn_cast<BlockArgument>(live_in)) {
+        defining_block = block_arg.getOwner();
+        is_block_arg = true;
+      } else {
+        Operation *def_op = live_in.getDefiningOp();
+        if (def_op) {
+          defining_block = def_op->getBlock();
+        }
+      }
+
+      if (!defining_block) {
+        llvm::errs()
+            << "[CanoLiveIn] Error: Unable to find defining block for live-in "
+               "value: "
+            << live_in << "\n";
+        continue;
+      }
+
+      // Step 1: BB_a dominates BB_b.
+      if (!dom_info.dominates(defining_block, &block)) {
+        llvm::errs() << "[CanoLiveIn] Info: Defining block does not dominate "
+                        "using block for live-in "
+                        "value: "
+                     << live_in << "\n";
+        continue;
+      }
+
+      // Step 2: BB_b post-dominates BB_a.
+      if (!post_dom_info.postDominates(&block, defining_block)) {
+        llvm::errs() << "[CanoLiveIn] Info: Using block does not post-dominate "
+                        "defining block for live-in "
+                        "value: "
+                     << live_in << "\n";
+        continue;
+      }
+
+      // Step 3: Checks if the live-in value is a block argument defined in the
+      // defining block.
+      if (is_block_arg) {
+        llvm::errs() << "[CanoLiveIn] Info: Live-in value is a block argument: "
+                     << live_in << "\n";
+        // continue;
+      }
+
+      DirectDataflowLiveIn direct_dataflow_live_in;
+      direct_dataflow_live_in.value = live_in;
+      direct_dataflow_live_in.defining_block = defining_block;
+      direct_dataflow_live_in.using_block = &block;
+
+      using_block_to_direct_dataflow_live_ins[&block].push_back(
+          direct_dataflow_live_in);
+
+      llvm::errs() << "[CanoLiveIn] Found direct dataflow live-in value: \n";
+      llvm::errs() << "  Value: " << live_in << "\n";
+      llvm::errs() << "  Defining Block: \n" << *defining_block << "\n";
+      llvm::errs() << "  Using Block: \n" << block << "\n";
+    }
+  }
+  return using_block_to_direct_dataflow_live_ins;
+}
+
+LogicalResult promoteLiveInValuesToBlockArgs(Region &region,
+                                             DominanceInfo &dom_info,
+                                             PostDominanceInfo &post_dom_info) {
   if (region.empty()) {
     return success();
   }
+
+  DenseMap<Block *, SmallVector<DirectDataflowLiveIn>>
+      direct_dataflow_live_ins =
+          identifyDirectDataflowLiveIns(region, dom_info, post_dom_info);
+
+  // Maps each block to its direct dataflow live-in values.
+  DenseMap<Block *, SetVector<Value>> direct_dataflow_live_in_values;
+  for (auto &[block, dataflow_live_ins] : direct_dataflow_live_ins) {
+    for (auto &dataflow_live_in : dataflow_live_ins) {
+      direct_dataflow_live_in_values[block].insert(dataflow_live_in.value);
+    }
+  }
+
   // Collects direct live-in values for each block in the region.
   // Without considering the transitive dependencies.
   DenseMap<Block *, SetVector<Value>> direct_live_ins;
 
-  Block &entry_block = region.front();
   // Initializes the direct live-ins for each block.
   for (Block &block : region.getBlocks()) {
-    if (&block == &entry_block) {
+    if (&block == &region.front()) {
       continue;
     }
 
     SetVector<Value> live_ins;
     for (Operation &op : block.getOperations()) {
       for (Value operand : op.getOperands()) {
+        // If the operand is a direct dataflow live-in value, skip it.
+        if (direct_dataflow_live_in_values[&block].contains(operand)) {
+          continue;
+        }
+
         // If the operand is defined in another block, it is a live-in value.
         if (auto block_arg = dyn_cast<BlockArgument>(operand)) {
           if (block_arg.getOwner() != &block) {
@@ -54,9 +184,9 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
     }
   }
 
-  // If we update a branch or conditional branch, we may introduce new live-ins
-  // for a block. So we need to propagate live-in values until a fixed point is
-  // reached.
+  // If we update a branch or conditional branch, we may introduce new
+  // live-ins for a block. So we need to propagate live-in values until a
+  // fixed point is reached.
 
   // *************************************************************************
   // For example, consider this control flow:
@@ -119,6 +249,12 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
         // Checks if the live-in value in successor block is defined in the
         // current block.
         for (Value live_in : succ_live_ins) {
+          // If it is a direct dataflow live-in value for the successor block,
+          // we skip it.
+          if (direct_dataflow_live_in_values[succ_block].contains(live_in)) {
+            continue;
+          }
+
           // If it is defined in the current block, that means it is not a
           // live-in value for the current block. We can skip it.
           if (Operation *def_op = live_in.getDefiningOp()) {
@@ -171,6 +307,28 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
       block_value_to_arg[{block, value}] = block->getArgument(index++);
     }
   }
+
+  // Adds block arguments for direct dataflow live-in values.
+  // for (auto &[block, dataflow_live_ins] : direct_dataflow_live_ins) {
+  //   if (original_num_args.find(block) == original_num_args.end()) {
+  //     original_num_args[block] = block->getNumArguments();
+  //   }
+
+  //   for (auto &dataflow_live_in : dataflow_live_ins) {
+  //     block->addArgument(dataflow_live_in.value.getType(),
+  //                        dataflow_live_in.value.getLoc());
+  //     unsigned index = block->getNumArguments() - 1;
+  //     block_value_to_arg[{block, dataflow_live_in.value}] =
+  //         block->getArgument(index);
+  //     llvm::errs()
+  //         << "[CanoLiveIn] Added block argument for direct dataflow live-in "
+  //            "value: \n";
+  //     llvm::errs() << "  Value: " << dataflow_live_in.value << "\n";
+  //     llvm::errs() << "  Defining Block: \n"
+  //                  << *dataflow_live_in.defining_block << "\n";
+  //     llvm::errs() << "  Using Block: \n" << *block << "\n";
+  //   }
+  // }
 
   // Updates all operations in the region to use the new block arguments
   // instead of the live-in values.
@@ -272,6 +430,71 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
     }
   }
 
+  // for (auto &[use_block, directFlows] : direct_dataflow_live_ins) {
+  //   for (auto &flow : directFlows) {
+  //     Block *def_block = flow.defining_block;
+  //     Value value = flow.value;
+
+  //     // 检查def_block是否是use_block的直接前驱
+  //     bool is_direct_pred = false;
+  //     for (Block *pred : use_block->getPredecessors()) {
+  //       if (pred == def_block) {
+  //         is_direct_pred = true;
+  //         break;
+  //       }
+  //     }
+
+  //     if (is_direct_pred) {
+  //       // 情况1：def_block直接跳转到use_block
+  //       // 需要更新def_block的终止符，添加value作为操作数
+  //       Operation *term_op = def_block->getTerminator();
+
+  //       if (auto br_op = dyn_cast<neura::Br>(term_op)) {
+  //         if (br_op.getDest() == use_block) {
+  //           SmallVector<Value> new_operands(br_op.getOperands().begin(),
+  //                                           br_op.getOperands().end());
+  //           new_operands.push_back(value);
+
+  //           OpBuilder builder(br_op);
+  //           builder.create<neura::Br>(br_op.getLoc(), new_operands,
+  //           use_block); br_op.erase();
+
+  //           llvm::errs() << "更新直接前驱的Br终止符，添加直接数据流操作数\n";
+  //         }
+  //       } else if (auto cond_br_op = dyn_cast<neura::CondBr>(term_op)) {
+  //         SmallVector<Value> true_operands(cond_br_op.getTrueArgs().begin(),
+  //                                          cond_br_op.getTrueArgs().end());
+  //         SmallVector<Value>
+  //         false_operands(cond_br_op.getFalseArgs().begin(),
+  //                                           cond_br_op.getFalseArgs().end());
+
+  //         if (cond_br_op.getTrueDest() == use_block) {
+  //           true_operands.push_back(value);
+  //         }
+  //         if (cond_br_op.getFalseDest() == use_block) {
+  //           false_operands.push_back(value);
+  //         }
+
+  //         OpBuilder builder(cond_br_op);
+  //         builder.create<neura::CondBr>(
+  //             cond_br_op.getLoc(), cond_br_op.getCondition(), true_operands,
+  //             false_operands, cond_br_op.getTrueDest(),
+  //             cond_br_op.getFalseDest());
+  //         cond_br_op.erase();
+
+  //         llvm::errs() <<
+  //         "更新直接前驱的CondBr终止符，添加直接数据流操作数\n";
+  //       }
+  //     } else {
+  //       // 情况2：def_block不是use_block的直接前驱
+  //       // 需要找到从def_block到use_block路径上的所有中间块，并传递value
+  //       // 这个情况比较复杂，但在满足后支配条件下，通常不会发生
+  //       llvm::errs() <<
+  //       "警告：直接数据流live-in的定义块不是使用块的直接前驱\n";
+  //     }
+  //   }
+  // }
+
   return success();
 }
 
@@ -313,7 +536,11 @@ struct CanonicalizeLiveInPass
         return;
       }
 
-      if (failed(promoteLiveInValuesToBlockArgs(*region))) {
+      DominanceInfo dom_info(op);
+      PostDominanceInfo post_dom_info(op);
+
+      if (failed(promoteLiveInValuesToBlockArgs(*region, dom_info,
+                                                post_dom_info))) {
         signalPassFailure();
         return;
       }
