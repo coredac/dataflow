@@ -1,5 +1,6 @@
 #include "Common/AcceleratorAttrs.h"
 #include "Conversion/ConversionPasses.h"
+#include "Conversion/AffineToNeura/LoopNestAnalysis.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -18,7 +19,6 @@
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraOps.h"
@@ -77,7 +77,9 @@ LogicalResult convertAffineMapToIndices(AffineMap map, ValueRange map_operands,
 }
 
 struct AffineLoadLowering : public OpRewritePattern<affine::AffineLoadOp> {
-  using OpRewritePattern<affine::AffineLoadOp>::OpRewritePattern;
+  AffineLoadLowering(MLIRContext *context)
+      : OpRewritePattern<affine::AffineLoadOp>(context, /*benefit=*/1) {}
+  
   LogicalResult matchAndRewrite(affine::AffineLoadOp load_op,
                                 PatternRewriter &rewriter) const override {
     Location loc = load_op.getLoc();
@@ -114,7 +116,9 @@ struct AffineLoadLowering : public OpRewritePattern<affine::AffineLoadOp> {
 };
 
 struct AffineStoreLowering : public OpRewritePattern<affine::AffineStoreOp> {
-  using OpRewritePattern<affine::AffineStoreOp>::OpRewritePattern;
+  AffineStoreLowering(MLIRContext *context)
+      : OpRewritePattern<affine::AffineStoreOp>(context, /*benefit=*/1) {}
+  
   LogicalResult matchAndRewrite(affine::AffineStoreOp store_op,
                                 PatternRewriter &rewriter) const override {
     Location loc = store_op.getLoc();
@@ -150,7 +154,9 @@ struct AffineStoreLowering : public OpRewritePattern<affine::AffineStoreOp> {
 };
 
 struct AffineApplyLowering : public OpRewritePattern<affine::AffineApplyOp> {
-  using OpRewritePattern<affine::AffineApplyOp>::OpRewritePattern;
+  AffineApplyLowering(MLIRContext *context)
+      : OpRewritePattern<affine::AffineApplyOp>(context, /*benefit=*/1) {}
+  
   LogicalResult matchAndRewrite(affine::AffineApplyOp apply_op,
                                 PatternRewriter &rewriter) const override {
     AffineMap map = apply_op.getAffineMap();
@@ -201,27 +207,61 @@ struct AffineApplyLowering : public OpRewritePattern<affine::AffineApplyOp> {
 };
 
 struct AffineForLowering : public OpRewritePattern<affine::AffineForOp> {
-  using OpRewritePattern<affine::AffineForOp>::OpRewritePattern;
+  const LoopNestAnalysis &analysis;
+  llvm::DenseMap<Operation *, Value> &loopValidSignals;
+  
+  AffineForLowering(MLIRContext *context, const LoopNestAnalysis &analysis,
+                    llvm::DenseMap<Operation *, Value> &loopValidSignals)
+      : OpRewritePattern<affine::AffineForOp>(context, /*benefit=*/1),
+        analysis(analysis), loopValidSignals(loopValidSignals) {}
   
   LogicalResult matchAndRewrite(affine::AffineForOp for_op,
                                 PatternRewriter &rewriter) const override {
     Location loc = for_op.getLoc();
-
-    // Extracts loop bounds - must be constant for now.
+    
+    // Extracts loop bounds - must be constant.
+    // Dynamic bounds are not supported as neura.loop_control requires
+    // compile-time constant attributes for hardware configuration.
     if (!for_op.hasConstantLowerBound() || !for_op.hasConstantUpperBound()) {
       return for_op.emitError(
-          "[affine2neura] Non-constant loop bounds not supported yet");
+          "[affine2neura] Non-constant loop bounds not supported. "
+          "Loop bounds must be compile-time constants for CGRA configuration");
     }
 
     int64_t lower_bound = for_op.getConstantLowerBound();
     int64_t upper_bound = for_op.getConstantUpperBound();
     int64_t step = for_op.getStepAsInt();
 
-    // For now, always creates a grant_once for each loop.
-    // TODO: Optimize nested loops to reuse parent's valid signal.
+    // Get loop nesting information
+    LoopInfo *loopInfo = analysis.getLoopInfo(for_op);
     Type i1_type = rewriter.getI1Type();
-    Value parent_valid = rewriter.create<neura::GrantOnceOp>(
-        loc, i1_type, /*value=*/Value(), /*constant_value=*/nullptr);
+    Value parent_valid;
+    
+    // Optimization: Reuse parent loop's valid signal for nested loops.
+    // This avoids creating redundant grant_once operations.
+    if (loopInfo && loopInfo->parent) {
+      // This is a nested loop - try to reuse parent's loop_valid signal
+      auto it = loopValidSignals.find(loopInfo->parent->loop.getOperation());
+      if (it != loopValidSignals.end()) {
+        parent_valid = it->second;
+        llvm::errs() << "[affine2neura] Reusing parent valid signal for "
+                     << "nested loop (depth=" << loopInfo->depth << ")\n";
+      } else {
+        // Fallback: parent not yet converted, create grant_once
+        parent_valid = rewriter.create<neura::GrantOnceOp>(
+            loc, i1_type, /*value=*/Value(), /*constant_value=*/nullptr);
+        llvm::errs() << "[affine2neura] Parent valid not available, "
+                     << "creating grant_once for nested loop\n";
+      }
+    } else {
+      // Top-level loop - create grant_once
+      parent_valid = rewriter.create<neura::GrantOnceOp>(
+          loc, i1_type, /*value=*/Value(), /*constant_value=*/nullptr);
+      if (loopInfo) {
+        llvm::errs() << "[affine2neura] Created grant_once for top-level loop "
+                     << "(depth=" << loopInfo->depth << ")\n";
+      }
+    }
 
     // Creates loop_control operation.
     auto index_type = rewriter.getIndexType();
@@ -236,7 +276,11 @@ struct AffineForLowering : public OpRewritePattern<affine::AffineForOp> {
         /*step=*/rewriter.getI64IntegerAttr(step));
 
     Value loop_index = loop_control.getResult(0);
-    // Value loop_valid = loop_control.getResult(1);  // Will be used for nested loops.
+    Value loop_valid = loop_control.getResult(1);
+    
+    // Store the loop_valid signal for child loops to use.
+    // This enables the optimization for nested loops.
+    loopValidSignals[for_op.getOperation()] = loop_valid;
 
     // Replaces uses of the induction variable.
     for_op.getInductionVar().replaceAllUsesWith(loop_index);
@@ -246,8 +290,10 @@ struct AffineForLowering : public OpRewritePattern<affine::AffineForOp> {
     Operation *terminator = body_block.getTerminator();
     rewriter.eraseOp(terminator);  // Removes affine.yield first.
     
-    rewriter.inlineBlockBefore(&body_block, for_op.getOperation(),
-                               body_block.getArguments());
+    // Merge the loop body into the parent block before the for_op.
+    // Note: We don't pass block arguments since we've already replaced
+    // the induction variable uses with loop_index.
+    rewriter.inlineBlockBefore(&body_block, for_op.getOperation());
     
     // Erases the for_op.
     rewriter.eraseOp(for_op);
@@ -285,12 +331,35 @@ struct LowerAffineToNeuraPass
       }
       // If no accelerator attribute, applies the pass anyway (for testing).
       
+      // Step 1: Perform loop nest analysis
+      // This builds the loop hierarchy and identifies perfect/imperfect nests
+      llvm::errs() << "[affine2neura] Analyzing loop nests in function: "
+                   << func_op.getName() << "\n";
+      LoopNestAnalysis analysis(func_op);
+      analysis.dump();  // Print analysis results for debugging
+      
+      // Step 2: Create a map to store loop_valid signals
+      // This allows nested loops to reuse parent's valid signal
+      llvm::DenseMap<Operation *, Value> loopValidSignals;
+      
+      // Step 3: Set up dialect conversion
+      // We use Dialect Conversion instead of Greedy Pattern Rewriter because:
+      // 1. It provides better error reporting when conversion fails
+      // 2. It explicitly defines which operations are legal/illegal
+      // 3. It's the standard approach for dialect lowering passes
+      ConversionTarget target(*context);
+      target.addLegalDialect<neura::NeuraDialect, arith::ArithDialect,
+                             memref::MemRefDialect, func::FuncDialect>();
+      target.addIllegalDialect<affine::AffineDialect>();
+      
+      // Step 4: Register rewrite patterns with analysis
       RewritePatternSet patterns(context);
-      patterns.add<AffineForLowering, AffineLoadLowering, 
-                   AffineStoreLowering, AffineApplyLowering>(context);
+      patterns.add<AffineLoadLowering, AffineStoreLowering, AffineApplyLowering>(context);
+      // Pass references to the analysis and loopValidSignals map
+      patterns.add<AffineForLowering>(context, std::cref(analysis), 
+                                      std::ref(loopValidSignals));
 
-      if (failed(applyPatternsGreedily(func_op.getOperation(),
-                                       std::move(patterns)))) {
+      if (failed(applyPartialConversion(func_op, target, std::move(patterns)))) {
         func_op.emitError("[affine2neura] Failed to lower affine "
                           "operations to Neura dialect");
         signalPassFailure();
