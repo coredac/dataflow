@@ -61,16 +61,82 @@ LogicalResult convertAffineMapToIndices(AffineMap map, ValueRange map_operands,
       new_indices.push_back(map_operands[symbol_operand_index]);
     } else {
       // For more complex affine expressions (e.g., d0 + c1),
-      // materializes the result using affine.apply.
-      // This is a temporary workaround for complex expressions.
-      // TODO: Handle more complex expressions.
-      llvm::errs() << "[affine2neura] Complex affine expression: " << expr
-                   << "\n";
-      AffineMap single_result_map = AffineMap::get(
-          map.getNumDims(), map.getNumSymbols(), expr, rewriter.getContext());
-      Value complexIndex = rewriter.create<affine::AffineApplyOp>(
-          loc, single_result_map, map_operands);
-      new_indices.push_back(complexIndex);
+      // expands them into explicit Neura arithmetic operations.
+      // Supports: Add, Mul, Mod, FloorDiv, CeilDiv.
+      llvm::errs() << "[affine2neura] Expanding complex affine expression: " 
+                   << expr << "\n";
+      
+      // Helper lambda: recursively expands AffineExpr to Value.
+      std::function<Value(AffineExpr)> expandExpr = 
+          [&](AffineExpr e) -> Value {
+        // Constant expression.
+        if (auto const_expr = dyn_cast<AffineConstantExpr>(e)) {
+          return rewriter.create<neura::ConstantOp>(
+              loc, rewriter.getIndexType(),
+              rewriter.getIntegerAttr(rewriter.getIndexType(), 
+                                      const_expr.getValue()));
+        }
+        // Dimension expression.
+        else if (auto dim_expr = dyn_cast<AffineDimExpr>(e)) {
+          return map_operands[dim_expr.getPosition()];
+        }
+        // Symbol expression.
+        else if (auto sym_expr = dyn_cast<AffineSymbolExpr>(e)) {
+          unsigned symbol_operand_index = 
+              map.getNumDims() + sym_expr.getPosition();
+          return map_operands[symbol_operand_index];
+        }
+        // Binary operation expression.
+        else if (auto bin_expr = dyn_cast<AffineBinaryOpExpr>(e)) {
+          Value lhs = expandExpr(bin_expr.getLHS());
+          Value rhs = expandExpr(bin_expr.getRHS());
+          
+          switch (bin_expr.getKind()) {
+            case AffineExprKind::Add:
+              return rewriter.create<neura::AddOp>(
+                  loc, rewriter.getIndexType(), lhs, rhs).getResult();
+            case AffineExprKind::Mul:
+              return rewriter.create<neura::MulOp>(
+                  loc, rewriter.getIndexType(), lhs, rhs).getResult();
+            case AffineExprKind::Mod:
+              return rewriter.create<neura::RemOp>(
+                  loc, rewriter.getIndexType(), lhs, rhs).getResult();
+            case AffineExprKind::FloorDiv:
+              return rewriter.create<neura::DivOp>(
+                  loc, rewriter.getIndexType(), lhs, rhs).getResult();
+            case AffineExprKind::CeilDiv: {
+              // ceildiv(a, b) = floordiv(a + b - 1, b).
+              Value one = rewriter.create<neura::ConstantOp>(
+                  loc, rewriter.getIndexType(),
+                  rewriter.getIntegerAttr(rewriter.getIndexType(), 1));
+              Value b_minus_1 = rewriter.create<neura::SubOp>(
+                  loc, rewriter.getIndexType(), rhs, one).getResult();
+              Value numerator = rewriter.create<neura::AddOp>(
+                  loc, rewriter.getIndexType(), lhs, b_minus_1).getResult();
+              return rewriter.create<neura::DivOp>(
+                  loc, rewriter.getIndexType(), numerator, rhs).getResult();
+            }
+            default:
+              llvm::errs() << "[affine2neura] Unsupported binary op kind: "
+                           << static_cast<int>(bin_expr.getKind()) << "\n";
+              return Value();
+          }
+        }
+        
+        llvm::errs() << "[affine2neura] Unsupported affine expression type\n";
+        return Value();
+      };
+      
+      Value expanded = expandExpr(expr);
+      if (!expanded) {
+        // Fallback: if expansion fails, use affine.apply (ensures correctness).
+        llvm::errs() << "[affine2neura] Failed to expand, using affine.apply\n";
+        AffineMap single_result_map = AffineMap::get(
+            map.getNumDims(), map.getNumSymbols(), expr, rewriter.getContext());
+        expanded = rewriter.create<affine::AffineApplyOp>(
+            loc, single_result_map, map_operands);
+      }
+      new_indices.push_back(expanded);
     }
   }
   return success();
@@ -163,46 +229,87 @@ struct AffineApplyLowering : public OpRewritePattern<affine::AffineApplyOp> {
     ValueRange operands = apply_op.getMapOperands();
     Location loc = apply_op.getLoc();
 
-    // AffineMap can have multiple results when used in affine.for or affine.if,
-    // but AffineApplyOp always has exactly one result.
-    // Example with multiple results (in affine.for context):
-    //   affine_map<(d0, d1) -> (d0 + 1, d1 * 2)>
-    // However, AffineApplyOp would use single-result maps like:
-    //   affine_map<(d0) -> (d0 + 1)>
     if (map.getNumResults() != 1) {
       return apply_op.emitError(
           "[affine2neura] AffineApplyOp must have a single result");
     }
 
     AffineExpr expr = map.getResult(0);
-    // Handles simple affine expressions like d0 + cst.
-    // TODO: Handle more complex expressions.
-    if (isa<AffineBinaryOpExpr>(expr)) {
-      AffineBinaryOpExpr bin_expr = dyn_cast<AffineBinaryOpExpr>(expr);
-      if (bin_expr.getKind() == AffineExprKind::Add) {
-        if (isa<AffineDimExpr>(bin_expr.getLHS())) {
-          AffineDimExpr dim = dyn_cast<AffineDimExpr>(bin_expr.getLHS());
-          if (isa<AffineConstantExpr>(bin_expr.getRHS())) {
-            AffineConstantExpr cst =
-                dyn_cast<AffineConstantExpr>(bin_expr.getRHS());
-            neura::ConstantOp cstVal = rewriter.create<neura::ConstantOp>(
+    llvm::errs() << "[affine2neura] Expanding affine.apply expression: " 
+                 << expr << "\n";
+    
+    // Helper lambda: recursively expands AffineExpr to Value.
+    std::function<Value(AffineExpr)> expandExpr = 
+        [&](AffineExpr e) -> Value {
+      // Constant expression.
+      if (auto const_expr = dyn_cast<AffineConstantExpr>(e)) {
+        return rewriter.create<neura::ConstantOp>(
+            loc, rewriter.getIndexType(),
+            rewriter.getIntegerAttr(rewriter.getIndexType(), 
+                                    const_expr.getValue()));
+      }
+      // Dimension expression.
+      else if (auto dim_expr = dyn_cast<AffineDimExpr>(e)) {
+        return operands[dim_expr.getPosition()];
+      }
+      // Symbol expression.
+      else if (auto sym_expr = dyn_cast<AffineSymbolExpr>(e)) {
+        unsigned symbol_operand_index = 
+            map.getNumDims() + sym_expr.getPosition();
+        return operands[symbol_operand_index];
+      }
+      // Binary operation expression.
+      else if (auto bin_expr = dyn_cast<AffineBinaryOpExpr>(e)) {
+        Value lhs = expandExpr(bin_expr.getLHS());
+        Value rhs = expandExpr(bin_expr.getRHS());
+        
+        if (!lhs || !rhs) {
+          return Value();
+        }
+        
+        switch (bin_expr.getKind()) {
+          case AffineExprKind::Add:
+            return rewriter.create<neura::AddOp>(
+                loc, rewriter.getIndexType(), lhs, rhs).getResult();
+          case AffineExprKind::Mul:
+            return rewriter.create<neura::MulOp>(
+                loc, rewriter.getIndexType(), lhs, rhs).getResult();
+          case AffineExprKind::Mod:
+            return rewriter.create<neura::RemOp>(
+                loc, rewriter.getIndexType(), lhs, rhs).getResult();
+          case AffineExprKind::FloorDiv:
+            return rewriter.create<neura::DivOp>(
+                loc, rewriter.getIndexType(), lhs, rhs).getResult();
+          case AffineExprKind::CeilDiv: {
+            // ceildiv(a, b) = floordiv(a + b - 1, b).
+            Value one = rewriter.create<neura::ConstantOp>(
                 loc, rewriter.getIndexType(),
-                rewriter.getIntegerAttr(rewriter.getIndexType(),
-                                        cst.getValue()));
-            neura::AddOp addOp = rewriter.create<neura::AddOp>(
-                loc, cstVal.getType(), operands[dim.getPosition()], cstVal);
-            rewriter.replaceOp(apply_op, addOp.getResult());
-            return success();
+                rewriter.getIntegerAttr(rewriter.getIndexType(), 1));
+            Value b_minus_1 = rewriter.create<neura::SubOp>(
+                loc, rewriter.getIndexType(), rhs, one).getResult();
+            Value numerator = rewriter.create<neura::AddOp>(
+                loc, rewriter.getIndexType(), lhs, b_minus_1).getResult();
+            return rewriter.create<neura::DivOp>(
+                loc, rewriter.getIndexType(), numerator, rhs).getResult();
           }
+          default:
+            llvm::errs() << "[affine2neura] Unsupported binary op kind: "
+                         << static_cast<int>(bin_expr.getKind()) << "\n";
+            return Value();
         }
       }
+      
+      llvm::errs() << "[affine2neura] Unsupported affine expression type\n";
+      return Value();
+    };
+    
+    Value expanded = expandExpr(expr);
+    if (!expanded) {
+      return apply_op.emitError("[affine2neura] Failed to expand affine.apply expression");
     }
-
-    // You can add more cases here for different affine expressions.
-    // For now, we will just emit an error for unsupported expressions.
-    return apply_op.emitError("[affine2neura] Unsupported complex affine "
-                              "expression in AffineApplyOp.\n")
-           << "Only simple affine expressions like d0 + cst are supported.\n";
+    
+    rewriter.replaceOp(apply_op, expanded);
+    return success();
   }
 };
 
