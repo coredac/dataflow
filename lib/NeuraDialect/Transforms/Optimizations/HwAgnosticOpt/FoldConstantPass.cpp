@@ -95,9 +95,8 @@ SmallVector<ConstantOperandInfo> analyzeOperandsForFolding(Operation *op) {
         continue;  // Don't fold this one.
       }
       
-      // Rule 2: Special restriction: For operations with 3 or more operands,
-      // only fold at most 1 constant.
-      if (num_operands >= 3 && !constants_to_fold.empty()) {
+      // Rule 2: Only folds at most 1 constant.
+      if (!constants_to_fold.empty()) {
         // Already have one constant to fold, skip the rest.
         continue;
       }
@@ -325,6 +324,7 @@ struct FuseGEPConstantPattern : public GenericFuseConstantPattern<neura::GEP> {
     for (Value val : non_const_operands) {
       // Checks if this is the base operand.
       if (val == orig_base) {
+        assert(num_base == 0);
         operands.push_back(val);
         num_base = 1;
       } else {
@@ -440,6 +440,8 @@ struct FuseStoreIndexedConstantPattern
     if (num_operands >= 3 && value_is_const && base_is_const) {
       // Both are constants, but we can only fold one.
       // Prioritize folding value (lhs), don't fold base (rhs).
+      // Format: neura.store_indexed %value to %base[%idx : type] base_type : value_type
+      //         where %value is lhs (1st operand), %base is rhs (2nd operand).
       base_is_const = false;
     }
     // Keeps all indices unchanged (never fold indices).
