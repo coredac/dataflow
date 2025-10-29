@@ -89,12 +89,18 @@ SmallVector<ConstantOperandInfo> analyzeOperandsForFolding(Operation *op) {
   // Second pass: Collects constants to fold.
   for (size_t i = 0; i < num_operands; ++i) {
     if (is_const[i]) {
-      // If this is operand 0 and there are no other non-const operands,
+      // Rule 1: If this is operand 0 and there are no other non-const operands,
       // we must keep it (MLIR operations need at least one operand).
       if (i == 0 && !has_non_const) {
         continue;  // Don't fold this one.
       }
       
+      // Rule 2: Special restriction: For operations with 3 or more operands,
+      // only fold at most 1 constant.
+      if (num_operands >= 3 && !constants_to_fold.empty()) {
+        // Already have one constant to fold, skip the rest.
+        continue;
+      }
       // This operand will be folded.
       Value operand = op->getOperand(i);
       constants_to_fold.push_back({
@@ -306,25 +312,24 @@ struct FuseGEPConstantPattern : public GenericFuseConstantPattern<neura::GEP> {
       neura::GEP op, ArrayRef<Value> non_const_operands,
       PatternRewriter &rewriter) const override {
     // GEP: operand 0 is base, rest are indices.
-    // Determines which operands are kept by checking against original.
+    // Uses the provided non_const_operands which already determined what to keep.
     Value orig_base = op.getBase();
     auto orig_indices = op.getIndices();
     
-    bool base_is_const = isOriginConstantOp(orig_base);
-    
-    // Builds operand list and calculates segment sizes.
+    // Determines which operands from non_const_operands are base vs indices.
+    // We need to check each operand in non_const_operands against the original.
     SmallVector<Value> operands;
     int32_t num_base = 0;
     int32_t num_indices = 0;
     
-    if (!base_is_const) {
-      operands.push_back(orig_base);
-      num_base = 1;
-    }
-    
-    for (Value idx : orig_indices) {
-      if (!isOriginConstantOp(idx)) {
-        operands.push_back(idx);
+    for (Value val : non_const_operands) {
+      // Checks if this is the base operand.
+      if (val == orig_base) {
+        operands.push_back(val);
+        num_base = 1;
+      } else {
+        // Must be one of the indices.
+        operands.push_back(val);
         num_indices++;
       }
     }
@@ -429,6 +434,14 @@ struct FuseStoreIndexedConstantPattern
       return failure();
     }
     
+    // Special restriction: For operations with 3 or more operands,
+    // only fold at most 1 constant (fold value, not base).
+    size_t num_operands = op->getNumOperands();
+    if (num_operands >= 3 && value_is_const && base_is_const) {
+      // Both are constants, but we can only fold one.
+      // Prioritize folding value (lhs), don't fold base (rhs).
+      base_is_const = false;
+    }
     // Keeps all indices unchanged (never fold indices).
     SmallVector<Value> indices;
     for (Value idx : op.getIndices()) {
