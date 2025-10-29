@@ -398,9 +398,8 @@ struct AffineForLowering : public OpRewritePattern<affine::AffineForOp> {
     rewriter.eraseOp(terminator);  // Removes affine.yield first.
     
     // Merge the loop body into the parent block before the for_op.
-    // Note: We don't pass block arguments since we've already replaced
-    // the induction variable uses with loop_index.
-    rewriter.inlineBlockBefore(&body_block, for_op.getOperation());
+    // Pass empty ValueRange since we've already replaced the induction variable.
+    rewriter.inlineBlockBefore(&body_block, for_op.getOperation(), {});
     
     // Erases the for_op.
     rewriter.eraseOp(for_op);
