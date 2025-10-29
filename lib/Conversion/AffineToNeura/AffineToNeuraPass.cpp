@@ -389,17 +389,14 @@ struct AffineForLowering : public OpRewritePattern<affine::AffineForOp> {
     // This enables the optimization for nested loops.
     loopValidSignals[for_op.getOperation()] = loop_valid;
 
-    // Replaces uses of the induction variable.
-    for_op.getInductionVar().replaceAllUsesWith(loop_index);
-
     // Inlines the body operations before the for_op.
     Block &body_block = for_op.getRegion().front();
     Operation *terminator = body_block.getTerminator();
     rewriter.eraseOp(terminator);  // Removes affine.yield first.
     
     // Merge the loop body into the parent block before the for_op.
-    // Pass empty ValueRange since we've already replaced the induction variable.
-    rewriter.inlineBlockBefore(&body_block, for_op.getOperation(), {});
+    // Pass the loop_index as replacement for the induction variable block argument.
+    rewriter.inlineBlockBefore(&body_block, for_op.getOperation(), {loop_index});
     
     // Erases the for_op.
     rewriter.eraseOp(for_op);
