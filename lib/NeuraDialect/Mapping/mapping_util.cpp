@@ -57,11 +57,6 @@ OperationKind getOperationKindFromMlirOp(Operation *op) {
   if (isa<neura::FAddFAddOp>(op)) return FAddFAdd;
   if (isa<neura::FMulFAddOp>(op)) return FMulFAdd;
   
-  // Steering control fused operations
-  if (isa<neura::CarryInvariantOp>(op)) return ICarryInvariant;
-  if (isa<neura::ConditionalSelectOp>(op)) return IConditionalSelect;
-  if (isa<neura::InvariantGroupOp>(op)) return IInvariantGroup;
-  
   // Control flow operations
   if (isa<neura::ReturnOp>(op)) return IReturn;
   if (isa<neura::PhiOp>(op)) return IPhi;
@@ -96,8 +91,7 @@ bool is_non_materialized(Operation *op) {
 // require DataMovOp wrapping (e.g., constants, carry, invariant, etc.).
 bool is_steering_unwrapped_op(Operation *op) {
   return mlir::isa<neura::ConstantOp, neura::CarryOp, neura::InvariantOp,
-                   neura::CarryInvariantOp, neura::ConditionalSelectOp,
-                   neura::InvariantGroupOp, neura::ReserveOp>(op);
+                   neura::ReserveOp>(op);
 }
 
 } // namespace neura
@@ -778,16 +772,6 @@ bool mlir::neura::isMaterializedReserveUser(Operation *user) {
     return true;
   }
   if (isa<neura::CarryOp>(user)) {
-    return true;
-  }
-  // Fused steering control operations
-  if (isa<neura::CarryInvariantOp>(user)) {
-    return true;
-  }
-  if (isa<neura::ConditionalSelectOp>(user)) {
-    return true;
-  }
-  if (isa<neura::InvariantGroupOp>(user)) {
     return true;
   }
   return false;
