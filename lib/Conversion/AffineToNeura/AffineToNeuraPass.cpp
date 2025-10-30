@@ -172,11 +172,10 @@ struct AffineLoadLowering : public OpRewritePattern<affine::AffineLoadOp> {
              << memref_type.getRank() << ")";
     }
 
-    // Enforces maximum dimension constraint for CGRA hardware support.
-    if (new_indices.size() > 3) {
-      return load_op.emitError(
-          "[affine2neura] Maximum 3 dimensions supported for CGRA hardware");
-    }
+    // NOTE: No explicit dimension limit is enforced here. The lowering supports
+    // arbitrary dimensions theoretically. For CGRA hardware with limited address
+    // generation units, dimension constraints should be handled at a later stage
+    // (e.g., during mapping or hardware-specific lowering passes).
 
     // Creates the neura.load_indexed operation.
    LoadIndexedOp new_load_op = rewriter.create<neura::LoadIndexedOp>(
@@ -216,12 +215,6 @@ struct AffineStoreLowering : public OpRewritePattern<affine::AffineStoreOp> {
                  "[affine2neura] Number of indices from affine map (")
              << newIndices.size() << ") does not match memref rank ("
              << memRefType.getRank() << ")";
-    }
-
-    // Enforces maximum dimension constraint for CGRA hardware support.
-    if (newIndices.size() > 3) {
-      return store_op.emitError(
-          "[affine2neura] Maximum 3 dimensions supported for CGRA hardware");
     }
 
     rewriter.create<neura::StoreIndexedOp>(loc, value, memref,
