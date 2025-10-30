@@ -57,7 +57,7 @@ void LoopNestAnalysis::analyzePerfectNests() {
     
     // Leaf loops are automatically perfect.
     if (info->children.empty()) {
-      info->isPerfectNest = true;
+      info->is_perfect_nest = true;
       continue;
     }
     
@@ -76,8 +76,8 @@ void LoopNestAnalysis::analyzePerfectNests() {
     for (Operation &op : body.getOperations()) {
       if (&op == firstChild) break;
       if (isa<affine::AffineYieldOp>(&op)) continue;
-      info->operationsBeforeChild.push_back(&op);
-      info->isPerfectNest = false;  // Operations before child → imperfect
+      info->operations_before_child.push_back(&op);
+      info->is_perfect_nest = false;  // Operations before child → imperfect
     }
     
     // Checks if operations exist after the last child loop.
@@ -88,8 +88,8 @@ void LoopNestAnalysis::analyzePerfectNests() {
         continue;
       }
       if (afterLastChild && !isa<affine::AffineYieldOp>(&op)) {
-        info->operationsAfterChild.push_back(&op);
-        info->isPerfectNest = false;  // Operations after child → imperfect
+        info->operations_after_child.push_back(&op);
+        info->is_perfect_nest = false;  // Operations after child → imperfect
       }
     }
     
@@ -102,7 +102,7 @@ void LoopNestAnalysis::analyzePerfectNests() {
       for (Operation &op : body.getOperations()) {
         if (childLoopOps.contains(&op)) {
           if (prevChild && betweenChildren) {
-            info->isPerfectNest = false;  // Operations between siblings → imperfect
+            info->is_perfect_nest = false;  // Operations between siblings → imperfect
             break;
           }
           prevChild = &op;
@@ -127,7 +127,7 @@ LoopInfo *LoopNestAnalysis::getLoopInfo(affine::AffineForOp loop) const {
 // Checks if the loop is a perfect nest.
 bool LoopNestAnalysis::isPerfectNest(affine::AffineForOp loop) const {
   LoopInfo *info = getLoopInfo(loop);
-  return info ? info->isPerfectNest : false;
+  return info ? info->is_perfect_nest : false;
 }
 
 // Gets the parent loop.
@@ -159,14 +159,14 @@ void LoopNestAnalysis::dump() const {
     
     // Prints basic loop information.
     llvm::errs() << "Loop (depth=" << info->depth 
-                 << ", perfect=" << (info->isPerfectNest ? "yes" : "no")
+                 << ", perfect=" << (info->is_perfect_nest ? "yes" : "no")
                  << ", children=" << info->children.size() << ")";
     
     // If imperfect nest, prints detailed information.
-    if (!info->isPerfectNest) {
+    if (!info->is_perfect_nest) {
       llvm::errs() << " [IMPERFECT: "
-                   << "ops_before=" << info->operationsBeforeChild.size()
-                   << ", ops_after=" << info->operationsAfterChild.size()
+                   << "ops_before=" << info->operations_before_child.size()
+                   << ", ops_after=" << info->operations_after_child.size()
                    << "]";
     }
     llvm::errs() << "\n";

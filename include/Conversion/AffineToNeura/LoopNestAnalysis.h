@@ -1,13 +1,3 @@
-//===- LoopNestAnalysis.h - Analyze affine loop nests ----------*- C++ -*-===//
-//
-// Loop nest analysis for affine loops.
-// 
-// Features:
-// 1. Build loop hierarchy tree (parent-child relationships, nesting depth)
-// 2. Identify perfect vs imperfect nesting
-// 3. Support valid signal reuse optimization for nested loops
-//
-//===----------------------------------------------------------------------===//
 #ifndef CONVERSION_AFFINE_TO_NEURA_LOOP_NEST_ANALYSIS_H
 #define CONVERSION_AFFINE_TO_NEURA_LOOP_NEST_ANALYSIS_H
 
@@ -27,11 +17,11 @@ struct LoopInfo {
   LoopInfo *parent = nullptr;            // Parent loop (nullptr if top-level).
   llvm::SmallVector<LoopInfo *, 4> children;  // Child loops list.
   unsigned depth = 0;                    // Nesting depth (0=top-level).
-  bool isPerfectNest = true;             // Whether it is a perfect nest.
+  bool is_perfect_nest = true;           // Whether it is a perfect nest.
   
   // Operations list for imperfect nesting.
-  llvm::SmallVector<Operation *, 4> operationsBeforeChild;  // Operations before child loops.
-  llvm::SmallVector<Operation *, 4> operationsAfterChild;   // Operations after child loops.
+  llvm::SmallVector<Operation *, 4> operations_before_child;  // Operations before child loops.
+  llvm::SmallVector<Operation *, 4> operations_after_child;   // Operations after child loops.
   
   LoopInfo(affine::AffineForOp loop) : loop(loop) {}
 };
