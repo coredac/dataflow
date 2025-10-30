@@ -33,6 +33,25 @@ using namespace mlir::func;
 #include "Conversion/ConversionPasses.h.inc"
 
 namespace {
+// Converts an AffineMap to explicit index computations using Neura operations.
+// This function handles the expansion of affine expressions into arithmetic ops.
+//
+// Example 1 - Simple dimension access:
+// Before: affine_map<(d0, d1) -> (d0, d1)> with operands (%i, %j)
+// After:  Returns [%i, %j] directly
+//
+// Example 2 - Constant offset:
+// Before: affine_map<(d0) -> (d0 + 5)> with operand %i
+// After:  %c5 = neura.constant 5 : index
+//         %result = neura.add %i, %c5 : index
+//         Returns [%result]
+//
+// Example 3 - Complex expression:
+// Before: affine_map<(d0, d1) -> (d0 * 2 + d1)> with operands (%i, %j)
+// After:  %c2 = neura.constant 2 : index
+//         %mul = neura.mul %i, %c2 : index
+//         %result = neura.add %mul, %j : index
+//         Returns [%result]
 LogicalResult convertAffineMapToIndices(AffineMap map, ValueRange map_operands,
                                         Location loc, PatternRewriter &rewriter,
                                         SmallVector<Value> &new_indices) {
@@ -142,6 +161,20 @@ LogicalResult convertAffineMapToIndices(AffineMap map, ValueRange map_operands,
   return success();
 }
 
+// Converts affine.load to neura.load_indexed.
+// Expands the affine map into explicit index computations.
+//
+// Example 1 - Simple 2D array access:
+// Before: %val = affine.load %A[%i, %j] : memref<10x20xf32>
+// After:  %val = neura.load_indexed %A[%i, %j : index, index] memref<10x20xf32> : f32
+//
+// Example 2 - With affine expression:
+// Before: %val = affine.load %A[%i * 2 + 1, %j] : memref<100x100xf32>
+// After:  %c2 = neura.constant 2 : index
+//         %c1 = neura.constant 1 : index
+//         %mul = neura.mul %i, %c2 : index
+//         %idx0 = neura.add %mul, %c1 : index
+//         %val = neura.load_indexed %A[%idx0, %j : index, index] memref<100x100xf32> : f32
 struct AffineLoadLowering : public OpRewritePattern<affine::AffineLoadOp> {
   AffineLoadLowering(MLIRContext *context)
       : OpRewritePattern<affine::AffineLoadOp>(context, /*benefit=*/1) {}
@@ -186,6 +219,20 @@ struct AffineLoadLowering : public OpRewritePattern<affine::AffineLoadOp> {
   }
 };
 
+// Converts affine.store to neura.store_indexed.
+// Similar to AffineLoadLowering, expands affine maps into explicit indices.
+//
+// Example 1 - Simple store:
+// Before: affine.store %val, %A[%i, %j] : memref<10x20xf32>
+// After:  neura.store_indexed %val to %A[%i, %j : index, index] memref<10x20xf32> : f32
+//
+// Example 2 - With affine expression:
+// Before: affine.store %val, %A[%i + 1, %j * 2] : memref<100x100xf32>
+// After:  %c1 = neura.constant 1 : index
+//         %c2 = neura.constant 2 : index
+//         %idx0 = neura.add %i, %c1 : index
+//         %idx1 = neura.mul %j, %c2 : index
+//         neura.store_indexed %val to %A[%idx0, %idx1 : index, index] memref<100x100xf32> : f32
 struct AffineStoreLowering : public OpRewritePattern<affine::AffineStoreOp> {
   AffineStoreLowering(MLIRContext *context)
       : OpRewritePattern<affine::AffineStoreOp>(context, /*benefit=*/1) {}
@@ -224,6 +271,30 @@ struct AffineStoreLowering : public OpRewritePattern<affine::AffineStoreOp> {
   }
 };
 
+// Converts affine.apply to explicit Neura arithmetic operations.
+// Recursively expands the affine expression tree into primitive operations.
+//
+// Example 1 - Linear expression:
+// Before: %result = affine.apply affine_map<(d0) -> (d0 + 5)>(%i)
+// After:  %c5 = neura.constant 5 : index
+//         %result = neura.add %i, %c5 : index
+//
+// Example 2 - Multiply-add:
+// Before: %result = affine.apply affine_map<(d0, d1) -> (d0 * 2 + d1)>(%i, %j)
+// After:  %c2 = neura.constant 2 : index
+//         %mul = neura.mul %i, %c2 : index
+//         %result = neura.add %mul, %j : index
+//
+// Example 3 - Modulo operation:
+// Before: %result = affine.apply affine_map<(d0) -> (d0 mod 8)>(%i)
+// After:  %c8 = neura.constant 8 : index
+//         %result = neura.rem %i, %c8 : index
+//
+// Example 4 - Complex nested expression:
+// Before: %result = affine.apply affine_map<(d0, d1) -> ((d0 + 1) * d1)>(%i, %j)
+// After:  %c1 = neura.constant 1 : index
+//         %add = neura.add %i, %c1 : index
+//         %result = neura.mul %add, %j : index
 struct AffineApplyLowering : public OpRewritePattern<affine::AffineApplyOp> {
   AffineApplyLowering(MLIRContext *context)
       : OpRewritePattern<affine::AffineApplyOp>(context, /*benefit=*/1) {}
@@ -328,6 +399,36 @@ struct AffineApplyLowering : public OpRewritePattern<affine::AffineApplyOp> {
   }
 };
 
+// Converts affine.for loops to neura.loop_control with dataflow semantics.
+// Creates grant_once for top-level loops, reuses parent's valid signal for nested loops.
+//
+// Example 1 - Simple single loop:
+// Before: affine.for %i = 0 to 10 {
+//           %val = affine.load %A[%i] : memref<10xf32>
+//         }
+// After:  %valid0 = "neura.grant_once"() : () -> i1
+//         %i, %valid1 = "neura.loop_control"(%valid0) <{end = 10, start = 0, step = 1}> : (i1) -> (index, i1)
+//         %val = neura.load_indexed %A[%i : index] memref<10xf32> : f32
+//
+// Example 2 - Nested loops (demonstrates valid signal reuse):
+// Before: affine.for %i = 0 to 10 {
+//           affine.for %j = 0 to 20 {
+//             %val = affine.load %A[%i, %j] : memref<10x20xf32>
+//           }
+//         }
+// After:  %valid0 = "neura.grant_once"() : () -> i1
+//         %i, %valid_i = "neura.loop_control"(%valid0) <{end = 10, start = 0, step = 1}> : (i1) -> (index, i1)
+//         %j, %valid_j = "neura.loop_control"(%valid_i) <{end = 20, start = 0, step = 1}> : (i1) -> (index, i1)
+//         %val = neura.load_indexed %A[%i, %j : index, index] memref<10x20xf32> : f32
+//         (Note: Inner loop reuses outer loop's valid_i signal, no second grant_once)
+//
+// Example 3 - Non-zero bounds and step:
+// Before: affine.for %i = 5 to 100 step 2 {
+//           %val = affine.load %A[%i] : memref<100xf32>
+//         }
+// After:  %valid0 = "neura.grant_once"() : () -> i1
+//         %i, %valid1 = "neura.loop_control"(%valid0) <{end = 100, start = 5, step = 2}> : (i1) -> (index, i1)
+//         %val = neura.load_indexed %A[%i : index] memref<100xf32> : f32
 struct AffineForLowering : public OpRewritePattern<affine::AffineForOp> {
   const LoopNestAnalysis &analysis;
   llvm::DenseMap<Operation *, Value> &loopValidSignals;
