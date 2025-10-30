@@ -234,6 +234,16 @@ struct AffineApplyLowering : public OpRewritePattern<affine::AffineApplyOp> {
     ValueRange operands = apply_op.getMapOperands();
     Location loc = apply_op.getLoc();
 
+    // Note: AffineMap can have multiple results in general MLIR contexts
+    // (e.g., affine_map<(d0, d1) -> (d0 + 1, d1 * 2)> returns two values).
+    // However, AffineApplyOp specifically enforces single-result maps at
+    // construction time. This check serves as a safety guard.
+    //
+    // Example transformation:
+    // Before: %result = affine.apply affine_map<(d0, d1) -> (d0 * 2 + d1)>(%i, %j)
+    // After:  %c2 = arith.constant 2 : index
+    //         %mul = arith.muli %i, %c2 : index
+    //         %result = arith.addi %mul, %j : index
     if (map.getNumResults() != 1) {
       return apply_op.emitError(
           "[affine2neura] AffineApplyOp must have a single result");
