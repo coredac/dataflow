@@ -88,10 +88,11 @@ bool is_non_materialized(Operation *op) {
 }
 
 // Returns true if the operation is a steering-mode operation that doesn't
-// require DataMovOp wrapping (e.g., constants, carry, invariant, etc.).
+// require DataMovOp wrapping (e.g., carry, invariant, reserve).
+// Note: ConstantOp is NOT included here because constants DO need routing
+// unless they are folded into consumer operations.
 bool is_steering_unwrapped_op(Operation *op) {
-  return mlir::isa<neura::ConstantOp, neura::CarryOp, neura::InvariantOp,
-                   neura::ReserveOp>(op);
+  return mlir::isa<neura::CarryOp, neura::InvariantOp, neura::ReserveOp>(op);
 }
 
 } // namespace neura
@@ -633,7 +634,7 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
 Operation *mlir::neura::getMaterializedProducer(Value operand) {
   Operation *producer = operand.getDefiningOp();
   
-  // In steering mode, some operations (like constants, carry, invariant, etc.)
+  // In steering mode, some operations (like carry, invariant, reserve)
   // may not be wrapped by DataMovOp. Return them directly.
   if (is_steering_unwrapped_op(producer)) {
     return producer;
@@ -976,8 +977,8 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
       }
       Operation *data_move = operand.getDefiningOp();
       
-      // In steering mode, some operands may not be DataMovOp (e.g., constants,
-      // carry, invariant, etc.). Skip routing for these operations.
+      // In steering mode, some operands may not be DataMovOp (e.g., carry,
+      // invariant, reserve). Skip routing for these operations.
       if (is_steering_unwrapped_op(data_move)) {
         llvm::errs() << "Skipping steering unwrapped operand: " << *data_move
                      << "\n";
