@@ -23,7 +23,10 @@ module {
 // CHECK: error:
 // CHECK: affine.if
 //
-// Note: affine.if is not currently supported in this lowering pass.
-// Conditional execution would require predicated operations or 
-// control flow handling in the dataflow model.
+// Note: affine.if is not currently supported in this direct lowering pass.
+// Alternative lowering path:
+//   1. Use --lower-affine-to-loops to convert affine.if -> scf.if
+//   2. Use --convert-scf-to-cf to convert scf.if -> cf.cond_br
+//   3. Then use a separate pass to convert control flow to Neura predicated ops
+// This multi-stage approach provides more flexibility for handling conditionals.
 // ============================================================================
