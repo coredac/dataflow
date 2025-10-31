@@ -134,4 +134,5 @@ def RemovePredicatedType : Pass<"remove-predicated-type", "ModuleOp"> {
   }];
   let constructor = "neura::createRemovePredicatedTypePass()";
 }
+
 #endif // NEURA_PASSES_TD

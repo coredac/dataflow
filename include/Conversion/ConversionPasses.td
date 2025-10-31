@@ -32,4 +32,16 @@ def LowerBuiltinToNeura : Pass<"lower-builtin-to-neura", "ModuleOp">{
   let constructor = "mlir::createLowerBuiltinToNeuraPass()";
 }
 
+def LowerAffineToNeura : Pass<"lower-affine-to-neura", "func::FuncOp">{
+  let summary = "Lower Affine perfect nested loops to Neura loop_control operations";
+  let description = [{
+    Converts perfectly nested affine.for loops directly to Neura dialect using 
+    loop_control operations, avoiding the need to flatten to LLVM IR first.
+    This preserves loop structure information for better optimization on 
+    dataflow architectures.
+  }];
+  let constructor = "mlir::createLowerAffineToNeuraPass()";
+  let dependentDialects = ["mlir::neura::NeuraDialect", "mlir::affine::AffineDialect"];
+}
+
 #endif // CONVERSION_PASSES_TD

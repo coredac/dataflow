@@ -87,6 +87,14 @@ bool is_non_materialized(Operation *op) {
   return mlir::isa<neura::ReserveOp, neura::CtrlMovOp, neura::DataMovOp>(op);
 }
 
+// Returns true if the operation is a steering-mode operation that doesn't
+// require DataMovOp wrapping (e.g., carry, invariant, reserve).
+// Note: ConstantOp is NOT included here because constants DO need routing
+// unless they are folded into consumer operations.
+bool is_steering_unwrapped_op(Operation *op) {
+  return mlir::isa<neura::CarryOp, neura::InvariantOp, neura::ReserveOp>(op);
+}
+
 } // namespace neura
 } // namespace mlir
 
@@ -625,9 +633,16 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
 
 Operation *mlir::neura::getMaterializedProducer(Value operand) {
   Operation *producer = operand.getDefiningOp();
+  
+  // In steering mode, some operations (like carry, invariant, reserve)
+  // may not be wrapped by DataMovOp. Return them directly.
+  if (is_steering_unwrapped_op(producer)) {
+    return producer;
+  }
+  
+  // For operations wrapped by DataMovOp, find the actual producer.
   assert(isa<neura::DataMovOp>(producer) &&
-         "Expected operand to be defined by a DataMovOp");
-  // Finds the actual producer.
+         "Expected a DataMovOp as operand producer for non-steering operations");
   auto mov_op = dyn_cast<neura::DataMovOp>(producer);
   auto materialized_producer = mov_op.getOperand().getDefiningOp();
   return materialized_producer;
@@ -961,8 +976,18 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
         continue;
       }
       Operation *data_move = operand.getDefiningOp();
+      
+      // In steering mode, some operands may not be DataMovOp (e.g., carry,
+      // invariant, reserve). Skip routing for these operations.
+      if (is_steering_unwrapped_op(data_move)) {
+        llvm::errs() << "Skipping steering unwrapped operand: " << *data_move
+                     << "\n";
+        continue;
+      }
+      
       assert(isa<neura::DataMovOp>(data_move) &&
-             "Expected a DataMovOp as operand producer");
+             "Expected a DataMovOp as operand for non-steering operations");
+      
       Operation *producer = getMaterializedProducer(operand);
       MappingLoc src_loc = mapping_state.getAllLocsOfOp(producer).back();
 
