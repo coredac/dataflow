@@ -12,8 +12,8 @@ module {
     return
   }
   // CHECK-LABEL: func.func @mul_expression
-  // CHECK-NEXT: %[[GRANT:.*]] = "neura.grant_once"() : () -> i1
-  // CHECK-NEXT: %[[I:.*]], %[[VALID:.*]] = "neura.loop_control"(%[[GRANT]]) <{end = 10 : i64, iterationType = "increment", start = 0 : i64, step = 1 : i64}> : (i1) -> (index, i1)
+  // CHECK-NEXT: %[[CONST:.*]] = "neura.constant"() <{value = true}> : () -> i1
+  // CHECK-NEXT: %[[I:.*]], %[[VALID:.*]] = "neura.loop_control"(%[[CONST]]) <{end = 10 : i64, iterationType = "increment", start = 0 : i64, step = 1 : i64}> : (i1) -> (index, i1)
   // CHECK-NEXT: %[[C2:.*]] = "neura.constant"() <{value = 2 : index}> : () -> index
   // CHECK-NEXT: %[[MUL:.*]] = "neura.mul"(%[[I]], %[[C2]]) : (index, index) -> index
   // CHECK-NEXT: %{{.*}} = neura.load_indexed %arg0[%[[MUL]] : index] memref<10xf32> : f32
@@ -27,8 +27,8 @@ module {
     return
   }
   // CHECK-LABEL: func.func @complex_expression
-  // CHECK-NEXT: %[[GRANT:.*]] = "neura.grant_once"() : () -> i1
-  // CHECK-NEXT: %[[I:.*]], %[[VALID:.*]] = "neura.loop_control"(%[[GRANT]]) <{end = 10 : i64, iterationType = "increment", start = 0 : i64, step = 1 : i64}> : (i1) -> (index, i1)
+  // CHECK-NEXT: %[[CONST:.*]] = "neura.constant"() <{value = true}> : () -> i1
+  // CHECK-NEXT: %[[I:.*]], %[[VALID:.*]] = "neura.loop_control"(%[[CONST]]) <{end = 10 : i64, iterationType = "increment", start = 0 : i64, step = 1 : i64}> : (i1) -> (index, i1)
   // CHECK-NEXT: %[[C2:.*]] = "neura.constant"() <{value = 2 : index}> : () -> index
   // CHECK-NEXT: %[[MUL:.*]] = "neura.mul"(%[[I]], %[[C2]]) : (index, index) -> index
   // CHECK-NEXT: %[[C1:.*]] = "neura.constant"() <{value = 1 : index}> : () -> index
@@ -44,8 +44,8 @@ module {
     return
   }
   // CHECK-LABEL: func.func @modulo_expression
-  // CHECK-NEXT: %[[GRANT:.*]] = "neura.grant_once"() : () -> i1
-  // CHECK-NEXT: %[[I:.*]], %[[VALID:.*]] = "neura.loop_control"(%[[GRANT]]) <{end = 64 : i64, iterationType = "increment", start = 0 : i64, step = 1 : i64}> : (i1) -> (index, i1)
+  // CHECK-NEXT: %[[CONST:.*]] = "neura.constant"() <{value = true}> : () -> i1
+  // CHECK-NEXT: %[[I:.*]], %[[VALID:.*]] = "neura.loop_control"(%[[CONST]]) <{end = 64 : i64, iterationType = "increment", start = 0 : i64, step = 1 : i64}> : (i1) -> (index, i1)
   // CHECK-NEXT: %[[C8:.*]] = "neura.constant"() <{value = 8 : index}> : () -> index
   // CHECK-NEXT: %[[REM:.*]] = "neura.rem"(%[[I]], %[[C8]]) : (index, index) -> index
   // CHECK-NEXT: %{{.*}} = neura.load_indexed %arg0[%[[REM]] : index] memref<64xf32> : f32
@@ -62,8 +62,8 @@ module {
     return
   }
   // CHECK-LABEL: func.func @floordiv_expression
-  // CHECK-NEXT: %[[GRANT:.*]] = "neura.grant_once"() : () -> i1
-  // CHECK-NEXT: %[[I:.*]], %[[VALID:.*]] = "neura.loop_control"(%[[GRANT]]) <{end = 32 : i64, iterationType = "increment", start = 0 : i64, step = 1 : i64}> : (i1) -> (index, i1)
+  // CHECK-NEXT: %[[CONST:.*]] = "neura.constant"() <{value = true}> : () -> i1
+  // CHECK-NEXT: %[[I:.*]], %[[VALID:.*]] = "neura.loop_control"(%[[CONST]]) <{end = 32 : i64, iterationType = "increment", start = 0 : i64, step = 1 : i64}> : (i1) -> (index, i1)
   // CHECK-NEXT: %[[C4_1:.*]] = "neura.constant"() <{value = 4 : index}> : () -> index
   // CHECK-NEXT: %[[DIV:.*]] = "neura.div"(%[[I]], %[[C4_1]]) : (index, index) -> index
   // CHECK-NEXT: %[[C4_2:.*]] = "neura.constant"() <{value = 4 : index}> : () -> index
@@ -81,8 +81,8 @@ module {
     return
   }
   // CHECK-LABEL: func.func @multi_dim_complex
-  // CHECK-NEXT: %[[GRANT:.*]] = "neura.grant_once"() : () -> i1
-  // CHECK-NEXT: %[[I:.*]], %[[VALID_I:.*]] = "neura.loop_control"(%[[GRANT]]) <{end = 10 : i64, iterationType = "increment", start = 0 : i64, step = 1 : i64}> : (i1) -> (index, i1)
+  // CHECK-NEXT: %[[CONST:.*]] = "neura.constant"() <{value = true}> : () -> i1
+  // CHECK-NEXT: %[[I:.*]], %[[VALID_I:.*]] = "neura.loop_control"(%[[CONST]]) <{end = 10 : i64, iterationType = "increment", start = 0 : i64, step = 1 : i64}> : (i1) -> (index, i1)
   // CHECK-NEXT: %[[J:.*]], %[[VALID_J:.*]] = "neura.loop_control"(%[[VALID_I]]) <{end = 20 : i64, iterationType = "increment", start = 0 : i64, step = 1 : i64}> : (i1) -> (index, i1)
   // CHECK-NEXT: %[[C1:.*]] = "neura.constant"() <{value = 1 : index}> : () -> index
   // CHECK-NEXT: %[[ADD:.*]] = "neura.add"(%[[J]], %[[C1]]) : (index, index) -> index
