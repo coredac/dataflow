@@ -400,14 +400,14 @@ struct AffineApplyLowering : public OpRewritePattern<affine::AffineApplyOp> {
 };
 
 // Converts affine.for loops to neura.loop_control with dataflow semantics.
-// Creates grant_once for top-level loops, reuses parent's valid signal for nested loops.
+// Creates constant true for top-level loops, reuses parent's valid signal for nested loops.
 //
 // Example 1 - Simple single loop:
 // Before: affine.for %i = 0 to 10 {
 //           %val = affine.load %A[%i] : memref<10xf32>
 //         }
-// After:  %valid0 = "neura.grant_once"() : () -> i1
-//         %i, %valid1 = "neura.loop_control"(%valid0) <{end = 10, start = 0, step = 1}> : (i1) -> (index, i1)
+// After:  %c_true = neura.constant 1 : i1
+//         %i, %valid1 = "neura.loop_control"(%c_true) <{end = 10, start = 0, step = 1}> : (i1) -> (index, i1)
 //         %val = neura.load_indexed %A[%i : index] memref<10xf32> : f32
 //
 // Example 2 - Nested loops (demonstrates valid signal reuse):
@@ -416,18 +416,18 @@ struct AffineApplyLowering : public OpRewritePattern<affine::AffineApplyOp> {
 //             %val = affine.load %A[%i, %j] : memref<10x20xf32>
 //           }
 //         }
-// After:  %valid0 = "neura.grant_once"() : () -> i1
-//         %i, %valid_i = "neura.loop_control"(%valid0) <{end = 10, start = 0, step = 1}> : (i1) -> (index, i1)
+// After:  %c_true = neura.constant 1 : i1
+//         %i, %valid_i = "neura.loop_control"(%c_true) <{end = 10, start = 0, step = 1}> : (i1) -> (index, i1)
 //         %j, %valid_j = "neura.loop_control"(%valid_i) <{end = 20, start = 0, step = 1}> : (i1) -> (index, i1)
 //         %val = neura.load_indexed %A[%i, %j : index, index] memref<10x20xf32> : f32
-//         (Note: Inner loop reuses outer loop's valid_i signal, no second grant_once)
+//         (Note: Inner loop reuses outer loop's valid_i signal, no second constant)
 //
 // Example 3 - Non-zero bounds and step:
 // Before: affine.for %i = 5 to 100 step 2 {
 //           %val = affine.load %A[%i] : memref<100xf32>
 //         }
-// After:  %valid0 = "neura.grant_once"() : () -> i1
-//         %i, %valid1 = "neura.loop_control"(%valid0) <{end = 100, start = 5, step = 2}> : (i1) -> (index, i1)
+// After:  %c_true = neura.constant 1 : i1
+//         %i, %valid1 = "neura.loop_control"(%c_true) <{end = 100, start = 5, step = 2}> : (i1) -> (index, i1)
 //         %val = neura.load_indexed %A[%i : index] memref<100xf32> : f32
 struct AffineForLowering : public OpRewritePattern<affine::AffineForOp> {
   const LoopNestAnalysis &analysis;
@@ -461,7 +461,7 @@ struct AffineForLowering : public OpRewritePattern<affine::AffineForOp> {
     Value parent_valid;
     
     // Optimization: Reuse parent loop's valid signal for nested loops.
-    // This avoids creating redundant grant_once operations.
+    // This avoids creating redundant initialization for each nested loop.
     if (loopInfo && loopInfo->parent) {
       // This is a nested loop - try to reuse parent's loop_valid signal
       auto it = loopValidSignals.find(loopInfo->parent->loop.getOperation());
@@ -470,18 +470,18 @@ struct AffineForLowering : public OpRewritePattern<affine::AffineForOp> {
         llvm::errs() << "[affine2neura] Reusing parent valid signal for "
                      << "nested loop (depth=" << loopInfo->depth << ")\n";
       } else {
-        // Fallback: parent not yet converted, create grant_once
-        parent_valid = rewriter.create<neura::GrantOnceOp>(
-            loc, i1_type, /*value=*/Value(), /*constant_value=*/nullptr);
+        // Fallback: parent not yet converted, create constant true
+        IntegerAttr true_attr = rewriter.getIntegerAttr(i1_type, 1);
+        parent_valid = rewriter.create<neura::ConstantOp>(loc, i1_type, true_attr);
         llvm::errs() << "[affine2neura] Parent valid not available, "
-                     << "creating grant_once for nested loop\n";
+                     << "creating constant true for nested loop\n";
       }
     } else {
-      // Top-level loop - create grant_once
-      parent_valid = rewriter.create<neura::GrantOnceOp>(
-          loc, i1_type, /*value=*/Value(), /*constant_value=*/nullptr);
+      // Top-level loop - create constant true to ensure it's always valid
+      IntegerAttr true_attr = rewriter.getIntegerAttr(i1_type, 1);
+      parent_valid = rewriter.create<neura::ConstantOp>(loc, i1_type, true_attr);
       if (loopInfo) {
-        llvm::errs() << "[affine2neura] Created grant_once for top-level loop "
+        llvm::errs() << "[affine2neura] Created constant true for top-level loop "
                      << "(depth=" << loopInfo->depth << ")\n";
       }
     }
