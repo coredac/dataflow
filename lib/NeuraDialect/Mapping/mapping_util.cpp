@@ -87,10 +87,10 @@ bool is_non_materialized(Operation *op) {
   return mlir::isa<neura::ReserveOp, neura::CtrlMovOp, neura::DataMovOp>(op);
 }
 
-// Returns true if the operation is a steering-mode operation that doesn't
-// require DataMovOp wrapping (e.g., carry, invariant, reserve).
+// Returns true if the operation doesn't require DataMovOp wrapping.
+// This must match InsertDataMovPass behavior which only skips ReserveOp.
 bool is_steering_unwrapped_op(Operation *op) {
-  return mlir::isa<neura::CarryOp, neura::InvariantOp, neura::ReserveOp>(op);
+  return mlir::isa<neura::ReserveOp>(op);
 }
 
 } // namespace neura
@@ -632,15 +632,15 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
 Operation *mlir::neura::getMaterializedProducer(Value operand) {
   Operation *producer = operand.getDefiningOp();
   
-  // In steering mode, some operations (like carry, invariant, reserve)
-  // may not be wrapped by DataMovOp. Return them directly.
+  // ReserveOp is not wrapped by DataMovOp (see InsertDataMovPass).
+  // Return it directly as it represents the loop-carried dependency placeholder.
   if (is_steering_unwrapped_op(producer)) {
     return producer;
   }
   
   // For operations wrapped by DataMovOp, find the actual producer.
   assert(isa<neura::DataMovOp>(producer) &&
-         "Expected a DataMovOp as operand producer for non-steering operations");
+         "Expected a DataMovOp as operand producer for non-ReserveOp operations");
   auto mov_op = dyn_cast<neura::DataMovOp>(producer);
   auto materialized_producer = mov_op.getOperand().getDefiningOp();
   return materialized_producer;
@@ -970,21 +970,21 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
     for (Value operand : op->getOperands()) {
       llvm::errs() << "Processing operand: " << operand << "\n";
       if (isa<neura::ReserveOp>(operand.getDefiningOp())) {
-        // Skips Reserve ops (backward ctrl move) when estimate cost.
+        // Skips Reserve ops (backward ctrl move) when routing.
         continue;
       }
       Operation *data_move = operand.getDefiningOp();
       
-      // In steering mode, some operands may not be DataMovOp (e.g., carry,
-      // invariant, reserve). Skip routing for these operations.
+      // ReserveOp is not wrapped by DataMovOp (see InsertDataMovPass).
+      // Skip routing for ReserveOp as it represents loop-carried dependency.
       if (is_steering_unwrapped_op(data_move)) {
-        llvm::errs() << "Skipping steering unwrapped operand: " << *data_move
+        llvm::errs() << "Skipping unwrapped operand: " << *data_move
                      << "\n";
         continue;
       }
       
       assert(isa<neura::DataMovOp>(data_move) &&
-             "Expected a DataMovOp as operand for non-steering operations");
+             "Expected a DataMovOp as operand for non-ReserveOp operations");
       
       Operation *producer = getMaterializedProducer(operand);
       MappingLoc src_loc = mapping_state.getAllLocsOfOp(producer).back();
