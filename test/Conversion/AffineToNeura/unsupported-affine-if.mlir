@@ -1,9 +1,12 @@
-// RUN: not mlir-neura-opt %s --lower-affine-to-neura 2>&1 | FileCheck %s
+// RUN: not mlir-neura-opt %s --lower-affine-to-neura 2>&1 | FileCheck %s --check-prefix=CHECK-ERROR
+// RUN: mlir-neura-opt %s --lower-affine | FileCheck %s --check-prefix=CHECK-SCF
 
 // Unsupported Case: affine.if conditional
-// This test demonstrates what happens when lowering encounters unsupported operations
+// This test demonstrates:
+// 1. Direct lowering to Neura fails (affine.if not supported)
+// 2. Alternative multi-stage lowering path via SCF dialect
 module {
-  func.func @affine_if_example(%arg0: memref<10xf32>, %N: index) {
+  func.func @affine_if_example(%arg0: memref<10xf32>) {
     affine.for %i = 0 to 10 {
       affine.if affine_set<(d0) : (d0 - 5 >= 0)>(%i) {
         %val = affine.load %arg0[%i] : memref<10xf32>
@@ -14,19 +17,19 @@ module {
 }
 
 // ============================================================================
-// What happens when lowering fails:
+// CHECK-ERROR: Test that direct lowering to Neura fails with clear error
 // ============================================================================
-// 1. Pass encounters affine.if operation (not in conversion target)
-// 2. Error is emitted indicating failed legalization
-// 3. Affine operations remain unchanged in the IR
-//
-// CHECK: error:
-// CHECK: affine.if
-//
-// Note: affine.if is not currently supported in this direct lowering pass.
-// Alternative lowering path:
-//   1. Use --lower-affine-to-loops to convert affine.if -> scf.if
-//   2. Use --convert-scf-to-cf to convert scf.if -> cf.cond_br
-//   3. Then use a separate pass to convert control flow to Neura predicated ops
-// This multi-stage approach provides more flexibility for handling conditionals.
+// CHECK-ERROR: error:
+// CHECK-ERROR: affine.if
+
 // ============================================================================
+// CHECK-SCF: Alternative lowering path: affine -> scf
+// This demonstrates the first stage of multi-stage lowering:
+//   1. affine.if -> scf.if (shown here)
+//   2. scf.if -> cf.cond_br (would use --convert-scf-to-cf)
+//   3. cf ops -> neura predicated ops (requires separate pass)
+// ============================================================================
+// CHECK-SCF-LABEL: func.func @affine_if_example
+// CHECK-SCF: scf.for
+// CHECK-SCF: scf.if
+// CHECK-SCF: memref.load

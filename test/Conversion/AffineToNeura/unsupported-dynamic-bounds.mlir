@@ -1,4 +1,7 @@
 // RUN: not mlir-neura-opt %s --lower-affine-to-neura 2>&1 | FileCheck %s
+// Note: The "not" command inverts the exit status - expects the pass to fail.
+// This allows us to test error handling by checking that the pass correctly
+// rejects unsupported input and emits appropriate error messages.
 
 // Unsupported Case: Dynamic loop bounds
 // This test demonstrates what happens when lowering fails

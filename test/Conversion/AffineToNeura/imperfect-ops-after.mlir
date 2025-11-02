@@ -24,10 +24,10 @@ module {
 // CHECK-LABEL: func.func @imperfect_ops_after(%arg0: memref<10x20xf32>, %arg1: memref<10xf32>)
 // CHECK-NEXT: %[[CONST:.*]] = "neura.constant"() <{value = true}> : () -> i1
 // CHECK-NEXT: %[[I:.*]], %[[VI:.*]] = "neura.loop_control"(%[[CONST]]) <{end = 10 : i64, iterationType = "increment", start = 0 : i64, step = 1 : i64}> : (i1) -> (index, i1)
-// CHECK-NEXT: //
+//
 // CHECK-NEXT: %[[J:.*]], %[[VJ:.*]] = "neura.loop_control"(%[[VI]]) <{end = 20 : i64, iterationType = "increment", start = 0 : i64, step = 1 : i64}> : (i1) -> (index, i1)
 // CHECK-NEXT: %{{.*}} = neura.load_indexed %arg0[%[[I]], %[[J]] : index, index] memref<10x20xf32> : f32
-// CHECK-NEXT: //
+//
 // CHECK-NEXT: %[[CST:.*]] = arith.constant 1.000000e+00 : f32
 // CHECK-NEXT: neura.store_indexed %[[CST]] to %arg1[%[[I]] : index] memref<10xf32> : f32
 // CHECK-NEXT: return
