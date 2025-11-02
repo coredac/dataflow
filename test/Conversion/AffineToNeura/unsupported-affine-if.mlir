@@ -17,7 +17,7 @@ module {
 }
 
 // ============================================================================
-// CHECK-ERROR: Test that direct lowering to Neura fails with clear error
+// Test that direct lowering to Neura fails with clear error
 // ============================================================================
 // CHECK-ERROR: error:
 // CHECK-ERROR: affine.if
