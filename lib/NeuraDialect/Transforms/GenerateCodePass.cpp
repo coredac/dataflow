@@ -398,14 +398,13 @@ struct GenerateCodePass
         // Handles normal operands, including operations with rhs_value attribute.
         SmallVector<Value> operands; operands.reserve(op->getNumOperands());
         
-        // Process actual Value operands (if any).
+        // Processes actual Value operands (if any).
         for (Value v : op->getOperands()) {
           operands.push_back(v);
           inst.src_operands.emplace_back("UNRESOLVED", "RED");
         }
         
-        // If operation has rhs_value attribute, add it as an additional source operand.
-        // This handles cases where binary operations have the RHS constant stored as an attribute.
+        // Handles cases where binary operations have the RHS constant stored as an attribute.
         if (auto rhs_value_attr = op->getAttr("rhs_value")) {
           std::string rhs_literal = extractConstantLiteralFromAttr(rhs_value_attr);
           if (!rhs_literal.empty()) {
