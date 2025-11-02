@@ -89,8 +89,6 @@ bool is_non_materialized(Operation *op) {
 
 // Returns true if the operation is a steering-mode operation that doesn't
 // require DataMovOp wrapping (e.g., carry, invariant, reserve).
-// Note: ConstantOp is NOT included here because constants DO need routing
-// unless they are folded into consumer operations.
 bool is_steering_unwrapped_op(Operation *op) {
   return mlir::isa<neura::CarryOp, neura::InvariantOp, neura::ReserveOp>(op);
 }
