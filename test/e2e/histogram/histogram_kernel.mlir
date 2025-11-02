@@ -84,7 +84,7 @@
 // YAML: instructions:
 // YAML: - opcode: "GRANT_ONCE"
 // YAML: - opcode: "FDIV"
-// YAML: - opcode: "CAST"
+// YAML: - opcode: "CAST_FPTOSI"
 
 // ASM:      PE(2,2):
 // ASM-NEXT: {
