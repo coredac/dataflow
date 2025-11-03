@@ -87,12 +87,6 @@ bool is_non_materialized(Operation *op) {
   return mlir::isa<neura::ReserveOp, neura::CtrlMovOp, neura::DataMovOp>(op);
 }
 
-// Returns true if the operation doesn't require DataMovOp wrapping.
-// This must match InsertDataMovPass behavior which only skips ReserveOp.
-bool is_steering_unwrapped_op(Operation *op) {
-  return mlir::isa<neura::ReserveOp>(op);
-}
-
 } // namespace neura
 } // namespace mlir
 
@@ -634,7 +628,7 @@ Operation *mlir::neura::getMaterializedProducer(Value operand) {
   
   // ReserveOp is not wrapped by DataMovOp (see InsertDataMovPass).
   // Return it directly as it represents the loop-carried dependency placeholder.
-  if (is_steering_unwrapped_op(producer)) {
+  if (isa<neura::ReserveOp>(producer)) {
     return producer;
   }
   
@@ -977,7 +971,7 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
       
       // ReserveOp is not wrapped by DataMovOp (see InsertDataMovPass).
       // Skip routing for ReserveOp as it represents loop-carried dependency.
-      if (is_steering_unwrapped_op(data_move)) {
+      if (isa<neura::ReserveOp>(data_move)) {
         llvm::errs() << "Skipping unwrapped operand: " << *data_move
                      << "\n";
         continue;
