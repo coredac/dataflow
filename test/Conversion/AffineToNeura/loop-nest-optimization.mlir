@@ -27,6 +27,7 @@ module {
 // CHECK-NEXT: %0 = "neura.constant"() <{value = true}> : () -> i1
 // CHECK-NEXT: %{{.*}}, %{{.*}} = "neura.loop_control"(%0) <{end = 10 : i64, iterationType = "increment", start = 0 : i64, step = 1 : i64}> : (i1) -> (index, i1)
 // CHECK-NEXT: %{{.*}}, %{{.*}} = "neura.loop_control"(%{{.*}}) <{end = 20 : i64, iterationType = "increment", start = 0 : i64, step = 1 : i64}> : (i1) -> (index, i1)
+//
 // CHECK-NEXT: %{{.*}} = neura.load_indexed %arg0[%{{.*}}, %{{.*}} : index, index] memref<10x20xf32> : f32
 // CHECK-NEXT: return
 // CHECK-NEXT: }
@@ -35,6 +36,7 @@ module {
 // CHECK-NEXT: %0 = "neura.constant"() <{value = true}> : () -> i1
 // CHECK-NEXT: %{{.*}}, %{{.*}} = "neura.loop_control"(%0) <{end = 10 : i64, iterationType = "increment", start = 0 : i64, step = 1 : i64}> : (i1) -> (index, i1)
 // CHECK-NEXT: %{{.*}} = neura.load_indexed %arg0[%{{.*}} : index] memref<10xf32> : f32
+//
 // CHECK-NEXT: %{{.*}} = "neura.constant"() <{value = true}> : () -> i1
 // CHECK-NEXT: %{{.*}}, %{{.*}} = "neura.loop_control"(%{{.*}}) <{end = 20 : i64, iterationType = "increment", start = 0 : i64, step = 1 : i64}> : (i1) -> (index, i1)
 // CHECK-NEXT: %{{.*}} = neura.load_indexed %arg1[%{{.*}} : index] memref<20xf32> : f32

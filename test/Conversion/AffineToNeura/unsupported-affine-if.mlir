@@ -46,6 +46,7 @@ module {
 // CHECK-LLVM: ^bb1(%{{.*}}: i64):
 // CHECK-LLVM: %{{.*}} = llvm.icmp "slt" %{{.*}}, %{{.*}} : i64
 // CHECK-LLVM: llvm.cond_br %{{.*}}, ^bb2, ^bb5
+//
 // CHECK-LLVM: ^bb2:
 // CHECK-LLVM: %{{.*}} = llvm.mlir.constant(0 : index) : i64
 // CHECK-LLVM: %{{.*}} = llvm.mlir.constant(-5 : index) : i64
@@ -62,6 +63,7 @@ module {
 // CHECK-NEURA-BR: ^bb1(%{{.*}}: i64):
 // CHECK-NEURA-BR: %{{.*}} = "neura.icmp"(%{{.*}}, %{{.*}}) <{cmpType = "slt"}> : (i64, i64) -> i1
 // CHECK-NEURA-BR: neura.cond_br %{{.*}} : i1 then to ^bb2 else to ^bb5
+//
 // CHECK-NEURA-BR: ^bb2:
 // CHECK-NEURA-BR: %{{.*}} = "neura.add"(%{{.*}}, %{{.*}}) : (i64, i64) -> i64
 // CHECK-NEURA-BR: %{{.*}} = "neura.icmp"(%{{.*}}, %{{.*}}) <{cmpType = "sge"}> : (i64, i64) -> i1

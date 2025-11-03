@@ -23,6 +23,7 @@ module {
 // CHECK-NEXT: %{{.*}}, %{{.*}} = "neura.loop_control"(%0) <{end = 10 : i64, iterationType = "increment", start = 0 : i64, step = 1 : i64}> : (i1) -> (index, i1)
 // CHECK-NEXT: %{{.*}}, %{{.*}} = "neura.loop_control"(%{{.*}}) <{end = 20 : i64, iterationType = "increment", start = 0 : i64, step = 1 : i64}> : (i1) -> (index, i1)
 // CHECK-NEXT: %{{.*}} = neura.load_indexed %arg0[%{{.*}}, %{{.*}} : index, index] memref<10x20xf32> : f32
+//
 // CHECK-NEXT: %{{.*}} = arith.constant 1.000000e+00 : f32
 // CHECK-NEXT: neura.store_indexed %{{.*}} to %arg1[%{{.*}} : index] memref<10xf32> : f32
 // CHECK-NEXT: return
