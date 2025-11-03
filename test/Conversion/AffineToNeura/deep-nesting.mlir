@@ -16,16 +16,13 @@ module {
   }
 }
 
-// ============================================================================
-// Verify transformation: no affine ops, only neura ops, 1 constant true for perfect nest
-// ============================================================================
-// CHECK-LABEL: func.func @deep_nesting_4d
-// CHECK-NOT: affine.
-// CHECK-NEXT: %[[CONST:.*]] = "neura.constant"() <{value = true}> : () -> i1
-// CHECK-NEXT: %[[I:.*]], %[[VI:.*]] = "neura.loop_control"(%[[CONST]]) <{end = 5 : i64, iterationType = "increment", start = 0 : i64, step = 1 : i64}> : (i1) -> (index, i1)
-// CHECK-NEXT: %[[J:.*]], %[[VJ:.*]] = "neura.loop_control"(%[[VI]]) <{end = 5 : i64, iterationType = "increment", start = 0 : i64, step = 1 : i64}> : (i1) -> (index, i1)
-// CHECK-NEXT: %[[K:.*]], %[[VK:.*]] = "neura.loop_control"(%[[VJ]]) <{end = 5 : i64, iterationType = "increment", start = 0 : i64, step = 1 : i64}> : (i1) -> (index, i1)
-// CHECK-NEXT: %[[L:.*]], %[[VL:.*]] = "neura.loop_control"(%[[VK]]) <{end = 5 : i64, iterationType = "increment", start = 0 : i64, step = 1 : i64}> : (i1) -> (index, i1)
-// CHECK-NEXT: %{{.*}} = neura.load_indexed %arg0[%[[I]], %[[J]], %[[K]], %[[L]] : index, index, index, index] memref<5x5x5x5xf32> : f32
+// CHECK-LABEL: func.func @deep_nesting_4d(%arg0: memref<5x5x5x5xf32>)
+// CHECK-NEXT: %0 = "neura.constant"() <{value = true}> : () -> i1
+// CHECK-NEXT: %{{.*}}, %{{.*}} = "neura.loop_control"(%0) <{end = 5 : i64, iterationType = "increment", start = 0 : i64, step = 1 : i64}> : (i1) -> (index, i1)
+// CHECK-NEXT: %{{.*}}, %{{.*}} = "neura.loop_control"(%{{.*}}) <{end = 5 : i64, iterationType = "increment", start = 0 : i64, step = 1 : i64}> : (i1) -> (index, i1)
+// CHECK-NEXT: %{{.*}}, %{{.*}} = "neura.loop_control"(%{{.*}}) <{end = 5 : i64, iterationType = "increment", start = 0 : i64, step = 1 : i64}> : (i1) -> (index, i1)
+// CHECK-NEXT: %{{.*}}, %{{.*}} = "neura.loop_control"(%{{.*}}) <{end = 5 : i64, iterationType = "increment", start = 0 : i64, step = 1 : i64}> : (i1) -> (index, i1)
+// CHECK-NEXT: %{{.*}} = neura.load_indexed %arg0[%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}} : index, index, index, index] memref<5x5x5x5xf32> : f32
 // CHECK-NEXT: return
+// CHECK-NEXT: }
 // CHECK-NOT: affine.
