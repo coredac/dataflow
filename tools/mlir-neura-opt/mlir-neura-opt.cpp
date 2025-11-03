@@ -1,10 +1,13 @@
 // tools/mlir-neura-opt/mlir-neura-opt.cpp
 
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllPasses.h"
+#include "mlir/Conversion/Passes.h"
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
@@ -59,6 +62,8 @@ int main(int argc, char **argv) {
   registry.insert<mlir::func::FuncDialect>();
   registry.insert<mlir::arith::ArithDialect>();
   registry.insert<mlir::affine::AffineDialect>();
+  registry.insert<mlir::scf::SCFDialect>();
+  registry.insert<mlir::cf::ControlFlowDialect>();
   registry.insert<mlir::DLTIDialect>();
   registry.insert<mlir::LLVM::LLVMDialect>();
   registry.insert<mlir::memref::MemRefDialect>();
@@ -66,6 +71,9 @@ int main(int argc, char **argv) {
   mlir::neura::registerPasses();
   mlir::registerPasses();
   mlir::registerViewOpGraphPass();
+  
+  // Register all standard conversion passes
+  mlir::registerConversionPasses();
 
   // Print architecture spec file info
   if (!architecture_spec_file.empty()) {
