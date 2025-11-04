@@ -93,6 +93,9 @@
 // YAML:        compiled_ii: 5
 // YAML:        instructions:
 // YAML:        - opcode: "DATA_MOV"
+// YAML:        - opcode: "CAST_TRUNC"
+// YAML:        - opcode: "ICMP_EQ"
+// YAML:        - opcode: "ICMP_SGE"
 
 // ASM:      PE(2,1):
 // ASM-NEXT: {

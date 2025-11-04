@@ -75,8 +75,16 @@
 // YAML: instructions:
 // YAML: - opcode: "GRANT_ONCE"
 // YAML: - opcode: "RETURN"
+// YAML: - opcode: "ICMP_EQ"
 
 // ASM:      PE(0,1):
 // ASM-NEXT: {
 // ASM-NEXT:   GRANT_ONCE, [#0] -> [$0]
+// ASM-NEXT: } (t=3)
+// ASM:      PE(2,2):
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$0]
+// ASM-NEXT: } (t=2)
+// ASM-NEXT: {
+// ASM-NEXT:   ICMP_EQ, [EAST, RED], [#32] -> [$0], [WEST, RED]
 // ASM-NEXT: } (t=3)
