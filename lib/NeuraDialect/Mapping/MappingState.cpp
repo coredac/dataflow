@@ -5,6 +5,12 @@
 using namespace mlir;
 using namespace mlir::neura;
 
+// Constants for table formatting in dumpOpToLocs.
+// Total column width including separators.
+constexpr int kKeyMaxLen = 36;
+// Actual cell content width (35).
+constexpr int kCellWidth = kKeyMaxLen - 1;
+
 MappingState::MappingState(const Architecture &arch, int II,
                            bool is_spatial_only)
     : II(II), is_spatial_only(is_spatial_only) {}
@@ -232,19 +238,19 @@ void MappingState::dumpOpToLocs(llvm::raw_ostream &os) const {
   os << "II = " << II << "\n";
   
   // Prints header - time slots (0 to II-1) as columns.
-  os << "\nTile    | ";
+  os << "\nTile     | ";
   for (int slot : time_slots) {
     os << "t%" << II << "=" << slot;
-    int padding = 35 - (II < 10 ? 5 : 6) - (slot < 10 ? 1 : 2);
+    int padding = kKeyMaxLen - (II < 10 ? 5 : 6) - (slot < 10 ? 1 : 2);
     for (int i = 0; i < padding; ++i) os << " ";
     os << " | ";
   }
   os << "\n";
   
   // Prints separator line.
-  os << "--------+";
+  os << "---------+";
   for (size_t i = 0; i < time_slots.size(); ++i) {
-    for (int j = 0; j < 36; ++j) os << "-";
+    for (int j = 0; j < kKeyMaxLen + 1; ++j) os << "-";
     os << "+";
   }
   os << "\n";
@@ -299,13 +305,18 @@ void MappingState::dumpOpToLocs(llvm::raw_ostream &os) const {
         
         op_stream.flush();
         
-        // Pads to fixed width (35 chars).
+        // Truncates string if too long to fit in the cell.
+        if (op_str.length() > kCellWidth) {
+          op_str = op_str.substr(0, kCellWidth - 3) + "...";
+        }
+        
+        // Pads to fixed width (kCellWidth chars).
         os << op_str;
-        int padding = 35 - op_str.length();
+        int padding = kCellWidth - op_str.length();
         for (int i = 0; i < padding; ++i) os << " ";
       } else {
         // Renders empty cell.
-        for (int i = 0; i < 35; ++i) os << " ";
+        for (int i = 0; i < kCellWidth; ++i) os << " ";
       }
       os << " | ";
     }
