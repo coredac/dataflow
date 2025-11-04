@@ -202,19 +202,21 @@ void MappingState::releaseRoute(Operation *op) {
 void MappingState::dumpOpToLocs(llvm::raw_ostream &os) const {
   os << "=== MappingState: Resource Allocation Table ===\n";
 
-  // Collect all tiles and time steps (modulo II)
+  // Collects all tiles and time steps (modulo II).
   std::set<int> tile_ids;
-  std::set<int> time_slots;  // 0 to II-1
-  // Map: (tile_id, time_slot) -> list of (operation, actual_time_step)
+  // Time slots range from 0 to II-1.
+  std::set<int> time_slots;
+  // Maps (tile_id, time_slot) to list of (operation, actual_time_step).
   std::map<std::pair<int, int>, std::vector<std::pair<Operation*, int>>> tile_slot_to_ops;
   
   for (const auto &[op, locs] : op_to_locs) {
     for (const MappingLoc &loc : locs) {
       auto *res = loc.resource;
-      // Only show tiles in the table
+      // Only shows tiles in the table.
       if (res->getType() == "tile") {
         tile_ids.insert(res->getId());
-        int time_slot = loc.time_step % II;  // Modulo operation
+        // Computes modulo II.
+        int time_slot = loc.time_step % II;
         time_slots.insert(time_slot);
         tile_slot_to_ops[{res->getId(), time_slot}].push_back({op, loc.time_step});
       }
@@ -229,7 +231,7 @@ void MappingState::dumpOpToLocs(llvm::raw_ostream &os) const {
   
   os << "II = " << II << "\n";
   
-  // Print header - time slots (0 to II-1) as columns
+  // Prints header - time slots (0 to II-1) as columns.
   os << "\nTile    | ";
   for (int slot : time_slots) {
     os << "t%" << II << "=" << slot;
@@ -239,7 +241,7 @@ void MappingState::dumpOpToLocs(llvm::raw_ostream &os) const {
   }
   os << "\n";
   
-  // Print separator
+  // Prints separator line.
   os << "--------+";
   for (size_t i = 0; i < time_slots.size(); ++i) {
     for (int j = 0; j < 36; ++j) os << "-";
@@ -247,7 +249,7 @@ void MappingState::dumpOpToLocs(llvm::raw_ostream &os) const {
   }
   os << "\n";
   
-  // Print each tile as a row
+  // Prints each tile as a row.
   for (int tile_id : tile_ids) {
     os << "Tile#" << tile_id;
     if (tile_id < 10) os << "  ";
@@ -257,30 +259,30 @@ void MappingState::dumpOpToLocs(llvm::raw_ostream &os) const {
     for (int slot : time_slots) {
       auto it = tile_slot_to_ops.find({tile_id, slot});
       if (it != tile_slot_to_ops.end() && !it->second.empty()) {
-        // May have multiple operations in the same slot (from different iterations)
-        // Show the first one
+        // Multiple operations may exist in the same slot (from different iterations).
+        // Shows the first one.
         Operation *op = it->second[0].first;
         int actual_time = it->second[0].second;
         
-        // Build operation string: %result = op_name(%operand1, %operand2, ...)
+        // Builds operation string: %result = op_name(%operand1, %operand2, ...).
         std::string op_str;
         llvm::raw_string_ostream op_stream(op_str);
         mlir::OpPrintingFlags flags;
         
-        // Print result (if exists)
+        // Prints result (if exists).
         if (op->getNumResults() > 0) {
           op->getResult(0).printAsOperand(op_stream, flags);
           op_stream << " = ";
         }
         
-        // Print operation name (remove "neura." prefix)
+        // Prints operation name (removes "neura." prefix).
         std::string op_name = op->getName().getStringRef().str();
         if (op_name.rfind("neura.", 0) == 0) {
           op_name = op_name.substr(6);
         }
         op_stream << op_name;
         
-        // Print operands
+        // Prints operands.
         if (op->getNumOperands() > 0) {
           op_stream << "(";
           for (unsigned i = 0; i < op->getNumOperands(); ++i) {
@@ -290,19 +292,19 @@ void MappingState::dumpOpToLocs(llvm::raw_ostream &os) const {
           op_stream << ")";
         }
         
-        // Add time annotation if not in [0, II)
+        // Adds time annotation if not in [0, II).
         if (actual_time >= II) {
           op_stream << " (t=" << actual_time << ")";
         }
         
         op_stream.flush();
         
-        // Pad to fixed width (35 chars)
+        // Pads to fixed width (35 chars).
         os << op_str;
         int padding = 35 - op_str.length();
         for (int i = 0; i < padding; ++i) os << " ";
       } else {
-        // Empty cell
+        // Renders empty cell.
         for (int i = 0; i < 35; ++i) os << " ";
       }
       os << " | ";
