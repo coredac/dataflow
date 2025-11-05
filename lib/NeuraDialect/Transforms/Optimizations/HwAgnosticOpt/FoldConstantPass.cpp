@@ -282,6 +282,8 @@ DEFINE_BINARY_OP_PATTERN(FAdd, FAddOp)
 DEFINE_BINARY_OP_PATTERN(FSub, FSubOp)
 // Generates: FuseFMulConstantPattern.
 DEFINE_BINARY_OP_PATTERN(FMul, FMulOp)
+// Generates: FuseFDivConstantPattern.
+DEFINE_BINARY_OP_PATTERN(FDiv, FDivOp)
 // Generates: FuseICmpConstantPattern.
 // Note: ICmpOp has a cmp_type attribute that is automatically preserved.
 DEFINE_BINARY_OP_PATTERN(ICmp, ICmpOp)
@@ -587,6 +589,7 @@ struct FoldConstantPass
     patterns.add<FuseFAddConstantPattern>(&getContext());
     patterns.add<FuseFSubConstantPattern>(&getContext());
     patterns.add<FuseFMulConstantPattern>(&getContext());
+    patterns.add<FuseFDivConstantPattern>(&getContext());
     patterns.add<FuseFMaxConstantPattern>(&getContext());
     patterns.add<FuseFMinConstantPattern>(&getContext());
     

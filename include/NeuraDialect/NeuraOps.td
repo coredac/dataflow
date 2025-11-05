@@ -108,7 +108,7 @@ def Neura_FDivOp : Op<NeuraDialect, "fdiv"> {
     Example:
       %result = neura.fdiv %a, %b : f32
   }];
-  let arguments = (ins AnyType:$lhs, AnyType:$rhs);
+  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs);
   let results = (outs AnyType:$result);
   let traits = [SameOperandsAndResultElementType];
 }
