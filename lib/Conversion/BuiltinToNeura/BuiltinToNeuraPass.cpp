@@ -3,6 +3,7 @@
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
@@ -31,6 +32,12 @@ struct BuiltinUnrealizedConversionCastToNeuraCast
         cast_type = "index_to_int";
       } else if (isa<IntegerType>(input_type) && result_type.isIndex()) {
         cast_type = "int_to_index";
+      } else if (isa<LLVM::LLVMStructType>(input_type) &&
+                 isa<MemRefType>(result_type)) {
+        cast_type = "memref_to_struct";
+      } else if (isa<MemRefType>(input_type) &&
+                 isa<LLVM::LLVMStructType>(result_type)) {
+        cast_type = "struct_to_memref";
       } else {
         return rewriter.notifyMatchFailure(op, "unsupported cast");
       }
