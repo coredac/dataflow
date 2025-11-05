@@ -10,6 +10,18 @@ using namespace mlir::neura;
 constexpr int kKeyMaxLen = 36;
 // Actual cell content width (35).
 constexpr int kCellWidth = kKeyMaxLen - 1;
+// Threshold to distinguish single-digit from double-digit numbers.
+constexpr int kTwoDigitThreshold = 10;
+// Threshold to distinguish double-digit from triple-digit numbers.
+constexpr int kThreeDigitThreshold = 100;
+// Length of time slot header prefix "t%N=" for single-digit II (e.g., "t%3=").
+constexpr int kHeaderPrefixLenSingleDigit = 5;
+// Length of time slot header prefix "t%N=" for double-digit II (e.g., "t%10=").
+constexpr int kHeaderPrefixLenDoubleDigit = 6;
+// Number of digits for single-digit slot numbers.
+constexpr int kSingleDigitLen = 1;
+// Number of digits for double-digit slot numbers.
+constexpr int kDoubleDigitLen = 2;
 
 MappingState::MappingState(const Architecture &arch, int II,
                            bool is_spatial_only)
@@ -241,7 +253,8 @@ void MappingState::dumpOpToLocs(llvm::raw_ostream &os) const {
   os << "\nTile     | ";
   for (int slot : time_slots) {
     os << "t%" << II << "=" << slot;
-    int padding = kKeyMaxLen - (II < 10 ? 5 : 6) - (slot < 10 ? 1 : 2);
+    int padding = kKeyMaxLen - (II < kTwoDigitThreshold ? kHeaderPrefixLenSingleDigit : kHeaderPrefixLenDoubleDigit) 
+                  - (slot < kTwoDigitThreshold ? kSingleDigitLen : kDoubleDigitLen);
     for (int i = 0; i < padding; ++i) os << " ";
     os << " | ";
   }
@@ -258,8 +271,8 @@ void MappingState::dumpOpToLocs(llvm::raw_ostream &os) const {
   // Prints each tile as a row.
   for (int tile_id : tile_ids) {
     os << "Tile#" << tile_id;
-    if (tile_id < 10) os << "  ";
-    else if (tile_id < 100) os << " ";
+    if (tile_id < kTwoDigitThreshold) os << "  ";
+    else if (tile_id < kThreeDigitThreshold) os << " ";
     os << " | ";
     
     for (int slot : time_slots) {
