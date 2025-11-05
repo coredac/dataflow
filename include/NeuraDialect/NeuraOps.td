@@ -305,6 +305,23 @@ def Neura_AShrOp : Op<NeuraDialect, "ashr"> {
   let results = (outs AnyType:$result);
 }
 
+// Defines an extract value operation.
+def Neura_ExtractValueOp : Op<NeuraDialect, "extractvalue"> {
+  let summary = "Extract value from struct/array";
+  let description = [{
+    Extracts a value from a struct or array at the given indices.
+    Similar to llvm.extractvalue, but for Neura dialect.
+
+    Example:
+      %ptr = neura.extractvalue %struct[1] : !llvm.struct<(ptr, ptr, i64)> -> !llvm.ptr
+  }];
+
+  let arguments = (ins AnyType:$container, Variadic<AnyType>:$indices);
+  let results = (outs AnyType:$result);
+  
+  // let assemblyFormat = "$container `[` $indices `]` attr-dict `:` type($container) `->` type($result)";
+}
+
 // ----------------------------------------------------
 // Defines vector operations.
 

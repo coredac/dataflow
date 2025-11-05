@@ -451,6 +451,32 @@ struct LlvmSelectToNueraSel : public OpRewritePattern<LLVM::SelectOp> {
   }
 };
 
+struct LlvmExtractValueToNeuraExtractValue
+    : public OpRewritePattern<LLVM::ExtractValueOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::ExtractValueOp op,
+                                PatternRewriter &rewriter) const override {
+    Value container = op.getContainer();
+    Type result_type = op.getType();
+
+    // Convert position attributes to constant values
+    SmallVector<Value> index_values;
+    for (auto pos : op.getPosition()) {
+      // Create constant operation for each position index
+      OperationState state(op.getLoc(), neura::ConstantOp::getOperationName());
+      state.addAttribute("value", rewriter.getI64IntegerAttr(pos));
+      state.addTypes(rewriter.getI64Type());
+      Value index_const = rewriter.create(state)->getResult(0);
+      index_values.push_back(index_const);
+    }
+
+    rewriter.replaceOpWithNewOp<neura::ExtractValueOp>(op, result_type,
+                                                       container, index_values);
+    return success();
+  }
+};
+
 struct LlvmFuncToNeuraFunc : public OpRewritePattern<LLVM::LLVMFuncOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -589,6 +615,7 @@ struct LowerLlvmToNeuraPass
     patterns.add<LlvmSelectToNueraSel>(&getContext());
     patterns.add<LlvmAndToNeuraAnd>(&getContext());
     patterns.add<LlvmAShrToNeuraAShr>(&getContext());
+    patterns.add<LlvmExtractValueToNeuraExtractValue>(&getContext());
 
     FrozenRewritePatternSet frozen(std::move(patterns));
 
