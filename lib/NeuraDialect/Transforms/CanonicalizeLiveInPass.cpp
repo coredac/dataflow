@@ -254,6 +254,66 @@ bool isSingleSourceSingleSinkPattern(Block *defining_block, Block *using_block,
   return true;
 }
 
+// Checks if there's a direct unconditional path from defining_block to
+// using_block without crossing any conditional branches.
+//
+// Pattern Structure:
+//    [ Defining Block A ]
+//             |  (br)
+//             v
+//       [ Block B ]
+//             |  (br)
+//             v
+//       [ Block C ]
+//             |  (br)
+//             v
+//    [ Using Block D ]
+//
+// Key Properties:
+// 1. Defining block dominates using block
+//    - All paths to using_block go through defining_block
+// 2. Using block post-dominates defining block
+//    - All paths from defining_block eventually reach using_block
+//    - This ensures there's a unique path
+// 3. All intermediate blocks only have unconditional branches (br)
+//    - No conditional branches (cond_br) on the path
+// 4. No loops (no back edges)
+//
+// Examples of Valid Patterns:
+//
+// 1. Direct successor:
+//    [ A: br ]
+//       |
+//    [ B ]
+//
+// 2. Chain of unconditional branches:
+//    [ A: br ]
+//       |
+//    [ B: br ]
+//       |
+//    [ C: br ]
+//       |
+//    [ D ]
+//
+// Counter-examples (Not Valid):
+//
+// 1. Has conditional branch:
+//    [ A: br ]
+//       |
+//    [ B: cond_br ]  <- Has cond_br
+//      /    \
+//    ...    ...
+//
+// 2. Entry block as defining:
+//    [ Entry: br ]  <- Excluded
+//       |
+//    [ B ]
+//
+// 3. Loop structure:
+//    [ A: br ]  <--+
+//       |          |
+//    [ B: br ]-----+
+//
 // This pattern identifies the simplest form of direct dominating live-ins where
 // values flow through a linear sequence of blocks without any control flow
 // divergence.
