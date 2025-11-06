@@ -449,15 +449,6 @@ identifyDirectDominatingLiveIns(Region &region, DominanceInfo &dom_info,
         using_block_to_dominating_direct_live_ins[&block].push_back(
             direct_dominating_live_in);
 
-        llvm::errs() << "[CanoLiveIn] Pattern 1 (SESE): Found direct "
-                        "dominating live-in\n";
-        llvm::errs() << "  Value: " << live_in << "\n";
-        llvm::errs() << "  Defining block: ";
-        defining_block->printAsOperand(llvm::errs());
-        llvm::errs() << "\n  Using block: ";
-        block.printAsOperand(llvm::errs());
-        llvm::errs() << "\n";
-
         // Pattern 1 matched, skip Pattern 2 check (they are mutually
         // exclusive).
         continue;
@@ -476,15 +467,6 @@ identifyDirectDominatingLiveIns(Region &region, DominanceInfo &dom_info,
 
         using_block_to_dominating_direct_live_ins[&block].push_back(
             direct_dominating_live_in);
-
-        llvm::errs() << "[CanoLiveIn] Pattern 2 (Direct Unconditional): "
-                        "Found direct dominating live-in\n";
-        llvm::errs() << "  Value: " << live_in << "\n";
-        llvm::errs() << "  Defining block: ";
-        defining_block->printAsOperand(llvm::errs());
-        llvm::errs() << "\n  Using block: ";
-        block.printAsOperand(llvm::errs());
-        llvm::errs() << "\n";
 
         // Pattern 2 matched.
         continue;
