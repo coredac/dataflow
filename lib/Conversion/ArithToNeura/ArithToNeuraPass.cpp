@@ -343,8 +343,9 @@ struct LowerArithToNeuraPass
               ArithFDivToNeuraFDiv, ArithExtfToNeuraCast, ArithMulFToNeuraFMul,
               ArithSubIToNeuraSub, ArithSubFToNeuraFSub, ArithMulIToNeuraMul,
               ArithDivSIToNeuraDiv, ArithRemSIToNeuraOp>(context);
+          // Apply patterns to the function, not the entire module
           if (failed(
-                  applyPatternsGreedily(getOperation(), std::move(patterns)))) {
+                  applyPatternsGreedily(func_op, std::move(patterns)))) {
             signalPassFailure();
           }
         }

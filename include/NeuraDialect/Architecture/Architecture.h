@@ -57,7 +57,9 @@ enum OperationKind {
   // Loop control operations.
   ILoopControl = 34,
   // Constant operations.
-  IConstant = 35
+  IConstant = 35,
+  // Steering control fused operations.
+  ICarryInvariant = 36, IConditionalSelect = 37, IInvariantGroup = 38
 };
 
 //===----------------------------------------------------------------------===//
