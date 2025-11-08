@@ -382,7 +382,7 @@ struct GenerateCodePass
       if (isReserve(op)) return;
 
       // materialize all other ops placed on tiles (compute/phi/const/etc.).
-      auto placement = operation_placements[op];
+      TileLocation placement = operation_placements[op];
       if (!placement.has_tile) return;
 
       std::string opcode = getOpcode(op);
@@ -505,7 +505,7 @@ struct GenerateCodePass
   // Try register-based rewiring. If cross-tile, emit deposits [incoming_dir]->[$reg] at earliest reg ts.
   // Returns true if rewiring to $reg was applied to consumers.
   template<bool IsCtrl>
-  bool handleRegisterRewiring(Operation *cons_op, Value at_val, const SmallVector<RegStep, 4> &regs,
+  bool handleRegisterRewiring(Operation *consumer_operation, Value value_at_consumer, const SmallVector<RegStep, 4> &regs,
                               const SmallVector<LinkStep, 8> &links, const Topology &topo) {
     if (regs.empty()) return false;
 
@@ -519,41 +519,41 @@ struct GenerateCodePass
       StringRef incoming_dir = topo.invertDir(topo.dirFromLink(links.back().link_id));
       placeDstDeposit(topo, dst_tile, timestep_0, incoming_dir, register_id, /*asCtrlMov=*/IsCtrl);
 
-      auto cp = operation_placements.lookup(cons_op);
-      if (cp.has_tile && cp.time_step > timestep_0) {
-        setConsumerSourceExact(cons_op, at_val, "$" + std::to_string(register_id));
+      TileLocation consumer_placement = operation_placements.lookup(consumer_operation);
+      if (consumer_placement.has_tile && consumer_placement.time_step > timestep_0) {
+        setConsumerSourceExact(consumer_operation, value_at_consumer, "$" + std::to_string(register_id));
         return true;
       }
     } else {
       // Same-tile: must go via register.
-      setConsumerSourceExact(cons_op, at_val, "$" + std::to_string(register_id));
+      setConsumerSourceExact(consumer_operation, value_at_consumer, "$" + std::to_string(register_id));
       return true;
     }
     return false;
   }
 
   template<bool IsCtrl>
-  void handleDirectionRewiring(Operation *cons_op, Value at_val, StringRef consumer_direction,
+  void handleDirectionRewiring(Operation *consumer_operation, Value value_at_consumer, StringRef consumer_direction,
                                const SmallVector<LinkStep, 8> &links, const Topology &topo,
                                Operation *forwarder) {
     if (!links.empty()) {
       // Computes the direction from the link destination tile to the consumer tile.
-      auto cp = operation_placements.lookup(cons_op);
-      if (cp.has_tile) {
+      TileLocation consumer_placement = operation_placements.lookup(consumer_operation);
+      if (consumer_placement.has_tile) {
         int dst_tile_id = topo.dstTileOfLink(links.back().link_id);
-        int consumer_tile_id = topo.tileIdAt(cp.col_idx, cp.row_idx);
+        int consumer_tile_id = topo.tileIdAt(consumer_placement.col_idx, consumer_placement.row_idx);
         
         // If consumer is on the link destination tile, use the incoming direction.
         if (consumer_tile_id == dst_tile_id) {
-          setConsumerSourceExact(cons_op, at_val, consumer_direction.str());
+          setConsumerSourceExact(consumer_operation, value_at_consumer, consumer_direction.str());
         } else {
           // Computes direction from link destination tile to consumer tile.
           StringRef actual_dir = topo.invertDir(topo.getDirBetween(dst_tile_id, consumer_tile_id));
-          setConsumerSourceExact(cons_op, at_val, actual_dir.str());
+          setConsumerSourceExact(consumer_operation, value_at_consumer, actual_dir.str());
         }
       } else {
         // Falls back to consumer_direction if consumer placement is unknown.
-        setConsumerSourceExact(cons_op, at_val, consumer_direction.str());
+        setConsumerSourceExact(consumer_operation, value_at_consumer, consumer_direction.str());
       }
     } else {
       forwarder->emitError(IsCtrl
@@ -571,9 +571,11 @@ struct GenerateCodePass
     // Basic info from forwarders.
     Value source = forwarder->getOperand(0);
     Operation *producer = source.getDefiningOp();
-    auto links = getLinkChain(forwarder);
-    auto regs  = getRegisterSteps(forwarder);
-    auto [producer_direction, consumer_direction] = computeDirections(links, topo);
+    SmallVector<LinkStep, 8> links = getLinkChain(forwarder);
+    SmallVector<RegStep, 4> regs = getRegisterSteps(forwarder);
+    std::pair<StringRef, StringRef> directions = computeDirections(links, topo);
+    StringRef producer_direction = directions.first;
+    StringRef consumer_direction = directions.second;
 
     // Producer endpoints & intermediate hops.
     setProducerDestination(producer, producer_direction, regs);
@@ -589,9 +591,11 @@ struct GenerateCodePass
     }
 
     // Wires each consumer: prefer register rewiring; fallback to direction rewiring.
-    for (auto &[cons_op, at_val] : consumers) {
-      if (!handleRegisterRewiring<IsCtrl>(cons_op, at_val, regs, links, topo))
-        handleDirectionRewiring<IsCtrl>(cons_op, at_val, consumer_direction, links, topo, forwarder);
+    for (std::pair<Operation*, Value> &consumer_pair : consumers) {
+      Operation *consumer_operation = consumer_pair.first;
+      Value value_at_consumer = consumer_pair.second;
+      if (!handleRegisterRewiring<IsCtrl>(consumer_operation, value_at_consumer, regs, links, topo))
+        handleDirectionRewiring<IsCtrl>(consumer_operation, value_at_consumer, consumer_direction, links, topo, forwarder);
     }
   }
 
