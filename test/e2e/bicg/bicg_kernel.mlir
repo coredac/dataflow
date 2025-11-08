@@ -186,6 +186,7 @@
 // YAML-NEXT:                     - operand: "EAST"
 // YAML-NEXT:                       color: "RED"
 
+// ASM:      # Compiled II: 12
 // ASM:      PE(0,0):
 // ASM-NEXT: {
 // ASM-NEXT:   CONSTANT, [#0] -> [EAST, RED]
@@ -194,10 +195,10 @@
 // ASM-NEXT:   GRANT_ONCE, [] -> [EAST, RED], [NORTH, RED]
 // ASM-NEXT: } (t=2)
 // ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$0]
+// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$0]
 // ASM-NEXT: } (t=4)
 // ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$1]
+// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$1]
 // ASM-NEXT: } (t=5)
 // ASM-NEXT: {
 // ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [$0]
