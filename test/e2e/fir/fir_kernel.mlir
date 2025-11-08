@@ -83,7 +83,7 @@
 // ASM-NEXT: } (t=3)
 // ASM:      PE(2,2):
 // ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$0]
+// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$0]
 // ASM-NEXT: } (t=2)
 // ASM-NEXT: {
 // ASM-NEXT:   ICMP_EQ, [EAST, RED], [#32] -> [$0], [WEST, RED]
