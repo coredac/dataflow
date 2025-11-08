@@ -515,7 +515,8 @@ struct GenerateCodePass
     if (!links.empty()) {
       // Cross-tile: deposit on destination tile at earliest register ts.
       int dst_tile = topo.dstTileOfLink(links.back().link_id);
-      StringRef incoming_dir = topo.dirFromLink(links.back().link_id);
+      // Computes incoming direction from destination tile's perspective.
+      StringRef incoming_dir = topo.invertDir(topo.dirFromLink(links.back().link_id));
       placeDstDeposit(topo, dst_tile, timestep_0, incoming_dir, register_id, /*asCtrlMov=*/IsCtrl);
 
       auto cp = operation_placements.lookup(consOp);
@@ -533,9 +534,27 @@ struct GenerateCodePass
 
   template<bool IsCtrl>
   void handleDirectionRewiring(Operation *consOp, Value atVal, StringRef consumer_direction,
-                               const SmallVector<LinkStep, 8> &links, Operation *forwarder) {
+                               const SmallVector<LinkStep, 8> &links, const Topology &topo,
+                               Operation *forwarder) {
     if (!links.empty()) {
-      setConsumerSourceExact(consOp, atVal, consumer_direction.str());
+      // Computes the direction from the link destination tile to the consumer tile.
+      auto cp = operation_placements.lookup(consOp);
+      if (cp.has_tile) {
+        int dst_tile_id = topo.dstTileOfLink(links.back().link_id);
+        int consumer_tile_id = topo.tileIdAt(cp.col_idx, cp.row_idx);
+        
+        // If consumer is on the link destination tile, use the incoming direction.
+        if (consumer_tile_id == dst_tile_id) {
+          setConsumerSourceExact(consOp, atVal, consumer_direction.str());
+        } else {
+          // Computes direction from link destination tile to consumer tile.
+          StringRef actual_dir = topo.invertDir(topo.getDirBetween(dst_tile_id, consumer_tile_id));
+          setConsumerSourceExact(consOp, atVal, actual_dir.str());
+        }
+      } else {
+        // Falls back to consumer_direction if consumer placement is unknown.
+        setConsumerSourceExact(consOp, atVal, consumer_direction.str());
+      }
     } else {
       forwarder->emitError(IsCtrl
           ? "same-tile ctrl_mov without register mapping is illegal. Provide a register in mapping_locs."
@@ -572,7 +591,7 @@ struct GenerateCodePass
     // Wires each consumer: prefer register rewiring; fallback to direction rewiring.
     for (auto &[consOp, atVal] : consumers) {
       if (!handleRegisterRewiring<IsCtrl>(consOp, atVal, regs, links, topo))
-        handleDirectionRewiring<IsCtrl>(consOp, atVal, consumer_direction, links, forwarder);
+        handleDirectionRewiring<IsCtrl>(consOp, atVal, consumer_direction, links, topo, forwarder);
     }
   }
 
