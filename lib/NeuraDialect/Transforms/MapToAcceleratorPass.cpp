@@ -358,6 +358,11 @@ struct MapToAcceleratorPass
           "customized=max_loc,max_depth (default "
           "max_loc=5, max_depth=3)"),
       llvm::cl::init("customized")};
+  Option<bool> dumpMappingTable{
+      *this, "dump-mapping-table",
+      llvm::cl::desc(
+          "Dump the resource allocation table after mapping (default: true)"),
+      llvm::cl::init(true)};
 
   void runOnOperation() override {
     ModuleOp module = getOperation();
@@ -609,7 +614,10 @@ struct MapToAcceleratorPass
         if (mapping_strategy->map(sorted_ops_with_alap_levels, critical_ops,
                                   architecture, mapping_state)) {
           // success
-          mapping_state.dumpOpToLocs(); // logs to stderr
+          if (dumpMappingTable) {
+            // logs to stderr
+            mapping_state.dumpOpToLocs();
+          }
           mapping_state.encodeMappingState();
 
           // Sets the mapping_info attribute on the function.

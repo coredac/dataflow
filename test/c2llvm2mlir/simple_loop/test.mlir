@@ -32,6 +32,7 @@
 // RUN:   --insert-data-mov %t-kernel.mlir -o %t-kernel-neura.mlir
 // RUN: FileCheck %s --check-prefix=CHECK-LLVM2NEURA < %t-kernel-neura.mlir
 
+// Test with mapping table dump enabled
 // RUN: mlir-neura-opt --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
 // RUN:   --promote-func-arg-to-const \
@@ -42,8 +43,16 @@
 // RUN:   --view-op-graph \
 // RUN:   --architecture-spec=../../arch_spec/architecture.yaml \
 // RUN:   --insert-data-mov \
-// RUN:   --map-to-accelerator="mapping-strategy=heuristic backtrack-config=customized=5,3" %t-kernel.mlir -o %t-kernel-mapped.mlir
+// RUN:   --map-to-accelerator="mapping-strategy=heuristic backtrack-config=customized=5,3 dump-mapping-table=true" %t-kernel.mlir -o %t-kernel-mapped.mlir 2>&1 | tee %t-kernel-mapping-output.txt
+// RUN: FileCheck %s --check-prefix=CHECK-MAPPING-TABLE < %t-kernel-mapping-output.txt
 // RUN: FileCheck %s --check-prefix=CHECK-LLVM2NEURA-MAP < %t-kernel-mapped.mlir
+
+// Checks the resource allocation table output
+// CHECK-MAPPING-TABLE: === MappingState: Resource Allocation Table ===
+// CHECK-MAPPING-TABLE: II = 5
+// CHECK-MAPPING-TABLE: Tile     | t%{{[0-9]+}}={{[0-9]+}}
+// CHECK-MAPPING-TABLE: ---------+
+// CHECK-MAPPING-TABLE: Tile#{{[0-9]+}} |
 
 // CHECK-LLVM2NEURA: accelerator = "neura"
 // CHECK-LLVM2NEURA: dataflow_mode = "predicate"

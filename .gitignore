@@ -7,6 +7,8 @@ build/
 !arch_spec_example.yaml
 !architecture.yaml
 /test/**/*.asm
+/test/**/*.json
+/test/**/.sh
 .lit_test_times.txt
 lit.cfg
 *.dot
