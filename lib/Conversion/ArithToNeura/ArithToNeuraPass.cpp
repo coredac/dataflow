@@ -66,14 +66,14 @@ struct ArithCmpFToNeuraFCmp : public OpRewritePattern<mlir::arith::CmpFOp> {
     Value lhs = op.getLhs();
     Value rhs = op.getRhs();
 
-    mlir::arith::CmpFPredicate predicateEnum = op.getPredicate();
+    mlir::arith::CmpFPredicate predicate_enum = op.getPredicate();
 
-    StringRef predicateStr = arith::stringifyCmpFPredicate(predicateEnum);
-    StringAttr predicateAttr = rewriter.getStringAttr(predicateStr); // <--- 正确声明和赋值 StringAttr
-
-    // Converts arith CmpFOp to Neura FCmpOp.
+    StringRef predicate_str = arith::stringifyCmpFPredicate(predicate_enum);
+    
+    StringAttr predicate_attr = rewriter.getStringAttr(predicate_str);
+// Converts arith CmpFOp to Neura FCmpOp.
     rewriter.replaceOpWithNewOp<neura::FCmpOp>(
-        op, op.getResult().getType(), lhs, rhs, predicateAttr); // <--- 使用 predicateAttr
+        op, op.getResult().getType(), lhs, rhs, predicate_attr);
 
     return success();
   }
