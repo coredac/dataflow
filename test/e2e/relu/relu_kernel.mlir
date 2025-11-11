@@ -99,5 +99,5 @@
 
 // ASM:      PE(2,1):
 // ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [SOUTH, RED] -> [$1]
+// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$1]
 // ASM-NEXT: } (t=5)
