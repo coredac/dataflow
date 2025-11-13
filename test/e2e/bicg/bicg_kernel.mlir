@@ -180,19 +180,30 @@
 // YAML-NEXT:               operations:
 // YAML-NEXT:                 - opcode: "CONSTANT"
 // YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "#0"
+// YAML-NEXT:                     - operand: "arg0"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                   dst_operands:
 // YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - timestep: 2
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "GRANT_ONCE"
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "arg1"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "NORTH"
 // YAML-NEXT:                       color: "RED"
 
 // ASM:      # Compiled II: 12
 // ASM:      PE(0,0):
 // ASM-NEXT: {
-// ASM-NEXT:   CONSTANT, [#0] -> [EAST, RED]
+// ASM-NEXT:   CONSTANT, [arg0] -> [EAST, RED]
 // ASM-NEXT: } (t=0)
 // ASM-NEXT: {
-// ASM-NEXT:   GRANT_ONCE, [] -> [EAST, RED], [NORTH, RED]
+// ASM-NEXT:   GRANT_ONCE, [arg1] -> [EAST, RED], [NORTH, RED]
 // ASM-NEXT: } (t=2)
 // ASM-NEXT: {
 // ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$0]
@@ -206,6 +217,3 @@
 // ASM-NEXT: {
 // ASM-NEXT:   ZEXT, [$0] -> [NORTH, RED]
 // ASM-NEXT: } (t=8)
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_ONCE, [] -> [NORTH, RED]
-// ASM-NEXT: } (t=11)

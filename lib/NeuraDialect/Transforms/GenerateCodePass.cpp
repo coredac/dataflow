@@ -148,7 +148,7 @@ static std::string getOpcode(Operation *op) {
 }
 
 // Extracts constant literal from an attribute.
-// Returns formatted string like "#10" or "#3.0", or empty string if not found.
+// Returns formatted string like "#10" or "#3.0", or "arg0" for "%arg0", or empty string if not found.
 static std::string extractConstantLiteralFromAttr(Attribute attr) {
   if (!attr) return "";
   
@@ -156,6 +156,16 @@ static std::string extractConstantLiteralFromAttr(Attribute attr) {
     return "#" + std::to_string(integer_attr.getInt());
   if (auto float_attr = dyn_cast<FloatAttr>(attr))
     return "#" + std::to_string(float_attr.getValueAsDouble());
+  
+  // Handles string attributes like "%arg0" -> "arg0".
+  if (auto string_attr = dyn_cast<StringAttr>(attr)) {
+    std::string value = string_attr.getValue().str();
+    // Checks if the string starts with "%arg" followed by digits.
+    if (value.size() > 4 && value.substr(0, 4) == "%arg") {
+      // Extracts "arg" + digits (removes the leading "%").
+      return value.substr(1);
+    }
+  }
   
   return "";
 }
@@ -715,8 +725,22 @@ struct GenerateCodePass
 
   // Direction vs const/reg helpers.
   static bool isDirectionalOperand(const std::string &operand) {
-    // Only non-directional operands start with $ (registers) or # (constants).
-    return !operand.empty() && operand[0] != '$' && operand[0] != '#';
+    // Non-directional operands start with $ (registers), # (constants), or arg (function arguments).
+    if (operand.empty()) return false;
+    if (operand[0] == '$' || operand[0] == '#') return false;
+    // Checks if the operand starts with "arg" followed by digits (e.g., "arg0", "arg1").
+    if (operand.size() >= 4 && operand.substr(0, 3) == "arg") {
+      // Verifies that the rest is digits.
+      bool all_digits = true;
+      for (size_t i = 3; i < operand.size(); ++i) {
+        if (!std::isdigit(operand[i])) {
+          all_digits = false;
+          break;
+        }
+      }
+      if (all_digits) return false;
+    }
+    return true;
   }
 
   static std::string formatOperand(const Operand &operand) {
