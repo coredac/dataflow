@@ -302,9 +302,7 @@ private:
               user->getBlock() == lastOp->getBlock() && 
               user->isBeforeInBlock(lastOp)) {
             llvm::outs() << "    Skipping instance: would violate domination\n";
-            llvm::outs() << "      Value from " << op->getName() 
-                         << " is used by " << user->getName() 
-                         << " which comes before the pattern\n";
+            llvm::outs() << "      Value from " << op->getName() << " is used by " << user->getName() << " which comes before the pattern\n";
             return false;
           }
         }

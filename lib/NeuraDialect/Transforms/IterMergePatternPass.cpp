@@ -44,12 +44,10 @@ struct IterMergePatternPass
 
   void runOnOperation() override {
     // Default minimum support threshold
+    // TODO: Make this a command line argument
     int minSupport = 1;
     
     ModuleOp module_op = getOperation();
-    
-    // Enable debugging options
-    enableDebuggingOptions();
     
     llvm::outs() << "\n========================================\n";
     llvm::outs() << "IterMergePatternPass: Starting pattern mining\n";
@@ -69,11 +67,8 @@ struct IterMergePatternPass
         signalPassFailure();
         return;
       } 
-
-      llvm::outs() << "  - Number of nodes: " << dfg_graph->getNumNodes() << "\n";
-      llvm::outs() << "  - Number of edges: " << dfg_graph->getNumEdges() << "\n\n";
       
-      // Print DFG statistics
+      // Prints the statistics of the DFG
       printDFGStatistics(dfg_graph.get());
 
       // Step 2: Mine frequent subgraphs using GraMi
@@ -82,11 +77,9 @@ struct IterMergePatternPass
       std::vector<mlir::neura::PatternWithSelectedInstances> patterns_with_instances = 
           grami.mineFrequentSubgraphs();
       
-      llvm::outs() << "  - Found " << patterns_with_instances.size() 
-                  << " patterns with selected instances\n\n";
+      llvm::outs() << "  - Found " << patterns_with_instances.size() << " patterns with selected instances\n\n";
       // patterns_with_instances = grami.mergeAdjacentPatterns(patterns_with_instances);
-      llvm::outs() << "  - After merging: " << patterns_with_instances.size() 
-                  << " patterns remaining\n\n";
+      llvm::outs() << "  - After merging: " << patterns_with_instances.size() << " patterns remaining\n\n";
       
       // Step 3: Rewrite operations to wrap patterns in regions
       int rewrite_count = rewritePatternsToRegions(module_op, patterns_with_instances);
@@ -101,21 +94,14 @@ struct IterMergePatternPass
   
 private:
   
-  // Enable debugging options for this pass
-  void enableDebuggingOptions() {
-    // Note: These options would typically be set on the PassManager
-    // that runs this pass, not within the pass itself.
-    // This is a placeholder for demonstration.
-    llvm::outs() << "Debugging options enabled:\n";
-    llvm::outs() << "  - Verification disabled\n";
-    llvm::outs() << "  - IR printing on failure enabled\n";
-  }
-  
   void printDFGStatistics(mlir::neura::DFGGraph* graph) {
     llvm::outs() << "DFG Statistics:\n";
     llvm::outs() << "---------------\n";
+
+    llvm::outs() << "Number of nodes: " << graph->getNumNodes() << "\n";
+    llvm::outs() << "Number of edges: " << graph->getNumEdges() << "\n\n";
     
-    // Count operations by type
+    // Counts s  operations by type
     std::map<std::string, size_t> op_type_counts;
     for (auto* node : graph->getNodes()) {
       op_type_counts[node->getLabel()]++;
@@ -586,13 +572,13 @@ private:
     
     // Step 4: Final cleanup - replace any remaining uses with themselves to avoid assertion
     for (Operation* op : instance.operations) {
-      // for (Value result : op->getResults()) {
-      //   if (!result.use_empty()) {
-      //     llvm::outs() << "      Replacing use of " << result << " with itself\n";
-      //     // Force replace with itself to avoid assertion failure
-      //     result.replaceAllUsesWith(result);
-      //   }
-      // }
+      for (Value result : op->getResults()) {
+        if (!result.use_empty()) {
+          llvm::outs() << "      Replacing use of " << result << " with itself\n";
+          // Force replace with itself to avoid assertion failure
+          result.replaceAllUsesWith(result);
+        }
+      }
     }
     
     // Clear the mapping to avoid dangling references

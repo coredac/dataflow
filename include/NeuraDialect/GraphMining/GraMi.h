@@ -119,6 +119,11 @@ public:
   FrequentSubgraph(const std::string& pattern, size_t frequency)
     : pattern_(pattern), frequency_(frequency) {}
   
+  // Copy constructor with new frequency (using tag to disambiguate from copy constructor)
+  FrequentSubgraph(const FrequentSubgraph& other, size_t new_frequency)
+    : pattern_(other.pattern_), frequency_(new_frequency),
+      nodes_(other.nodes_), edges_(other.edges_) {}
+  
   const std::string& getPattern() const { return pattern_; }
   size_t getFrequency() const { return frequency_; }
   
@@ -176,23 +181,13 @@ public:
   // Main mining function
   std::vector<PatternWithSelectedInstances> mineFrequentSubgraphs();
   
-  // Merge adjacent common patterns into larger patterns
-  // This function identifies patterns that are adjacent in the DFG and merges them
-  // into larger, more comprehensive patterns
-  std::vector<PatternWithSelectedInstances> mergeAdjacentPatterns(
-      const std::vector<PatternWithSelectedInstances>& patterns);
-  
-  // Maximum Weighted Independent Set selection at pattern level
-  // Input: patterns with all their instances
-  // Output: indices of selected patterns (not instances)
-  static std::vector<size_t> selectMaxWeightedIndependentSet(
-      const std::vector<PatternWithInstances>& patterns);
-  
-  // Maximum Weighted Independent Set selection for instances within a single pattern
-  // Input: instances of a single pattern
-  // Output: indices of selected instances that don't conflict
-  static std::vector<size_t> selectMaxWeightedIndependentSetForInstances(
-      const std::vector<PatternInstance>& instances);
+  // Maximum Weighted Independent Set selection for instances
+  // Input: all instances (with pattern_id set), frequent subgraphs, min support
+  // Output: patterns with selected instances that don't conflict
+  static std::vector<PatternWithSelectedInstances> selectMaxWeightedIndependentSetForInstances(
+      const std::vector<PatternInstance>& instances,
+      const std::vector<FrequentSubgraph>& frequent_subgraphs,
+      size_t min_support);
   
   // Set minimum support threshold
   void setMinSupport(size_t min_support) { min_support_ = min_support; }
@@ -207,31 +202,12 @@ private:
   std::string generatePatternString(const FrequentSubgraph& subgraph);
   std::vector<FrequentSubgraph> extendPattern(const FrequentSubgraph& pattern);
   
-  // Graph isomorphism checking
-  bool isIsomorphic(const FrequentSubgraph& pattern1, const FrequentSubgraph& pattern2);
-  
   // Support counting
   size_t countSupport(const FrequentSubgraph& pattern);
   
   // Helper functions for MWIS
   static bool instancesConflict(const PatternInstance& a, const PatternInstance& b);
   static bool patternsConflict(const PatternWithInstances& a, const PatternWithInstances& b);
-  
-  // Helper functions for pattern merging
-  bool arePatternsAdjacent(const PatternWithSelectedInstances& pattern1, 
-                          const PatternWithSelectedInstances& pattern2);
-  bool areInstancesAdjacent(const PatternInstance& instance1, 
-                           const PatternInstance& instance2);
-  FrequentSubgraph mergePatternStructures(const FrequentSubgraph& pattern1, 
-                                         const FrequentSubgraph& pattern2);
-  // Overloaded version that finds connecting edges between instances
-  FrequentSubgraph mergePatternStructures(const PatternInstance& instance1,
-                                         const PatternInstance& instance2,
-                                         const FrequentSubgraph& pattern1, 
-                                         const FrequentSubgraph& pattern2);
-  PatternInstance mergePatternInstances(const PatternInstance& instance1, 
-                                       const PatternInstance& instance2);
-  std::string generateMergedPatternString(const FrequentSubgraph& merged_pattern);
   
 private:
   // Helper function to get operation label (matches DFGExtractor logic)

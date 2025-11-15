@@ -610,7 +610,7 @@ def Neura_CommonPatternOp : Op<NeuraDialect, "common_pattern", [NoTerminator]> {
   let regions = (region SizedRegion<1>:$body);
   
   let hasVerifier = 0;
-}
+} 
 
 // Yield operation for common pattern region
 def Neura_YieldOp : Op<NeuraDialect, "yield", [Terminator]> {
