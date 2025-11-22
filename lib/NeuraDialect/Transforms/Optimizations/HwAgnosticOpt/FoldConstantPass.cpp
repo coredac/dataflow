@@ -295,6 +295,12 @@ DEFINE_BINARY_OP_PATTERN(FMax, FMaxOp)
 DEFINE_BINARY_OP_PATTERN(FMin, FMinOp)
 // Generates: FuseStoreConstantPattern.
 DEFINE_BINARY_OP_PATTERN(Store, StoreOp)
+// Generates: FuseShlConstantPattern.
+DEFINE_BINARY_OP_PATTERN(Shl, ShlOp)
+// Generates: FuseAndConstantPattern.
+DEFINE_BINARY_OP_PATTERN(And, AndOp)
+// Generates: FuseOrConstantPattern.
+DEFINE_BINARY_OP_PATTERN(Or, OrOp)
 
 // Pattern for GEP operation (base + indices).
 struct FuseGEPConstantPattern : public GenericFuseConstantPattern<neura::GEP> {
@@ -592,6 +598,11 @@ struct FoldConstantPass
     patterns.add<FuseFDivConstantPattern>(&getContext());
     patterns.add<FuseFMaxConstantPattern>(&getContext());
     patterns.add<FuseFMinConstantPattern>(&getContext());
+    
+    // Adds patterns for bitwise operations.
+    patterns.add<FuseShlConstantPattern>(&getContext());
+    patterns.add<FuseAndConstantPattern>(&getContext());
+    patterns.add<FuseOrConstantPattern>(&getContext());
     
     // Adds patterns for memory operations.
     patterns.add<FuseGEPConstantPattern>(&getContext());
