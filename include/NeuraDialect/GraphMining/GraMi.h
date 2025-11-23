@@ -16,6 +16,7 @@
 #include <set>
 #include <string>
 #include <memory>
+#include <cstdint>
 
 namespace mlir::neura {
 
@@ -116,16 +117,18 @@ public:
   using NodeId = DFGNode::NodeId;
   using EdgeId = DFGEdge::EdgeId;
   
-  FrequentSubgraph(const std::string& pattern, size_t frequency)
-    : pattern_(pattern), frequency_(frequency) {}
+  FrequentSubgraph(const std::string& pattern, size_t frequency, int64_t id = -1)
+    : pattern_(pattern), frequency_(frequency), id_(id) {}
   
   // Copy constructor with new frequency (using tag to disambiguate from copy constructor)
   FrequentSubgraph(const FrequentSubgraph& other, size_t new_frequency)
-    : pattern_(other.pattern_), frequency_(new_frequency),
+    : pattern_(other.pattern_), frequency_(new_frequency), id_(other.id_),
       nodes_(other.nodes_), edges_(other.edges_) {}
   
   const std::string& getPattern() const { return pattern_; }
   size_t getFrequency() const { return frequency_; }
+  int64_t getId() const { return id_; }
+  void setId(int64_t id) { id_ = id; }
   
   // Add node to the pattern
   void addNode(NodeId node_id, const std::string& label) {
@@ -143,6 +146,7 @@ public:
 private:
   std::string pattern_;
   size_t frequency_;
+  int64_t id_;
   std::map<NodeId, std::string> nodes_;
   std::map<EdgeId, std::pair<NodeId, NodeId>> edges_;
 };
@@ -153,13 +157,13 @@ struct PatternInstance {
   std::vector<mlir::Value> inputs;   // External inputs to the pattern  
   std::vector<mlir::Value> outputs;  // Outputs from the pattern
   mlir::Operation* lastOp = nullptr; // Last operation in the pattern
-  int pattern_id;
+  int64_t pattern_id;
   size_t frequency;  // Weight for MWIS
 };
 
 // Pattern with all its instances
 struct PatternWithInstances {
-  int pattern_id;
+  int64_t pattern_id;
   size_t frequency;  // Weight for MWIS
   std::vector<PatternInstance> instances;
 };
@@ -168,7 +172,6 @@ struct PatternWithInstances {
 struct PatternWithSelectedInstances {
   FrequentSubgraph pattern;
   std::vector<PatternInstance> selected_instances;
-  
   PatternWithSelectedInstances(const FrequentSubgraph& p) : pattern(p) {}
 };
 

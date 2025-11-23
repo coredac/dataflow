@@ -49,17 +49,19 @@ struct IterMergePatternPass
     
     ModuleOp module_op = getOperation();
     
-    llvm::outs() << "\n========================================\n";
-    llvm::outs() << "IterMergePatternPass: Starting pattern mining\n";
-    llvm::outs() << "Minimum support threshold: " << minSupport << "\n";
-    llvm::outs() << "========================================\n\n";
+    llvm::errs() << "\n========================================\n";
+    llvm::errs() << "IterMergePatternPass: Starting pattern mining\n";
+    llvm::errs() << "Minimum support threshold: " << minSupport << "\n";
+    llvm::errs() << "========================================\n\n";
     
     // Step 2.5: Merge adjacent patterns
+    // TODO: Make this a command line argument
+    int maxIterations = 2;
     int iter = 0;
-    while (iter < 2) {
+    while (iter < maxIterations) {
       // Step 1: Extract DFG from the module
-      llvm::outs() << "Iteration " << iter << "\n";
-      llvm::outs() << "Step 1: Extracting DFG from module...\n";
+      llvm::errs() << "Iteration " << iter << "\n";
+      llvm::errs() << "Step 1: Extracting DFG from module...\n";
       auto dfg_graph = mlir::neura::DFGExtractor::extractFromModule(module_op);
       
       if (!dfg_graph) {
@@ -72,34 +74,32 @@ struct IterMergePatternPass
       printDFGStatistics(dfg_graph.get());
 
       // Step 2: Mine frequent subgraphs using GraMi
-      llvm::outs() << "Step 2: Mining frequent subgraphs...\n";
+      llvm::errs() << "Step 2: Mining frequent subgraphs...\n";
       mlir::neura::GraMi grami(dfg_graph.get(), minSupport);
       std::vector<mlir::neura::PatternWithSelectedInstances> patterns_with_instances = 
           grami.mineFrequentSubgraphs();
       
-      llvm::outs() << "  - Found " << patterns_with_instances.size() << " patterns with selected instances\n\n";
-      // patterns_with_instances = grami.mergeAdjacentPatterns(patterns_with_instances);
-      llvm::outs() << "  - After merging: " << patterns_with_instances.size() << " patterns remaining\n\n";
+      llvm::errs() << "  - Found " << patterns_with_instances.size() << " patterns with selected instances\n\n";
       
       // Step 3: Rewrite operations to wrap patterns in regions
-      int rewrite_count = rewritePatternsToRegions(module_op, patterns_with_instances);
-      llvm::outs() << "  - Rewrote " << rewrite_count << " pattern instances\n\n";
+      int rewrite_count = rewritePatternsToRegions(dfg_graph.get(), module_op, patterns_with_instances);
+      llvm::errs() << "  - Rewrote " << rewrite_count << " pattern instances\n\n";
       iter++;
     }
     
-    llvm::outs() << "\n========================================\n";
-    llvm::outs() << "IterMergePatternPass: Completed\n";
-    llvm::outs() << "========================================\n\n";
+    llvm::errs() << "\n========================================\n";
+    llvm::errs() << "IterMergePatternPass: Completed\n";
+    llvm::errs() << "========================================\n\n";
   }
   
 private:
   
   void printDFGStatistics(mlir::neura::DFGGraph* graph) {
-    llvm::outs() << "DFG Statistics:\n";
-    llvm::outs() << "---------------\n";
+    llvm::errs() << "DFG Statistics:\n";
+    llvm::errs() << "---------------\n";
 
-    llvm::outs() << "Number of nodes: " << graph->getNumNodes() << "\n";
-    llvm::outs() << "Number of edges: " << graph->getNumEdges() << "\n\n";
+    llvm::errs() << "Number of nodes: " << graph->getNumNodes() << "\n";
+    llvm::errs() << "Number of edges: " << graph->getNumEdges() << "\n\n";
     
     // Counts s  operations by type
     std::map<std::string, size_t> op_type_counts;
@@ -107,173 +107,47 @@ private:
       op_type_counts[node->getLabel()]++;
     }
     
-    llvm::outs() << "Operation types and their counts:\n";
+    llvm::errs() << "Operation types and their counts:\n";
     for (const auto& pair : op_type_counts) {
-      llvm::outs() << "  - " << pair.first << ": " << pair.second << "\n";
+      llvm::errs() << "  - " << pair.first << ": " << pair.second << "\n";
     }
-    llvm::outs() << "\n";
-  }
-  
-  void printCommonPatterns(const std::vector<CommonPatternInfo>& patterns) {
-    llvm::outs() << "========================================\n";
-    llvm::outs() << "Common Patterns Found:\n";
-    llvm::outs() << "========================================\n\n";
-    
-    if (patterns.empty()) {
-      llvm::outs() << "No common patterns found with the given threshold.\n";
-      return;
-    }
-    
-    // Sort patterns by frequency (descending) and size
-    std::vector<CommonPatternInfo> sorted_patterns = patterns;
-    std::sort(sorted_patterns.begin(), sorted_patterns.end(),
-              [](const CommonPatternInfo& a, const CommonPatternInfo& b) {
-                if (a.frequency != b.frequency) {
-                  return a.frequency > b.frequency;
-                }
-                return a.nodes.size() > b.nodes.size();
-              });
-    
-    int pattern_id = 1;
-    for (const auto& pattern : sorted_patterns) {
-      llvm::outs() << "Pattern #" << pattern_id << ":\n";
-      llvm::outs() << "  Pattern String: " << pattern.pattern_string << "\n";
-      llvm::outs() << "  Frequency: " << pattern.frequency << "\n";
-      llvm::outs() << "  Size: " << pattern.nodes.size() << " nodes, " 
-                   << pattern.edges.size() << " edges\n";
-      
-      // Print nodes
-      if (!pattern.nodes.empty()) {
-        llvm::outs() << "  Nodes:\n";
-        for (const auto& node_pair : pattern.nodes) {
-          llvm::outs() << "    Node " << node_pair.first << ": " 
-                       << node_pair.second << "\n";
-        }
-      }
-      
-      // Print edges
-      if (!pattern.edges.empty()) {
-        llvm::outs() << "  Edges:\n";
-        for (const auto& edge_pair : pattern.edges) {
-          llvm::outs() << "    Edge " << edge_pair.first << ": " 
-                       << edge_pair.second.first << " -> " 
-                       << edge_pair.second.second << "\n";
-        }
-      }
-      
-      llvm::outs() << "\n";
-      pattern_id++;
-    }
-  }
-  
-  void storeCommonPatternsAsAttribute(ModuleOp module_op, 
-                                      const std::vector<CommonPatternInfo>& patterns) {
-    // Store pattern information as module attributes for use by other passes
-    MLIRContext* context = module_op.getContext();
-    
-    // Store the number of patterns found
-    module_op->setAttr("neura.num_common_patterns", 
-                       IntegerAttr::get(IntegerType::get(context, 64), 
-                                       patterns.size()));
-    
-    // Store summary information
-    if (!patterns.empty()) {
-      // Find the most frequent pattern
-      auto max_freq_pattern = std::max_element(
-          patterns.begin(), patterns.end(),
-          [](const CommonPatternInfo& a, const CommonPatternInfo& b) {
-            return a.frequency < b.frequency;
-          });
-      
-      module_op->setAttr("neura.max_pattern_frequency",
-                        IntegerAttr::get(IntegerType::get(context, 64),
-                                        max_freq_pattern->frequency));
-      
-      llvm::outs() << "Stored pattern information in module attributes:\n";
-      llvm::outs() << "  - neura.num_common_patterns = " << patterns.size() << "\n";
-      llvm::outs() << "  - neura.max_pattern_frequency = " 
-                   << max_freq_pattern->frequency << "\n\n";
-    }
+    llvm::errs() << "\n";
   }
   
   // Rewrite patterns by wrapping them in regions
-  int rewritePatternsToRegions(ModuleOp module_op, 
+  int rewritePatternsToRegions(mlir::neura::DFGGraph* dfg_graph, ModuleOp module_op, 
                                 const std::vector<mlir::neura::PatternWithSelectedInstances>& patterns_with_instances) {
     int rewrite_count = 0;
     
-    // Extract DFG once for efficiency
-    auto dfg_graph = mlir::neura::DFGExtractor::extractFromModule(module_op);
-    if (!dfg_graph) {
-      llvm::errs() << "Error: Failed to extract DFG for pattern analysis\n";
-      return 0;
-    }
-    
-    // Filter valid patterns (at least 2 nodes) and collect all instances
-    std::vector<std::tuple<PatternInstance, const mlir::neura::FrequentSubgraph*, int>> all_instances;
-    int pattern_id = 0;
-    
-    for (const auto& pwsi : patterns_with_instances) {
-      if (pwsi.pattern.getNodes().size() >= 2 && !pwsi.selected_instances.empty()) {
-        llvm::outs() << "  Valid pattern: " << pwsi.pattern.getPattern() 
-                     << " with " << pwsi.selected_instances.size() << " instances\n";
-        
-        // Print pattern nodes with their DFG IDs
-        llvm::outs() << "    Pattern nodes:\n";
-        for (const auto& node : pwsi.pattern.getNodes()) {
-          llvm::outs() << "      Pattern node " << node.first << ": " << node.second << "\n";
-        }
-        
-        // Print actual DFG node IDs from the first instance
-        if (!pwsi.selected_instances.empty()) {
-          llvm::outs() << "    DFG node IDs from first instance:\n";
-          const auto& first_instance = pwsi.selected_instances[0];
-          for (size_t i = 0; i < first_instance.operations.size(); ++i) {
-            mlir::Operation* op = first_instance.operations[i];
-            // Find the corresponding DFG node
-            for (auto* dfg_node : dfg_graph->getNodes()) {
-              if (dfg_node->getOperation() == op) {
-                llvm::outs() << "      Instance node " << i << ": " << op->getName() 
-                             << " (DFG ID: " << dfg_node->getId() << ")\n";
-                break;
-              }
-            }
-          }
-        }
-        // for (const auto& edge : pwsi.pattern.getEdges()) {
-        //   llvm::outs() << "    Edge: " << edge.first << " -> " << edge.second.first << " -> " << edge.second.second << "\n";
-        // }
-
-        for (const auto& instance : pwsi.selected_instances) {
-          all_instances.push_back({instance, &pwsi.pattern, pattern_id});
-        }
-      }
-      pattern_id++;
-    }
-    
-    if (all_instances.empty()) {
-      llvm::outs() << "  No valid instances to rewrite\n";
-      return 0;
-    }
-    
-    llvm::outs() << "  Total instances to rewrite: " << all_instances.size() << "\n";
-    
+    // Filter and process valid patterns (at least 2 nodes) directly without accumulating
+    size_t total_instances = 0;
     MLIRContext* context = module_op.getContext();
     OpBuilder builder(context);
     
     // Process each instance
     int instance_num = 0;
-    for (auto& [instance, pattern, pid] : all_instances) {
-      instance_num++;
-      llvm::outs() << "    Instance " << instance_num << "/" << all_instances.size() 
-                   << " (Pattern #" << pid << " - " << pattern->getPattern() << ")...\n";
-      
-      if (rewritePatternInstance(builder, instance, *pattern, pid)) {
-        rewrite_count++;
-        llvm::outs() << "      Success!\n";
-      } else {
-        llvm::outs() << "      Skipped (operation already deleted).\n";
+    for (const auto& pwsi : patterns_with_instances) {
+      if (pwsi.pattern.getNodes().size() < 2 || pwsi.selected_instances.empty()) continue;
+      for (const auto& instance : pwsi.selected_instances) {
+        total_instances++;
+        instance_num++;
+        const auto* pattern = &pwsi.pattern;
+        llvm::errs() << "    Instance " << instance_num << " (Pattern #" << pattern->getId() << " - " << pattern->getPattern() << ")...\n";
+        if (rewritePatternInstance(builder, instance, *pattern)) {
+          rewrite_count++;
+          llvm::errs() << "      Success!\n";
+        } else {
+          llvm::errs() << "      Skipped (operation already deleted).\n";
+        }
       }
     }
+    
+    if (total_instances == 0) {
+      llvm::errs() << "  No valid instances to rewrite\n";
+      return 0;
+    }
+    
+    llvm::errs() << "  Total instances to rewrite: " << total_instances << "\n";
     
     return rewrite_count;
   }
@@ -306,36 +180,21 @@ private:
   
   // Rewrite a single pattern instance
   bool rewritePatternInstance(OpBuilder& builder, const PatternInstance& instance,
-                               const mlir::neura::FrequentSubgraph& pattern,
-                               int pattern_id) {
+                               const mlir::neura::FrequentSubgraph& pattern) {
     if (instance.operations.empty()) return false;
     
     // Check if any operation in this instance has already been erased
     for (Operation* op : instance.operations) {
       if (!op || !op->getBlock()) {
-        llvm::outs() << "    Skipping instance: operation already erased\n";
+        llvm::errs() << "    Skipping instance: operation already erased\n";
         return false;
       }
     }
     
     // Build a set of operations in this pattern for quick lookup
     llvm::DenseSet<Operation*> patternOps(instance.operations.begin(), instance.operations.end());
-
-    llvm::outs() << "    Pattern operations: " << patternOps.size() << "\n";
-    for (Operation* op : patternOps) {
-      llvm::outs() << "      " << op->getName() << "\n";
-      if (op->getName().getStringRef().str() == "neura.common_pattern") {
-        // get the body operations
-        if (op->getNumRegions() > 0) {
-          for (Operation& bodyOp : op->getRegion(0).getOps()) {
-            llvm::outs() << "        " << bodyOp.getName() << "\n";
-          }
-        }
-      }
-    }
     
-    // // Check for domination safety: ensure no value produced by the pattern
-    // // is used by operations that come BEFORE the pattern's lastOp
+    // Check for domination safety: ensure no value produced by the pattern is used by operations that come BEFORE the pattern's lastOp
     Operation* lastOp = instance.lastOp;
     for (Operation* op : instance.operations) {
       for (Value result : op->getResults()) {
@@ -346,10 +205,8 @@ private:
           if (!patternOps.contains(user) && 
               user->getBlock() == lastOp->getBlock() && 
               user->isBeforeInBlock(lastOp)) {
-            llvm::outs() << "    Skipping instance: would violate domination\n";
-            llvm::outs() << "      Value from " << op->getName() 
-                         << " is used by " << user->getName() 
-                         << " which comes before the pattern\n";
+            llvm::errs() << "    Skipping instance: would violate domination\n";
+            llvm::errs() << "      Value from " << op->getName() << " is used by " << user->getName() << " which comes before the pattern\n";
             return false;
           }
         }
@@ -363,10 +220,60 @@ private:
     llvm::SetVector<Value> inputSet;
     for (Operation* op : instance.operations) {
       for (Value operand : op->getOperands()) {
-        // Only include operands from outside the pattern
+        // Only include operands from errside the pattern
         Operation* defOp = operand.getDefiningOp();
         if (!defOp || !patternOps.contains(defOp)) {
           inputSet.insert(operand);
+        }
+      }
+      
+      // For nested pattern operations, also collect values used inside their bodies
+      // But exclude values that are produced within the nested pattern itself
+      if (op->getName().getStringRef().str() == "neura.common_pattern" && op->getNumRegions() > 0) {
+        Region& region = op->getRegion(0);
+        if (!region.empty()) {
+          Block& block = region.front();
+          
+          // First, collect all operations defined within this nested pattern
+          llvm::DenseSet<Operation*> nestedPatternOps;
+          for (Operation& bodyOp : block.getOperations()) {
+            if (bodyOp.getName().getStringRef().str() != "neura.yield") {
+              nestedPatternOps.insert(&bodyOp);
+            }
+          }
+          
+          // Then, collect values used in the nested pattern that come from errside
+          for (Operation& bodyOp : block.getOperations()) {
+            if (bodyOp.getName().getStringRef().str() != "neura.yield") {
+              for (Value operand : bodyOp.getOperands()) {
+                // Skip block arguments (these are the nested pattern's own inputs)
+                if (mlir::isa<BlockArgument>(operand)) {
+                  continue;
+                }
+                
+                Operation* defOp = operand.getDefiningOp();
+                
+                // Only include values that are:
+                // 1. Defined errside the current pattern instance (not in patternOps)
+                // 2. AND not defined within this nested pattern's body (not in nestedPatternOps)
+                if (defOp) {
+                  // If defined within the nested pattern itself, skip it
+                  if (nestedPatternOps.contains(defOp)) {
+                    continue;
+                  }
+                  // If defined errside the pattern instance, add it as input
+                  if (!patternOps.contains(defOp)) {
+                    inputSet.insert(operand);
+                  }
+                } else {
+                  // Value without defining op (shouldn't happen normally)
+                  // But if it exists and is not a block argument, it might be needed
+                  // Skip for now to be safe
+                  assert(false && "Value without defining op should not happen normally");
+                }
+              }
+            }
+          }
         }
       }
     }
@@ -376,7 +283,7 @@ private:
     llvm::SetVector<Value> outputSet;
     for (Operation* op : instance.operations) {
       for (Value result : op->getResults()) {
-        // Check if this result is used outside the pattern
+        // Check if this result is used errside the pattern
         bool hasExternalUse = false;
         for (OpOperand& use : result.getUses()) {
           Operation* user = use.getOwner();
@@ -399,20 +306,20 @@ private:
       outputTypes.push_back(output.getType());
     }
     
-    llvm::outs() << "    Creating common_pattern operation: " << pattern.getPattern() << "\n";
-    llvm::outs() << "      Inputs: " << validInputs.size() << "\n";
-    llvm::outs() << "      Outputs: " << outputTypes.size() << "\n";
+    llvm::errs() << "    Creating common_pattern operation: " << pattern.getPattern() << "\n";
+    llvm::errs() << "      Inputs: " << validInputs.size() << "\n";
+    llvm::errs() << "      Outputs: " << outputTypes.size() << "\n";
 
     auto patternOp = builder.create<neura::CommonPatternOp>(
         lastOp->getLoc(),
         outputTypes,
         validInputs,
-        builder.getI64IntegerAttr(pattern_id),
+        builder.getI64IntegerAttr(pattern.getId()),
         builder.getStringAttr(pattern.getPattern()),
         builder.getI64IntegerAttr(pattern.getFrequency())
     );
     
-    llvm::outs() << "    Created common_pattern operation successfully\n";
+    llvm::errs() << "    Created common_pattern operation successfully\n";
 
     // Create the body region
     Region& bodyRegion = patternOp.getBody();
@@ -440,7 +347,7 @@ private:
     Operation* clonedOp = nullptr;
 
     for (Operation* op : instance.operations) {
-      llvm::outs() << "    Cloning operation: " << op->getName() << "\n";
+      llvm::errs() << "    Cloning operation: " << op->getName() << "\n";
       if (op->getName().getStringRef().str() == "neura.common_pattern") {
         // For pattern operations, we need to handle their inputs and outputs specially
         if (op->getNumRegions() > 0) {
@@ -448,38 +355,93 @@ private:
           if (!region.empty()) {
             Block& block = region.front();
             
-            // Handle BlockArguments: map pattern inputs correctly
-            for (size_t i = 0; i < op->getNumOperands(); ++i) {
-              Value patternInput = op->getOperand(i);
-              
-              // Check if this input is an external input (has corresponding block argument)
-              bool isExternalInput = false;
-              for (size_t j = 0; j < validInputs.size(); ++j) {
-                if (validInputs[j] == patternInput) {
-                  // This is an external input, map to block argument
-                  BlockArgument newArg = bodyBlock->getArgument(j);
-                  if (i < block.getNumArguments()) {
-                    mapping.map(block.getArgument(i), newArg);
-                    llvm::outs() << "      Mapped external input " << i << " to block argument " << j << "\n";
+            // Collect all operations defined within this nested pattern and values that need to be mapped
+            // Exclude values defined within the nested pattern itself or within the current pattern instance
+            llvm::DenseSet<Operation*> nestedPatternBodyOps;
+            llvm::SetVector<Value> nestedPatternUsedValues;
+            
+            for (Operation& bodyOp : block.getOperations()) {
+              if (bodyOp.getName().getStringRef().str() != "neura.yield") {
+                // Collect the operation
+                nestedPatternBodyOps.insert(&bodyOp);
+                
+                // Collect values used by this operation that need to be mapped
+                for (Value operand : bodyOp.getOperands()) {
+                  // Skip block arguments (these are the nested pattern's own inputs)
+                  if (mlir::isa<BlockArgument>(operand)) {
+                    continue;
                   }
-                  isExternalInput = true;
-                  break;
+                  
+                  Operation* defOp = operand.getDefiningOp();
+                  
+                  // Only collect values that are:
+                  // 1. Not defined within the nested pattern's body (not in nestedPatternBodyOps)
+                  // 2. Not defined within the current pattern instance (not in patternOps)
+                  if (defOp) {
+                    // If defined within the nested pattern itself, skip it
+                    if (nestedPatternBodyOps.contains(defOp)) {
+                      continue;
+                    }
+                    // If defined outside the pattern instance, add it
+                    if (!patternOps.contains(defOp)) {
+                      nestedPatternUsedValues.insert(operand);
+                    }
+                  }
                 }
               }
+            }
+            
+            // Handle BlockArguments: map nested pattern's block arguments to outer pattern's block arguments
+            // Since validInputs are already mapped to bodyBlock arguments (lines 340-342),
+            // we can directly look up the mapping for external inputs
+            for (size_t i = 0; i < op->getNumOperands() && i < block.getNumArguments(); ++i) {
+              Value patternInput = op->getOperand(i);
+              BlockArgument nestedArg = block.getArgument(i);
               
-              if (!isExternalInput) {
-                // This is an internal input (from another pattern in the same instance)
-                // Map directly to the source value
-                if (i < block.getNumArguments()) {
-                  mapping.map(block.getArgument(i), patternInput);
-                  llvm::outs() << "      Mapped internal input " << i << " to source value\n";
+              // Check if this input is an external input (already mapped in lines 340-342)
+              if (mapping.contains(patternInput)) {
+                // External input: map nested block argument to outer block argument
+                mapping.map(nestedArg, mapping.lookup(patternInput));
+                llvm::errs() << "      Mapped external input " << i << " to outer block argument\n";
+              } else {
+                // Internal input: from another pattern in the same instance
+                // Try to find the value in cloned operations or use the source value
+                Value mappedValue;
+                if (originalToCloned.count(patternInput)) {
+                  mappedValue = originalToCloned[patternInput];
+                } else {
+                  // Map to the source value - this should work if the value dominates
+                  mappedValue = patternInput;
+                  llvm::errs() << "      Mapped internal input " << i << " to source value (may need block arg)\n";
                 }
+                mapping.map(nestedArg, mappedValue);
+              }
+            }
+            
+            // Now handle values used in body that aren't block arguments
+            // These might be values from other patterns in the same instance
+            // Note: validInputs are already mapped to bodyBlock arguments (lines 340-342)
+            for (Value usedVal : nestedPatternUsedValues) {
+              if (mlir::isa<BlockArgument>(usedVal) || mapping.contains(usedVal)) {
+                continue;
+              }
+              
+              // Check if it's from another pattern in the same instance (should be cloned)
+              Operation* defOp = usedVal.getDefiningOp();
+              if (defOp && patternOps.contains(defOp) && originalToCloned.count(usedVal)) {
+                mapping.map(usedVal, originalToCloned[usedVal]);
+                llvm::errs() << "      Mapped nested pattern used value to cloned value\n";
+              } else {
+                // This value should have been in validInputs (if external) or cloned (if internal)
+                llvm::errs() << "      Warning: value used in nested pattern not properly prepared: " << usedVal << "\n";
+                // Map to itself as fallback (may fail if not dominated)
+                mapping.map(usedVal, usedVal);
               }
             }
             
             // Clone all operations in the pattern's body
             for (Operation& bodyOp : block.getOperations()) {
-              llvm::outs() << "      Cloning body operation: " << bodyOp.getName() << "\n";
+              llvm::errs() << "      Cloning body operation: " << bodyOp.getName() << "\n";
               if (bodyOp.getName().getStringRef().str() != "neura.yield") {
                 clonedOp = builder.clone(bodyOp, mapping);
                 // Map the original operation's results to cloned operation's results
@@ -497,7 +459,7 @@ private:
                   Value yieldOperand = blockOp.getOperand(i);
                   if (originalToCloned.count(yieldOperand)) {
                     originalToCloned[op->getResult(i)] = originalToCloned[yieldOperand];
-                    llvm::outs() << "      Mapped pattern result " << i << " to cloned value\n";
+                    llvm::errs() << "      Mapped pattern result " << i << " to cloned value\n";
                   } else {
                     llvm::errs() << "Error: yield operand not found in cloned operations: " << yieldOperand << "\n";
                     return false;
@@ -520,14 +482,14 @@ private:
     
     // Build yield operands based on validOutputs (in the same order)
     SmallVector<Value> yieldOperands;
-    llvm::outs() << "    Building yield operands for " << validOutputs.size() << " outputs\n";
+    llvm::errs() << "    Building yield operands for " << validOutputs.size() << " outputs\n";
     for (size_t i = 0; i < validOutputs.size(); ++i) {
       Value originalOutput = validOutputs[i];
       if (originalToCloned.count(originalOutput)) {
         Value clonedValue = originalToCloned[originalOutput];
         if (clonedValue) {
           yieldOperands.push_back(clonedValue);
-          llvm::outs() << "      Output " << i << ": mapped to valid cloned value\n";
+          llvm::errs() << "      Output " << i << ": mapped to valid cloned value\n";
         } else {
           llvm::errs() << "Error: cloned value is null for output " << i << "\n";
           return false;
@@ -542,42 +504,29 @@ private:
     builder.create<neura::YieldOp>(lastOp->getLoc(), yieldOperands);
     
     // Comprehensive value replacement strategy
-    // Step 1: Replace external output values with pattern op results
+    // Replace external output values with pattern op results
+    // This handles all outputs including those from nested pattern operations
+    llvm::DenseSet<Value> replacedOutputs;
     for (size_t i = 0; i < validOutputs.size(); ++i) {
       Value oldValue = validOutputs[i];
       Value newValue = patternOp.getResult(i);
       oldValue.replaceAllUsesWith(newValue);
-      llvm::outs() << "      Replaced output " << i << " with pattern op result\n";
+      replacedOutputs.insert(oldValue);
+      llvm::errs() << "      Replaced output " << i << " with pattern op result\n";
     }
     
-    // Step 2: Replace all cloned values with their new counterparts
+    // Replace cloned values that are used externally (not already replaced as outputs)
+    // Note: Values used internally within the cloned region are already handled by IRMapping
     for (auto& pair : originalToCloned) {
       Value oldValue = pair.first;
-      Value newValue = pair.second;
-      oldValue.replaceAllUsesWith(newValue);
-    }
-    
-    // Step 3: Handle pattern operations specially
-    for (Operation* op : instance.operations) {
-      if (op->getName().getStringRef().str() == "neura.common_pattern") {
-        // Replace pattern operation results with new pattern operation results
-        for (size_t i = 0; i < op->getNumResults() && i < patternOp.getNumResults(); ++i) {
-          Value oldValue = op->getResult(i);
-          Value newValue = patternOp.getResult(i);
-          llvm::outs() << "      Replacing use of " << oldValue.getDefiningOp()->getName() << " with " << newValue.getDefiningOp()->getName() << "\n";
-          oldValue.replaceAllUsesWith(newValue);
-        }
+      // Skip if this value was already replaced as an output
+      if (replacedOutputs.contains(oldValue)) {
+        continue;
       }
-    }
-    
-    // Step 4: Final cleanup - replace any remaining uses with themselves to avoid assertion
-    for (Operation* op : instance.operations) {
-      for (Value result : op->getResults()) {
-        if (!result.use_empty()) {
-          llvm::outs() << "      Replacing use of " << result << " with itself\n";
-          // Force replace with itself to avoid assertion failure
-          result.replaceAllUsesWith(result);
-        }
+      // Only replace if there are external uses (uses outside the pattern instance)
+      if (!oldValue.use_empty()) {
+        Value newValue = pair.second;
+        oldValue.replaceAllUsesWith(newValue);
       }
     }
     
@@ -585,97 +534,57 @@ private:
     originalToCloned.clear();
 
     // print the new pattern op
-    llvm::outs() << "    New pattern op: " << patternOp.getPatternId() << "\n";
-    llvm::outs() << "      Inputs: " << patternOp.getInputs().size() << "\n";
-    llvm::outs() << "      Outputs: " << patternOp.getOutputs().size() << "\n";
+    llvm::errs() << "    New pattern op: " << patternOp.getPatternId() << "\n";
+    llvm::errs() << "      Inputs: " << patternOp.getInputs().size() << "\n";
+    llvm::errs() << "      Outputs: " << patternOp.getOutputs().size() << "\n";
     
     for (Operation& op : patternOp.getBody().getOps()) {
-      llvm::outs() << "        Body operation: " << op.getName() << " (ID: " << op.getAttr("id") << ")\n";
+      llvm::errs() << "        Body operation: " << op.getName() << " (ID: " << op.getAttr("id") << ")\n";
     }
 
     // Erase original operations by first replacing all uses, then deleting
     for (auto it = instance.operations.rbegin(); it != instance.operations.rend(); ++it) {
       Operation* op = *it;
       
-      // if (op->getName().getStringRef().str() == "neura.common_pattern") {
-      //   llvm::outs() << "    Skipping common pattern operation: " << op->getName() << "\n";
-      //   continue;
-      // }
-      
-      llvm::outs() << "    Erasing operation: " << op->getName() << "\n";
-      
-      // List all uses of the operation before deletion
-      for (Operation* user : op->getUsers()) {
-        llvm::outs() << "        User: " << user->getName() << "\n";
-      }
-
-      if (op->use_empty()) {
-        llvm::outs() << "        Operation is empty, skipping deletion\n";
-      }
-      else {
-        llvm::outs() << "        Operation is not empty, dropping uses\n";
-      }
+      llvm::errs() << "    Erasing operation: " << op->getName() << "\n";
       
       // Special handling for common_pattern operations
       if (op->getName().getStringRef().str() == "neura.common_pattern") {
         Region& region = op->getRegion(0);
         Block& block = region.front();
         
-        // Step 0: Handle BlockArguments that are used within the region
-        llvm::outs() << "        Checking " << block.getNumArguments() << " block arguments\n";
+        // Handle BlockArguments that are used within the region
         for (BlockArgument arg : block.getArguments()) {
           if (!arg.use_empty()) {
-            // Count uses manually
-            int useCount = 0;
-            for (OpOperand& use : arg.getUses()) {
-              useCount++;
-            }
-            llvm::outs() << "        Dropping uses of block argument " << arg.getArgNumber() 
-                         << " (type: " << arg.getType() << ", uses: " << useCount << ")\n";
-            // Print all users of this argument
-            for (OpOperand& use : arg.getUses()) {
-              llvm::outs() << "          Used by: " << use.getOwner()->getName() << " (ID: " << use.getOwner() << ")\n";
-            }
             arg.dropAllUses();
-            llvm::outs() << "        Block argument " << arg.getArgNumber() << " uses dropped\n";
-          } else {
-            llvm::outs() << "        Block argument " << arg.getArgNumber() 
-                         << " (type: " << arg.getType() << ") has no uses, skipping\n";
           }
         }
         
-        // Step 1: Drop all references from region operations first
+        // Drop all references from region operations first
         for (Operation& bodyOp : block.getOperations()) {
           bodyOp.dropAllReferences();
         }
         
-        // Step 2: Clear all uses of region operations' results
+        // Clear all uses of region operations' results
         for (Operation& bodyOp : block.getOperations()) {
           for (Value result : bodyOp.getResults()) {
             if (!result.use_empty()) {
-              llvm::outs() << "        Dropping uses of region result: " << result << "\n";
               result.dropAllUses();
             }
           }
         }
         
-        // Step 3: Now safely erase all operations in reverse order
+        // Now safely erase all operations in reverse order
         while (!block.empty()) {
           Operation& bodyOp = block.back();
-          llvm::outs() << "        Erasing region operation: " << bodyOp.getName() << "\n";
           bodyOp.erase();
         }
-        llvm::outs() << "        Region operations erased\n";
       }
       
       op->dropAllUses();
       
-      // Replace all uses of this operation's results with dummy values
-      // This breaks the dependency chain and allows safe deletion
-      
       // Now it's safe to erase the operation
       op->erase();
-      llvm::outs() << "    Operation erased: " << op->getName() << "\n";
     }
     
     return true;

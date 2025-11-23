@@ -306,7 +306,7 @@ std::vector<PatternWithSelectedInstances> GraMi::mineFrequentSubgraphs() {
       size_t pattern_idx = frequent_subgraphs.size();
       std::string fromLabel = pattern.substr(0, pattern.find("->"));
       std::string toLabel = pattern.substr(pattern.find("->") + 2);
-      FrequentSubgraph subgraph(pattern, instances.size());
+      FrequentSubgraph subgraph(pattern, instances.size(), static_cast<int64_t>(pattern_idx));
       subgraph.addNode(0, fromLabel);
       subgraph.addNode(1, toLabel);
       subgraph.addEdge(0, 0, 1);
@@ -314,7 +314,7 @@ std::vector<PatternWithSelectedInstances> GraMi::mineFrequentSubgraphs() {
       
       // Assign pattern_id to instances and collect them
       for (auto& instance : instances) {
-        instance.pattern_id = pattern_idx;
+        instance.pattern_id = static_cast<int64_t>(pattern_idx);
         all_instances.push_back(instance);
       }
       
@@ -543,7 +543,7 @@ std::vector<PatternWithSelectedInstances> GraMi::selectMaxWeightedIndependentSet
   // Group selected instances by pattern and build result in one pass
   std::map<size_t, std::vector<PatternInstance>> pattern_to_instances;
   for (size_t idx : selected_indices) {
-    size_t pattern_idx = instances[idx].pattern_id;
+    size_t pattern_idx = static_cast<size_t>(instances[idx].pattern_id);
     pattern_to_instances[pattern_idx].push_back(instances[idx]);
   }
   
