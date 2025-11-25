@@ -18,4 +18,4 @@ lit.cfg
 .cache
 .vscode
 
-# misc
+# misclib/NeuraDialect/Mapping/*.recurrence_opt
