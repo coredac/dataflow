@@ -692,28 +692,26 @@ bool mlir::neura::canReachLocInTime(const MappingLoc &src_loc,
   }
 
   // Checks if the destination is reachable from the source tile within given
-  // steps.
+  // steps. This uses BFS similar to tryRouteDataMove, considering both link
+  // traversal and register-based waiting.
   assert(isa<Tile>(src_loc.resource));
   assert(isa<Tile>(dst_loc.resource));
 
-  struct QueueEntry {
-    MappingLoc loc;
-    int current_step;
-  };
+  Tile *src_tile = dyn_cast<Tile>(src_loc.resource);
+  Tile *dst_tile = dyn_cast<Tile>(dst_loc.resource);
 
-  std::queue<QueueEntry> queue;
-  llvm::DenseSet<Tile *> visited;
+  std::queue<std::pair<Tile *, int>> queue;
+  std::set<std::pair<Tile *, int>> visited;
 
-  queue.push({src_loc, src_loc.time_step});
-  visited.insert(dyn_cast<Tile>(src_loc.resource));
+  queue.push({src_tile, src_loc.time_step});
+  visited.insert({src_tile, src_loc.time_step});
 
   while (!queue.empty()) {
-    auto [current_loc, current_step] = queue.front();
+    auto [current_tile, current_step] = queue.front();
     queue.pop();
 
-    // If we reach the destination tile and time step is not after dst_loc
-    if (current_loc.resource == dst_loc.resource &&
-        current_step <= deadline_step) {
+    // If we reach the destination tile within deadline
+    if (current_tile == dst_tile && current_step <= deadline_step) {
       return true;
     }
 
@@ -721,36 +719,31 @@ bool mlir::neura::canReachLocInTime(const MappingLoc &src_loc,
       continue;
     }
 
-    // // Explores all next step tiles from the current location.
-    // for (const MappingLoc &next_loc_tile :
-    //      mapping_state.getNextStepTiles(current_loc)) {
+    int next_step = current_step + 1;
 
-    // Explores all next step tiles from the current location.
-    for (const MappingLoc &current_loc_out_link :
-         mapping_state.getCurrentStepLinks(current_loc)) {
+    // Option 1: Move to adjacent tile through link.
+    for (Link *out_link : current_tile->getOutLinks()) {
+      MappingLoc link_loc = {out_link, current_step};
 
-      // Makes sure the link is not occupied.
-      if (!mapping_state.isAvailableAcrossTime(current_loc_out_link)) {
+      // Check if link is available at current time step.
+      if (!mapping_state.isAvailableAcrossTime(link_loc)) {
         continue;
       }
 
-      // Skips if already miss the deadline.
-      int next_step = current_step + 1;
-      if (next_step > deadline_step) {
-        continue;
+      Tile *next_tile = out_link->getDstTile();
+      if (visited.insert({next_tile, next_step}).second) {
+        queue.push({next_tile, next_step});
       }
+    }
 
-      // Records the tile for further exploration.
-      Tile *next_tile =
-          llvm::dyn_cast<Link>(current_loc_out_link.resource)->getDstTile();
-      assert(next_tile && "Next location must be a Tile");
-      if (visited.contains(next_tile)) {
-        continue;
+    // Option 2: Wait on current tile using register (if available).
+    Register *wait_register =
+        getAvailableRegister(mapping_state, current_tile, current_step,
+                             current_step + 1);
+    if (wait_register) {
+      if (visited.insert({current_tile, next_step}).second) {
+        queue.push({current_tile, next_step});
       }
-
-      visited.insert(next_tile);
-      MappingLoc next_loc_tile_with_step = {next_tile, next_step};
-      queue.push({next_loc_tile_with_step, next_step});
     }
   }
 
