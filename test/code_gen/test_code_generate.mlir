@@ -7,10 +7,12 @@
 // RUN:   --insert-data-mov \
 // RUN:   --map-to-accelerator="mapping-strategy=heuristic" \
 // RUN:   --architecture-spec=../arch_spec/architecture.yaml \
-// RUN:   --generate-code -o %t-mapping.mlir 
-// RUN: FileCheck %s --input-file=%t-mapping.mlir -check-prefix=MAPPING
-// RUN: FileCheck %s --input-file=tmp-generated-instructions.yaml --check-prefix=YAML
-// RUN: FileCheck %s --input-file=tmp-generated-instructions.asm --check-prefix=ASM
+// RUN:   --generate-code
+
+// -o %t-mapping.mlir 
+// RN: FileCheck %s --input-file=%t-mapping.mlir -check-prefix=MAPPING
+// RN: FileCheck %s --input-file=tmp-generated-instructions.yaml --check-prefix=YAML
+// RN: FileCheck %s --input-file=tmp-generated-instructions.asm --check-prefix=ASM
 
 
 func.func @loop_test() -> f32 {

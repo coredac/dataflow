@@ -625,9 +625,16 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
 
 Operation *mlir::neura::getMaterializedProducer(Value operand) {
   Operation *producer = operand.getDefiningOp();
+  
+  // ReserveOp is not wrapped by DataMovOp (see InsertDataMovPass).
+  // Return it directly as it represents the loop-carried dependency placeholder.
+  if (isa<neura::ReserveOp>(producer)) {
+    return producer;
+  }
+  
+  // For operations wrapped by DataMovOp, find the actual producer.
   assert(isa<neura::DataMovOp>(producer) &&
-         "Expected operand to be defined by a DataMovOp");
-  // Finds the actual producer.
+         "Expected a DataMovOp as operand producer for non-ReserveOp operations");
   auto mov_op = dyn_cast<neura::DataMovOp>(producer);
   auto materialized_producer = mov_op.getOperand().getDefiningOp();
   return materialized_producer;
@@ -824,8 +831,8 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
 
   for (Tile *tile : architecture.getAllTiles()) {
     if (!tile->canSupportOperation(getOperationKindFromMlirOp(op))) {
-      llvm::errs() << "[calculateAward] Tile: " << tile->getType()
-                   << " does not support operation: " << *op << "\n";
+      llvm::errs() << "[calculateAward] Tile<" << tile->getX() << ", " << tile->getY()
+                   << "> does not support operation: " << *op << "\n";
       continue; // Skip tiles that cannot support the operation.
     }
     int earliest_start_time_step = target_level;
@@ -957,12 +964,22 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
     for (Value operand : op->getOperands()) {
       llvm::errs() << "Processing operand: " << operand << "\n";
       if (isa<neura::ReserveOp>(operand.getDefiningOp())) {
-        // Skips Reserve ops (backward ctrl move) when estimate cost.
+        // Skips Reserve ops (backward ctrl move) when routing.
         continue;
       }
       Operation *data_move = operand.getDefiningOp();
+      
+      // ReserveOp is not wrapped by DataMovOp (see InsertDataMovPass).
+      // Skip routing for ReserveOp as it represents loop-carried dependency.
+      if (isa<neura::ReserveOp>(data_move)) {
+        llvm::errs() << "Skipping unwrapped operand: " << *data_move
+                     << "\n";
+        continue;
+      }
+      
       assert(isa<neura::DataMovOp>(data_move) &&
-             "Expected a DataMovOp as operand producer");
+             "Expected a DataMovOp as operand for non-ReserveOp operations");
+      
       Operation *producer = getMaterializedProducer(operand);
       MappingLoc src_loc = mapping_state.getAllLocsOfOp(producer).back();
 

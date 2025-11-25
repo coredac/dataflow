@@ -81,7 +81,6 @@ def CanonicalizeLiveIn : Pass<"canonicalize-live-in", "ModuleOp"> {
     This pass applies canonicalization transformations to Neura dialect operations.
     The canonicalization includes:
     1. Converting all live-in values of each basic block to block arguments.
-    2. Promoting function arguments to neura constant operations.
   }];
   let constructor = "neura::createCanonicalizeLiveInPass()";
 }

@@ -60,6 +60,7 @@ struct Tile {
 struct ArrayConfig {
   int columns;
   int rows;
+  int compiled_ii = -1;
   std::vector<Tile> cores;
 };
 
@@ -109,8 +110,9 @@ static std::optional<int> getMappedRegId(Operation *op) {
       auto resource_attr = dyn_cast_or_null<StringAttr>(location_dict.get("resource"));
       if (!resource_attr) continue;
       if (resource_attr.getValue() == "register" || resource_attr.getValue() == "reg") {
-        if (auto register_id = dyn_cast_or_null<IntegerAttr>(location_dict.get("id")))
-          return register_id.getInt();
+        if (auto per_tile_register_id = dyn_cast_or_null<IntegerAttr>(location_dict.get("per_tile_register_id"))) {
+          return per_tile_register_id.getInt();
+        }
       }
     }
   }
@@ -122,27 +124,72 @@ static std::string getOpcode(Operation *op) {
   if (opcode.rfind("neura.", 0) == 0) opcode = opcode.substr(6);
   if (isConstant(op)) return "CONSTANT";
   std::transform(opcode.begin(), opcode.end(), opcode.begin(), ::toupper);
+  
+  // For comparison operations, appends the comparison type to the opcode.
+  if (auto icmp_op = dyn_cast<ICmpOp>(op)) {
+    std::string cmp_type = icmp_op.getCmpType().str();
+    std::transform(cmp_type.begin(), cmp_type.end(), cmp_type.begin(), ::toupper);
+    return opcode + "_" + cmp_type;
+  }
+  if (auto fcmp_op = dyn_cast<FCmpOp>(op)) {
+    std::string cmp_type = fcmp_op.getCmpType().str();
+    std::transform(cmp_type.begin(), cmp_type.end(), cmp_type.begin(), ::toupper);
+    return opcode + "_" + cmp_type;
+  }
+  
+  // For cast operations, appends the cast type to the opcode.
+  if (auto cast_op = dyn_cast<CastOp>(op)) {
+    std::string cast_type = cast_op.getCastType().str();
+    std::transform(cast_type.begin(), cast_type.end(), cast_type.begin(), ::toupper);
+    return opcode + "_" + cast_type;
+  }
+  
   return opcode;
+}
+
+// Extracts constant literal from an attribute.
+// Returns formatted string like "#10" or "#3.0", or "arg0" for "%arg0", or empty string if not found.
+static std::string extractConstantLiteralFromAttr(Attribute attr) {
+  if (!attr) return "";
+  
+  if (auto integer_attr = dyn_cast<IntegerAttr>(attr))
+    return "#" + std::to_string(integer_attr.getInt());
+  if (auto float_attr = dyn_cast<FloatAttr>(attr))
+    return "#" + std::to_string(float_attr.getValueAsDouble());
+  
+  // Handles string attributes like "%arg0" -> "arg0".
+  if (auto string_attr = dyn_cast<StringAttr>(attr)) {
+    std::string value = string_attr.getValue().str();
+    // Checks if the string starts with "%arg" followed by digits.
+    if (value.size() > 4 && value.substr(0, 4) == "%arg") {
+      // Extracts "arg" + digits (removes the leading "%").
+      return value.substr(1);
+    }
+  }
+  
+  return "";
 }
 
 // Literals for CONSTANT operations, e.g. "#10" / "#0" / "#3.0".
 static std::string getConstantLiteral(Operation *op) {
   if (isConstant(op)) {
     if (auto value_attr = op->getAttr("value")) {
-      if (auto integer_attr = dyn_cast<IntegerAttr>(value_attr))
-        return "#" + std::to_string(integer_attr.getInt());
-      if (auto float_attr = dyn_cast<FloatAttr>(value_attr))
-        return "#" + std::to_string(float_attr.getValueAsDouble());
+      std::string result = extractConstantLiteralFromAttr(value_attr);
+      if (!result.empty()) return result;
     }
     return "#0";
   }
   
   // Checks for constant_value attribute in non-CONSTANT operations.
   if (auto constant_value_attr = op->getAttr("constant_value")) {
-    if (auto integer_attr = dyn_cast<IntegerAttr>(constant_value_attr))
-      return "#" + std::to_string(integer_attr.getInt());
-    if (auto float_attr = dyn_cast<FloatAttr>(constant_value_attr))
-      return "#" + std::to_string(float_attr.getValueAsDouble());
+    std::string result = extractConstantLiteralFromAttr(constant_value_attr);
+    if (!result.empty()) return result;
+  }
+  
+  // Checks for rhs_value attribute (for binary operations with constant RHS).
+  if (auto rhs_value_attr = op->getAttr("rhs_value")) {
+    std::string result = extractConstantLiteralFromAttr(rhs_value_attr);
+    if (!result.empty()) return result;
   }
   
   return "";
@@ -154,9 +201,9 @@ struct Topology {
   DenseMap<int, std::pair<int,int>> tile_location;  // tileId -> (x,y).
   DenseMap<std::pair<int,int>, int> coord_to_tile;  // (x,y) -> tileId.
 
-  StringRef getDirBetween(int srcTid, int dstTid) const {
-    auto [src_x, src_y] = tile_location.lookup(srcTid);
-    auto [dst_x, dst_y] = tile_location.lookup(dstTid);
+  StringRef getDirBetween(int src_tile_id, int dst_tile_id) const {
+    auto [src_x, src_y] = tile_location.lookup(src_tile_id);
+    auto [dst_x, dst_y] = tile_location.lookup(dst_tile_id);
     int dc = dst_x - src_x, dr = dst_y - src_y;
     if (dc == 1 && dr == 0) return "EAST";
     if (dc == -1 && dr == 0) return "WEST";
@@ -184,19 +231,24 @@ struct Topology {
   }
 };
 
-static Topology getTopologyFromArchitecture(int columns, int rows) {
+static Topology getTopologyFromArchitecture(int per_cgra_rows, int per_cgra_columns) {
   Topology topo;
-  mlir::neura::Architecture arch(columns, rows, mlir::neura::TileDefaults{}, 
-                                 std::vector<mlir::neura::TileOverride>{}, 
-                                 mlir::neura::LinkDefaults{}, 
-                                 std::vector<mlir::neura::LinkOverride>{},
-                                 mlir::neura::BaseTopology::MESH);
+  mlir::neura::Architecture architecture(1,
+                                         1,
+                                         mlir::neura::BaseTopology::MESH,
+                                         per_cgra_rows,
+                                         per_cgra_columns,
+                                         mlir::neura::BaseTopology::MESH,
+                                         mlir::neura::TileDefaults{},
+                                         std::vector<mlir::neura::TileOverride>{},
+                                         mlir::neura::LinkDefaults{},
+                                         std::vector<mlir::neura::LinkOverride>{});
 
-  for (auto *tile : arch.getAllTiles()) {
+  for (auto *tile : architecture.getAllTiles()) {
     topo.tile_location[tile->getId()] = {tile->getX(), tile->getY()};
     topo.coord_to_tile[{tile->getX(), tile->getY()}] = tile->getId();
   }
-  for (auto *link : arch.getAllLinks()) {
+  for (auto *link : architecture.getAllLinks()) {
     auto *src_tile = link->getSrcTile();
     auto *dst_tile = link->getDstTile();
     topo.link_ends[link->getId()] = {src_tile->getId(), dst_tile->getId()};
@@ -235,10 +287,10 @@ static SmallVector<RegStep, 4> collectRegSteps(Operation *op) {
       auto resource_attr = dyn_cast_or_null<StringAttr>(location_dict.get("resource"));
       if (!resource_attr) continue;
       if (resource_attr.getValue() == "register" || resource_attr.getValue() == "reg") {
-        auto register_id = dyn_cast_or_null<IntegerAttr>(location_dict.get("id"));
+        auto per_tile_register_id = dyn_cast_or_null<IntegerAttr>(location_dict.get("per_tile_register_id"));
         auto time_step = dyn_cast_or_null<IntegerAttr>(location_dict.get("time_step"));
-        if (!register_id || !time_step) continue;
-        steps.push_back({(int)register_id.getInt(), (int)time_step.getInt()});
+        if (!per_tile_register_id || !time_step) continue;
+        steps.push_back({(int)per_tile_register_id.getInt(), (int)time_step.getInt()});
       }
     }
   }
@@ -304,6 +356,15 @@ struct GenerateCodePass
     return {columns, rows};
   }
 
+  int getCompiledII(func::FuncOp function) {
+    if (auto mapping_info = function->getAttrOfType<DictionaryAttr>("mapping_info")) {
+      if (auto compiled_ii = dyn_cast_or_null<IntegerAttr>(mapping_info.get("compiled_ii"))) {
+        return compiled_ii.getInt();
+      }
+    }
+    return -1;
+  }
+
   // ---------- Single-walk indexing ----------.
   // Do everything that needs walks in a single pass:.
   //   - record operation_placements.
@@ -331,7 +392,7 @@ struct GenerateCodePass
       if (isReserve(op)) return;
 
       // materialize all other ops placed on tiles (compute/phi/const/etc.).
-      auto placement = operation_placements[op];
+      TileLocation placement = operation_placements[op];
       if (!placement.has_tile) return;
 
       std::string opcode = getOpcode(op);
@@ -344,12 +405,23 @@ struct GenerateCodePass
         // Checks if operation has constant_value attribute (for non-CONSTANT operations).
         inst.src_operands.emplace_back(getConstantLiteral(op), "RED");
       } else {
-        // Handles normal operands.
+        // Handles normal operands, including operations with rhs_value attribute.
         SmallVector<Value> operands; operands.reserve(op->getNumOperands());
+        
+        // Processes actual Value operands (if any).
         for (Value v : op->getOperands()) {
           operands.push_back(v);
           inst.src_operands.emplace_back("UNRESOLVED", "RED");
         }
+        
+        // Handles cases where binary operations have the RHS constant stored as an attribute.
+        if (auto rhs_value_attr = op->getAttr("rhs_value")) {
+          std::string rhs_literal = extractConstantLiteralFromAttr(rhs_value_attr);
+          if (!rhs_literal.empty()) {
+            inst.src_operands.emplace_back(rhs_literal, "RED");
+          }
+        }
+        
         operation_to_operands[op] = std::move(operands);
       }
 
@@ -443,7 +515,7 @@ struct GenerateCodePass
   // Try register-based rewiring. If cross-tile, emit deposits [incoming_dir]->[$reg] at earliest reg ts.
   // Returns true if rewiring to $reg was applied to consumers.
   template<bool IsCtrl>
-  bool handleRegisterRewiring(Operation *consOp, Value atVal, const SmallVector<RegStep, 4> &regs,
+  bool handleRegisterRewiring(Operation *consumer_operation, Value value_at_consumer, const SmallVector<RegStep, 4> &regs,
                               const SmallVector<LinkStep, 8> &links, const Topology &topo) {
     if (regs.empty()) return false;
 
@@ -453,27 +525,46 @@ struct GenerateCodePass
     if (!links.empty()) {
       // Cross-tile: deposit on destination tile at earliest register ts.
       int dst_tile = topo.dstTileOfLink(links.back().link_id);
-      StringRef incoming_dir = topo.dirFromLink(links.back().link_id);
+      // Computes incoming direction from destination tile's perspective.
+      StringRef incoming_dir = topo.invertDir(topo.dirFromLink(links.back().link_id));
       placeDstDeposit(topo, dst_tile, timestep_0, incoming_dir, register_id, /*asCtrlMov=*/IsCtrl);
 
-      auto cp = operation_placements.lookup(consOp);
-      if (cp.has_tile && cp.time_step > timestep_0) {
-        setConsumerSourceExact(consOp, atVal, "$" + std::to_string(register_id));
+      TileLocation consumer_placement = operation_placements.lookup(consumer_operation);
+      if (consumer_placement.has_tile && consumer_placement.time_step > timestep_0) {
+        setConsumerSourceExact(consumer_operation, value_at_consumer, "$" + std::to_string(register_id));
         return true;
       }
     } else {
       // Same-tile: must go via register.
-      setConsumerSourceExact(consOp, atVal, "$" + std::to_string(register_id));
+      setConsumerSourceExact(consumer_operation, value_at_consumer, "$" + std::to_string(register_id));
       return true;
     }
     return false;
   }
 
   template<bool IsCtrl>
-  void handleDirectionRewiring(Operation *consOp, Value atVal, StringRef consumer_direction,
-                               const SmallVector<LinkStep, 8> &links, Operation *forwarder) {
+  void handleDirectionRewiring(Operation *consumer_operation, Value value_at_consumer, StringRef consumer_direction,
+                               const SmallVector<LinkStep, 8> &links, const Topology &topo,
+                               Operation *forwarder) {
     if (!links.empty()) {
-      setConsumerSourceExact(consOp, atVal, consumer_direction.str());
+      // Computes the direction from the link destination tile to the consumer tile.
+      TileLocation consumer_placement = operation_placements.lookup(consumer_operation);
+      if (consumer_placement.has_tile) {
+        int dst_tile_id = topo.dstTileOfLink(links.back().link_id);
+        int consumer_tile_id = topo.tileIdAt(consumer_placement.col_idx, consumer_placement.row_idx);
+        
+        // If consumer is on the link destination tile, use the incoming direction.
+        if (consumer_tile_id == dst_tile_id) {
+          setConsumerSourceExact(consumer_operation, value_at_consumer, consumer_direction.str());
+        } else {
+          // Computes direction from link destination tile to consumer tile.
+          StringRef actual_dir = topo.invertDir(topo.getDirBetween(dst_tile_id, consumer_tile_id));
+          setConsumerSourceExact(consumer_operation, value_at_consumer, actual_dir.str());
+        }
+      } else {
+        // Falls back to consumer_direction if consumer placement is unknown.
+        setConsumerSourceExact(consumer_operation, value_at_consumer, consumer_direction.str());
+      }
     } else {
       forwarder->emitError(IsCtrl
           ? "same-tile ctrl_mov without register mapping is illegal. Provide a register in mapping_locs."
@@ -490,9 +581,11 @@ struct GenerateCodePass
     // Basic info from forwarders.
     Value source = forwarder->getOperand(0);
     Operation *producer = source.getDefiningOp();
-    auto links = getLinkChain(forwarder);
-    auto regs  = getRegisterSteps(forwarder);
-    auto [producer_direction, consumer_direction] = computeDirections(links, topo);
+    SmallVector<LinkStep, 8> links = getLinkChain(forwarder);
+    SmallVector<RegStep, 4> regs = getRegisterSteps(forwarder);
+    std::pair<StringRef, StringRef> directions = computeDirections(links, topo);
+    StringRef producer_direction = directions.first;
+    StringRef consumer_direction = directions.second;
 
     // Producer endpoints & intermediate hops.
     setProducerDestination(producer, producer_direction, regs);
@@ -508,9 +601,11 @@ struct GenerateCodePass
     }
 
     // Wires each consumer: prefer register rewiring; fallback to direction rewiring.
-    for (auto &[consOp, atVal] : consumers) {
-      if (!handleRegisterRewiring<IsCtrl>(consOp, atVal, regs, links, topo))
-        handleDirectionRewiring<IsCtrl>(consOp, atVal, consumer_direction, links, forwarder);
+    for (std::pair<Operation*, Value> &consumer_pair : consumers) {
+      Operation *consumer_operation = consumer_pair.first;
+      Value value_at_consumer = consumer_pair.second;
+      if (!handleRegisterRewiring<IsCtrl>(consumer_operation, value_at_consumer, regs, links, topo))
+        handleDirectionRewiring<IsCtrl>(consumer_operation, value_at_consumer, consumer_direction, links, topo, forwarder);
     }
   }
 
@@ -558,8 +653,8 @@ struct GenerateCodePass
     }
   }
 
-  ArrayConfig buildArrayConfig(int columns, int rows) {
-    ArrayConfig config{columns, rows, {}};
+  ArrayConfig buildArrayConfig(int columns, int rows, int compiled_ii = -1) {
+    ArrayConfig config{columns, rows, compiled_ii, {}};
     std::map<std::pair<int,int>, std::vector<Instruction>> tile_insts;
 
     // Flattens and sorts by timesteps.
@@ -587,7 +682,11 @@ struct GenerateCodePass
     llvm::raw_fd_ostream yaml_out("tmp-generated-instructions.yaml", ec);
     if (ec) return;
 
-    yaml_out << "array_config:\n  columns: " << config.columns << "\n  rows: " << config.rows << "\n  cores:\n";
+    yaml_out << "array_config:\n  columns: " << config.columns << "\n  rows: " << config.rows;
+    if (config.compiled_ii >= 0) {
+      yaml_out << "\n  compiled_ii: " << config.compiled_ii;
+    }
+    yaml_out << "\n  cores:\n";
     for (const Tile &core : config.cores) {
       yaml_out << "    - column: " << core.col_idx << "\n      row: " << core.row_idx
                << "\n      core_id: \"" << core.core_id << "\"\n      entries:\n";
@@ -626,8 +725,22 @@ struct GenerateCodePass
 
   // Direction vs const/reg helpers.
   static bool isDirectionalOperand(const std::string &operand) {
-    // Only non-directional operands start with $ (registers) or # (constants).
-    return !operand.empty() && operand[0] != '$' && operand[0] != '#';
+    // Non-directional operands start with $ (registers), # (constants), or arg (function arguments).
+    if (operand.empty()) return false;
+    if (operand[0] == '$' || operand[0] == '#') return false;
+    // Checks if the operand starts with "arg" followed by digits (e.g., "arg0", "arg1").
+    if (operand.size() >= 4 && operand.substr(0, 3) == "arg") {
+      // Verifies that the rest is digits.
+      bool all_digits = true;
+      for (size_t i = 3; i < operand.size(); ++i) {
+        if (!std::isdigit(operand[i])) {
+          all_digits = false;
+          break;
+        }
+      }
+      if (all_digits) return false;
+    }
+    return true;
   }
 
   static std::string formatOperand(const Operand &operand) {
@@ -643,6 +756,10 @@ struct GenerateCodePass
     std::error_code ec;
     llvm::raw_fd_ostream asm_out("tmp-generated-instructions.asm", ec);
     if (ec) return;
+
+    if (config.compiled_ii >= 0) {
+      asm_out << "# Compiled II: " << config.compiled_ii << "\n\n";
+    }
 
     for (const Tile &core : config.cores) {
       asm_out << "PE(" << core.col_idx << "," << core.row_idx << "):\n";
@@ -680,15 +797,15 @@ struct GenerateCodePass
 
   // Endpoint deposits: on destination tiles at earliest reg ts, move [incoming_dir] -> [$reg].
   // CTRL_MOV paths emit CTRL_MOV deposits; DATA_MOV paths emit DATA_MOV deposits.
-  void placeDstDeposit(const Topology &topo, int dstTileId, int ts,
-                       StringRef incomingDir, int regId, bool asCtrlMov = false) {
-    uint64_t signature = (uint64_t)dstTileId << 32 ^ (uint64_t)ts << 16 ^ (uint64_t)regId;
+  void placeDstDeposit(const Topology &topo, int dst_tile_id, int ts,
+                       StringRef incoming_dir, int reg_id, bool asCtrlMov = false) {
+    uint64_t signature = (uint64_t)dst_tile_id << 32 ^ (uint64_t)ts << 16 ^ (uint64_t)reg_id;
     if (!deposit_signatures.insert(signature).second) return; // already placed.
-    auto [tile_x, tile_y] = topo.tile_location.lookup(dstTileId);
+    auto [tile_x, tile_y] = topo.tile_location.lookup(dst_tile_id);
     Instruction inst(asCtrlMov ? "CTRL_MOV" : "DATA_MOV");
     inst.time_step = ts;
-    inst.src_operands.emplace_back(incomingDir.str(), "RED");
-    inst.dst_operands.emplace_back("$" + std::to_string(regId), "RED");
+    inst.src_operands.emplace_back(incoming_dir.str(), "RED");
+    inst.dst_operands.emplace_back("$" + std::to_string(reg_id), "RED");
     tile_time_instructions[{tile_x, tile_y}][ts].push_back(std::move(inst));
   }
 
@@ -752,7 +869,8 @@ struct GenerateCodePass
         expandMovImpl<true>(op,  topo, reserve_to_phi_map);
       logUnresolvedOperands();
 
-      ArrayConfig config = buildArrayConfig(columns, rows);
+      int compiled_ii = getCompiledII(func);
+      ArrayConfig config = buildArrayConfig(columns, rows, compiled_ii);
       writeYAMLOutput(config);
       writeASMOutput(config);
     }

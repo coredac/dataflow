@@ -17,34 +17,63 @@ enum class BaseTopology {
 // Structure for holding tile default configuration.
 struct TileDefaults {
   int num_registers = 64;  // default value.
-  std::vector<std::string> default_ports = {"N", "S", "W", "E"};  // default ports.
   std::vector<std::string> operations = {
-    "add", "mul", "sub", "div", "rem", 
-    "fadd", "fmul", "fsub", "fdiv", 
-    "or", "not", "icmp", "fcmp", "sel", 
-    "cast", "sext", "zext", "shl", 
-    "vfmul", "fadd_fadd", "fmul_fadd", 
-    "data_mov", "ctrl_mov", 
-    "reserve", "grant_predicate", "grant_once", "grant_always", 
-    "loop_control", "phi", "constant", 
-    "load", "store", "return", 
-    "load_indexed", "store_indexed", "alloca"
+    "add",
+    "mul",
+    "sub",
+    "div",
+    "rem", 
+    "fadd",
+    "fmul",
+    "fsub",
+    "fdiv", 
+    "or",
+    "not",
+    "icmp",
+    "fcmp",
+    "sel",
+    "cast",
+    "sext",
+    "zext",
+    "shl",
+    "vfmul",
+    "fadd_fadd",
+    "fmul_fadd",
+    "data_mov",
+    "ctrl_mov",
+    "reserve",
+    "grant_predicate",
+    "grant_once",
+    "grant_always",
+    "loop_control",
+    "phi",
+    "constant",
+    "load",
+    "store",
+    "return",
+    "load_indexed",
+    "store_indexed",
+    "alloca"
   };  // default operations - includes all supported operations for newbie convenience.
 };
 
 // Structure for holding memory configuration.
 struct MemoryConfig {
-  int capacity = -1;  // Memory capacity in bytes.
+  int capacity = 1024;  // Memory capacity in bytes.
+  int banks_per_cgra = 4;  // Number of banks per CGRA.
 };
 
 // Structure for holding tile override configuration.
 struct TileOverride {
-  int id = -1;
-  int x = -1, y = -1;
+  // CGRA coordinates.
+  int cgra_x = -1;
+  int cgra_y = -1;
+  // Tile coordinates within per-CGRA.
+  int tile_x = -1;
+  int tile_y = -1;
   std::vector<std::string> operations;
-  int num_registers = -1;
-  std::vector<std::string> ports;
-  MemoryConfig memory;
+  int num_registers = 4;
+  bool existence = true;
 };
 
 // Structure for holding link default configuration.
@@ -55,11 +84,16 @@ struct LinkDefaults {
 
 // Structure for holding link override configuration.
 struct LinkOverride {
-  int id = -1;
-  int latency = -1;
+  int latency = 1;
   int bandwidth = -1;
-  int src_tile_id = -1;
-  int dst_tile_id = -1;
+  int src_cgra_x = -1;
+  int src_cgra_y = -1;
+  int dst_cgra_x = -1;
+  int dst_cgra_y = -1;
+  int src_tile_x = -1;
+  int src_tile_y = -1;
+  int dst_tile_x = -1;
+  int dst_tile_y = -1;
   bool existence = true;
 };
 

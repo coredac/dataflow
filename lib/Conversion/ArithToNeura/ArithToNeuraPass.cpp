@@ -244,9 +244,9 @@ struct ArithSelectToNeuraSel : public OpRewritePattern<mlir::arith::SelectOp> {
     Value false_value = op.getFalseValue();
     Type result_type = op.getType();
 
-    // Converts arith SelectOp to Neura SelOp.
-    rewriter.replaceOpWithNewOp<neura::SelOp>(op, result_type, true_value,
-                                              false_value, condition);
+    // Converts arith SelectOp to Neura SelOp with consistent order: (cond, ifTrue, ifFalse).
+    rewriter.replaceOpWithNewOp<neura::SelOp>(op, result_type, condition,
+                                              true_value, false_value);
     return success();
   }
 };
@@ -343,8 +343,9 @@ struct LowerArithToNeuraPass
               ArithFDivToNeuraFDiv, ArithExtfToNeuraCast, ArithMulFToNeuraFMul,
               ArithSubIToNeuraSub, ArithSubFToNeuraFSub, ArithMulIToNeuraMul,
               ArithDivSIToNeuraDiv, ArithRemSIToNeuraOp>(context);
+          // Apply patterns to the function, not the entire module
           if (failed(
-                  applyPatternsGreedily(getOperation(), std::move(patterns)))) {
+                  applyPatternsGreedily(func_op, std::move(patterns)))) {
             signalPassFailure();
           }
         }

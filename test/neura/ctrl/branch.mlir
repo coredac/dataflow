@@ -1,6 +1,7 @@
 // RUN: mlir-neura-opt %s \
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
+// RUN:   --promote-func-arg-to-const \
 // RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
 // RUN:   | FileCheck %s
@@ -8,6 +9,7 @@
 // RUN: mlir-neura-opt %s \
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
+// RUN:   --promote-func-arg-to-const \
 // RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \

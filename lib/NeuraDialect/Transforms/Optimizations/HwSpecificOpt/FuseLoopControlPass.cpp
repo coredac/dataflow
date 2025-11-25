@@ -106,8 +106,8 @@ private:
 // Finds the constant attribute for a value.
 Attribute findConstantAttribute(Operation *op) {
   // Checks if the operation has a constant attribute.
-  if (op && op->hasAttr("rhs_const_value")) {
-    return op->getAttr("rhs_const_value");
+  if (op && op->hasAttr("rhs_value")) {
+    return op->getAttr("rhs_value");
   }
 
   // If the value is already a constant, return it.

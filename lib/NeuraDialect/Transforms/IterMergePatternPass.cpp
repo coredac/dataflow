@@ -379,8 +379,8 @@ struct IterMergePatternPass
 
   Option<int> minSupport{
       *this, "min-support",
-      llvm::cl::desc("Minimum support threshold for pattern mining (default: 1)"),
-      llvm::cl::init(1)};
+      llvm::cl::desc("Minimum support threshold for pattern mining (default: 2)"),
+      llvm::cl::init(2)};
   Option<int> maxIter{
       *this, "max-iter",
       llvm::cl::desc("Maximum number of iterations for pattern merging (default: 2)"),
@@ -435,8 +435,8 @@ struct InitPatternPass
 
   Option<int> minSupport{
       *this, "min-support",
-      llvm::cl::desc("Minimum support threshold for pattern mining (default: 1)"),
-      llvm::cl::init(1)};
+      llvm::cl::desc("Minimum support threshold for pattern mining (default: 2)"),
+      llvm::cl::init(2)};
 
   void runOnOperation() override {
     ModuleOp module_op = getOperation();

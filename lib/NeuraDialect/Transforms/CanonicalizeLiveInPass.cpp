@@ -3,11 +3,15 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/Block.h"
+#include "mlir/IR/Dominance.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Region.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "llvm/ADT/SetVector.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/raw_ostream.h"
 #include <cassert>
 #include <string>
 
@@ -17,48 +21,504 @@ using namespace mlir;
 #include "NeuraDialect/NeuraPasses.h.inc"
 
 namespace {
-LogicalResult promoteFunctionArgsToConstants(Region &region) {
-  if (region.empty()) {
-    return success();
+struct DirectDominatingLiveIn {
+  // The live-in value.
+  Value value;
+  // The block where the live-in value is defined.
+  Block *defining_block;
+  // The block where the live-in value is used.
+  Block *using_block;
+};
+
+// Checks if two blocks form a single-source-single-sink pattern with
+// conditional control flow between them.
+//
+// Pattern Structure:
+//        [ Source Block A ]
+//           /           \
+//          /             \
+//    [ Block B ]     [ Block C ]
+//          \             /
+//           \           /
+//        [ Sink Block D ]
+//
+// Key Properties:
+// 1. Source block A dominates sink block D
+//    - All paths to D must go through A
+// 2. Sink block D post-dominates source block A
+//    - All paths from A eventually reach D
+// 3. There exists at least one conditional branch (cond_br) between A and D
+//    - Control flow diverges and then converges
+// 4. No back edges (loop-free)
+//    - Neither branch target of any cond_br dominates the cond_br block itself
+//
+// Examples of Valid Patterns:
+//
+// 1. Simple if-else:
+//        [ A: cond_br ]
+//         /          \
+//    [ B: then ]  [ C: else ]
+//         \          /
+//          [ D: merge ]
+//
+// 2. Asymmetric branches:
+//        [ A: cond_br ]
+//         /          \
+//    [ B ]            |
+//         \          /
+//          [ D: merge ]
+//
+// Counter-examples (Not Valid):
+//
+// 1. Loop structure (has back edge):
+//        [ A: cond_br ]  <---+
+//         /          \       |
+//    [ B: exit ]  [ C ]      |
+//                     \------+
+//
+// 2. Entry block as source:
+//        [ Entry Block ]  <- Excluded to maintain compatibility
+//              |              with TransformCtrlToDataFlowPass
+//           [ cond_br ]
+//
+// This pattern is used to identify direct dominating live-ins that cross
+// conditional branches, enabling specialized optimization for values that
+// flow through divergent-convergent control flow regions.
+bool isSingleSourceSingleSinkPattern(Block *defining_block, Block *using_block,
+                                     DominanceInfo &dom_info,
+                                     PostDominanceInfo &post_dom_info) {
+  // 1. If defining_block and using_block are the same, then there are no
+  // conditional branches on the path.
+  if (defining_block == using_block) {
+    return false;
   }
 
-  Block &entry_block = region.front();
-  OpBuilder builder(&entry_block, entry_block.begin());
-
-  // Collects all function arguments.
-  SmallVector<BlockArgument, 4> args(entry_block.getArguments().begin(),
-                                     entry_block.getArguments().end());
-
-  // Creates a constant operation for each function argument.
-  for (auto [idx, arg] : llvm::enumerate(args)) {
-    auto const_op = builder.create<neura::ConstantOp>(
-        arg.getLoc(), arg.getType(),
-        builder.getStringAttr("\%arg" + std::to_string(idx)));
-    arg.replaceAllUsesWith(const_op.getResult());
+  // 2. defining_block must dominate using_block.
+  // This ensures that all paths to using_block go through defining_block.
+  if (!dom_info.dominates(defining_block, using_block)) {
+    return false;
   }
 
-  return success();
+  // 3. using_block must post-dominate defining_block.
+  // This ensures that all paths from defining_block eventually reach
+  // using_block.
+  if (!post_dom_info.postDominates(using_block, defining_block)) {
+    return false;
+  }
+
+  // 4. If defining_block is the entry block of the region, it is not considered
+  // as crossing a conditional branch.
+  // Avoids violating assertions in TransformCtrlToDataFlowPass.cpp.
+  if (defining_block == &defining_block->getParent()->front()) {
+    return false;
+  }
+
+  // 5. Checks if using_block is a direct successor (no intermediate blocks) of
+  // defining_block.
+  for (Block *succ : defining_block->getSuccessors()) {
+    if (succ == using_block) {
+      Operation *term_op = defining_block->getTerminator();
+      // If the terminator is an unconditional branch, then no conditional
+      // branch exists on the path.
+      if (isa<neura::Br>(term_op)) {
+        return false;
+      }
+      // If it is a conditional branch, but both targets are using_block, it is
+      // also considered no real branch.
+      if (auto cond_br = dyn_cast<neura::CondBr>(term_op)) {
+        if (cond_br.getTrueDest() == using_block &&
+            cond_br.getFalseDest() == using_block) {
+          return false;
+        }
+      }
+    }
+  }
+
+  // 6. Finds any conditional branch on the paths from defining_block to
+  // using_block. This is to find any conditional branch divergence between the
+  // defining_block and using_block.
+  // Because we also support the case where defining_block itself does not
+  // contain cond_br (e.g., E in this example).
+  //          [ E: br ]
+  //              |
+  //        [ A: cond_br ]
+  //         /          \
+  //    [ B: then ]  [ C: else ]
+  //         \          /
+  //          [ D: merge ]
+  bool found_conditional_branch = false;
+  Block *conditional_branch_block = nullptr;
+
+  Region *region = defining_block->getParent();
+  for (Block &block : region->getBlocks()) {
+    if (&block == defining_block || &block == using_block) {
+      continue;
+    }
+
+    // Checks if this block is on the path from defining_block to using_block.
+    if (dom_info.dominates(defining_block, &block) &&
+        dom_info.dominates(&block, using_block)) {
+
+      // Checks if this block's terminator is a conditional branch.
+      Operation *term_op = block.getTerminator();
+      if (auto cond_br = dyn_cast<neura::CondBr>(term_op)) {
+        Block *true_dest = cond_br.getTrueDest();
+        Block *false_dest = cond_br.getFalseDest();
+
+        // Ensures both branch targets are different (true conditional branch).
+        if (true_dest != false_dest) {
+          found_conditional_branch = true;
+          conditional_branch_block = &block;
+          break;
+        }
+      }
+    }
+  }
+
+  // 7. Checks the terminator of defining_block itself.
+  Operation *defining_term = defining_block->getTerminator();
+  if (auto cond_br = dyn_cast<neura::CondBr>(defining_term)) {
+    Block *true_dest = cond_br.getTrueDest();
+    Block *false_dest = cond_br.getFalseDest();
+    if (true_dest != false_dest) {
+      found_conditional_branch = true;
+      conditional_branch_block = defining_block;
+    }
+  }
+
+  if (!found_conditional_branch) {
+    return false;
+  }
+
+  // 8. Key Constraint: Verifies that BOTH branches eventually reach using_block
+  // WITHOUT creating a loop back to conditional_branch_block or earlier.
+  assert(conditional_branch_block &&
+         "Must have found a conditional branch block");
+
+  Operation *cond_term = conditional_branch_block->getTerminator();
+  auto cond_br = dyn_cast<neura::CondBr>(cond_term);
+  assert(cond_br && "Must be a conditional branch");
+
+  Block *true_dest = cond_br.getTrueDest();
+  Block *false_dest = cond_br.getFalseDest();
+
+  // Checks loop back edge: If either branch goes back to the conditional branch
+  // block or any of its dominators, it creates a loop.
+  if (true_dest == conditional_branch_block ||
+      dom_info.dominates(true_dest, conditional_branch_block)) {
+    llvm::errs()
+        << "[CanoLiveIn] True branch creates a back edge (loop pattern)\n";
+    return false;
+  }
+
+  if (false_dest == conditional_branch_block ||
+      dom_info.dominates(false_dest, conditional_branch_block)) {
+    llvm::errs()
+        << "[CanoLiveIn] False branch creates a back edge (loop pattern)\n";
+    return false;
+  }
+
+  // Checks if both branches can reach using_block.
+  bool true_reaches = (true_dest == using_block);
+  if (!true_reaches) {
+    if (dom_info.dominates(true_dest, using_block)) {
+      true_reaches = true;
+    } else {
+      for (Block *pred : using_block->getPredecessors()) {
+        if (pred == true_dest || dom_info.dominates(true_dest, pred)) {
+          true_reaches = true;
+          break;
+        }
+      }
+    }
+  }
+
+  bool false_reaches = (false_dest == using_block);
+  if (!false_reaches) {
+    if (dom_info.dominates(false_dest, using_block)) {
+      false_reaches = true;
+    } else {
+      for (Block *pred : using_block->getPredecessors()) {
+        if (pred == false_dest || dom_info.dominates(false_dest, pred)) {
+          false_reaches = true;
+          break;
+        }
+      }
+    }
+  }
+
+  if (!true_reaches || !false_reaches) {
+    return false;
+  }
+
+  return true;
 }
 
-LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
+// Checks if there's a direct unconditional path from defining_block to
+// using_block without crossing any conditional branches.
+//
+// Pattern Structure:
+//    [ Defining Block A ]
+//             |  (br)
+//             v
+//       [ Block B ]
+//             |  (br)
+//             v
+//       [ Block C ]
+//             |  (br)
+//             v
+//    [ Using Block D ]
+//
+// Key Properties:
+// 1. Defining block dominates using block
+//    - All paths to using_block go through defining_block
+// 2. Using block post-dominates defining block
+//    - All paths from defining_block eventually reach using_block
+//    - This ensures there's a unique path
+// 3. All intermediate blocks only have unconditional branches (br)
+//    - No conditional branches (cond_br) on the path
+// 4. No loops (no back edges)
+//
+// Examples of Valid Patterns:
+//
+// 1. Direct successor:
+//    [ A: br ]
+//       |
+//    [ B ]
+//
+// 2. Chain of unconditional branches:
+//    [ A: br ]
+//       |
+//    [ B: br ]
+//       |
+//    [ C: br ]
+//       |
+//    [ D ]
+//
+// Counter-examples (Not Valid):
+//
+// 1. Has conditional branch:
+//    [ A: br ]
+//       |
+//    [ B: cond_br ]  <- Has cond_br
+//      /    \
+//    ...    ...
+//
+// 2. Entry block as defining:
+//    [ Entry: br ]  <- Excluded
+//       |
+//    [ B ]
+//
+// 3. Loop structure:
+//    [ A: br ]  <--+
+//       |          |
+//    [ B: br ]-----+
+//
+// This pattern identifies the simplest form of direct dominating live-ins where
+// values flow through a linear sequence of blocks without any control flow
+// divergence.
+bool isDirectUnconditionalPattern(Block *defining_block, Block *using_block,
+                                  DominanceInfo &dom_info,
+                                  PostDominanceInfo &post_dom_info) {
+  // 1. If blocks are the same, not a valid pattern.
+  if (defining_block == using_block) {
+    return false;
+  }
+
+  // 2. Defing block must dominate using block.
+  if (!dom_info.dominates(defining_block, using_block)) {
+    return false;
+  }
+
+  // 3. Using block must post-dominate defining block.
+  if (!post_dom_info.postDominates(using_block, defining_block)) {
+    return false;
+  }
+
+  // 4. Entry block cannot be the defining block.
+  if (defining_block == &defining_block->getParent()->front()) {
+    return false;
+  }
+
+  // 5. Checks all blocks on the path from defining_block to using_block.
+  // They must all have unconditional branches (br) only.
+  Region *region = defining_block->getParent();
+  for (Block &block : region->getBlocks()) {
+    // Skips blocks not on the path.
+    if (!dom_info.dominates(defining_block, &block) ||
+        !dom_info.dominates(&block, using_block)) {
+      continue;
+    }
+
+    // For blocks on the path, checks if their terminators are unconditional
+    // branches only (excluding using_block itself).
+    if (&block != using_block) {
+      Operation *term_op = block.getTerminator();
+
+      // If the terminator is a conditional branch, this pattern is not
+      // satisfied.
+      if (isa<neura::CondBr>(term_op)) {
+        return false;
+      }
+
+      // The terminator must be an unconditional branch (br).
+      assert(isa<neura::Br>(term_op) &&
+             "The terminator must be an unconditional branch.\n");
+
+      // Ensures no backward edges (loops) exist.
+      neura::Br br_op = cast<neura::Br>(term_op);
+      Block *dest = br_op.getDest();
+      // If the destination block dominates current block, it creates a loop.
+      if (dom_info.dominates(dest, &block)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+DenseMap<Block *, SmallVector<DirectDominatingLiveIn>>
+identifyDirectDominatingLiveIns(Region &region, DominanceInfo &dom_info,
+                                PostDominanceInfo &post_dom_info) {
+  DenseMap<Block *, SmallVector<DirectDominatingLiveIn>>
+      using_block_to_dominating_direct_live_ins;
+  for (Block &block : region.getBlocks()) {
+    // Skips the entry block.
+    if (&block == &region.front()) {
+      continue;
+    }
+
+    // Collects direct live-in values for the block.
+    SetVector<Value> live_ins;
+    for (Operation &op : block.getOperations()) {
+      for (Value operand : op.getOperands()) {
+        // If the operand is defined in another block, it is a live-in
+        // value.
+        if (auto block_arg = dyn_cast<BlockArgument>(operand)) {
+          if (block_arg.getOwner() != &block) {
+            live_ins.insert(operand);
+          }
+        } else {
+          Operation *def_op = operand.getDefiningOp();
+          if (def_op && def_op->getBlock() != &block) {
+            live_ins.insert(operand);
+          }
+        }
+      }
+    }
+
+    // Checks each live-in value to see if it has direct dominating
+    // dependencies.
+    // Direct dominating dependency means:
+    // 1. The defining block of the live-in value dominates the using block.
+    // 2. The using block post-dominates the defining block.
+    // 3. We can ensure the live-in in the using block is valid once the
+    // defining block is executed.
+    //
+    // We support two mutually exclusive patterns:
+    // - Pattern 1: Single-Source-Single-Sink with only one conditional branch
+    // (cond_br).
+    // - Pattern 2: Linear path with only unconditional branches (br).
+    for (Value live_in : live_ins) {
+      Block *defining_block = nullptr;
+
+      if (auto block_arg = dyn_cast<BlockArgument>(live_in)) {
+        defining_block = block_arg.getOwner();
+      } else {
+        Operation *def_op = live_in.getDefiningOp();
+        if (def_op) {
+          defining_block = def_op->getBlock();
+        }
+      }
+
+      if (!defining_block) {
+        continue;
+      }
+
+      // Pattern 1: Single-Source-Single-Sink with one conditional branch.
+      if (isSingleSourceSingleSinkPattern(defining_block, &block, dom_info,
+                                          post_dom_info)) {
+        assert(!isDirectUnconditionalPattern(defining_block, &block, dom_info,
+                                             post_dom_info) &&
+               "Patterns 1 and 2 are mutually exclusive.");
+        DirectDominatingLiveIn direct_dominating_live_in;
+        direct_dominating_live_in.value = live_in;
+        direct_dominating_live_in.defining_block = defining_block;
+        direct_dominating_live_in.using_block = &block;
+
+        using_block_to_dominating_direct_live_ins[&block].push_back(
+            direct_dominating_live_in);
+
+        // Pattern 1 matched, skip Pattern 2 check (they are mutually
+        // exclusive).
+        continue;
+      }
+
+      // Pattern 2: Direct Unconditional Path.
+      if (isDirectUnconditionalPattern(defining_block, &block, dom_info,
+                                       post_dom_info)) {
+        assert(!isSingleSourceSingleSinkPattern(defining_block, &block,
+                                                dom_info, post_dom_info) &&
+               "Patterns 1 and 2 are mutually exclusive.");
+        DirectDominatingLiveIn direct_dominating_live_in;
+        direct_dominating_live_in.value = live_in;
+        direct_dominating_live_in.defining_block = defining_block;
+        direct_dominating_live_in.using_block = &block;
+
+        using_block_to_dominating_direct_live_ins[&block].push_back(
+            direct_dominating_live_in);
+
+        // Pattern 2 matched.
+        continue;
+      }
+
+      // TODO: Add more direct dominating live-in patterns based on
+      // dominance and post-dominance analysis. Issue:
+      // https://github.com/coredac/dataflow/issues/159
+    }
+  }
+  return using_block_to_dominating_direct_live_ins;
+}
+
+LogicalResult promoteLiveInValuesToBlockArgs(Region &region,
+                                             DominanceInfo &dom_info,
+                                             PostDominanceInfo &post_dom_info) {
   if (region.empty()) {
     return success();
   }
+
+  DenseMap<Block *, SmallVector<DirectDominatingLiveIn>>
+      direct_dominating_live_ins =
+          identifyDirectDominatingLiveIns(region, dom_info, post_dom_info);
+
+  // Maps each block to its dominating direct live-in values.
+  DenseMap<Block *, SetVector<Value>> direct_dominating_live_in_values;
+  for (auto &[block, dataflow_live_ins] : direct_dominating_live_ins) {
+    for (auto &dataflow_live_in : dataflow_live_ins) {
+      direct_dominating_live_in_values[block].insert(dataflow_live_in.value);
+    }
+  }
+
   // Collects direct live-in values for each block in the region.
   // Without considering the transitive dependencies.
   DenseMap<Block *, SetVector<Value>> direct_live_ins;
 
-  Block &entry_block = region.front();
   // Initializes the direct live-ins for each block.
   for (Block &block : region.getBlocks()) {
-    if (&block == &entry_block) {
+    if (&block == &region.front()) {
       continue;
     }
 
     SetVector<Value> live_ins;
     for (Operation &op : block.getOperations()) {
       for (Value operand : op.getOperands()) {
-        // If the operand is defined in another block, it is a live-in value.
+        // If the operand is a direct dominating live-in value, skip it.
+        if (direct_dominating_live_in_values[&block].contains(operand)) {
+          continue;
+        }
+
+        // If the operand is defined in another block, it is a live-in
+        // value.
         if (auto block_arg = dyn_cast<BlockArgument>(operand)) {
           if (block_arg.getOwner() != &block) {
             live_ins.insert(operand);
@@ -77,9 +537,9 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
     }
   }
 
-  // If we update a branch or conditional branch, we may introduce new live-ins
-  // for a block. So we need to propagate live-in values until a fixed point is
-  // reached.
+  // If we update a branch or conditional branch, we may introduce new
+  // live-ins for a block. So we need to propagate live-in values until a
+  // fixed point is reached.
 
   // *************************************************************************
   // For example, consider this control flow:
@@ -142,6 +602,12 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
         // Checks if the live-in value in successor block is defined in the
         // current block.
         for (Value live_in : succ_live_ins) {
+          // If it is a direct dominating live-in value for the successor
+          // block, we skip it.
+          if (direct_dominating_live_in_values[succ_block].contains(live_in)) {
+            continue;
+          }
+
           // If it is defined in the current block, that means it is not a
           // live-in value for the current block. We can skip it.
           if (Operation *def_op = live_in.getDefiningOp()) {
@@ -282,19 +748,19 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region) {
           }
         }
 
-        // If an update is needed, create a new conditional branch operation.
+        // If an update is needed, create a new conditional branch
+        // operation.
         if (needs_update) {
           OpBuilder builder(cond_br_op);
           builder.create<neura::CondBr>(
-              cond_br_op.getLoc(), cond_br_op.getCondition(),
-              true_operands, false_operands, cond_br_op.getTrueDest(),
+              cond_br_op.getLoc(), cond_br_op.getCondition(), true_operands,
+              false_operands, cond_br_op.getTrueDest(),
               cond_br_op.getFalseDest());
           cond_br_op.erase();
         }
       }
     }
   }
-
   return success();
 }
 
@@ -336,12 +802,11 @@ struct CanonicalizeLiveInPass
         return;
       }
 
-      if (failed(promoteFunctionArgsToConstants(*region))) {
-        signalPassFailure();
-        return;
-      }
+      DominanceInfo dom_info(op);
+      PostDominanceInfo post_dom_info(op);
 
-      if (failed(promoteLiveInValuesToBlockArgs(*region))) {
+      if (failed(promoteLiveInValuesToBlockArgs(*region, dom_info,
+                                                post_dom_info))) {
         signalPassFailure();
         return;
       }

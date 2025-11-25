@@ -1,0 +1,4 @@
+[submodule "test/benchmark/CGRA-Bench"]
+	path = test/benchmark/CGRA-Bench
+	url = https://github.com/tancheng/CGRA-Bench.git
+	ignore = all
