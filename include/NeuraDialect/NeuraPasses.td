@@ -116,17 +116,6 @@ def FoldConstant : Pass<"fold-constant", "ModuleOp"> {
   let constructor = "neura::createFoldConstantPass()";
 }
 
-def InitCommonPattern : Pass<"init-common-pattern", "ModuleOp"> {
-  let summary = "Initialize and identify common patterns in DFG";
-  let description = [{
-    This pass traverses the entire DFG (Data Flow Graph) and identifies
-    common patterns using graph mining algorithms. Patterns that occur
-    more than a threshold number of times are identified, printed, and
-    stored in a data structure for future use.
-  }];
-  let constructor = "neura::createInitCommonPatternPass()";
-}
-
 def TransformToSteerControl : Pass<"transform-to-steer-control", "func::FuncOp"> {
   let summary = "Transform control flow into data flow using steer control";
   let description = [{
@@ -155,5 +144,15 @@ def IterMergePattern : Pass<"iter-merge-pattern", "ModuleOp"> {
     of patterns and stores results for subsequent passes.
   }];
   let constructor = "neura::createIterMergePatternPass()";
+}
+
+def InitPattern : Pass<"init-pattern", "ModuleOp"> {
+  let summary = "Initialize and identify common patterns in DFG (single iteration)";
+  let description = [{
+    This pass traverses the DFG (Data Flow Graph) and identifies common patterns
+    using graph mining algorithms. It performs a single iteration of pattern merging
+    with a configurable minimum support threshold.
+  }];
+  let constructor = "neura::createInitPatternPass()";
 }
 #endif // NEURA_PASSES_TD

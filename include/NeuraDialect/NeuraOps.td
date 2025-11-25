@@ -577,12 +577,12 @@ def Neura_InvariantOp : Op<NeuraDialect, "invariant">{
   let assemblyFormat = "$initial `,` $condition attr-dict `:` type($initial) `,` type($condition) `->` type($result)";
 }
 
-// Common Pattern Operation - wraps a frequently occurring pattern
-def Neura_CommonPatternOp : Op<NeuraDialect, "common_pattern", [NoTerminator]> {
-  let summary = "Represents a common pattern identified by graph mining";
+// Fused Operation - wraps a frequently occurring pattern
+def Neura_FusedOpOp : Op<NeuraDialect, "fused_op", [NoTerminator]> {
+  let summary = "Represents a fused operation identified by graph mining";
   let description = [{
     This operation wraps a frequently occurring subgraph pattern identified
-    by the InitCommonPatternPass. The pattern body is contained in a region
+    by graph mining passes. The pattern body is contained in a region
     that preserves the original operations and their data flow edges.
     
     Attributes:
@@ -591,7 +591,7 @@ def Neura_CommonPatternOp : Op<NeuraDialect, "common_pattern", [NoTerminator]> {
     - frequency: how many times this pattern occurs in the original graph
     
     Example:
-      %result = neura.common_pattern {pattern_id = 0, pattern_name = "addf->addf", frequency = 3} 
+      %result = neura.fused_op {pattern_id = 0, pattern_name = "addf->addf", frequency = 3} 
                   (%arg0, %arg1, %arg2) : (f32, f32, f32) -> f32 {
         %0 = arith.addf %arg0, %arg1 : f32
         %1 = arith.addf %0, %arg2 : f32
