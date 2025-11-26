@@ -396,8 +396,7 @@ struct MapToAcceleratorPass
       } else if (backtrack_config_stringRef == "exhaustive") {
         mapping_strategy = std::make_unique<HeuristicMapping>(INT_MAX, INT_MAX);
       } else if (backtrack_config_stringRef == "customized") {
-        // Use header defaults for customized config to keep defaults in-sync.
-        mapping_strategy = std::make_unique<HeuristicMapping>();
+        mapping_strategy = std::make_unique<HeuristicMapping>(5, 3);
       } else if (backtrack_config_stringRef.starts_with("customized=")) {
         // Used for custom backtrack parameters.
         // Example: "customized=5,3" means max_loc=5, max_depth=3
