@@ -192,7 +192,7 @@
 // YAML-NEXT:                   dst_operands:
 // YAML-NEXT:                     - operand: "NORTH"
 // YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                     - operand: "$3"
+// YAML-NEXT:                     - operand: "$1"
 // YAML-NEXT:                       color: "RED"
 
 // ASM:      # Compiled II: 11
@@ -201,18 +201,23 @@
 // ASM-NEXT:   CONSTANT, [arg0] -> [NORTH, RED]
 // ASM-NEXT: } (t=0)
 // ASM-NEXT: {
-// ASM-NEXT:   GRANT_ONCE, [arg1] -> [NORTH, RED], [$3]
+// ASM-NEXT:   GRANT_ONCE, [arg1] -> [NORTH, RED], [$1]
 // ASM-NEXT: } (t=2)
 // ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$2]
-// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$0]
+// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$0]
 // ASM-NEXT: } (t=4)
 // ASM-NEXT: {
 // ASM-NEXT:   GRANT_ONCE, [arg0] -> [NORTH, RED]
 // ASM-NEXT: } (t=5)
 // ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$1]
-// ASM-NEXT: } (t=6)
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [EAST, RED]
+// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$2]
 // ASM-NEXT: } (t=7)
+// ASM-NEXT: {
+// ASM-NEXT:   NOT, [$0] -> [$0], [NORTH, RED], [EAST, RED]
+// ASM-NEXT: } (t=8)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [$1], [$0] -> [$0], [EAST, RED]
+// ASM-NEXT: } (t=9)
+// ASM-NEXT: {
+// ASM-NEXT:   ICMP_SGT, [$0], [#0] -> [EAST, RED], [NORTH, RED]
+// ASM-NEXT: } (t=10)
