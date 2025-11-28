@@ -101,3 +101,19 @@
 # CHECK-INIT-PATTERN:      %70 = "neura.phi"(%arg7, %69) : (!neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1>) -> !neura.data<!llvm.ptr, i1>
 # CHECK-INIT-PATTERN:      "neura.yield"(%69, %70) : (!neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1>) -> ()
 # CHECK-INIT-PATTERN:    }) : (!neura.data<!llvm.ptr, i1>, !llvm.ptr, !neura.data<!llvm.ptr, i1>) -> (!neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1>)
+
+# RUN: mlir-neura-opt --architecture-spec=%S/../../arch_spec/architecture.yaml --verify-each=true --mlir-print-ir-after-failure \
+# RUN:           --assign-accelerator \
+# RUN:           --lower-llvm-to-neura \
+# RUN:           --promote-func-arg-to-const \
+# RUN:           --canonicalize-cast \
+# RUN:           --canonicalize-live-in \
+# RUN:           --leverage-predicated-value \
+# RUN:           --fold-constant \
+# RUN:           --transform-ctrl-to-data-flow \
+# RUN:           --fold-constant \
+# RUN:           --iter-merge-pattern="min-support=2 max-iter=10" \
+# RUN:           --insert-data-mov \
+# RUN:           --map-to-accelerator="mapping-strategy=heuristic backtrack-config=simple" %t-kernel.mlir | FileCheck %s --check-prefix=CHECK-ITER-MERGE-PATTERN-MAPPING
+
+# CHECK-ITER-MERGE-PATTERN-MAPPING: mapping_info = {compiled_ii = 14 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 9 : i32, res_mii = 3 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}

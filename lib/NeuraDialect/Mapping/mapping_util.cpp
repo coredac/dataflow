@@ -190,6 +190,11 @@ int mlir::neura::calculateResMii(Operation *func_op,
         isa<neura::CtrlMovOp, neura::DataMovOp, neura::ReserveOp>(op)) {
       return;
     }
+    // Skips operations inside fused_op regions
+    Operation *parent_op = op->getParentOp();
+    if (isa<neura::FusedOpOp>(parent_op)) {
+      return;
+    }
     ++num_ops;
   });
 
