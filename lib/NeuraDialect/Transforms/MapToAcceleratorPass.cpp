@@ -584,6 +584,30 @@ struct MapToAcceleratorPass
             << func.getName() << "\n";
         assert(false && "Mapping aborted due to empty op list.");
       }
+
+      // Filter out operations inside fused_op regions
+      // Only map the fused_op itself, not the operations within its region
+      std::vector<Operation *> filtered_ops;
+      int skipped_count = 0;
+      for (Operation *op : topologically_sorted_ops) {
+        Operation *parent_op = op->getParentOp();
+        // Check if parent is a fused_op by checking operation name
+        if (parent_op && parent_op->getName().getStringRef().contains("fused_op")) {
+          // Skip operations inside fused_op region
+          llvm::outs() << "[MapToAcceleratorPass] Skipping op inside fused_op: "
+                       << *op << "\n";
+          skipped_count++;
+          continue;
+        }
+        filtered_ops.push_back(op);
+      }
+      topologically_sorted_ops = std::move(filtered_ops);
+      
+      if (skipped_count > 0) {
+        llvm::errs() << "[MapToAcceleratorPass] Filtered out " << skipped_count
+                     << " operations inside fused_op regions\n";
+      }
+      
       for (Operation *op : topologically_sorted_ops) {
         llvm::outs() << "[MapToAcceleratorPass] Topologically sorted op: "
                      << *op << "\n";
