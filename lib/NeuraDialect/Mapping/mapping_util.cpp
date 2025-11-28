@@ -373,6 +373,13 @@ mlir::Operation *mlir::neura::getMaterializedBackwardUser(Operation *op) {
       return user;
     }
   }
+
+  // print info
+  llvm::errs() << "No materialized backward user (i.e., phi) found for ctrl_mov: " << *op << "\n";
+  llvm::errs() << "Target: " << *target.getDefiningOp() << "\n";
+  llvm::errs() << "\n";
+
+
   assert(false &&
          "No materialized backward user (i.e., phi) found for ctrl_mov");
 }
@@ -765,6 +772,9 @@ bool mlir::neura::isMaterializedReserveUser(Operation *user) {
     return true;
   }
   if (isa<neura::CarryOp>(user)) {
+    return true;
+  }
+  if (isa<neura::FusedOpOp>(user)) {
     return true;
   }
   return false;

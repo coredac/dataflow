@@ -187,6 +187,14 @@ MappingState::getCurrentStepLinks(MappingLoc loc) const {
 void MappingState::reserveRoute(Operation *op, ArrayRef<MappingLoc> path) {
 
   // Records all mapping locations.
+
+
+  llvm::errs() << "Reserving route for operation: " << *op << "\n";
+  llvm::errs() << "Path: ";
+  for (const MappingLoc &loc : path) {
+    llvm::errs() << loc.resource->getType() << "#" << loc.resource->getId() << " @t=" << loc.time_step << " ";
+  }
+  llvm::errs() << "\n";
   assert(op_to_locs.find(op) == op_to_locs.end() &&
          "Operation already has reserved locations");
   op_to_locs[op] = std::vector<MappingLoc>(path.begin(), path.end());

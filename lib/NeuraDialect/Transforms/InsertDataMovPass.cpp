@@ -187,17 +187,37 @@ struct InsertDataMovPass
         new_fused_op->setOperand(i, new_operands[i]);
       }
 
-      // Wrap outputs with data_mov
+      // Wrap outputs with data_mov - create separate data_mov for each user
       rewriter.setInsertionPointAfter(new_fused_op);
-      SmallVector<Value> new_results;
-      for (Value result : new_fused_op->getResults()) {
-        auto mov = rewriter.create<neura::DataMovOp>(loc, result.getType(), result);
-        new_results.push_back(mov);
-      }
-
-      // Replace all uses of the old fused_op results with the new data_mov ops
-      for (size_t i = 0; i < fused_op->getNumResults(); ++i) {
-        fused_op->getResult(i).replaceAllUsesWith(new_results[i]);
+      
+      // For each result of the fused_op, create a separate data_mov for each user
+      for (size_t result_idx = 0; result_idx < fused_op->getNumResults(); ++result_idx) {
+        Value old_result = fused_op->getResult(result_idx);
+        Value new_result = new_fused_op->getResult(result_idx);
+        
+        // Collect all users first (to avoid iterator invalidation)
+        SmallVector<OpOperand*> users_to_update;
+        for (OpOperand &use : old_result.getUses()) {
+          users_to_update.push_back(&use);
+        }
+        
+        // Create a separate data_mov for each user
+        for (OpOperand *use : users_to_update) {
+          Operation *user_op = use->getOwner();
+          
+          // If the user is already a data_mov (created by another fused_op's input wrapping),
+          // just update its operand to avoid nested data_mov
+          if (auto existing_mov = llvm::dyn_cast<neura::DataMovOp>(user_op)) {
+            if (use->getOperandNumber() == 0) { // data_mov only has one operand
+              existing_mov->setOperand(0, new_result);
+              continue;
+            }
+          }
+          
+          // Otherwise, create a new data_mov for this user
+          auto mov = rewriter.create<neura::DataMovOp>(loc, new_result.getType(), new_result);
+          use->set(mov);
+        }
       }
 
       fused_op->erase();
