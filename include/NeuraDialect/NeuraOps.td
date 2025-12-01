@@ -692,7 +692,7 @@ def Neura_InvariantOp : Op<NeuraDialect, "invariant">{
 }
 
 // Fused Operation - wraps a frequently occurring pattern
-def Neura_FusedOpOp : Op<NeuraDialect, "fused_op", [NoTerminator]> {
+def Neura_FusedOp : Op<NeuraDialect, "fused_op", [NoTerminator]> {
   let summary = "Represents a fused operation identified by graph mining";
   let description = [{
     This operation wraps a frequently occurring subgraph pattern identified

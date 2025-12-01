@@ -21,17 +21,17 @@
 namespace mlir::neura {
 
 // Forward declarations
-class DFGNode;
-class DFGEdge;
-class DFGGraph;
+class DfgNode;
+class DfgEdge;
+class DfgGraph;
 class FrequentSubgraph;
 
 // DFG Node representing an operation
-class DFGNode {
+class DfgNode {
 public:
   using NodeId = size_t;
   
-  DFGNode(NodeId id, mlir::Operation* op, const std::string& label)
+  DfgNode(NodeId id, mlir::Operation* op, const std::string& label)
     : id_(id), operation_(op), label_(label) {}
   
   NodeId getId() const { return id_; }
@@ -39,62 +39,62 @@ public:
   const std::string& getLabel() const { return label_; }
   
   // Add edge to this node
-  void addIncomingEdge(DFGEdge* edge) { incoming_edges_.push_back(edge); }
-  void addOutgoingEdge(DFGEdge* edge) { outgoing_edges_.push_back(edge); }
+  void addIncomingEdge(DfgEdge* edge) { incoming_edges_.push_back(edge); }
+  void addOutgoingEdge(DfgEdge* edge) { outgoing_edges_.push_back(edge); }
   
-  const std::vector<DFGEdge*>& getIncomingEdges() const { return incoming_edges_; }
-  const std::vector<DFGEdge*>& getOutgoingEdges() const { return outgoing_edges_; }
+  const std::vector<DfgEdge*>& getIncomingEdges() const { return incoming_edges_; }
+  const std::vector<DfgEdge*>& getOutgoingEdges() const { return outgoing_edges_; }
   
 private:
   NodeId id_;
   mlir::Operation* operation_;
   std::string label_;
-  std::vector<DFGEdge*> incoming_edges_;
-  std::vector<DFGEdge*> outgoing_edges_;
+  std::vector<DfgEdge*> incoming_edges_;
+  std::vector<DfgEdge*> outgoing_edges_;
 };
 
 // DFG Edge representing data flow between operations
-class DFGEdge {
+class DfgEdge {
 public:
   using EdgeId = size_t;
   
-  DFGEdge(EdgeId id, DFGNode* from, DFGNode* to, mlir::Value value)
+  DfgEdge(EdgeId id, DfgNode* from, DfgNode* to, mlir::Value value)
     : id_(id), from_(from), to_(to), value_(value) {}
   
   EdgeId getId() const { return id_; }
-  DFGNode* getFrom() const { return from_; }
-  DFGNode* getTo() const { return to_; }
+  DfgNode* getFrom() const { return from_; }
+  DfgNode* getTo() const { return to_; }
   mlir::Value getValue() const { return value_; }
   
 private:
   EdgeId id_;
-  DFGNode* from_;
-  DFGNode* to_;
+  DfgNode* from_;
+  DfgNode* to_;
   mlir::Value value_;
 };
 
 // DFG Graph representing the entire data flow graph
-class DFGGraph {
+class DfgGraph {
 public:
-  DFGGraph() : next_node_id_(0), next_edge_id_(0) {}
+  DfgGraph() : next_node_id_(0), next_edge_id_(0) {}
   
   // Add node to the graph
-  DFGNode* addNode(mlir::Operation* op, const std::string& label);
+  DfgNode* addNode(mlir::Operation* op, const std::string& label);
   
   // Add edge to the graph
-  DFGEdge* addEdge(DFGNode* from, DFGNode* to, mlir::Value value);
+  DfgEdge* addEdge(DfgNode* from, DfgNode* to, mlir::Value value);
   
   // Get all nodes
-  const std::vector<DFGNode*>& getNodes() const { return nodes_; }
+  const std::vector<DfgNode*>& getNodes() const { return nodes_; }
   
   // Get all edges
-  const std::vector<DFGEdge*>& getEdges() const { return edges_; }
+  const std::vector<DfgEdge*>& getEdges() const { return edges_; }
   
   // Get node by ID
-  DFGNode* getNode(DFGNode::NodeId id) const;
+  DfgNode* getNode(DfgNode::NodeId id) const;
   
   // Get edge by ID
-  DFGEdge* getEdge(DFGEdge::EdgeId id) const;
+  DfgEdge* getEdge(DfgEdge::EdgeId id) const;
   
   // Get number of nodes and edges
   size_t getNumNodes() const { return nodes_.size(); }
@@ -104,18 +104,18 @@ public:
   void clear();
   
 private:
-  std::vector<DFGNode*> nodes_;
-  std::vector<DFGEdge*> edges_;
-  llvm::DenseMap<mlir::Operation*, DFGNode*> op_to_node_;
-  DFGNode::NodeId next_node_id_;
-  DFGEdge::EdgeId next_edge_id_;
+  std::vector<DfgNode*> nodes_;
+  std::vector<DfgEdge*> edges_;
+  llvm::DenseMap<mlir::Operation*, DfgNode*> op_to_node_;
+  DfgNode::NodeId next_node_id_;
+  DfgEdge::EdgeId next_edge_id_;
 };
 
 // Frequent subgraph pattern
 class FrequentSubgraph {
 public:
-  using NodeId = DFGNode::NodeId;
-  using EdgeId = DFGEdge::EdgeId;
+  using NodeId = DfgNode::NodeId;
+  using EdgeId = DfgEdge::EdgeId;
   
   FrequentSubgraph(const std::string& pattern, size_t frequency, int64_t id = -1)
     : pattern_(pattern), frequency_(frequency), id_(id) {}
@@ -156,7 +156,7 @@ struct PatternInstance {
   std::vector<mlir::Operation*> operations;
   std::vector<mlir::Value> inputs;   // External inputs to the pattern  
   std::vector<mlir::Value> outputs;  // Outputs from the pattern
-  mlir::Operation* lastOp = nullptr; // Last operation in the pattern
+  mlir::Operation* last_op = nullptr; // Last operation in the pattern
   int64_t pattern_id;
   size_t frequency;  // Weight for MWIS
 };
@@ -178,7 +178,7 @@ struct PatternWithSelectedInstances {
 // GraMi algorithm implementation
 class GraMi {
 public:
-  GraMi(DFGGraph* graph, size_t min_support = 2)
+  GraMi(DfgGraph* graph, size_t min_support = 2)
     : graph_(graph), min_support_(min_support) {}
   
   // Main mining function
@@ -196,14 +196,13 @@ public:
   void setMinSupport(size_t min_support) { min_support_ = min_support; }
   
 private:
-  DFGGraph* graph_;
+  DfgGraph* graph_;
   size_t min_support_;
   
   // Helper functions for GraMi algorithm
   std::vector<FrequentSubgraph> generateCandidates();
   bool isFrequent(const FrequentSubgraph& candidate);
   std::string generatePatternString(const FrequentSubgraph& subgraph);
-  std::vector<FrequentSubgraph> extendPattern(const FrequentSubgraph& pattern);
   
   // Support counting
   size_t countSupport(const FrequentSubgraph& pattern);
@@ -213,21 +212,21 @@ private:
   static bool patternsConflict(const PatternWithInstances& a, const PatternWithInstances& b);
   
 private:
-  // Helper function to get operation label (matches DFGExtractor logic)
+  // Helper function to get operation label (matches DfgExtractor logic)
   std::string getOperationLabel(mlir::Operation* op);
 };
 
 // Utility functions for graph extraction from MLIR
-class DFGExtractor {
+class DfgExtractor {
 public:
   // Extract DFG from MLIR module
-  static std::unique_ptr<DFGGraph> extractFromModule(mlir::ModuleOp module);
+  static std::unique_ptr<DfgGraph> extractFromModule(mlir::ModuleOp module);
   
   // Extract DFG from MLIR function
-  static std::unique_ptr<DFGGraph> extractFromFunction(mlir::func::FuncOp func);
+  static std::unique_ptr<DfgGraph> extractFromFunction(mlir::func::FuncOp func);
   
   // Extract DFG from MLIR block
-  static std::unique_ptr<DFGGraph> extractFromBlock(mlir::Block* block);
+  static std::unique_ptr<DfgGraph> extractFromBlock(mlir::Block* block);
   
 private:
   // Helper functions

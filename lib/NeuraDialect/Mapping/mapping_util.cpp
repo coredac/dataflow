@@ -192,7 +192,7 @@ int mlir::neura::calculateResMii(Operation *func_op,
     }
     // Skips operations inside fused_op regions
     Operation *parent_op = op->getParentOp();
-    if (isa<neura::FusedOpOp>(parent_op)) {
+    if (isa<neura::FusedOp>(parent_op)) {
       return;
     }
     ++num_ops;
@@ -779,7 +779,7 @@ bool mlir::neura::isMaterializedReserveUser(Operation *user) {
   if (isa<neura::CarryOp>(user)) {
     return true;
   }
-  if (isa<neura::FusedOpOp>(user)) {
+  if (isa<neura::FusedOp>(user)) {
     return true;
   }
   return false;

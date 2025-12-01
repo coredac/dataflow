@@ -88,10 +88,10 @@ private:
 
       // Visits operands first.
       for (Value operand : op->getOperands()) {
-        if (auto defOp = operand.getDefiningOp()) {
-          if (!visited.contains(defOp)) {
-            visited.insert(defOp);
-            ordered.push_back(defOp);
+        if (auto def_op = operand.getDefiningOp()) {
+          if (!visited.contains(def_op)) {
+            visited.insert(def_op);
+            ordered.push_back(def_op);
           }
         }
       }

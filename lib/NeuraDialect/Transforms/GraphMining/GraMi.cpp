@@ -14,36 +14,36 @@
 using namespace mlir;
 using namespace mlir::neura;
 
-DFGNode* DFGGraph::addNode(mlir::Operation* op, const std::string& label) {
-  auto node = new DFGNode(next_node_id_++, op, label);
+DfgNode* DfgGraph::addNode(mlir::Operation* op, const std::string& label) {
+  auto node = new DfgNode(next_node_id_++, op, label);
   nodes_.push_back(node);
   op_to_node_[op] = node;
   return node;
 }
 
-DFGEdge* DFGGraph::addEdge(DFGNode* from, DFGNode* to, mlir::Value value) {
-  auto edge = new DFGEdge(next_edge_id_++, from, to, value);
+DfgEdge* DfgGraph::addEdge(DfgNode* from, DfgNode* to, mlir::Value value) {
+  auto edge = new DfgEdge(next_edge_id_++, from, to, value);
   edges_.push_back(edge);
   from->addOutgoingEdge(edge);
   to->addIncomingEdge(edge);
   return edge;
 }
 
-DFGNode* DFGGraph::getNode(DFGNode::NodeId id) const {
+DfgNode* DfgGraph::getNode(DfgNode::NodeId id) const {
   if (id < nodes_.size()) {
     return nodes_[id];
   }
   return nullptr;
 }
 
-DFGEdge* DFGGraph::getEdge(DFGEdge::EdgeId id) const {
+DfgEdge* DfgGraph::getEdge(DfgEdge::EdgeId id) const {
   if (id < edges_.size()) {
     return edges_[id];
   }
   return nullptr;
 }
 
-void DFGGraph::clear() {
+void DfgGraph::clear() {
   for (auto* node : nodes_) {
     delete node;
   }
@@ -57,27 +57,28 @@ void DFGGraph::clear() {
   next_edge_id_ = 0;
 }
 
-std::string DFGExtractor::getOperationLabel(mlir::Operation* op) {
-  std::string opName = op->getName().getStringRef().str();
+std::string DfgExtractor::getOperationLabel(mlir::Operation* op) {
+  std::string op_name = op->getName().getStringRef().str();
   
-  size_t dotPos = opName.find('.');
-  if (dotPos != std::string::npos) {
-    opName = opName.substr(dotPos + 1);
+  size_t dot_pos = op_name.find('.');
+  if (dot_pos != std::string::npos) {
+    op_name = op_name.substr(dot_pos + 1);
   }
   
   if (op->getNumResults() > 0) {
-    Type resultType = op->getResult(0).getType();
-    if (auto intType = mlir::dyn_cast<IntegerType>(resultType)) {
-      opName += "_i" + std::to_string(intType.getWidth());
-    } else if (auto floatType = mlir::dyn_cast<FloatType>(resultType)) {
-      opName += "_f" + std::to_string(floatType.getWidth());
+    Type result_type = op->getResult(0).getType();
+    if (auto int_type = mlir::dyn_cast<IntegerType>(result_type)) {
+      op_name += "_i" + std::to_string(int_type.getWidth());
+    } else if (auto float_type = mlir::dyn_cast<FloatType>(result_type)) {
+      op_name += "_f" + std::to_string(float_type.getWidth());
     }
   }
   
-  return opName;
+  return op_name;
 }
 
-bool DFGExtractor::shouldIncludeOperation(mlir::Operation* op) {
+// Excludes operations that are not part of the DFG since they don't involve computation and will not be mapped onto the functional units.
+bool DfgExtractor::shouldIncludeOperation(mlir::Operation* op) {
   if (op->getName().getStringRef().contains("func.") ||
       op->getName().getStringRef().contains("module") ||
       op->getName().getStringRef().contains("return") || 
@@ -106,18 +107,19 @@ bool DFGExtractor::shouldIncludeOperation(mlir::Operation* op) {
   return false;
 }
 
-std::unique_ptr<DFGGraph> DFGExtractor::extractFromModule(ModuleOp module) {
-  auto graph = std::make_unique<DFGGraph>();
+// Extracts the data flow graph from the module.
+std::unique_ptr<DfgGraph> DfgExtractor::extractFromModule(ModuleOp module) {
+  auto graph = std::make_unique<DfgGraph>();
   
   module.walk([&](func::FuncOp func) {
     llvm::errs() << "Extracting DFG from function: " << func.getName() << "\n";
 
-    auto funcGraph = extractFromFunction(func);
-    if (funcGraph) {
-      for (auto* node : funcGraph->getNodes()) {
+    auto func_graph = extractFromFunction(func);
+    if (func_graph) {
+      for (auto* node : func_graph->getNodes()) {
         graph->addNode(node->getOperation(), node->getLabel());
       }
-      for (auto* edge : funcGraph->getEdges()) {
+      for (auto* edge : func_graph->getEdges()) {
         graph->addEdge(edge->getFrom(), edge->getTo(), edge->getValue());
       }
     }
@@ -126,16 +128,17 @@ std::unique_ptr<DFGGraph> DFGExtractor::extractFromModule(ModuleOp module) {
   return graph;
 }
 
-std::unique_ptr<DFGGraph> DFGExtractor::extractFromFunction(func::FuncOp func) {
-  auto graph = std::make_unique<DFGGraph>();
+// Extracts the data flow graph from the function.
+std::unique_ptr<DfgGraph> DfgExtractor::extractFromFunction(func::FuncOp func) {
+  auto graph = std::make_unique<DfgGraph>();
   
   func.walk([&](Block* block) {
-    auto blockGraph = extractFromBlock(block);
-    if (blockGraph) {
-      for (auto* node : blockGraph->getNodes()) {
+    auto block_graph = extractFromBlock(block);
+    if (block_graph) {
+      for (auto* node : block_graph->getNodes()) {
         graph->addNode(node->getOperation(), node->getLabel());
       }
-      for (auto* edge : blockGraph->getEdges()) {
+      for (auto* edge : block_graph->getEdges()) {
         graph->addEdge(edge->getFrom(), edge->getTo(), edge->getValue());
       }
     }
@@ -144,14 +147,15 @@ std::unique_ptr<DFGGraph> DFGExtractor::extractFromFunction(func::FuncOp func) {
   return graph;
 }
 
-std::unique_ptr<DFGGraph> DFGExtractor::extractFromBlock(mlir::Block* block) {
-  auto graph = std::make_unique<DFGGraph>();
-  llvm::DenseMap<mlir::Value, DFGNode*> value_to_node;
+// Extracts the data flow graph from the block.
+std::unique_ptr<DfgGraph> DfgExtractor::extractFromBlock(mlir::Block* block) {
+  auto graph = std::make_unique<DfgGraph>();
+  llvm::DenseMap<mlir::Value, DfgNode*> value_to_node;
   
   for (auto& op : block->getOperations()) {
     if (shouldIncludeOperation(&op)) {
       std::string label = getOperationLabel(&op);
-      DFGNode* node = graph->addNode(&op, label);
+      DfgNode* node = graph->addNode(&op, label);
       
       for (mlir::Value result : op.getResults()) {
         value_to_node[result] = node;
@@ -161,21 +165,21 @@ std::unique_ptr<DFGGraph> DFGExtractor::extractFromBlock(mlir::Block* block) {
   
   for (auto& op : block->getOperations()) {
     if (shouldIncludeOperation(&op)) {
-      DFGNode* currentNode = nullptr;
+      DfgNode* current_node = nullptr;
       
       for (mlir::Value result : op.getResults()) {
         if (value_to_node.count(result)) {
-          currentNode = value_to_node[result];
+          current_node = value_to_node[result];
           break;
         }
       }
       
-      if (!currentNode) continue;
+      if (!current_node) continue;
       
       for (mlir::Value operand : op.getOperands()) {
         if (value_to_node.count(operand)) {
-          DFGNode* sourceNode = value_to_node[operand];
-          graph->addEdge(sourceNode, currentNode, operand);
+          DfgNode* source_node = value_to_node[operand];
+          graph->addEdge(source_node, current_node, operand);
         }
       }
     }
@@ -184,63 +188,64 @@ std::unique_ptr<DFGGraph> DFGExtractor::extractFromBlock(mlir::Block* block) {
   return graph;
 }
 
+// Mines the frequent subgraphs from the data flow graph.
 std::vector<PatternWithSelectedInstances> GraMi::mineFrequentSubgraphs() {
   std::vector<FrequentSubgraph> frequent_subgraphs;
   
   std::map<std::string, std::vector<PatternInstance>> pattern_instances;
   
-  auto deriveLabel = [](mlir::Operation* op, const std::string& fallbackLabel) -> std::string {
-    if (!op) return fallbackLabel;
+  auto derive_label = [](mlir::Operation* op, const std::string& fallback_label) -> std::string {
+    if (!op) return fallback_label;
     auto name = op->getName().getStringRef();
     if (name.ends_with("fused_op") || name.contains("neura.fused_op")) {
       if (auto attr = op->getAttr("pattern_name")) {
-        if (auto strAttr = mlir::dyn_cast<mlir::StringAttr>(attr)) {
-          return std::string("fused_op:") + strAttr.getValue().str();
+        if (auto str_attr = mlir::dyn_cast<mlir::StringAttr>(attr)) {
+          return std::string("fused_op:") + str_attr.getValue().str();
         }
       }
       return std::string("fused_op");
     }
-    return fallbackLabel;
+    return fallback_label;
   };
 
   for (auto* edge : graph_->getEdges()) {
-    DFGNode* from = edge->getFrom();
-    DFGNode* to = edge->getTo();
+    DfgNode* from = edge->getFrom();
+    DfgNode* to = edge->getTo();
 
-    auto* fromOp = from->getOperation();
-    auto* toOp = to->getOperation();
+    auto* from_op = from->getOperation();
+    auto* to_op = to->getOperation();
 
-    if (fromOp->getParentRegion() == toOp->getParentRegion() && fromOp->getParentRegion()->getParentOp()->getName().getStringRef().str() == "neura.fused_op") {
+    if (from_op->getParentRegion() == to_op->getParentRegion() && from_op->getParentRegion()->getParentOp()->getName().getStringRef().str() == "neura.fused_op") {
       continue;
     }
 
-    std::string fromLabel = deriveLabel(fromOp, from->getLabel());
-    std::string toLabel = deriveLabel(toOp, to->getLabel());
-    std::string pattern = fromLabel + "->" + toLabel;
+    std::string from_label = derive_label(from_op, from->getLabel());
+    std::string to_label = derive_label(to_op, to->getLabel());
+    std::string pattern = from_label + "->" + to_label;
     
     PatternInstance instance;
     instance.frequency = 1;
     
-    if (fromOp->isBeforeInBlock(toOp)) {
-      instance.operations.push_back(fromOp);
-      instance.operations.push_back(toOp);
-      instance.lastOp = toOp;
+    if (from_op->isBeforeInBlock(to_op)) {
+      instance.operations.push_back(from_op);
+      instance.operations.push_back(to_op);
+      instance.last_op = to_op;
     } else {
-      instance.operations.push_back(toOp);
-      instance.operations.push_back(fromOp);
-      instance.lastOp = fromOp;
+      instance.operations.push_back(to_op);
+      instance.operations.push_back(from_op);
+      instance.last_op = from_op;
     }
     
-    llvm::DenseSet<mlir::Operation*> patternOps;
-    patternOps.insert(fromOp);
-    patternOps.insert(toOp);
+    llvm::DenseSet<mlir::Operation*> pattern_ops;
+    pattern_ops.insert(from_op);
+    pattern_ops.insert(to_op);
     
     llvm::SetVector<mlir::Value> input_set;
-    for (mlir::Value operand : fromOp->getOperands()) {
+    for (mlir::Value operand : from_op->getOperands()) {
       input_set.insert(operand);
     }
-    for (mlir::Value operand : toOp->getOperands()) {
-      if (operand.getDefiningOp() != fromOp) {
+    for (mlir::Value operand : to_op->getOperands()) {
+      if (operand.getDefiningOp() != from_op) {
         input_set.insert(operand);
       }
     }
@@ -249,16 +254,16 @@ std::vector<PatternWithSelectedInstances> GraMi::mineFrequentSubgraphs() {
     llvm::SetVector<mlir::Value> output_set;
     for (mlir::Operation* op : instance.operations) {
       for (mlir::Value result : op->getResults()) {
-        bool hasExternalUse = false;
+        bool has_external_use = false;
         for (mlir::OpOperand& use : result.getUses()) {
           mlir::Operation* user = use.getOwner();
-          if (!patternOps.contains(user)) {
-            hasExternalUse = true;
+          if (!pattern_ops.contains(user)) {
+            has_external_use = true;
             break;
           }
         }
         
-        if (hasExternalUse) {
+        if (has_external_use) {
           output_set.insert(result);
         }
       }
@@ -273,11 +278,11 @@ std::vector<PatternWithSelectedInstances> GraMi::mineFrequentSubgraphs() {
   for (auto& [pattern, instances] : pattern_instances) {
     if (instances.size() >= min_support_) {
       size_t pattern_idx = frequent_subgraphs.size();
-      std::string fromLabel = pattern.substr(0, pattern.find("->"));
-      std::string toLabel = pattern.substr(pattern.find("->") + 2);
+      std::string from_label = pattern.substr(0, pattern.find("->"));
+      std::string to_label = pattern.substr(pattern.find("->") + 2);
       FrequentSubgraph subgraph(pattern, instances.size(), static_cast<int64_t>(pattern_idx));
-      subgraph.addNode(0, fromLabel);
-      subgraph.addNode(1, toLabel);
+      subgraph.addNode(0, from_label);
+      subgraph.addNode(1, to_label);
       subgraph.addEdge(0, 0, 1);
       frequent_subgraphs.push_back(subgraph);
       
@@ -320,48 +325,13 @@ std::vector<PatternWithSelectedInstances> GraMi::mineFrequentSubgraphs() {
   return result;
 }
 
-std::vector<FrequentSubgraph> GraMi::extendPattern(const FrequentSubgraph& pattern) {
-  std::vector<FrequentSubgraph> extensions;
-  
-  for (auto* node : graph_->getNodes()) {
-    std::string nodeLabel = node->getLabel();
-    
-    bool nodeTypeExists = false;
-    for (const auto& pair : pattern.getNodes()) {
-      if (pair.second == nodeLabel) {
-        nodeTypeExists = true;
-        break;
-      }
-    }
-    
-    if (!nodeTypeExists) {
-      FrequentSubgraph newPattern = pattern;
-      newPattern.addNode(pattern.getNodes().size(), nodeLabel);
-      
-      for (auto* edge : node->getIncomingEdges()) {
-        DFGNode* source = edge->getFrom();
-        std::string sourceLabel = source->getLabel();
-        
-        for (const auto& pair : pattern.getNodes()) {
-          if (pair.second == sourceLabel) {
-            newPattern.addEdge(newPattern.getEdges().size(), pair.first, pattern.getNodes().size());
-            break;
-          }
-        }
-      }
-      
-      extensions.push_back(newPattern);
-    }
-  }
-  
-  return extensions;
-}
-
+// Checks if the candidate pattern is frequent using the threshold min_support_.
 bool GraMi::isFrequent(const FrequentSubgraph& candidate) {
   size_t support = countSupport(candidate);
   return support >= min_support_;
 }
 
+// Counts the support of the pattern in the data flow graph.
 size_t GraMi::countSupport(const FrequentSubgraph& pattern) {
   std::map<std::string, size_t> node_counts;
   for (const auto& pair : pattern.getNodes()) {
@@ -386,6 +356,7 @@ size_t GraMi::countSupport(const FrequentSubgraph& pattern) {
   return min_count;
 }
 
+// Generates a string representation of the pattern.
 std::string GraMi::generatePatternString(const FrequentSubgraph& subgraph) {
   std::ostringstream oss;
   oss << "Pattern: ";
@@ -407,6 +378,7 @@ std::string GraMi::generatePatternString(const FrequentSubgraph& subgraph) {
   return oss.str();
 }
 
+// Checks if the two instances conflict. Conflict occurs if the two instances have the same operation.
 bool GraMi::instancesConflict(const PatternInstance& a, const PatternInstance& b) {
   for (mlir::Operation* op_a : a.operations) {
     for (mlir::Operation* op_b : b.operations) {
@@ -416,6 +388,7 @@ bool GraMi::instancesConflict(const PatternInstance& a, const PatternInstance& b
   return false;
 }
 
+// Checks if the two patterns conflict. If any instance in the two patterns conflict, the patterns conflict.
 bool GraMi::patternsConflict(const PatternWithInstances& a, const PatternWithInstances& b) {
   for (const auto& inst_a : a.instances) {
     for (const auto& inst_b : b.instances) {
@@ -427,8 +400,8 @@ bool GraMi::patternsConflict(const PatternWithInstances& a, const PatternWithIns
   return false;
 }
 
+// Selects the maximum weighted independent set of instances from the frequent subgraphs. The independent set is a set of instances that do not conflict with each other.
 std::vector<PatternWithSelectedInstances> GraMi::selectMaxWeightedIndependentSetForInstances(const std::vector<PatternInstance>& instances, const std::vector<FrequentSubgraph>& frequent_subgraphs, size_t min_support) {
-  
   if (instances.empty()) return {};
   
   size_t n = instances.size();
@@ -505,22 +478,23 @@ std::vector<PatternWithSelectedInstances> GraMi::selectMaxWeightedIndependentSet
   return result;
 }
 
+// Gets the label of the operation.
 std::string GraMi::getOperationLabel(mlir::Operation* op) {
-  std::string opName = op->getName().getStringRef().str();
+  std::string op_name = op->getName().getStringRef().str();
   
-  size_t dotPos = opName.find('.');
-  if (dotPos != std::string::npos) {
-    opName = opName.substr(dotPos + 1);
+  size_t dot_pos = op_name.find('.');
+  if (dot_pos != std::string::npos) {
+    op_name = op_name.substr(dot_pos + 1);
   }
   
   if (op->getNumResults() > 0) {
-    Type resultType = op->getResult(0).getType();
-    if (auto intType = mlir::dyn_cast<IntegerType>(resultType)) {
-      opName += "_i" + std::to_string(intType.getWidth());
-    } else if (auto floatType = mlir::dyn_cast<FloatType>(resultType)) {
-      opName += "_f" + std::to_string(floatType.getWidth());
+    Type result_type = op->getResult(0).getType();
+    if (auto int_type = mlir::dyn_cast<IntegerType>(result_type)) {
+      op_name += "_i" + std::to_string(int_type.getWidth());
+    } else if (auto float_type = mlir::dyn_cast<FloatType>(result_type)) {
+      op_name += "_f" + std::to_string(float_type.getWidth());
     }
   }
   
-  return opName;
+  return op_name;
 }
