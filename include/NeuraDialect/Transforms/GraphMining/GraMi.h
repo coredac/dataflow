@@ -18,6 +18,11 @@
 #include <memory>
 #include <cstdint>
 
+// Forward declaration for RecurrenceCycle from mapping_util.h
+namespace mlir::neura {
+struct RecurrenceCycle;
+}
+
 namespace mlir::neura {
 
 // Forward declarations
@@ -159,6 +164,7 @@ struct PatternInstance {
   mlir::Operation* last_op = nullptr; // Last operation in the pattern
   int64_t pattern_id;
   size_t frequency;  // Weight for MWIS
+  bool is_on_critical_path = false;  // True if all operations are on critical path
 };
 
 // Pattern with all its instances
@@ -168,10 +174,12 @@ struct PatternWithInstances {
   std::vector<PatternInstance> instances;
 };
 
-// Result from GraMi mining: pattern + selected instances
+// Result from GraMi mining: pattern + selected instances (split by critical path)
 struct PatternWithSelectedInstances {
   FrequentSubgraph pattern;
-  std::vector<PatternInstance> selected_instances;
+  std::vector<PatternInstance> selected_instances;  // All selected instances
+  std::vector<PatternInstance> critical_instances;  // Instances on critical path
+  std::vector<PatternInstance> non_critical_instances;  // Instances not on critical path
   PatternWithSelectedInstances(const FrequentSubgraph& p) : pattern(p) {}
 };
 
@@ -181,23 +189,53 @@ public:
   GraMi(DfgGraph* graph, size_t min_support = 2)
     : graph_(graph), min_support_(min_support) {}
   
+  // Set critical path operations (should be called before mining)
+  void setCriticalPathOps(const llvm::DenseSet<mlir::Operation*>& critical_ops) {
+    critical_path_ops_ = critical_ops;
+  }
+  
   // Main mining function
   std::vector<PatternWithSelectedInstances> mineFrequentSubgraphs();
   
-  // Maximum Weighted Independent Set selection for instances
-  // Input: all instances (with pattern_id set), frequent subgraphs, min support
-  // Output: patterns with selected instances that don't conflict
-  static std::vector<PatternWithSelectedInstances> selectMaxWeightedIndependentSetForInstances(
-      const std::vector<PatternInstance>& instances,
-      const std::vector<FrequentSubgraph>& frequent_subgraphs,
+  // Collect critical paths with maximum recurrence length from function
+  static llvm::DenseSet<mlir::Operation*> collectCriticalPathOps(mlir::func::FuncOp func);
+  
+  // Maximum Weighted Independent Set selection for instances within a pattern
+  // Instances on critical path have higher weight
+  static std::pair<std::vector<PatternInstance>, std::vector<PatternInstance>> 
+  selectMWISForPattern(
+      const std::vector<PatternInstance>& critical_instances,
+      const std::vector<PatternInstance>& non_critical_instances,
+      double critical_weight_multiplier = 10.0);
+  
+  // Inter-pattern independent set analysis
+  // Rules:
+  // - If two patterns have conflicting critical instances, they cannot coexist
+  //   Choose the pattern with more critical instances
+  // - Non-critical conflicts are allowed
+  static std::vector<PatternWithSelectedInstances> selectPatternsWithCriticalPriority(
+      std::vector<PatternWithSelectedInstances>& candidates,
       size_t min_support);
   
   // Set minimum support threshold
   void setMinSupport(size_t min_support) { min_support_ = min_support; }
   
+  // Check if a pattern has been attempted for fusion
+  static bool hasPatternBeenAttempted(const std::string& pattern);
+  
+  // Mark a pattern as attempted for fusion
+  static void markPatternAsAttempted(const std::string& pattern);
+  
+  // Clear all attempted pattern marks (useful for testing or reset)
+  static void clearAttemptedPatterns();
+  
 private:
   DfgGraph* graph_;
   size_t min_support_;
+  llvm::DenseSet<mlir::Operation*> critical_path_ops_;  // Operations on critical paths
+  
+  // Static set to track patterns that have been attempted for fusion
+  static std::set<std::string> attempted_patterns_;
   
   // Helper functions for GraMi algorithm
   std::vector<FrequentSubgraph> generateCandidates();
@@ -210,6 +248,11 @@ private:
   // Helper functions for MWIS
   static bool instancesConflict(const PatternInstance& a, const PatternInstance& b);
   static bool patternsConflict(const PatternWithInstances& a, const PatternWithInstances& b);
+  static bool criticalInstancesConflict(const PatternWithSelectedInstances& a, 
+                                        const PatternWithSelectedInstances& b);
+  
+  // Check if an instance is on critical path (all operations must be on critical path)
+  bool isInstanceOnCriticalPath(const PatternInstance& instance) const;
   
 private:
   // Helper function to get operation label (matches DfgExtractor logic)

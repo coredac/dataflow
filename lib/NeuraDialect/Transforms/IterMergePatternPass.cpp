@@ -41,6 +41,117 @@ void printDFGStatistics(mlir::neura::DfgGraph* graph) {
   llvm::errs() << "\n";
 }
 
+// Finds a valid insertion point for the fused operation.
+// The insertion point must be:
+// 1. After all input definitions (to avoid use-before-def)
+// 2. Before all external uses of pattern outputs (to maintain dominance)
+// Returns nullptr if no valid insertion point exists.
+Operation* findValidInsertionPoint(
+    const mlir::neura::PatternInstance& instance,
+    const llvm::DenseSet<Operation*>& pattern_ops,
+    const SmallVector<Value>& valid_inputs,
+    const SmallVector<Value>& valid_outputs) {
+  
+  if (instance.operations.empty()) return nullptr;
+  
+  Block* block = instance.operations.front()->getBlock();
+  if (!block) return nullptr;
+  
+  // Verify all operations are in the same block
+  for (Operation* op : instance.operations) {
+    if (op->getBlock() != block) {
+      return nullptr;  // Cross-block patterns not supported
+    }
+  }
+  
+  // Find the earliest position: after all input definitions
+  // The insertion point must be after the latest input definition
+  Operation* earliest_point = nullptr;
+  
+  for (Value input : valid_inputs) {
+    Operation* def_op = input.getDefiningOp();
+    if (!def_op) {
+      // Block argument - no constraint from this input
+      continue;
+    }
+    
+    if (def_op->getBlock() != block) {
+      // Defined in a different block - no constraint from this input
+      continue;
+    }
+    
+    if (!earliest_point) {
+      earliest_point = def_op;
+    } else if (def_op->isBeforeInBlock(earliest_point)) {
+      // Keep earliest_point as is (it's later)
+    } else {
+      earliest_point = def_op;
+    }
+  }
+  
+  // Also, the insertion point must be after all pattern operations
+  // (since we're replacing them)
+  for (Operation* op : instance.operations) {
+    if (!earliest_point) {
+      earliest_point = op;
+    } else if (earliest_point->isBeforeInBlock(op)) {
+      earliest_point = op;  // op is later
+    }
+  }
+  
+  // Find the latest position: before all external uses of outputs
+  Operation* latest_point = nullptr;
+  
+  for (Value output : valid_outputs) {
+    for (OpOperand& use : output.getUses()) {
+      Operation* user = use.getOwner();
+      
+      // Skip uses within the pattern itself
+      if (pattern_ops.contains(user)) {
+        continue;
+      }
+      
+      // Skip uses in different blocks (they will be dominated by any position in this block)
+      if (user->getBlock() != block) {
+        continue;
+      }
+      
+      if (!latest_point) {
+        latest_point = user;
+      } else if (user->isBeforeInBlock(latest_point)) {
+        latest_point = user;  // user is earlier, so we must insert before it
+      }
+    }
+  }
+  
+  // Now determine if there's a valid range [earliest_point, latest_point)
+  // The insertion point should be after earliest_point and before latest_point
+  
+  if (!earliest_point) {
+    // No constraints from inputs, use the first pattern op
+    earliest_point = instance.operations.front();
+    for (Operation* op : instance.operations) {
+      if (op->isBeforeInBlock(earliest_point)) {
+        earliest_point = op;
+      }
+    }
+  }
+  
+  // If there's a latest_point constraint, check if it's valid
+  if (latest_point) {
+    // The insertion must be before latest_point
+    // But it must also be after earliest_point
+    // So we need: earliest_point is before latest_point
+    if (!earliest_point->isBeforeInBlock(latest_point) && earliest_point != latest_point) {
+      // No valid insertion point - earliest is after or at latest
+      return nullptr;
+    }
+  }
+  
+  // Return the insertion point (insert after earliest_point)
+  return earliest_point;
+}
+
 bool rewritePatternInstance(OpBuilder& builder, const mlir::neura::PatternInstance& instance, const mlir::neura::FrequentSubgraph& pattern) {
   if (instance.operations.empty()) return false;
   
@@ -52,21 +163,8 @@ bool rewritePatternInstance(OpBuilder& builder, const mlir::neura::PatternInstan
   
   llvm::DenseSet<Operation*> pattern_ops(instance.operations.begin(), instance.operations.end());
   
-  Operation* last_op = instance.last_op;
-  for (Operation* op : instance.operations) {
-    for (Value result : op->getResults()) {
-      for (OpOperand& use : result.getUses()) {
-        Operation* user = use.getOwner();
-        if (!pattern_ops.contains(user) && user->getBlock() == last_op->getBlock() && user->isBeforeInBlock(last_op)) {
-          return false;
-        }
-      }
-    }
-  }
-  
-  builder.setInsertionPointAfter(last_op);
-  
-  llvm::SetVector<Value> input_set;
+  // First, collect inputs and outputs to determine valid insertion point
+  llvm::SetVector<Value> input_set_for_check;
   for (Operation* op : instance.operations) {
     for (Value operand : op->getOperands()) {
       Operation* def_op = operand.getDefiningOp();
@@ -74,7 +172,7 @@ bool rewritePatternInstance(OpBuilder& builder, const mlir::neura::PatternInstan
         continue;
       }
       if (!def_op || !pattern_ops.contains(def_op)) {
-        input_set.insert(operand);
+        input_set_for_check.insert(operand);
       }
     }
     
@@ -94,7 +192,7 @@ bool rewritePatternInstance(OpBuilder& builder, const mlir::neura::PatternInstan
               
               Operation* def_op = operand.getDefiningOp();
               if (def_op && !nested_pattern_ops.contains(def_op) && !pattern_ops.contains(def_op)) {
-                input_set.insert(operand);
+                input_set_for_check.insert(operand);
               } else if (!def_op) {
                 assert(false && "Value without defining op should not happen normally");
               }
@@ -104,9 +202,9 @@ bool rewritePatternInstance(OpBuilder& builder, const mlir::neura::PatternInstan
       }
     }
   }
-  SmallVector<Value> valid_inputs = input_set.takeVector();
+  SmallVector<Value> valid_inputs = input_set_for_check.takeVector();
   
-  llvm::SetVector<Value> output_set;
+  llvm::SetVector<Value> output_set_for_check;
   for (Operation* op : instance.operations) {
     for (Value result : op->getResults()) {
       bool has_external_use = false;
@@ -119,11 +217,20 @@ bool rewritePatternInstance(OpBuilder& builder, const mlir::neura::PatternInstan
       }
       
       if (has_external_use) {
-        output_set.insert(result);
+        output_set_for_check.insert(result);
       }
     }
   }
-  SmallVector<Value> valid_outputs = output_set.takeVector();
+  SmallVector<Value> valid_outputs = output_set_for_check.takeVector();
+  
+  // Find a valid insertion point that avoids dominance issues
+  Operation* insertion_point = findValidInsertionPoint(instance, pattern_ops, valid_inputs, valid_outputs);
+  if (!insertion_point) {
+    llvm::errs() << "    Skipping pattern instance: no valid insertion point found\n";
+    return false;
+  }
+  
+  builder.setInsertionPointAfter(insertion_point);
   
   SmallVector<Type> output_types;
   for (Value output : valid_outputs) {
@@ -133,7 +240,7 @@ bool rewritePatternInstance(OpBuilder& builder, const mlir::neura::PatternInstan
   llvm::errs() << "    Creating fused_op operation: " << pattern.getPattern() << " "<< "Inputs: " << valid_inputs.size() << " " << "Outputs: " << output_types.size() << "\n";
 
   auto pattern_op = builder.create<neura::FusedOp>(
-      last_op->getLoc(),
+      insertion_point->getLoc(),
       output_types,
       valid_inputs,
       builder.getI64IntegerAttr(pattern.getId()),
@@ -277,7 +384,7 @@ bool rewritePatternInstance(OpBuilder& builder, const mlir::neura::PatternInstan
     }
   }
   
-  builder.create<neura::YieldOp>(last_op->getLoc(), yield_operands);
+  builder.create<neura::YieldOp>(insertion_point->getLoc(), yield_operands);
   
   llvm::DenseSet<Value> replaced_outputs;
   for (size_t i = 0; i < valid_outputs.size(); ++i) {
@@ -337,27 +444,75 @@ bool rewritePatternInstance(OpBuilder& builder, const mlir::neura::PatternInstan
 
 int rewritePatternsToRegions(mlir::neura::DfgGraph* dfg_graph, ModuleOp module_op, const std::vector<mlir::neura::PatternWithSelectedInstances>& patterns_with_instances) {
   int rewrite_count = 0;
-  size_t total_instances = 0;
+  size_t total_critical = 0;
+  size_t total_non_critical = 0;
   MLIRContext* context = module_op.getContext();
   OpBuilder builder(context);
   
+  // Count total instances
   for (const auto& pwsi : patterns_with_instances) {
-    if (pwsi.pattern.getNodes().size() < 2 || pwsi.selected_instances.empty()) continue;
-    for (const auto& instance : pwsi.selected_instances) {
-      total_instances++;
-      const auto* pattern = &pwsi.pattern;        
-      if (rewritePatternInstance(builder, instance, *pattern)) {
-        rewrite_count++;
-      }
-    }
+    if (pwsi.pattern.getNodes().size() < 2) continue;
+    total_critical += pwsi.critical_instances.size();
+    total_non_critical += pwsi.non_critical_instances.size();
   }
   
+  size_t total_instances = total_critical + total_non_critical;
   if (total_instances == 0) {
     llvm::errs() << "  No valid instances to rewrite\n";
     return 0;
   }
   
-  llvm::errs() << "  Total instances to rewrite: " << total_instances << "\n";
+  llvm::errs() << "  Total instances to rewrite: " << total_instances 
+               << " (" << total_critical << " critical, " 
+               << total_non_critical << " non-critical)\n";
+  
+  // Track which patterns have been attempted for fusion (regardless of success)
+  std::set<std::string> attempted_patterns;
+  
+  // Phase 1: Rewrite all critical path instances first (across all patterns)
+  llvm::errs() << "  Phase 1: Rewriting critical path instances...\n";
+  int critical_rewrite_count = 0;
+  for (const auto& pwsi : patterns_with_instances) {
+    if (pwsi.pattern.getNodes().size() < 2 || pwsi.critical_instances.empty()) continue;
+    
+    // Mark pattern as attempted before trying to fuse instances
+    attempted_patterns.insert(pwsi.pattern.getPattern());
+    
+    for (const auto& instance : pwsi.critical_instances) {
+      const auto* pattern = &pwsi.pattern;
+      if (rewritePatternInstance(builder, instance, *pattern)) {
+        critical_rewrite_count++;
+        rewrite_count++;
+      }
+    }
+  }
+  llvm::errs() << "    Rewrote " << critical_rewrite_count << "/" << total_critical 
+               << " critical instances\n";
+  
+  // Phase 2: Rewrite all non-critical path instances (across all patterns)
+  llvm::errs() << "  Phase 2: Rewriting non-critical path instances...\n";
+  int non_critical_rewrite_count = 0;
+  for (const auto& pwsi : patterns_with_instances) {
+    if (pwsi.pattern.getNodes().size() < 2 || pwsi.non_critical_instances.empty()) continue;
+    
+    // Mark pattern as attempted before trying to fuse instances
+    attempted_patterns.insert(pwsi.pattern.getPattern());
+    
+    for (const auto& instance : pwsi.non_critical_instances) {
+      const auto* pattern = &pwsi.pattern;
+      if (rewritePatternInstance(builder, instance, *pattern)) {
+        non_critical_rewrite_count++;
+        rewrite_count++;
+      }
+    }
+  }
+  llvm::errs() << "    Rewrote " << non_critical_rewrite_count << "/" << total_non_critical 
+               << " non-critical instances\n";
+  
+  // Mark all attempted patterns (regardless of success)
+  for (const auto& pattern_str : attempted_patterns) {
+    mlir::neura::GraMi::markPatternAsAttempted(pattern_str);
+  }
   
   return rewrite_count;
 }
@@ -394,9 +549,23 @@ struct IterMergePatternPass
     llvm::errs() << "IterMergePatternPass: Starting pattern mining\n";
     llvm::errs() << "Minimum support threshold: " << min_support.getValue() << "\n";
     llvm::errs() << "========================================\n\n";
+    
     int iter = 0;
+    bool cleared_attempted = false;  // Track if we've cleared attempted marks once
     while (iter < max_iter.getValue()) {
       llvm::errs() << "Iteration " << iter << "\n";
+      
+      // Re-collect critical path operations from all functions for this iteration
+      // Critical path may change after each iteration due to pattern fusion
+      llvm::DenseSet<Operation*> all_critical_ops;
+      module_op.walk([&](func::FuncOp func) {
+        auto critical_ops = mlir::neura::GraMi::collectCriticalPathOps(func);
+        for (Operation* op : critical_ops) {
+          all_critical_ops.insert(op);
+        }
+      });
+      llvm::errs() << "  Collected " << all_critical_ops.size() << " critical path operations for iteration " << iter << "\n";
+      
       auto dfg_graph = mlir::neura::DfgExtractor::extractFromModule(module_op);
       
       if (!dfg_graph) {
@@ -407,10 +576,28 @@ struct IterMergePatternPass
       
       printDFGStatistics(dfg_graph.get());
       mlir::neura::GraMi grami(dfg_graph.get(), min_support.getValue());
+      grami.setCriticalPathOps(all_critical_ops);
       std::vector<mlir::neura::PatternWithSelectedInstances> patterns_with_instances = grami.mineFrequentSubgraphs();
       
+      // If no patterns were fused and we haven't cleared attempted marks yet,
+      // clear them and try one more iteration (without incrementing iter count)
+      if (patterns_with_instances.empty() && !cleared_attempted) {
+        llvm::errs() << "  No patterns fused in this iteration. Clearing attempted marks and retrying...\n";
+        mlir::neura::GraMi::clearAttemptedPatterns();
+        cleared_attempted = true;
+        // Retry this iteration with cleared marks (don't increment iter)
+        continue;
+      }
+
+      // If we cleared marks and still got 0, or if we've reached max iterations, stop
+      if (patterns_with_instances.empty() && cleared_attempted) {
+        llvm::errs() << "  No patterns fused even after clearing attempted marks. Stopping.\n";
+        break;
+      }
+
       int rewrite_count = rewritePatternsToRegions(dfg_graph.get(), module_op, patterns_with_instances);
       llvm::errs() << "  - Rewrote " << rewrite_count << " pattern instances\n\n";
+      
       iter++;
     }
     
@@ -446,6 +633,16 @@ struct InitPatternPass
     llvm::errs() << "Minimum support threshold: " << min_support.getValue() << "\n";
     llvm::errs() << "========================================\n\n";
     
+    // Collect critical path operations from all functions
+    llvm::DenseSet<Operation*> all_critical_ops;
+    module_op.walk([&](func::FuncOp func) {
+      auto critical_ops = mlir::neura::GraMi::collectCriticalPathOps(func);
+      for (Operation* op : critical_ops) {
+        all_critical_ops.insert(op);
+      }
+    });
+    llvm::errs() << "Collected " << all_critical_ops.size() << " critical path operations\n\n";
+    
     auto dfg_graph = mlir::neura::DfgExtractor::extractFromModule(module_op);
     
     if (!dfg_graph) {
@@ -456,6 +653,7 @@ struct InitPatternPass
     
     printDFGStatistics(dfg_graph.get());
     mlir::neura::GraMi grami(dfg_graph.get(), min_support.getValue());
+    grami.setCriticalPathOps(all_critical_ops);
     std::vector<mlir::neura::PatternWithSelectedInstances> patterns_with_instances = grami.mineFrequentSubgraphs();
     
     int rewrite_count = rewritePatternsToRegions(dfg_graph.get(), module_op, patterns_with_instances);
@@ -478,3 +676,4 @@ std::unique_ptr<Pass> createInitPatternPass() {
   return std::make_unique<InitPatternPass>();
 }
 } // namespace mlir::neura
+
