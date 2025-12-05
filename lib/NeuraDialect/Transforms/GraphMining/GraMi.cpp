@@ -191,10 +191,10 @@ std::unique_ptr<DfgGraph> DfgExtractor::extractFromBlock(mlir::Block* block) {
 
 // Mines the frequent subgraphs from the data flow graph.
 // Algorithm:
-// 1. Collect all 2-node patterns from the graph
-// 2. For each pattern, separate instances into critical path vs non-critical path
-// 3. For each pattern, perform MWIS with higher weight for critical path instances
-// 4. Perform inter-pattern analysis with critical path conflict priority
+// 1. Collects all 2-node patterns from the graph
+// 2. For each pattern, separates instances into critical path vs non-critical path
+// 3. For each pattern, performs MWIS with higher weight for critical path instances
+// 4. Performs inter-pattern analysis with critical path conflict priority
 std::vector<PatternWithSelectedInstances> GraMi::mineFrequentSubgraphs() {
   std::vector<FrequentSubgraph> frequent_subgraphs;
   
@@ -217,7 +217,7 @@ std::vector<PatternWithSelectedInstances> GraMi::mineFrequentSubgraphs() {
 
   llvm::errs() << "[GraMi] Critical path ops count: " << critical_path_ops_.size() << "\n";
 
-  // Step 1: Collect all 2-node patterns and classify instances
+  // Step 1: Collects all 2-node patterns and classifies instances
   for (auto* edge : graph_->getEdges()) {
     DfgNode* from = edge->getFrom();
     DfgNode* to = edge->getTo();
@@ -225,8 +225,9 @@ std::vector<PatternWithSelectedInstances> GraMi::mineFrequentSubgraphs() {
     auto* from_op = from->getOperation();
     auto* to_op = to->getOperation();
 
-    if (from_op->getParentRegion()->getParentOp()->getName().getStringRef().str() == "neura.fused_op" || 
-        to_op->getParentRegion()->getParentOp()->getName().getStringRef().str() == "neura.fused_op") {
+
+    // Skips operations inside fused_op
+    if (from_op->getParentRegion()->getParentOp()->getName().getStringRef().str() == "neura.fused_op" || to_op->getParentRegion()->getParentOp()->getName().getStringRef().str() == "neura.fused_op") {
       continue;
     }
 
@@ -281,10 +282,8 @@ std::vector<PatternWithSelectedInstances> GraMi::mineFrequentSubgraphs() {
     }
     instance.outputs = std::vector<mlir::Value>(output_set.begin(), output_set.end());
     
-    // Check if this instance is on critical path (all operations must be on critical path)
     instance.is_on_critical_path = isInstanceOnCriticalPath(instance);
     
-    // Add to appropriate list based on critical path status
     if (instance.is_on_critical_path) {
       pattern_instances[pattern].first.push_back(instance);
     } else {
@@ -292,16 +291,15 @@ std::vector<PatternWithSelectedInstances> GraMi::mineFrequentSubgraphs() {
     }
   }
 
-  // Step 2: Process frequent patterns and perform per-pattern MWIS
+  // Step 2: Processes frequent patterns and performs per-pattern MWIS
   std::vector<PatternWithSelectedInstances> candidates;
   
   for (auto& [pattern, instances_pair] : pattern_instances) {
     auto& [critical_instances, non_critical_instances] = instances_pair;
     size_t total_count = critical_instances.size() + non_critical_instances.size();
     
-    // Skip patterns that have already been attempted for fusion
+    // Skips patterns that have been attempted for fusion
     if (hasPatternBeenAttempted(pattern)) {
-      llvm::errs() << "[GraMi] Skipping pattern (already attempted): " << pattern << "\n";
       continue;
     }
     
@@ -315,7 +313,6 @@ std::vector<PatternWithSelectedInstances> GraMi::mineFrequentSubgraphs() {
       subgraph.addEdge(0, 0, 1);
       frequent_subgraphs.push_back(subgraph);
       
-      // Set pattern_id for all instances
       for (auto& inst : critical_instances) {
         inst.pattern_id = static_cast<int64_t>(pattern_idx);
       }
@@ -323,28 +320,18 @@ std::vector<PatternWithSelectedInstances> GraMi::mineFrequentSubgraphs() {
         inst.pattern_id = static_cast<int64_t>(pattern_idx);
       }
       
-      llvm::errs() << "[GraMi] Pattern #" << pattern_idx << " (" << pattern << "): " 
-                   << critical_instances.size() << " critical, " 
-                   << non_critical_instances.size() << " non-critical instances\n";
+      auto [selected_critical, selected_non_critical] = selectMWISForPattern(critical_instances, non_critical_instances, 10.0);
       
-      // Perform per-pattern MWIS
-      auto [selected_critical, selected_non_critical] = 
-          selectMWISForPattern(critical_instances, non_critical_instances, 10.0);
-      
-      // Create PatternWithSelectedInstances
+      // Creates PatternWithSelectedInstances
       PatternWithSelectedInstances pwsi(subgraph);
       pwsi.critical_instances = selected_critical;
       pwsi.non_critical_instances = selected_non_critical;
-      pwsi.selected_instances.insert(pwsi.selected_instances.end(),
-                                     selected_critical.begin(), selected_critical.end());
-      pwsi.selected_instances.insert(pwsi.selected_instances.end(),
-                                     selected_non_critical.begin(), selected_non_critical.end());
+      pwsi.selected_instances.insert(pwsi.selected_instances.end(), selected_critical.begin(), selected_critical.end());
+      pwsi.selected_instances.insert(pwsi.selected_instances.end(), selected_non_critical.begin(), selected_non_critical.end());
       
       candidates.push_back(pwsi);
       
-      llvm::errs() << "[GraMi] Pattern #" << pattern_idx << " after intra-pattern MWIS: "
-                   << selected_critical.size() << " critical, "
-                   << selected_non_critical.size() << " non-critical selected\n";
+      llvm::errs() << "[GraMi] Pattern #" << pattern_idx << " after intra-pattern MWIS: " << selected_critical.size() << " critical, " << selected_non_critical.size() << " non-critical selected\n";
     }
   }
 
@@ -353,36 +340,18 @@ std::vector<PatternWithSelectedInstances> GraMi::mineFrequentSubgraphs() {
     return {};
   }
   
-  // Step 3: Perform inter-pattern analysis with critical path priority
-  llvm::errs() << "[GraMi] Performing inter-pattern analysis with critical path priority...\n";
-  std::vector<PatternWithSelectedInstances> result = 
-      selectPatternsWithCriticalPriority(candidates, min_support_);
+  // Step 3: Performs inter-pattern analysis with critical path priority
+  std::vector<PatternWithSelectedInstances> result = selectPatternsWithCriticalPriority(candidates, min_support_);
   
   llvm::errs() << "[GraMi] Final result: " << result.size() << " patterns\n";
 
-  // Verification: check no conflicts in critical instances between patterns
-  llvm::errs() << "[GraMi] Verifying no critical path conflicts in selected patterns...\n";
-  for (size_t i = 0; i < result.size(); ++i) {
-    for (size_t j = i + 1; j < result.size(); ++j) {
-      if (criticalInstancesConflict(result[i], result[j])) {
-        llvm::errs() << "[GraMi ERROR] Critical conflict detected between selected patterns!\n";
-        llvm::errs() << "  Pattern " << result[i].pattern.getPattern() 
-                     << " and Pattern " << result[j].pattern.getPattern() << "\n";
-        assert(false && "GraMi inter-pattern selection produced critical path conflicts.");
-      }
-    }
-  }
-  llvm::errs() << "[GraMi] Verification passed: No critical path conflicts detected.\n";
-
-  // Print summary
+  // Prints summary
   size_t total_critical = 0, total_non_critical = 0;
   for (const auto& p : result) {
     total_critical += p.critical_instances.size();
     total_non_critical += p.non_critical_instances.size();
   }
-  llvm::errs() << "[GraMi] Summary: " << result.size() << " patterns, "
-               << total_critical << " critical instances, "
-               << total_non_critical << " non-critical instances\n";
+  llvm::errs() << "[GraMi] Summary: " << result.size() << " patterns, " << total_critical << " critical instances, " << total_non_critical << " non-critical instances\n";
 
   return result;
 }
@@ -445,7 +414,7 @@ std::string GraMi::generatePatternString(const FrequentSubgraph& subgraph) {
 llvm::DenseSet<mlir::Operation*> GraMi::collectCriticalPathOps(mlir::func::FuncOp func) {
   llvm::DenseSet<mlir::Operation*> critical_ops;
   
-  // Collect all recurrence cycles
+  // Collects all recurrence cycles
   auto recurrence_cycles = collectRecurrenceCycles(func);
   
   if (recurrence_cycles.empty()) {
@@ -453,7 +422,7 @@ llvm::DenseSet<mlir::Operation*> GraMi::collectCriticalPathOps(mlir::func::FuncO
     return critical_ops;
   }
   
-  // Find the maximum recurrence length
+  // Finds the maximum recurrence length
   int max_length = 0;
   for (const auto& cycle : recurrence_cycles) {
     max_length = std::max(max_length, cycle.length);
@@ -461,7 +430,7 @@ llvm::DenseSet<mlir::Operation*> GraMi::collectCriticalPathOps(mlir::func::FuncO
   
   llvm::errs() << "[GraMi] Maximum recurrence length: " << max_length << "\n";
   
-  // Collect operations from all cycles with maximum length
+  // Collects operations from all cycles with maximum length
   int critical_cycle_count = 0;
   for (const auto& cycle : recurrence_cycles) {
     if (cycle.length == max_length) {
@@ -482,12 +451,8 @@ llvm::DenseSet<mlir::Operation*> GraMi::collectCriticalPathOps(mlir::func::FuncO
   return critical_ops;
 }
 
-// Checks if an instance is on critical path (all operations must be on critical path)
+// Checks if an instance is on critical path (all operations of the instance must be on critical path)
 bool GraMi::isInstanceOnCriticalPath(const PatternInstance& instance) const {
-  if (critical_path_ops_.empty()) {
-    return false;
-  }
-  
   for (mlir::Operation* op : instance.operations) {
     if (!critical_path_ops_.contains(op)) {
       return false;
@@ -533,13 +498,9 @@ bool GraMi::criticalInstancesConflict(const PatternWithSelectedInstances& a,
 
 // Selects maximum weighted independent set for a single pattern
 // Critical path instances have higher weight
-std::pair<std::vector<PatternInstance>, std::vector<PatternInstance>> 
-GraMi::selectMWISForPattern(
-    const std::vector<PatternInstance>& critical_instances,
-    const std::vector<PatternInstance>& non_critical_instances,
-    double critical_weight_multiplier) {
+std::pair<std::vector<PatternInstance>, std::vector<PatternInstance>> GraMi::selectMWISForPattern(const std::vector<PatternInstance>& critical_instances, const std::vector<PatternInstance>& non_critical_instances, double critical_weight_multiplier) {
   
-  // Combine all instances with their weights
+  // Combines all instances with their weights
   std::vector<std::pair<PatternInstance, double>> weighted_instances;
   
   for (const auto& inst : critical_instances) {
@@ -555,7 +516,7 @@ GraMi::selectMWISForPattern(
   
   size_t n = weighted_instances.size();
   
-  // Build conflict graph
+  // Builds conflict graph
   std::vector<std::vector<size_t>> conflicts(n);
   for (size_t i = 0; i < n; ++i) {
     for (size_t j = i + 1; j < n; ++j) {
@@ -566,7 +527,7 @@ GraMi::selectMWISForPattern(
     }
   }
   
-  // Greedy MWIS selection: prioritize by weight / (degree + 1)
+  // Greedy MWIS selection: prioritizes by weight / (degree + 1)
   std::vector<size_t> selected_indices;
   std::vector<bool> available(n, true);
   
@@ -600,7 +561,7 @@ GraMi::selectMWISForPattern(
     }
   }
   
-  // Separate selected instances into critical and non-critical
+  // Separates selected instances into critical and non-critical
   std::vector<PatternInstance> selected_critical;
   std::vector<PatternInstance> selected_non_critical;
   
@@ -619,15 +580,13 @@ GraMi::selectMWISForPattern(
 // Inter-pattern independent set analysis with critical path priority
 // Rules:
 // - If two patterns have conflicting critical instances, they cannot coexist
-//   Choose the pattern with more critical instances
+//   Chooses the pattern with more critical instances
 // - Non-critical vs non-critical or non-critical vs critical conflicts are allowed
-std::vector<PatternWithSelectedInstances> GraMi::selectPatternsWithCriticalPriority(
-    std::vector<PatternWithSelectedInstances>& candidates,
-    size_t min_support) {
+std::vector<PatternWithSelectedInstances> GraMi::selectPatternsWithCriticalPriority(std::vector<PatternWithSelectedInstances>& candidates, size_t min_support) {
   
   if (candidates.empty()) return {};
   
-  // Sort candidates by number of critical instances (descending), then by total instances
+  // Sorts candidates by number of critical instances (descending), then by total instances
   std::sort(candidates.begin(), candidates.end(),
     [](const PatternWithSelectedInstances& a, const PatternWithSelectedInstances& b) {
       if (a.critical_instances.size() != b.critical_instances.size()) {
@@ -637,17 +596,9 @@ std::vector<PatternWithSelectedInstances> GraMi::selectPatternsWithCriticalPrior
     });
   
   std::vector<PatternWithSelectedInstances> result;
-  std::vector<bool> pattern_available(candidates.size(), true);
   
   for (size_t i = 0; i < candidates.size(); ++i) {
-    if (!pattern_available[i]) continue;
-    
-    // Check total instances meet min_support
-    if (candidates[i].selected_instances.size() < min_support) {
-      continue;
-    }
-    
-    // Check for critical instance conflicts with already selected patterns
+    // Checks for critical instance conflicts with already selected patterns
     bool has_critical_conflict = false;
     for (const auto& selected : result) {
       if (criticalInstancesConflict(candidates[i], selected)) {
@@ -657,45 +608,24 @@ std::vector<PatternWithSelectedInstances> GraMi::selectPatternsWithCriticalPrior
     }
     
     if (has_critical_conflict) {
-      // This pattern has critical conflict with already selected pattern
-      // The selected pattern was chosen first (more critical instances)
       continue;
     }
     
-    // Add this pattern to result
     result.push_back(candidates[i]);
-    
-    // Mark conflicting patterns as unavailable (only based on critical conflicts)
-    for (size_t j = i + 1; j < candidates.size(); ++j) {
-      if (!pattern_available[j]) continue;
-      if (criticalInstancesConflict(candidates[i], candidates[j])) {
-        pattern_available[j] = false;
-      }
-    }
   }
   
-  // Now handle non-critical conflicts: remove conflicting non-critical instances
-  // between selected patterns while keeping them all
+  // Now handles non-critical conflicts: removes conflicting non-critical instances
   for (size_t i = 0; i < result.size(); ++i) {
     for (size_t j = i + 1; j < result.size(); ++j) {
-      // Find non-critical instances in pattern j that conflict with pattern i
+      // Finds non-critical instances in pattern j that conflict with pattern i
       std::vector<PatternInstance> remaining_non_critical;
       for (const auto& inst_j : result[j].non_critical_instances) {
         bool conflicts_with_i = false;
-        // Check conflict with critical instances of pattern i
-        for (const auto& inst_i : result[i].critical_instances) {
+        // Checks conflict with pattern i
+        for (const auto& inst_i : result[i].selected_instances) {
           if (instancesConflict(inst_i, inst_j)) {
             conflicts_with_i = true;
             break;
-          }
-        }
-        // Check conflict with non-critical instances of pattern i
-        if (!conflicts_with_i) {
-          for (const auto& inst_i : result[i].non_critical_instances) {
-            if (instancesConflict(inst_i, inst_j)) {
-              conflicts_with_i = true;
-              break;
-            }
           }
         }
         if (!conflicts_with_i) {
@@ -704,29 +634,14 @@ std::vector<PatternWithSelectedInstances> GraMi::selectPatternsWithCriticalPrior
       }
       result[j].non_critical_instances = remaining_non_critical;
       
-      // Update selected_instances
+      // Updates selected_instances
       result[j].selected_instances.clear();
-      result[j].selected_instances.insert(result[j].selected_instances.end(),
-                                          result[j].critical_instances.begin(),
-                                          result[j].critical_instances.end());
-      result[j].selected_instances.insert(result[j].selected_instances.end(),
-                                          result[j].non_critical_instances.begin(),
-                                          result[j].non_critical_instances.end());
+      result[j].selected_instances.insert(result[j].selected_instances.end(), result[j].critical_instances.begin(), result[j].critical_instances.end());
+      result[j].selected_instances.insert(result[j].selected_instances.end(), result[j].non_critical_instances.begin(), result[j].non_critical_instances.end());
     }
   }
   
-  // Remove patterns that no longer meet min_support after conflict resolution
-  std::vector<PatternWithSelectedInstances> final_result;
-  for (auto& pattern : result) {
-    if (pattern.selected_instances.size() >= min_support) {
-      final_result.push_back(pattern);
-      llvm::errs() << "[GraMi] Selected pattern: " << pattern.pattern.getPattern() 
-                   << " with " << pattern.critical_instances.size() << " critical, "
-                   << pattern.non_critical_instances.size() << " non-critical instances\n";
-    }
-  }
-  
-  return final_result;
+  return result;
 }
 
 // Gets the label of the operation.
@@ -750,18 +665,18 @@ std::string GraMi::getOperationLabel(mlir::Operation* op) {
   return op_name;
 }
 
-// Check if a pattern has been attempted for fusion
+// Checks if a pattern has been attempted for fusion
 bool GraMi::hasPatternBeenAttempted(const std::string& pattern) {
   return attempted_patterns_.find(pattern) != attempted_patterns_.end();
 }
 
-// Mark a pattern as attempted for fusion
+// Marks a pattern as attempted for fusion
 void GraMi::markPatternAsAttempted(const std::string& pattern) {
   attempted_patterns_.insert(pattern);
   llvm::errs() << "[GraMi] Marked pattern as attempted: " << pattern << "\n";
 }
 
-// Clear all attempted pattern marks
+// Clears all attempted pattern marks
 void GraMi::clearAttemptedPatterns() {
   attempted_patterns_.clear();
   llvm::errs() << "[GraMi] Cleared all attempted pattern marks\n";
