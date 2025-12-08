@@ -761,7 +761,7 @@ struct GenerateCodePass
       for (Value v : ops) {
         if (Operation *producer = v.getDefiningOp()) {
           int producer_id = getInstructionId(producer);
-          addEdge(producer_id, consumer_id);
+          add_edge(producer_id, consumer_id);
         }
       }
     }
