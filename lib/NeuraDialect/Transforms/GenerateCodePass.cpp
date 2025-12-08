@@ -4,6 +4,7 @@
 #include "mlir/IR/Value.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/STLExtras.h"
@@ -16,6 +17,8 @@
 #include <string>
 #include <vector>
 #include <unordered_set>
+#include <tuple>
+#include <sstream>
 
 #include "NeuraDialect/Architecture/Architecture.h"
 #include "NeuraDialect/Architecture/ArchitectureSpec.h"
@@ -37,6 +40,7 @@ struct Instruction {
   std::string opcode;
   std::vector<Operand> src_operands;
   std::vector<Operand> dst_operands;
+  int id = -1;       // Unique instruction ID for debug/DFG.
   int time_step = -1; // for ordering.
   Instruction(const std::string &op) : opcode(op) {}
 };
@@ -162,7 +166,6 @@ static std::string extractConstantLiteralFromAttr(Attribute attr) {
     std::string value = string_attr.getValue().str();
     // Checks if the string starts with "%arg" followed by digits.
     if (value.size() > 4 && value.substr(0, 4) == "%arg") {
-      // Extracts "arg" + digits (removes the leading "%").
       return value.substr(1);
     }
   }
@@ -321,6 +324,10 @@ struct GenerateCodePass
   // Back references from IR operations to emitted instructions.
   DenseMap<Operation*, InstructionReference>    operation_to_instruction_reference;
   DenseMap<Operation*, SmallVector<Value>>      operation_to_operands;
+  DenseMap<Value, Operation*>                   reserve_to_phi_for_ctrl;
+  // Map (col,row,ts,local_idx_in_bucket) -> global instruction id.
+  std::map<std::tuple<int,int,int,int>, int>    instruction_id_map;
+  int next_instruction_id = 0;
 
   // De-dup sets.
   std::unordered_set<uint64_t> hop_signatures;     // (midTileId, ts, link_id).
@@ -653,6 +660,199 @@ struct GenerateCodePass
     }
   }
 
+  // Assigns unique IDs to all materialized instructions (including data/ctrl mov hops).
+  void assignInstructionIds() {
+    instruction_id_map.clear();
+    next_instruction_id = 0;
+    for (auto &[tile_key, timestep_map] : tile_time_instructions) {
+      int col = tile_key.first;
+      int row = tile_key.second;
+      for (auto &[ts, inst_vec] : timestep_map) {
+        for (size_t idx = 0; idx < inst_vec.size(); ++idx) {
+          Instruction &inst = inst_vec[idx];
+          inst.id = next_instruction_id++;
+          instruction_id_map[{col, row, ts, (int)idx}] = inst.id;
+        }
+      }
+    }
+  }
+
+  // Looks up instruction ID by InstructionReference (col,row,ts,idx in bucket).
+  int lookupInstructionId(const InstructionReference &ref) const {
+    auto it = instruction_id_map.find({ref.col_idx, ref.row_idx, ref.t, ref.idx});
+    if (it == instruction_id_map.end()) return -1;
+    return it->second;
+  }
+
+  // Gets instruction ID for a materialized operation.
+  int getInstructionId(Operation *op) const {
+    auto it = operation_to_instruction_reference.find(op);
+    if (it == operation_to_instruction_reference.end()) return -1;
+    return lookupInstructionId(it->second);
+  }
+
+  // Helper to escape strings for DOT/JSON.
+  static std::string escape(const std::string &s) {
+    std::string out;
+    out.reserve(s.size());
+    for (char c : s) {
+      if (c == '"') out += "\\\"";
+      else if (c == '\\') out += "\\\\";
+      else if (c == '\n') out += "\\n";
+      else out += c;
+    }
+    return out;
+  }
+
+  // Finds hop instruction ID for a link step (data or ctrl).
+  int findHopId(const LinkStep &step, const Topology &topo, bool isCtrl) const {
+    int mid_tile = topo.srcTileOfLink(step.link_id);
+    auto [x, y] = topo.tile_location.lookup(mid_tile);
+    auto tile_it = tile_time_instructions.find({x, y});
+    if (tile_it == tile_time_instructions.end()) return -1;
+    auto ts_it = tile_it->second.find(step.ts);
+    if (ts_it == tile_it->second.end()) return -1;
+    const auto &vec = ts_it->second;
+    for (size_t i = 0; i < vec.size(); ++i) {
+      const Instruction &inst = vec[i];
+      if (inst.opcode == (isCtrl ? "CTRL_MOV" : "DATA_MOV")) {
+        auto id_it = instruction_id_map.find({x, y, step.ts, (int)i});
+        if (id_it != instruction_id_map.end()) return id_it->second;
+      }
+    }
+    return -1;
+  }
+
+  // Writes DOT and JSON DFG outputs.
+  void writeDFGOutput(const Topology &topo,
+                      ArrayRef<Operation *> data_movs,
+                      ArrayRef<Operation *> ctrl_movs,
+                      const DenseMap<Value, Operation*> &reserve2phi) {
+    struct NodeInfo {
+      std::string opcode;
+      int col, row, ts;
+    };
+    std::map<int, NodeInfo> nodes;
+    std::vector<std::pair<int,int>> edges;
+
+    auto add_edge = [&](int src, int dst) {
+      if (src < 0 || dst < 0) return;
+      edges.emplace_back(src, dst);
+    };
+
+    // Build nodes from all instructions.
+    for (const auto &[tile_key, timestep_map] : tile_time_instructions) {
+      int col = tile_key.first;
+      int row = tile_key.second;
+      for (const auto &[ts, inst_vec] : timestep_map) {
+        for (const Instruction &inst : inst_vec) {
+          if (inst.id < 0) continue;
+          nodes[inst.id] = NodeInfo{inst.opcode, col, row, ts};
+        }
+      }
+    }
+
+    // SSA edges for materialized operations.
+    for (const auto &entry : operation_to_operands) {
+      Operation *consumer = entry.first;
+      int consumer_id = getInstructionId(consumer);
+      if (consumer_id < 0) continue;
+      const SmallVector<Value> &ops = entry.second;
+      for (Value v : ops) {
+        if (Operation *producer = v.getDefiningOp()) {
+          int producer_id = getInstructionId(producer);
+          addEdge(producer_id, consumer_id);
+        }
+      }
+    }
+
+    // Forwarder edges (data_mov / ctrl_mov) with hop nodes.
+    auto process_forwarder = [&](Operation *fwd, bool is_ctrl) {
+      SmallVector<LinkStep, 8> links = getLinkChain(fwd);
+      SmallVector<int, 8> hop_ids;
+      for (const LinkStep &ls : links) {
+        int hid = findHopId(ls, topo, is_ctrl);
+        if (hid >= 0) hop_ids.push_back(hid);
+      }
+
+      Operation *producer = fwd->getOperand(0).getDefiningOp();
+      int producer_id = producer ? getInstructionId(producer) : -1;
+
+      SmallVector<std::pair<Operation*, Value>, 2> consumers =
+          is_ctrl ? collectCtrlMovConsumers(fwd, reserve2phi)
+                  : collectDataMovConsumers(fwd);
+      SmallVector<int, 4> consumer_ids;
+      for (auto &c : consumers) {
+        int cid = getInstructionId(c.first);
+        if (cid >= 0) consumer_ids.push_back(cid);
+      }
+
+      int current = producer_id;
+      for (int hid : hop_ids) {
+        add_edge(current, hid);
+        current = hid;
+      }
+      for (int cid : consumer_ids) add_edge(current, cid);
+    };
+
+    for (Operation *dm : data_movs) process_forwarder(dm, /*is_ctrl=*/false);
+    for (Operation *cm : ctrl_movs) process_forwarder(cm, /*is_ctrl=*/true);
+
+    // Output DOT.
+    {
+      std::error_code ec;
+      llvm::raw_fd_ostream dot_out("tmp-generated-dfg.dot", ec);
+      if (!ec) {
+        dot_out << "digraph DFG {\n  rankdir=LR;\n  node [shape=box, style=filled];\n";
+        auto color_for = [](const std::string &op) {
+          if (op == "DATA_MOV") return "lightgreen";
+          if (op == "CTRL_MOV") return "lightyellow";
+          if (op == "CONSTANT") return "lightblue";
+          return "white";
+        };
+        for (const auto &kv : nodes) {
+          int id = kv.first;
+          const NodeInfo &n = kv.second;
+          dot_out << "  n" << id << " [label=\""
+                  << escape(n.opcode) << "\\nID=" << id
+                  << "\\n(" << n.col << "," << n.row << ") t=" << n.ts
+                  << "\", fillcolor=" << color_for(n.opcode) << "];\n";
+        }
+        for (const auto &e : edges) {
+          dot_out << "  n" << e.first << " -> n" << e.second << ";\n";
+        }
+        dot_out << "}\n";
+      }
+    }
+
+    // Output YAML.
+    {
+      std::error_code ec;
+      llvm::raw_fd_ostream yaml_out("tmp-generated-dfg.yaml", ec);
+      if (!ec) {
+        yaml_out << "nodes:\n";
+        for (const auto &kv : nodes) {
+          int id = kv.first;
+          const NodeInfo &n = kv.second;
+          yaml_out << "  - id: " << id << "\n"
+                   << "    opcode: \"" << escape(n.opcode) << "\"\n"
+                   << "    tile_x: " << n.col << "\n"
+                   << "    tile_y: " << n.row << "\n"
+                   << "    time_step: " << n.ts << "\n";
+        }
+        yaml_out << "edges:\n";
+        for (const auto &e : edges) {
+          yaml_out << "  - from: " << e.first << "\n"
+                   << "    to: " << e.second << "\n";
+        }
+      }
+    }
+
+    llvm::outs() << "[generate-code] DFG emitted: nodes=" << nodes.size()
+                 << ", edges=" << edges.size()
+                 << " -> tmp-generated-dfg.dot, tmp-generated-dfg.yaml\n";
+  }
+
   ArrayConfig buildArrayConfig(int columns, int rows, int compiled_ii = -1) {
     ArrayConfig config{columns, rows, compiled_ii, {}};
     std::map<std::pair<int,int>, std::vector<Instruction>> tile_insts;
@@ -705,6 +905,8 @@ struct GenerateCodePass
         yaml_out << "            - timestep: " << timestep << "\n              operations:\n";
         for (const Instruction *inst : operations) {
           yaml_out << "                - opcode: \"" << inst->opcode << "\"\n";
+          if (inst->id >= 0)
+            yaml_out << "                  id: " << inst->id << "\n";
           // sources.
           if (!inst->src_operands.empty()) {
             yaml_out << "                  src_operands:\n";
@@ -861,6 +1063,7 @@ struct GenerateCodePass
       SmallVector<Operation*> ctrl_movs;
       DenseMap<Value, Operation*> reserve_to_phi_map;
       indexIR(func, data_movs, ctrl_movs, reserve_to_phi_map);
+      reserve_to_phi_for_ctrl = reserve_to_phi_map;
 
       // Expands forwarders without re-walking IR.
       for (Operation *op : data_movs)
@@ -870,9 +1073,11 @@ struct GenerateCodePass
       logUnresolvedOperands();
 
       int compiled_ii = getCompiledII(func);
+      assignInstructionIds();
       ArrayConfig config = buildArrayConfig(columns, rows, compiled_ii);
       writeYAMLOutput(config);
       writeASMOutput(config);
+      writeDFGOutput(topo, data_movs, ctrl_movs, reserve_to_phi_for_ctrl);
     }
   }
 };
