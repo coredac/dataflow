@@ -40,6 +40,10 @@ jobs:
       run: |
         sudo apt-get install ccache
         sudo apt-get install lld
+
+    # install graphviz
+    - name: install graphviz
+      run: sudo apt-get install graphviz
  
     # setup LLVM
     - name: install a specific version of LLVM
