@@ -101,3 +101,18 @@
 // ASM-NEXT: {
 // ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$1]
 // ASM-NEXT: } (t=5)
+
+// RUN: mlir-neura-opt %t-kernel.mlir \
+// RUN:   --assign-accelerator \
+// RUN:   --lower-llvm-to-neura \
+// RUN:   --promote-func-arg-to-const \
+// RUN:   --fold-constant \
+// RUN:   --canonicalize-live-in \
+// RUN:   --leverage-predicated-value \
+// RUN:   --transform-ctrl-to-data-flow \
+// RUN:   --fold-constant \
+// RUN:   --view-op-graph 2>&1 | sed -n '/^digraph G {/,/^}$/p' > relu_kernel.dot
+// RUN: dot -Tpng relu_kernel.dot -o relu_kernel.png
+// RUN: FileCheck %s --input-file=relu_kernel.dot -check-prefix=DOT
+
+// DOT: digraph G {
