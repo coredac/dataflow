@@ -1173,7 +1173,6 @@ struct GenerateCodePass
 
     collectHopRewrites(func, topology, nodes, original_edges, edges, edges_to_skip, hop_rewrites);
 
-    std::unordered_set<int> reg_only_movs;
     adjustRegisterOnlyMovCoords(nodes, edges);
 
     pruneMovNodesWithoutCoords(nodes, edges, materialized_ids);
