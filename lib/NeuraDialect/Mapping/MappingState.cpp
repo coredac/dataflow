@@ -370,7 +370,8 @@ void MappingState::encodeMappingState() {
       if (loc.resource->getKind() == ResourceKind::Tile) {
         kind_str = "tile";
         Tile *tile = dyn_cast<Tile>(loc.resource);
-        int ii_cycle = loc.time_step / II;
+        int invalid_iterations = loc.time_step / II;
+        int index_per_ii = loc.time_step % II;
         auto dict = mlir::DictionaryAttr::get(
             ctx, {mlir::NamedAttribute(mlir::StringAttr::get(ctx, "resource"),
                                        mlir::StringAttr::get(ctx, kind_str)),
@@ -383,9 +384,13 @@ void MappingState::encodeMappingState() {
                       mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
                                              loc.time_step)),
                   mlir::NamedAttribute(
-                      mlir::StringAttr::get(ctx, "ii_cycle"),
+                      mlir::StringAttr::get(ctx, "invalid_iterations"),
                       mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
-                                             ii_cycle)),
+                                             invalid_iterations)),
+                  mlir::NamedAttribute(
+                      mlir::StringAttr::get(ctx, "index_per_ii"),
+                      mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
+                                             index_per_ii)),
                   mlir::NamedAttribute(
                       mlir::StringAttr::get(ctx, "x"),
                       mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
@@ -397,7 +402,8 @@ void MappingState::encodeMappingState() {
         mapping_entries.push_back(dict);
       } else if (loc.resource->getKind() == ResourceKind::Link) {
         kind_str = "link";
-        int ii_cycle = loc.time_step / II;
+        int invalid_iterations = loc.time_step / II;
+        int index_per_ii = loc.time_step % II;
         auto dict = mlir::DictionaryAttr::get(
             ctx, {mlir::NamedAttribute(mlir::StringAttr::get(ctx, "resource"),
                                        mlir::StringAttr::get(ctx, kind_str)),
@@ -410,16 +416,21 @@ void MappingState::encodeMappingState() {
                       mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
                                              loc.time_step)),
                   mlir::NamedAttribute(
-                      mlir::StringAttr::get(ctx, "ii_cycle"),
+                      mlir::StringAttr::get(ctx, "invalid_iterations"),
                       mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
-                                             ii_cycle))});
+                                             invalid_iterations)),
+                  mlir::NamedAttribute(
+                      mlir::StringAttr::get(ctx, "index_per_ii"),
+                      mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
+                                             index_per_ii))});
         mapping_entries.push_back(dict);
       } else if (loc.resource->getKind() == ResourceKind::Register) {
         kind_str = "register";
         Register *reg = static_cast<Register *>(loc.resource);
         int global_id = loc.resource->getId();
         int per_tile_register_id = reg->getPerTileId();
-        int ii_cycle = loc.time_step / II;
+        int invalid_iterations = loc.time_step / II;
+        int index_per_ii = loc.time_step % II;
 
         auto dict = mlir::DictionaryAttr::get(
             ctx, {mlir::NamedAttribute(mlir::StringAttr::get(ctx, "resource"),
@@ -437,13 +448,18 @@ void MappingState::encodeMappingState() {
                       mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
                                              loc.time_step)),
                   mlir::NamedAttribute(
-                      mlir::StringAttr::get(ctx, "ii_cycle"),
+                      mlir::StringAttr::get(ctx, "invalid_iterations"),
                       mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
-                                             ii_cycle))});
+                                             invalid_iterations)),
+                  mlir::NamedAttribute(
+                      mlir::StringAttr::get(ctx, "index_per_ii"),
+                      mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
+                                             index_per_ii))});
         mapping_entries.push_back(dict);
       } else {
         kind_str = "unknown";
-        int ii_cycle = loc.time_step / II;
+        int invalid_iterations = loc.time_step / II;
+        int index_per_ii = loc.time_step % II;
         auto dict = mlir::DictionaryAttr::get(
             ctx, {mlir::NamedAttribute(mlir::StringAttr::get(ctx, "resource"),
                                        mlir::StringAttr::get(ctx, kind_str)),
@@ -456,9 +472,13 @@ void MappingState::encodeMappingState() {
                       mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
                                              loc.time_step)),
                   mlir::NamedAttribute(
-                      mlir::StringAttr::get(ctx, "ii_cycle"),
+                      mlir::StringAttr::get(ctx, "invalid_iterations"),
                       mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
-                                             ii_cycle))});
+                                             invalid_iterations)),
+                  mlir::NamedAttribute(
+                      mlir::StringAttr::get(ctx, "index_per_ii"),
+                      mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
+                                             index_per_ii))});
         mapping_entries.push_back(dict);
       }
     }
