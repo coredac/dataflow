@@ -1159,7 +1159,8 @@ struct GenerateCodePass
   // Writes DOT and JSON DFG outputs based on SSA and dfg_id attributes.
   // Applies hop-aware coordinates/middle-node insertion for DATA_MOV / CTRL_MOV,
   // and bypasses reserve nodes (no node for reserve, edges direct from producer to consumer).
-  void writeDFGOutputSSA(func::FuncOp func, const Topology &topology) {
+  void writeDFGOutputSSA(func::FuncOp func, const Topology &topology,
+                         const std::unordered_set<int> &materialized_ids) {
     DfgNodeMap nodes;
     DfgEdgeList edges;
 
@@ -1413,7 +1414,7 @@ struct GenerateCodePass
       ArrayConfig config = buildArrayConfig(columns, rows, compiled_ii);
       writeYAMLOutput(config);
       writeASMOutput(config);
-      writeDFGOutputSSA(func, topo);
+      writeDFGOutputSSA(func, topo, materialized_ids);
     }
   }
 };
