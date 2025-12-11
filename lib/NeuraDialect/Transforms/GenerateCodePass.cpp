@@ -387,63 +387,63 @@ struct GenerateCodePass
                SmallVector<Operation*> &data_movs,
                SmallVector<Operation*> &ctrl_movs,
                DenseMap<Value, Operation*> &reserve_to_phi_map) {
-    function.walk([&](Operation *operation) {
-      // Records placement for every operation (even for mov/reserve).
-      operation_placements[operation] = getTileLocation(operation);
+    function.walk([&](Operation *op) {
+      // placement for every op (even for mov/reserve).
+      operation_placements[op] = getTileLocation(op);
 
-      // Builds reserve -> phi mapping.
-      if (isPhi(operation) && operation->getNumOperands() >= 1) {
-        reserve_to_phi_map[operation->getOperand(0)] = operation;
+      // build reserve -> phi mapping.
+      if (isPhi(op) && op->getNumOperands() >= 1) {
+        reserve_to_phi_map[op->getOperand(0)] = op;
       }
 
-      // Collects forwarders.
-      if (isDataMov(operation)) { data_movs.push_back(operation); return; }
-      if (isCtrlMov(operation)) { ctrl_movs.push_back(operation); return; }
+      // collect forwarders.
+      if (isDataMov(op)) { data_movs.push_back(op); return; }
+      if (isCtrlMov(op)) { ctrl_movs.push_back(op); return; }
 
-      // Skips Reserve from materialization.
-      if (isReserve(operation)) return;
+      // skip Reserve from materialization.
+      if (isReserve(op)) return;
 
-      // Materializes all other operations placed on tiles (compute/phi/const/etc.).
-      TileLocation placement = operation_placements[operation];
+      // materialize all other ops placed on tiles (compute/phi/const/etc.).
+      TileLocation placement = operation_placements[op];
       if (!placement.has_tile) return;
 
-      std::string opcode = getOpcode(operation);
+      std::string opcode = getOpcode(op);
       Instruction inst(opcode);
-      inst.id = getDfgId(operation);
+      inst.id = getDfgId(op);
       inst.time_step = placement.time_step;
 
-      if (isConstant(operation)) {
-        inst.src_operands.emplace_back(getConstantLiteral(operation), "RED");
-      } else if (operation->getAttr("constant_value")) {
+      if (isConstant(op)) {
+        inst.src_operands.emplace_back(getConstantLiteral(op), "RED");
+      } else if (op->getAttr("constant_value")) {
         // Checks if operation has constant_value attribute (for non-CONSTANT operations).
-        inst.src_operands.emplace_back(getConstantLiteral(operation), "RED");
+        inst.src_operands.emplace_back(getConstantLiteral(op), "RED");
       } else {
         // Handles normal operands, including operations with rhs_value attribute.
-        SmallVector<Value> operands; operands.reserve(operation->getNumOperands());
+        SmallVector<Value> operands; operands.reserve(op->getNumOperands());
         
         // Processes actual Value operands (if any).
-        for (Value v : operation->getOperands()) {
+        for (Value v : op->getOperands()) {
           operands.push_back(v);
           inst.src_operands.emplace_back("UNRESOLVED", "RED");
         }
         
         // Handles cases where binary operations have the RHS constant stored as an attribute.
-        if (auto rhs_value_attr = operation->getAttr("rhs_value")) {
+        if (auto rhs_value_attr = op->getAttr("rhs_value")) {
           std::string rhs_literal = extractConstantLiteralFromAttr(rhs_value_attr);
           if (!rhs_literal.empty()) {
             inst.src_operands.emplace_back(rhs_literal, "RED");
           }
         }
         
-        operation_to_operands[operation] = std::move(operands);
+        operation_to_operands[op] = std::move(operands);
       }
 
-      if (auto mapped_register_id = getMappedRegId(operation))
+      if (auto mapped_register_id = getMappedRegId(op))
         inst.dst_operands.emplace_back("$" + std::to_string(*mapped_register_id), "RED");
 
       auto &bucket = getInstructionBucket(placement.col_idx, placement.row_idx, placement.time_step);
       bucket.push_back(std::move(inst));
-      operation_to_instruction_reference[operation] =
+      operation_to_instruction_reference[op] =
           InstructionReference{placement.col_idx, placement.row_idx, placement.time_step,
                                (int)bucket.size() - 1};
     });
@@ -673,10 +673,8 @@ struct GenerateCodePass
     }
   }
 
-  // Assigns unique IDs to all materialized instructions (including data/ctrl mov hops),
-  // and records their timesteps.
-  void assignInstructionIds(std::unordered_set<int> &materialized_ids,
-                            std::unordered_map<int, int> &materialized_timesteps) {
+  // Assigns unique IDs to all materialized instructions (including data/ctrl mov hops).
+  void assignInstructionIds(std::unordered_set<int> &materialized_ids) {
     instruction_id_map.clear();
     int max_assigned = -1;
     for (auto &[tile_key, timestep_map] : tile_time_instructions) {
@@ -696,7 +694,6 @@ struct GenerateCodePass
           if (inst.id < 0) inst.id = next_instruction_id++;
           instruction_id_map[{col, row, ts, (int)idx}] = inst.id;
           materialized_ids.insert(inst.id);
-          materialized_timesteps[inst.id] = ts;
         }
       }
     }
@@ -1160,9 +1157,7 @@ struct GenerateCodePass
   // Writes DOT and JSON DFG outputs based on SSA and dfg_id attributes.
   // Applies hop-aware coordinates/middle-node insertion for DATA_MOV / CTRL_MOV,
   // and bypasses reserve nodes (no node for reserve, edges direct from producer to consumer).
-  void writeDFGOutputSSA(func::FuncOp func, const Topology &topology,
-                         const std::unordered_set<int> &materialized_ids,
-                         const std::unordered_map<int, int> &materialized_timesteps) {
+  void writeDFGOutputSSA(func::FuncOp func, const Topology &topology) {
     DfgNodeMap nodes;
     DfgEdgeList edges;
 
@@ -1180,18 +1175,6 @@ struct GenerateCodePass
 
     std::unordered_set<int> reg_only_movs;
     adjustRegisterOnlyMovCoords(nodes, edges);
-
-    // Align mov/hop timesteps to materialized instruction timesteps when available.
-    for (auto &entry : nodes) {
-      int node_id = entry.first;
-      DfgNodeInfo &node = entry.second;
-      if (node.opcode == "DATA_MOV" || node.opcode == "CTRL_MOV") {
-        auto it_ts = materialized_timesteps.find(node_id);
-        if (it_ts != materialized_timesteps.end()) {
-          node.time_step = it_ts->second;
-        }
-      }
-    }
 
     pruneMovNodesWithoutCoords(nodes, edges, materialized_ids);
 
@@ -1425,12 +1408,11 @@ struct GenerateCodePass
 
       int compiled_ii = getCompiledII(func);
     std::unordered_set<int> materialized_ids;
-    std::unordered_map<int, int> materialized_timesteps;
-    assignInstructionIds(materialized_ids, materialized_timesteps);
+    assignInstructionIds(materialized_ids);
       ArrayConfig config = buildArrayConfig(columns, rows, compiled_ii);
       writeYAMLOutput(config);
       writeASMOutput(config);
-    writeDFGOutputSSA(func, topo, materialized_ids, materialized_timesteps);
+      writeDFGOutputSSA(func, topo);
     }
   }
 };
