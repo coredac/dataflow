@@ -357,6 +357,8 @@ struct GenerateCodePass
     dfg_id_to_op.clear();
     hop_signatures.clear();
     deposit_signatures.clear();
+    instruction_id_map.clear();
+    next_instruction_id = 0;
   }
 
   std::pair<int, int> getArrayDimensions(func::FuncOp function) {
