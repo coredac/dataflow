@@ -1406,8 +1406,8 @@ struct GenerateCodePass
       logUnresolvedOperands();
 
       int compiled_ii = getCompiledII(func);
-    std::unordered_set<int> materialized_ids;
-    assignInstructionIds(materialized_ids);
+      std::unordered_set<int> materialized_ids;
+      assignInstructionIds(materialized_ids);
       ArrayConfig config = buildArrayConfig(columns, rows, compiled_ii);
       writeYAMLOutput(config);
       writeASMOutput(config);
