@@ -8,6 +8,7 @@ add_mlir_dialect_library(MLIRNeura
         Mapping/Mapping.cpp
         Mapping/HeuristicMapping/HeuristicMapping.cpp
         Architecture/Architecture.cpp
+        Transforms/GraphMining/GraMi.cpp
 
         ADDITIONAL_HEADER_DIRS
         ${PROJECT_SOURCE_DIR}/include/NeuraDialect

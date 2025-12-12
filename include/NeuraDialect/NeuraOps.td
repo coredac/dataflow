@@ -690,3 +690,49 @@ def Neura_InvariantOp : Op<NeuraDialect, "invariant">{
   let results = (outs AnyType:$result);
   let assemblyFormat = "$initial `,` $condition attr-dict `:` type($initial) `,` type($condition) `->` type($result)";
 }
+
+// Fused Operation - wraps a frequently occurring pattern
+def Neura_FusedOp : Op<NeuraDialect, "fused_op", [NoTerminator]> {
+  let summary = "Represents a fused operation identified by graph mining";
+  let description = [{
+    This operation wraps a frequently occurring subgraph pattern identified
+    by graph mining passes. The pattern body is contained in a region
+    that preserves the original operations and their data flow edges.
+    
+    Attributes:
+    - pattern_id: unique identifier for this pattern type
+    - pattern_name: string description of the pattern
+    - frequency: how many times this pattern occurs in the original graph
+    
+    Example:
+        %result = "neura.fused_op"(%arg0, %arg1) <{frequency = 5 : i64, pattern_id = 11 : i64, pattern_name = "mul->add"}> ({
+        ^bb0(%arg0: !neura.data<!llvm.ptr, i1>, %arg1: !neura.data<!llvm.ptr, i1>):
+          %0 = "neura.mul"(%arg0, %arg1) : (!neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1>) -> !neura.data<!llvm.ptr, i1>
+          %1 = "neura.add"(%0, %arg1) : (!neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1>) -> !neura.data<!llvm.ptr, i1>
+          "neura.yield"(%1) : (!neura.data<!llvm.ptr, i1>) -> ()
+        })
+  }];
+  
+  let arguments = (ins 
+    Variadic<AnyType>:$inputs,
+    I64Attr:$pattern_id,
+    StrAttr:$pattern_name,
+    I64Attr:$frequency
+  );
+  
+  let results = (outs Variadic<AnyType>:$outputs);
+  let regions = (region SizedRegion<1>:$body);
+  
+  let hasVerifier = 0;
+} 
+
+// Yield operation for common pattern region
+def Neura_YieldOp : Op<NeuraDialect, "yield", [Terminator]> {
+  let summary = "Yield operation for common pattern regions";
+  let description = [{
+    This operation yields values from a common pattern region back to the parent.
+  }];
+  
+  let arguments = (ins Variadic<AnyType>:$operands);
+  let builders = [OpBuilder<(ins), [{ /* nothing to do */ }]>];
+}
