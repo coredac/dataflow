@@ -88,3 +88,18 @@
 // ASM-NEXT: {
 // ASM-NEXT:   ICMP_EQ, [EAST, RED], [#32] -> [$0], [WEST, RED]
 // ASM-NEXT: } (t=3)
+
+// RUN: mlir-neura-opt %t-kernel.mlir \
+// RUN:   --assign-accelerator \
+// RUN:   --lower-llvm-to-neura \
+// RUN:   --promote-func-arg-to-const \
+// RUN:   --fold-constant \
+// RUN:   --canonicalize-live-in \
+// RUN:   --leverage-predicated-value \
+// RUN:   --transform-ctrl-to-data-flow \
+// RUN:   --fold-constant \
+// RUN:   --view-op-graph 2>&1 | sed -n '/^digraph G {/,/^}$/p' > fir_kernel.dot
+// RUN: dot -Tpng fir_kernel.dot -o fir_kernel.png
+// RUN: FileCheck %s --input-file=fir_kernel.dot -check-prefix=DOT
+
+// DOT: digraph G {

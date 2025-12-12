@@ -211,6 +211,7 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:             - timestep: 0
 // YAML-NEXT:               operations:
 // YAML-NEXT:                 - opcode: "GRANT_ONCE"
+// YAML-NEXT:                   id: 0
 // YAML-NEXT:                   src_operands:
 // YAML-NEXT:                     - operand: "#0"
 // YAML-NEXT:                       color: "RED"
@@ -220,6 +221,7 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:             - timestep: 2
 // YAML-NEXT:               operations:
 // YAML-NEXT:                 - opcode: "GRANT_ONCE"
+// YAML-NEXT:                   id: 1
 // YAML-NEXT:                   src_operands:
 // YAML-NEXT:                     - operand: "#0.000000"
 // YAML-NEXT:                       color: "RED"
@@ -229,6 +231,7 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:             - timestep: 3
 // YAML-NEXT:               operations:
 // YAML-NEXT:                 - opcode: "PHI"
+// YAML-NEXT:                   id: 7
 // YAML-NEXT:                   src_operands:
 // YAML-NEXT:                     - operand: "NORTH"
 // YAML-NEXT:                       color: "RED"
@@ -240,6 +243,7 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:             - timestep: 4
 // YAML-NEXT:               operations:
 // YAML-NEXT:                 - opcode: "DATA_MOV"
+// YAML-NEXT:                   id: 180001
 // YAML-NEXT:                   src_operands:
 // YAML-NEXT:                     - operand: "EAST"
 // YAML-NEXT:                       color: "RED"
@@ -249,6 +253,7 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:             - timestep: 5
 // YAML-NEXT:               operations:
 // YAML-NEXT:                 - opcode: "DATA_MOV"
+// YAML-NEXT:                   id: 150001
 // YAML-NEXT:                   src_operands:
 // YAML-NEXT:                     - operand: "EAST"
 // YAML-NEXT:                       color: "RED"

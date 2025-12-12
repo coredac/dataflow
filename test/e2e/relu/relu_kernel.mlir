@@ -3,14 +3,14 @@
 // RUN: clang -S -emit-llvm -O3 -fno-vectorize -fno-unroll-loops -std=c11 \
 // RUN:   -I %S/../../benchmark/CGRA-Bench/kernels/relu -DSMALL_DATASET \
 // RUN:   -o %t-kernel-full.ll %S/../../benchmark/CGRA-Bench/kernels/relu/relu.c
-
+//
 // Extract only the kernel function(s). PolyBench typically uses kernel_relu,
 // so a regex keeps this robust across name variants.
 // RUN: llvm-extract --rfunc=".*kernel.*" %t-kernel-full.ll -o %t-kernel-only.ll
-
+//
 // Import the LLVM IR into MLIR (LLVM dialect).
 // RUN: mlir-translate --import-llvm %t-kernel-only.ll -o %t-kernel.mlir
-
+//
 // RUN: mlir-neura-opt %t-kernel.mlir \
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
@@ -27,7 +27,7 @@
 // RUN: FileCheck %s --input-file=%t-mapping.mlir -check-prefix=MAPPING
 // RUN: FileCheck %s --input-file=tmp-generated-instructions.yaml --check-prefix=YAML
 // RUN: FileCheck %s --input-file=tmp-generated-instructions.asm --check-prefix=ASM
-
+//
 // Check the mapped MLIR contains proper structure and neura operations.
 // RUN: FileCheck %s --input-file=%t-mapping.mlir -check-prefix=MAPPING
 // MAPPING: module attributes
@@ -96,7 +96,7 @@
 // YAML:        - opcode: "CAST_TRUNC"
 // YAML:        - opcode: "ICMP_EQ"
 // YAML:        - opcode: "ICMP_SGE"
-
+//
 // ASM:      PE(2,1):
 // ASM-NEXT: {
 // ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$1]

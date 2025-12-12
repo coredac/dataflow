@@ -73,11 +73,26 @@
 // MAPPING-NEXT:     "neura.return"() {mapping_locs = [{id = 12 : i32, index_per_ii = 2 : i32, invalid_iterations = 2 : i32, resource = "tile", time_step = 12 : i32, x = 0 : i32, y = 3 : i32}]} : () -> ()
 
 // YAML: instructions:
-// YAML: - opcode: "CAST_FPTOSI"
-// YAML: - opcode: "FDIV"
-// YAML: - opcode: "GRANT_ONCE"
+// YAML: - opcode: "GEP"
+// YAML: - opcode: "LOAD"
+// YAML: - opcode: "ADD"
 
 // ASM:      PE(3,2):
 // ASM-NEXT: {
 // ASM-NEXT:   GRANT_ONCE, [#0] -> [$0]
 // ASM-NEXT: } (t=0)
+
+// RUN: mlir-neura-opt %t-kernel.mlir \
+// RUN:   --assign-accelerator \
+// RUN:   --lower-llvm-to-neura \
+// RUN:   --promote-func-arg-to-const \
+// RUN:   --fold-constant \
+// RUN:   --canonicalize-live-in \
+// RUN:   --leverage-predicated-value \
+// RUN:   --transform-ctrl-to-data-flow \
+// RUN:   --fold-constant \
+// RUN:   --view-op-graph 2>&1 | sed -n '/^digraph G {/,/^}$/p' > histogram_kernel.dot
+// RUN: dot -Tpng histogram_kernel.dot -o histogram_kernel.png
+// RUN: FileCheck %s --input-file=histogram_kernel.dot -check-prefix=DOT
+
+// DOT: digraph G {

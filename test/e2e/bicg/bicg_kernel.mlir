@@ -177,6 +177,7 @@
 // YAML-NEXT:             - timestep: 0
 // YAML-NEXT:               operations:
 // YAML-NEXT:                 - opcode: "CONSTANT"
+// YAML-NEXT:                   id: 1
 // YAML-NEXT:                   src_operands:
 // YAML-NEXT:                     - operand: "arg0"
 // YAML-NEXT:                       color: "RED"
@@ -186,6 +187,7 @@
 // YAML-NEXT:             - timestep: 2
 // YAML-NEXT:               operations:
 // YAML-NEXT:                 - opcode: "GRANT_ONCE"
+// YAML-NEXT:                   id: 2
 // YAML-NEXT:                   src_operands:
 // YAML-NEXT:                     - operand: "arg1"
 // YAML-NEXT:                       color: "RED"
@@ -216,3 +218,18 @@
 // ASM-NEXT: {
 // ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [EAST, RED]
 // ASM-NEXT: } (t=7)
+
+// RUN: mlir-neura-opt %t-kernel.mlir \
+// RUN:   --assign-accelerator \
+// RUN:   --lower-llvm-to-neura \
+// RUN:   --promote-func-arg-to-const \
+// RUN:   --fold-constant \
+// RUN:   --canonicalize-live-in \
+// RUN:   --leverage-predicated-value \
+// RUN:   --transform-ctrl-to-data-flow \
+// RUN:   --fold-constant \
+// RUN:   --view-op-graph 2>&1 | sed -n '/^digraph G {/,/^}$/p' > bicg_kernel.dot
+// RUN: dot -Tpng bicg_kernel.dot -o bicg_kernel.png
+// RUN: FileCheck %s --input-file=bicg_kernel.dot -check-prefix=DOT
+
+// DOT: digraph G {

@@ -364,52 +364,54 @@ struct MapToAcceleratorPass
           "Dump the resource allocation table after mapping (default: true)"),
       llvm::cl::init(true)};
 
-  void runOnOperation() override {
-    ModuleOp module = getOperation();
-    llvm::errs() << "[MapToAcceleratorPass] Starting mapping pass...\n";
-    std::unique_ptr<Mapping> mapping_strategy;
-    StringRef mapping_strategy_string_ref(mappingStrategy.getValue());
-    StringRef backtrack_config_stringRef(backtrackConfig.getValue());
-    StringRef mapping_mode_string_ref(mappingMode.getValue());
-    bool is_spatial_only = (mapping_mode_string_ref == "spatial-only");
-    if (is_spatial_only || mapping_mode_string_ref == "spatial-temporal" ||
-        mapping_mode_string_ref.empty()) {
-      if (mapping_mode_string_ref.empty()) {
-        mapping_mode_string_ref = "spatial-temporal";
-      }
+  // Configures mapping strategy and mode based on command-line options.
+  bool configureMappingStrategy(StringRef mapping_strategy_opt,
+                                StringRef backtrack_config_opt,
+                                StringRef mapping_mode_opt,
+                                std::unique_ptr<Mapping> &mapping_strategy,
+                                std::string &resolved_mapping_mode,
+                                std::string &resolved_mapping_strategy,
+                                bool &is_spatial_only) {
+    StringRef mapping_mode_str = mapping_mode_opt;
+    if (mapping_mode_str.empty()) {
+      mapping_mode_str = "spatial-temporal";
+    }
+    if (mapping_mode_str == "spatial-only" ||
+        mapping_mode_str == "spatial-temporal") {
       llvm::errs() << "[MapToAcceleratorPass] Using Mapping Mode: "
-                   << mapping_mode_string_ref << "\n";
+                   << mapping_mode_str << "\n";
     } else {
       llvm::errs() << "[MapToAcceleratorPass] Unsupported mapping mode: "
-                   << mapping_mode_string_ref << "\n";
-      return;
+                   << mapping_mode_str << "\n";
+      return false;
     }
+    resolved_mapping_mode = mapping_mode_str.str();
+    is_spatial_only = (mapping_mode_str == "spatial-only");
 
-    if (mapping_strategy_string_ref == "heuristic" ||
-        mapping_strategy_string_ref.empty()) {
-      mapping_strategy_string_ref = "heuristic";
-
-      if (backtrack_config_stringRef == "simple") {
+    StringRef mapping_strategy_str = mapping_strategy_opt;
+    if (mapping_strategy_str.empty()) {
+      mapping_strategy_str = "heuristic";
+    }
+    StringRef backtrack_str = backtrack_config_opt;
+    if (mapping_strategy_str.empty() || mapping_strategy_str == "heuristic") {
+      if (backtrack_str.empty()) {
+        backtrack_str = "heuristic";
+      }
+      if (backtrack_str == "simple") {
         mapping_strategy = std::make_unique<HeuristicMapping>(1, 1);
-      } else if (backtrack_config_stringRef == "greedy") {
+      } else if (backtrack_str == "greedy") {
         mapping_strategy = std::make_unique<HeuristicMapping>(INT_MAX, 1);
-      } else if (backtrack_config_stringRef == "exhaustive") {
+      } else if (backtrack_str == "exhaustive") {
         mapping_strategy = std::make_unique<HeuristicMapping>(INT_MAX, INT_MAX);
-      } else if (backtrack_config_stringRef == "customized") {
+      } else if (backtrack_str == "customized") {
         mapping_strategy = std::make_unique<HeuristicMapping>(5, 3);
-      } else if (backtrack_config_stringRef.starts_with("customized=")) {
-        // Used for custom backtrack parameters.
-        // Example: "customized=5,3" means max_loc=5, max_depth=3
-        // Extracts the parameters after "customized=".
-        StringRef paramsRef =
-            backtrack_config_stringRef.substr(strlen("customized="));
-        size_t comma_pos = paramsRef.find(',');
-
+      } else if (backtrack_str.starts_with("customized=")) {
+        StringRef params = backtrack_str.substr(strlen("customized="));
+        size_t comma_pos = params.find(',');
         if (comma_pos != StringRef::npos) {
-          StringRef max_loc_str = paramsRef.substr(0, comma_pos);
-          StringRef max_depth_str = paramsRef.substr(comma_pos + 1);
-
-          int max_loc, max_depth;
+          StringRef max_loc_str = params.substr(0, comma_pos);
+          StringRef max_depth_str = params.substr(comma_pos + 1);
+          int max_loc = 0, max_depth = 0;
           if (!max_loc_str.getAsInteger(10, max_loc) &&
               !max_depth_str.getAsInteger(10, max_depth)) {
             mapping_strategy =
@@ -421,19 +423,64 @@ struct MapToAcceleratorPass
           } else {
             llvm::errs() << "[MapToAcceleratorPass] Illegal customized "
                             "parameters format: "
-                         << backtrack_config_stringRef << "\n";
-            return;
+                         << backtrack_str << "\n";
+            return false;
           }
         } else {
-          llvm::errs()
-              << "[MapToAcceleratorPass] Illegal customized parameters format: "
-              << backtrack_config_stringRef << "\n";
-          return;
+          llvm::errs() << "[MapToAcceleratorPass] Illegal customized "
+                          "parameters format: "
+                       << backtrack_str << "\n";
+          return false;
         }
+      } else {
+        llvm::errs() << "[MapToAcceleratorPass] Unsupported backtrack config: "
+                     << backtrack_str << "\n";
+        return false;
       }
+      resolved_mapping_strategy = mapping_strategy_str.str();
     } else {
       llvm::errs() << "[MapToAcceleratorPass] Unsupported mapping strategy: "
-                   << mapping_strategy_string_ref << "\n";
+                   << mapping_strategy_str << "\n";
+      return false;
+    }
+    return true;
+  }
+
+  // Assigns unique dfg_id to all operations in SSA topological order.
+  void assignDfgIds(func::FuncOp func) {
+    // Uses existing topological sort to get all operations in order.
+    std::vector<Operation *> sorted_ops = getTopologicallySortedOps(func);
+    
+    auto ctx = func.getContext();
+    int next_id = 0;
+    
+    // Assigns ID to each operation in topological order.
+    for (Operation *op : sorted_ops) {
+      op->setAttr("dfg_id", 
+                  IntegerAttr::get(IntegerType::get(ctx, 32), next_id));
+      llvm::errs() << "[MapToAcceleratorPass] Assigned dfg_id=" << next_id 
+                   << " to " << *op << "\n";
+      next_id++;
+    }
+    
+    llvm::errs() << "[MapToAcceleratorPass] Assigned " << next_id 
+                 << " dfg_id(s) in total\n";
+  }
+
+  void runOnOperation() override {
+    ModuleOp module = getOperation();
+    llvm::errs() << "[MapToAcceleratorPass] Starting mapping pass...\n";
+    std::unique_ptr<Mapping> mapping_strategy;
+    std::string resolved_mapping_mode;
+    std::string resolved_mapping_strategy;
+    bool is_spatial_only = false;
+    if (!configureMappingStrategy(mappingStrategy.getValue(),
+                                  backtrackConfig.getValue(),
+                                  mappingMode.getValue(),
+                                  mapping_strategy,
+                                  resolved_mapping_mode,
+                                  resolved_mapping_strategy,
+                                  is_spatial_only)) {
       return;
     }
 
@@ -519,10 +566,10 @@ struct MapToAcceleratorPass
 
       // If steering mode, enforce spatial-only mapping.
       if (is_steering_mode) {
-        if (mapping_mode_string_ref != "spatial-only") {
+        if (!is_spatial_only) {
           func.emitError() << "Steering IR mode requires spatial-only mapping, "
                            << "but got mapping mode: "
-                           << mapping_mode_string_ref;
+                           << resolved_mapping_mode;
           signalPassFailure();
           return;
         }
@@ -620,28 +667,36 @@ struct MapToAcceleratorPass
           }
           mapping_state.encodeMappingState();
 
+          // Assigns unique dfg_id to all operations in SSA topological order.
+          assignDfgIds(func);
+
           // Sets the mapping_info attribute on the function.
           auto ctx = func.getContext();
-          DictionaryAttr mapping_info = DictionaryAttr::get(
-              ctx,
-              {NamedAttribute(StringAttr::get(ctx, "x_tiles"),
-                              IntegerAttr::get(IntegerType::get(ctx, 32),
-                                               architecture.getPerCgraColumns())),
-               NamedAttribute(StringAttr::get(ctx, "y_tiles"),
-                              IntegerAttr::get(IntegerType::get(ctx, 32),
-                                               architecture.getPerCgraRows())),
-               NamedAttribute(StringAttr::get(ctx, "mapping_strategy"),
-                              StringAttr::get(ctx, mapping_strategy_string_ref)),
-               NamedAttribute(StringAttr::get(ctx, "mapping_mode"),
-                              StringAttr::get(ctx, mapping_mode_string_ref)),
-               NamedAttribute(StringAttr::get(ctx, "compiled_ii"),
-                              IntegerAttr::get(IntegerType::get(ctx, 32), ii)),
-               NamedAttribute(
-                   StringAttr::get(ctx, "rec_mii"),
-                   IntegerAttr::get(IntegerType::get(ctx, 32), rec_mii)),
-               NamedAttribute(
-                   StringAttr::get(ctx, "res_mii"),
-                   IntegerAttr::get(IntegerType::get(ctx, 32), res_mii))});
+          SmallVector<NamedAttribute, 8> mapping_attrs;
+          mapping_attrs.push_back(NamedAttribute(
+              StringAttr::get(ctx, "x_tiles"),
+              IntegerAttr::get(IntegerType::get(ctx, 32),
+                               architecture.getPerCgraColumns())));
+          mapping_attrs.push_back(NamedAttribute(
+              StringAttr::get(ctx, "y_tiles"),
+              IntegerAttr::get(IntegerType::get(ctx, 32),
+                               architecture.getPerCgraRows())));
+          mapping_attrs.push_back(NamedAttribute(
+              StringAttr::get(ctx, "mapping_strategy"),
+              StringAttr::get(ctx, resolved_mapping_strategy)));
+          mapping_attrs.push_back(NamedAttribute(
+              StringAttr::get(ctx, "mapping_mode"),
+              StringAttr::get(ctx, resolved_mapping_mode)));
+          mapping_attrs.push_back(NamedAttribute(
+              StringAttr::get(ctx, "compiled_ii"),
+              IntegerAttr::get(IntegerType::get(ctx, 32), ii)));
+          mapping_attrs.push_back(NamedAttribute(
+              StringAttr::get(ctx, "rec_mii"),
+              IntegerAttr::get(IntegerType::get(ctx, 32), rec_mii)));
+          mapping_attrs.push_back(NamedAttribute(
+              StringAttr::get(ctx, "res_mii"),
+              IntegerAttr::get(IntegerType::get(ctx, 32), res_mii)));
+          DictionaryAttr mapping_info = DictionaryAttr::get(ctx, mapping_attrs);
 
           func->setAttr("mapping_info", mapping_info);
           break;
