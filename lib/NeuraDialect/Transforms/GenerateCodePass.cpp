@@ -4,6 +4,7 @@
 #include "mlir/IR/Value.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/STLExtras.h"
@@ -16,6 +17,8 @@
 #include <string>
 #include <vector>
 #include <unordered_set>
+#include <tuple>
+#include <sstream>
 
 #include "NeuraDialect/Architecture/Architecture.h"
 #include "NeuraDialect/Architecture/ArchitectureSpec.h"
@@ -37,6 +40,7 @@ struct Instruction {
   std::string opcode;
   std::vector<Operand> src_operands;
   std::vector<Operand> dst_operands;
+  int id = -1;       // Unique instruction ID for debug/DFG.
   int time_step = -1; // for ordering.
   Instruction(const std::string &op) : opcode(op) {}
 };
@@ -162,7 +166,6 @@ static std::string extractConstantLiteralFromAttr(Attribute attr) {
     std::string value = string_attr.getValue().str();
     // Checks if the string starts with "%arg" followed by digits.
     if (value.size() > 4 && value.substr(0, 4) == "%arg") {
-      // Extracts "arg" + digits (removes the leading "%").
       return value.substr(1);
     }
   }
@@ -321,6 +324,12 @@ struct GenerateCodePass
   // Back references from IR operations to emitted instructions.
   DenseMap<Operation*, InstructionReference>    operation_to_instruction_reference;
   DenseMap<Operation*, SmallVector<Value>>      operation_to_operands;
+  DenseMap<Value, Operation*>                   reserve_to_phi_for_ctrl;
+  // Map dfg_id -> op for later adjustments.
+  DenseMap<int, Operation*>                     dfg_id_to_op;
+  // Map (col,row,ts,local_idx_in_bucket) -> global instruction id.
+  std::map<std::tuple<int,int,int,int>, int>    instruction_id_map;
+  int next_instruction_id = 0;
 
   // De-dup sets.
   std::unordered_set<uint64_t> hop_signatures;     // (midTileId, ts, link_id).
@@ -328,9 +337,11 @@ struct GenerateCodePass
 
   // ---------- helpers to place materialized instructions ----------.
   void placeRouterHop(const Topology &topology, int tile_id, int time_step,
-                      StringRef input_direction, StringRef output_direction, bool asCtrlMov = false) {
+                      StringRef input_direction, StringRef output_direction,
+                      bool asCtrlMov = false, int assigned_id = -1) {
     auto [tile_x, tile_y] = topology.tile_location.lookup(tile_id);
     Instruction instruction(asCtrlMov ? "CTRL_MOV" : "DATA_MOV");
+    instruction.id = assigned_id;
     instruction.time_step = time_step;
     instruction.src_operands.emplace_back(input_direction.str(), "RED");
     instruction.dst_operands.emplace_back(output_direction.str(), "RED");
@@ -343,8 +354,11 @@ struct GenerateCodePass
     tile_time_instructions.clear();
     operation_to_instruction_reference.clear();
     operation_to_operands.clear();
+    dfg_id_to_op.clear();
     hop_signatures.clear();
     deposit_signatures.clear();
+    instruction_id_map.clear();
+    next_instruction_id = 0;
   }
 
   std::pair<int, int> getArrayDimensions(func::FuncOp function) {
@@ -397,6 +411,7 @@ struct GenerateCodePass
 
       std::string opcode = getOpcode(op);
       Instruction inst(opcode);
+      inst.id = getDfgId(op);
       inst.time_step = placement.time_step;
 
       if (isConstant(op)) {
@@ -474,7 +489,8 @@ struct GenerateCodePass
 
   // Emits router hops for multi-hop paths (from the second hop onwards). CTRL_MOV emits CTRL_MOV hops.
   template<bool IsCtrl>
-  void generateIntermediateHops(const SmallVector<LinkStep, 8> &links, const Topology &topo) {
+  void generateIntermediateHops(const SmallVector<LinkStep, 8> &links, const Topology &topo,
+                                int base_mov_id, size_t &hop_counter) {
     for (size_t i = 1; i < links.size(); ++i) {
       int prev_link = links[i - 1].link_id;
       int cur_link  = links[i].link_id;
@@ -485,8 +501,11 @@ struct GenerateCodePass
       StringRef out = topo.dirFromLink(cur_link);
 
       uint64_t sig = (uint64_t)mid_tile << 32 ^ (uint64_t)ts << 16 ^ (uint64_t)cur_link;
-      if (hop_signatures.insert(sig).second)
-        placeRouterHop(topo, mid_tile, ts, in, out, /*asCtrlMov=*/IsCtrl);
+      if (hop_signatures.insert(sig).second) {
+        int hop_id = base_mov_id >= 0 ? base_mov_id * 10000 + static_cast<int>(hop_counter) : -1;
+        ++hop_counter;
+        placeRouterHop(topo, mid_tile, ts, in, out, /*asCtrlMov=*/IsCtrl, hop_id);
+      }
     }
   }
 
@@ -516,7 +535,7 @@ struct GenerateCodePass
   // Returns true if rewiring to $reg was applied to consumers.
   template<bool IsCtrl>
   bool handleRegisterRewiring(Operation *consumer_operation, Value value_at_consumer, const SmallVector<RegStep, 4> &regs,
-                              const SmallVector<LinkStep, 8> &links, const Topology &topo) {
+                              const SmallVector<LinkStep, 8> &links, const Topology &topo, int mov_dfg_id) {
     if (regs.empty()) return false;
 
     int timestep_0 = regs.front().ts;
@@ -527,7 +546,7 @@ struct GenerateCodePass
       int dst_tile = topo.dstTileOfLink(links.back().link_id);
       // Computes incoming direction from destination tile's perspective.
       StringRef incoming_dir = topo.invertDir(topo.dirFromLink(links.back().link_id));
-      placeDstDeposit(topo, dst_tile, timestep_0, incoming_dir, register_id, /*asCtrlMov=*/IsCtrl);
+      placeDstDeposit(topo, dst_tile, timestep_0, incoming_dir, register_id, /*asCtrlMov=*/IsCtrl, mov_dfg_id);
 
       TileLocation consumer_placement = operation_placements.lookup(consumer_operation);
       if (consumer_placement.has_tile && consumer_placement.time_step > timestep_0) {
@@ -578,6 +597,8 @@ struct GenerateCodePass
                      const DenseMap<Value, Operation*> &reserve2phi) {
     if (!validateForwarderShape<IsCtrl>(forwarder)) return;
 
+    int mov_dfg_id = getDfgId(forwarder);
+
     // Basic info from forwarders.
     Value source = forwarder->getOperand(0);
     Operation *producer = source.getDefiningOp();
@@ -589,7 +610,8 @@ struct GenerateCodePass
 
     // Producer endpoints & intermediate hops.
     setProducerDestination(producer, producer_direction, regs);
-    generateIntermediateHops<IsCtrl>(links, topo);
+    size_t hop_counter = 1;
+    generateIntermediateHops<IsCtrl>(links, topo, mov_dfg_id, hop_counter);
 
     // Gather consumers.
     SmallVector<std::pair<Operation*, Value>, 2> consumers;
@@ -604,7 +626,7 @@ struct GenerateCodePass
     for (std::pair<Operation*, Value> &consumer_pair : consumers) {
       Operation *consumer_operation = consumer_pair.first;
       Value value_at_consumer = consumer_pair.second;
-      if (!handleRegisterRewiring<IsCtrl>(consumer_operation, value_at_consumer, regs, links, topo))
+      if (!handleRegisterRewiring<IsCtrl>(consumer_operation, value_at_consumer, regs, links, topo, mov_dfg_id))
         handleDirectionRewiring<IsCtrl>(consumer_operation, value_at_consumer, consumer_direction, links, topo, forwarder);
     }
   }
@@ -651,6 +673,519 @@ struct GenerateCodePass
       auto diag = module.emitWarning("GenerateCodePass: UNRESOLVED operands kept for debugging");
       diag << " (src=" << unsrc << ", dst=" << undst << "); they are highlighted with color=ERROR in YAML.";
     }
+  }
+
+  // Assigns unique IDs to all materialized instructions (including data/ctrl mov hops).
+  void assignInstructionIds(std::unordered_set<int> &materialized_ids) {
+    instruction_id_map.clear();
+    int max_assigned = -1;
+    for (auto &[tile_key, timestep_map] : tile_time_instructions) {
+      for (auto &[ts, inst_vec] : timestep_map) {
+        for (Instruction &inst : inst_vec) {
+          if (inst.id >= 0) max_assigned = std::max(max_assigned, inst.id);
+        }
+      }
+    }
+    next_instruction_id = max_assigned + 1;
+    for (auto &[tile_key, timestep_map] : tile_time_instructions) {
+      int col = tile_key.first;
+      int row = tile_key.second;
+      for (auto &[ts, inst_vec] : timestep_map) {
+        for (size_t idx = 0; idx < inst_vec.size(); ++idx) {
+          Instruction &inst = inst_vec[idx];
+          if (inst.id < 0) inst.id = next_instruction_id++;
+          instruction_id_map[{col, row, ts, (int)idx}] = inst.id;
+          materialized_ids.insert(inst.id);
+        }
+      }
+    }
+  }
+
+  // Looks up instruction ID by InstructionReference (col,row,ts,idx in bucket).
+  int lookupInstructionId(const InstructionReference &ref) const {
+    auto it = instruction_id_map.find({ref.col_idx, ref.row_idx, ref.t, ref.idx});
+    if (it == instruction_id_map.end()) return -1;
+    return it->second;
+  }
+
+  // Gets instruction ID for a materialized operation.
+  int getInstructionId(Operation *op) const {
+    auto it = operation_to_instruction_reference.find(op);
+    if (it == operation_to_instruction_reference.end()) return -1;
+    return lookupInstructionId(it->second);
+  }
+
+  // Helper to escape strings for DOT/JSON.
+  static std::string escape(const std::string &s) {
+    std::string out;
+    out.reserve(s.size());
+    for (char c : s) {
+      if (c == '"') out += "\\\"";
+      else if (c == '\\') out += "\\\\";
+      else if (c == '\n') out += "\\n";
+      else out += c;
+    }
+    return out;
+  }
+
+  // Finds hop instruction ID for a link step (data or ctrl).
+  int findHopId(const LinkStep &step, const Topology &topo, bool isCtrl) const {
+    int mid_tile = topo.srcTileOfLink(step.link_id);
+    auto [x, y] = topo.tile_location.lookup(mid_tile);
+    auto tile_it = tile_time_instructions.find({x, y});
+    if (tile_it == tile_time_instructions.end()) return -1;
+    auto ts_it = tile_it->second.find(step.ts);
+    if (ts_it == tile_it->second.end()) return -1;
+    const auto &vec = ts_it->second;
+    for (size_t i = 0; i < vec.size(); ++i) {
+      const Instruction &inst = vec[i];
+      if (inst.opcode == (isCtrl ? "CTRL_MOV" : "DATA_MOV")) {
+        auto id_it = instruction_id_map.find({x, y, step.ts, (int)i});
+        if (id_it != instruction_id_map.end()) return id_it->second;
+      }
+    }
+    return -1;
+  }
+
+  // Helper to extract dfg_id from operation.
+  static int getDfgId(Operation *op) {
+    if (auto id_attr = op->getAttrOfType<IntegerAttr>("dfg_id")) {
+      return id_attr.getInt();
+    }
+    return -1;
+  }
+
+  // Helper to extract tile coordinates and time_step from mapping_locs.
+  struct LocationInfo {
+    int tile_x = -1;
+    int tile_y = -1;
+    int time_step = -1;
+    bool has_tile = false;
+  };
+
+  static LocationInfo getLocationInfo(Operation *op) {
+    LocationInfo info;
+    if (auto arr = op->getAttrOfType<ArrayAttr>("mapping_locs")) {
+      for (Attribute a : arr) {
+        auto d = dyn_cast<DictionaryAttr>(a);
+        if (!d) continue;
+        auto resource = dyn_cast_or_null<StringAttr>(d.get("resource"));
+        
+        // Extracts time_step from any resource type.
+        if (auto ts_attr = dyn_cast_or_null<IntegerAttr>(d.get("time_step"))) {
+          info.time_step = ts_attr.getInt();
+        }
+        
+        // Only tile resources have x/y coordinates.
+        if (resource && resource.getValue() == "tile") {
+          if (auto x_attr = dyn_cast_or_null<IntegerAttr>(d.get("x"))) {
+            info.tile_x = x_attr.getInt();
+          }
+          if (auto y_attr = dyn_cast_or_null<IntegerAttr>(d.get("y"))) {
+            info.tile_y = y_attr.getInt();
+          }
+          info.has_tile = true;
+          break;  // Takes first tile location.
+        }
+      }
+    }
+    return info;
+  }
+
+  struct DfgNodeInfo {
+    std::string opcode;
+    int tile_x = -1;
+    int tile_y = -1;
+    int time_step = -1;
+  };
+  using DfgNodeMap = std::map<int, DfgNodeInfo>;
+  using DfgEdgeList = std::vector<std::pair<int, int>>;
+
+  struct HopRewriteInfo {
+    int mov_id = -1;
+    int producer_id = -1;
+    SmallVector<int, 4> consumer_ids;
+    SmallVector<std::pair<int, int>, 8> hop_tiles;
+    SmallVector<int, 8> hop_time_steps;
+  };
+
+  void collectCtrlMovReserves(func::FuncOp func,
+                              DenseMap<Value, SmallVector<Operation *, 2>> &reserve_to_ctrl_movs) const {
+    func.walk([&](Operation *operation) {
+      if (auto ctrl_mov_op = dyn_cast<CtrlMovOp>(operation)) {
+        if (ctrl_mov_op->getNumOperands() >= 2) {
+          Value reserve_value = ctrl_mov_op->getOperand(1);
+          reserve_to_ctrl_movs[reserve_value].push_back(operation);
+        }
+      }
+    });
+  }
+
+  void addEdge(DfgEdgeList &edges, int src, int dst) const {
+    if (src < 0 || dst < 0) return;
+    if (src == dst) return; // Avoids self-loop.
+    edges.emplace_back(src, dst);
+  }
+
+  void buildSsaNodesAndEdges(func::FuncOp func,
+                             const DenseMap<Value, SmallVector<Operation *, 2>> &reserve_to_ctrl_movs,
+                             DfgNodeMap &nodes,
+                             DfgEdgeList &edges) {
+    func.walk([&](Operation *operation) {
+      if (operation == func.getOperation()) return;  // Skips function itself.
+      if (isReserve(operation)) return; // Skips reserve nodes entirely (bypass later).
+
+      int dfg_id = getDfgId(operation);
+      if (dfg_id < 0) {
+        llvm::errs() << "[WARN] Operation without dfg_id: " << *operation << "\n";
+        return;
+      }
+      dfg_id_to_op[dfg_id] = operation;
+
+      std::string opcode = getOpcode(operation);
+      LocationInfo location_info = getLocationInfo(operation);
+
+      if ((isDataMov(operation) || isCtrlMov(operation)) && !location_info.has_tile) {
+        nodes[dfg_id] = DfgNodeInfo{opcode, -1, -1, location_info.time_step};
+      } else {
+        nodes[dfg_id] = DfgNodeInfo{opcode, location_info.tile_x, location_info.tile_y, location_info.time_step};
+      }
+
+      for (Value operand : operation->getOperands()) {
+        Operation *producer_op = operand.getDefiningOp();
+        if (producer_op && isReserve(producer_op)) {
+          auto it = reserve_to_ctrl_movs.find(operand);
+          if (it != reserve_to_ctrl_movs.end()) {
+            for (Operation *ctrl_mov_op : it->second) {
+              if (ctrl_mov_op == operation) continue;
+              int producer_id = getDfgId(ctrl_mov_op);
+              if (producer_id >= 0) addEdge(edges, producer_id, dfg_id);
+            }
+          }
+          continue;
+        }
+        if (producer_op) {
+          int producer_id = getDfgId(producer_op);
+          addEdge(edges, producer_id, dfg_id);
+        }
+      }
+    });
+  }
+
+  void collectHopTiles(const SmallVector<LinkStep, 8> &link_steps,
+                       TileLocation producer_loc,
+                       const Topology &topology,
+                       SmallVector<std::pair<int, int>, 8> &out_tiles,
+                       SmallVector<int, 8> &out_time_steps) const {
+    out_tiles.clear();
+    out_time_steps.clear();
+    if (link_steps.empty()) return;
+
+    int producer_tile_id = producer_loc.has_tile
+        ? topology.tileIdAt(producer_loc.col_idx, producer_loc.row_idx) : -1;
+    int consumer_tile_id = topology.dstTileOfLink(link_steps.back().link_id);
+
+    for (size_t i = 0; i < link_steps.size(); ++i) {
+      int middle_tile_id = topology.srcTileOfLink(link_steps[i].link_id);
+      if (middle_tile_id == producer_tile_id || middle_tile_id == consumer_tile_id) continue;
+      auto coord = topology.tile_location.lookup(middle_tile_id);
+      if (!out_tiles.empty() && out_tiles.back().first == coord.first &&
+          out_tiles.back().second == coord.second) {
+        continue; // Skips duplicates.
+      }
+      out_tiles.push_back(coord);
+      out_time_steps.push_back(link_steps[i].ts);
+    }
+  }
+
+  void collectHopRewrites(func::FuncOp func, const Topology &topology,
+                          DfgNodeMap &nodes,
+                          const DfgEdgeList &original_edges,
+                          DfgEdgeList &edges,
+                          llvm::SmallDenseSet<std::pair<int,int>, 32> &skip_edges,
+                          std::vector<HopRewriteInfo> &rewrites) {
+    func.walk([&](Operation *operation) {
+      if (!isDataMov(operation) && !isCtrlMov(operation)) return;
+      int mov_dfg_id = getDfgId(operation);
+      if (mov_dfg_id < 0) return;
+
+      int producer_id = -1;
+      if (operation->getNumOperands() >= 1) {
+        if (Operation *producer = operation->getOperand(0).getDefiningOp())
+          producer_id = getDfgId(producer);
+      }
+
+      SmallVector<int, 4> consumer_ids;
+      if (operation->getNumResults() >= 1) {
+        for (OpOperand &use : operation->getResult(0).getUses()) {
+          Operation *user = use.getOwner();
+          while (user && isReserve(user)) {
+            if (user->getNumResults() == 0) { user = nullptr; break; }
+            bool forwarded = false;
+            for (OpOperand &reserve_use : user->getResult(0).getUses()) {
+              Operation *forward_user = reserve_use.getOwner();
+              if (!forward_user) continue;
+              int consumer_id = getDfgId(forward_user);
+              if (consumer_id >= 0) consumer_ids.push_back(consumer_id);
+              forwarded = true;
+            }
+            user = nullptr;
+            if (forwarded) break;
+          }
+          if (user) {
+            int consumer_id = getDfgId(user);
+            if (consumer_id >= 0) consumer_ids.push_back(consumer_id);
+          }
+        }
+      }
+
+      SmallVector<LinkStep, 8> link_steps = collectLinkSteps(operation);
+      SmallVector<std::pair<int,int>, 8> hop_tiles;
+      SmallVector<int, 8> hop_time_steps;
+      // Build hop tiles directly from link steps (mirrors router hop emission).
+      if (link_steps.size() > 1) {
+        for (size_t i = 1; i < link_steps.size(); ++i) {
+          int middle_tile_id = topology.srcTileOfLink(link_steps[i].link_id);
+          auto coord = topology.tile_location.lookup(middle_tile_id);
+          hop_tiles.push_back(coord);
+          hop_time_steps.push_back(link_steps[i].ts);
+        }
+      }
+
+      if (hop_tiles.empty()) {
+        auto it = nodes.find(mov_dfg_id);
+        if (it != nodes.end()) {
+          it->second.tile_x = -1;
+          it->second.tile_y = -1;
+        }
+      } else {
+        int base = mov_dfg_id * 10000;
+        for (size_t i = 0; i < hop_tiles.size(); ++i) {
+          int node_id = base + static_cast<int>(i) + 1;
+          DfgNodeInfo hop_node;
+          hop_node.opcode = isCtrlMov(operation) ? "CTRL_MOV" : "DATA_MOV";
+          hop_node.tile_x = hop_tiles[i].first;
+          hop_node.tile_y = hop_tiles[i].second;
+          hop_node.time_step = (i < hop_time_steps.size()) ? hop_time_steps[i] : -1;
+          nodes[node_id] = hop_node;
+        }
+
+        if (producer_id >= 0)
+          skip_edges.insert({producer_id, mov_dfg_id});
+        for (int consumer_id : consumer_ids)
+          skip_edges.insert({mov_dfg_id, consumer_id});
+
+        rewrites.push_back(
+            HopRewriteInfo{mov_dfg_id, producer_id, consumer_ids, hop_tiles, hop_time_steps});
+      }
+    });
+
+    for (const auto &edge : original_edges) {
+      if (skip_edges.count(edge)) continue;
+      edges.push_back(edge);
+    }
+
+    for (const HopRewriteInfo &rewrite : rewrites) {
+      if (rewrite.hop_tiles.empty()) continue;
+      int previous = rewrite.producer_id;
+      int base = rewrite.mov_id * 10000;
+      for (size_t i = 0; i < rewrite.hop_tiles.size(); ++i) {
+        int node_id = base + static_cast<int>(i) + 1;
+        if (previous >= 0) edges.emplace_back(previous, node_id);
+        previous = node_id;
+      }
+      if (previous >= 0) edges.emplace_back(previous, rewrite.mov_id);
+      for (int consumer_id : rewrite.consumer_ids)
+        edges.emplace_back(rewrite.mov_id, consumer_id);
+    }
+  }
+
+  void adjustRegisterOnlyMovCoords(DfgNodeMap &nodes, const DfgEdgeList &edges) {
+    std::unordered_map<int, std::vector<int>> successors;
+    for (const auto &edge : edges) successors[edge.first].push_back(edge.second);
+
+    auto scanMappingKinds = [](Operation *op, bool &has_link, bool &has_register, int &min_register_ts) {
+      has_link = false; has_register = false; min_register_ts = -1;
+      if (auto arr = op->getAttrOfType<ArrayAttr>("mapping_locs")) {
+        for (Attribute attr : arr) {
+          auto dict = dyn_cast<DictionaryAttr>(attr);
+          if (!dict) continue;
+          auto res = dyn_cast_or_null<StringAttr>(dict.get("resource"));
+          if (!res) continue;
+          if (res.getValue() == "link") {
+            has_link = true;
+          } else if (res.getValue() == "register" || res.getValue() == "reg") {
+            has_register = true;
+            if (auto ts_attr = dyn_cast_or_null<IntegerAttr>(dict.get("time_step"))) {
+              int ts = ts_attr.getInt();
+              if (min_register_ts < 0 || ts < min_register_ts) min_register_ts = ts;
+            }
+          }
+        }
+      }
+    };
+
+    for (auto &entry : nodes) {
+      int node_id = entry.first;
+      DfgNodeInfo &node = entry.second;
+      if (node.tile_x != -1 || node.tile_y != -1) continue;
+      if (node.opcode != "DATA_MOV" && node.opcode != "CTRL_MOV") continue;
+
+      Operation *op = dfg_id_to_op.lookup(node_id);
+      if (!op) continue;
+
+      bool has_link = false, has_register = false;
+      int min_register_ts = -1;
+      scanMappingKinds(op, has_link, has_register, min_register_ts);
+      if (!has_register) continue; // if register not present, keep as is; if present, fill coords from consumer
+
+      auto succ_it = successors.find(node_id);
+      if (succ_it == successors.end()) continue;
+      for (int consumer_id : succ_it->second) {
+        auto consumer_it = nodes.find(consumer_id);
+        if (consumer_it == nodes.end()) continue;
+        const DfgNodeInfo &consumer_node = consumer_it->second;
+        if (consumer_node.tile_x == -1 || consumer_node.tile_y == -1) continue;
+        node.tile_x = consumer_node.tile_x;
+        node.tile_y = consumer_node.tile_y;
+        if (node.time_step < 0 && min_register_ts >= 0) node.time_step = min_register_ts;
+        break;
+      }
+    }
+  }
+
+  void pruneMovNodesWithoutCoords(DfgNodeMap &nodes, DfgEdgeList &edges,
+                                  const std::unordered_set<int> &materialized_ids) {
+    std::unordered_set<int> nodes_to_remove;
+    for (const auto &entry : nodes) {
+      int node_id = entry.first;
+      const DfgNodeInfo &node = entry.second;
+      if ((node.opcode == "DATA_MOV" || node.opcode == "CTRL_MOV") &&
+          (node.tile_x == -1 && node.tile_y == -1)) {
+        nodes_to_remove.insert(node_id);
+      }
+      if ((node.opcode == "DATA_MOV" || node.opcode == "CTRL_MOV") &&
+          !materialized_ids.count(node_id)) {
+        nodes_to_remove.insert(node_id);
+      }
+    }
+    if (nodes_to_remove.empty()) return;
+
+    std::unordered_map<int, std::vector<int>> predecessors, successors;
+    for (const auto &edge : edges) {
+      successors[edge.first].push_back(edge.second);
+      predecessors[edge.second].push_back(edge.first);
+    }
+    std::unordered_set<uint64_t> dedup_edge_set;
+    auto encode = [](int from, int to)->uint64_t { return (static_cast<uint64_t>(from) << 32) ^ static_cast<uint32_t>(to); };
+
+    std::vector<std::pair<int,int>> new_edges;
+    for (const auto &edge : edges) {
+      if (nodes_to_remove.count(edge.first) || nodes_to_remove.count(edge.second))
+        continue;
+      uint64_t key = encode(edge.first, edge.second);
+      if (dedup_edge_set.insert(key).second) new_edges.push_back(edge);
+    }
+
+    for (int removed : nodes_to_remove) {
+      const auto &preds = predecessors[removed];
+      const auto &succs = successors[removed];
+      for (int pred : preds) {
+        for (int succ : succs) {
+          if (pred == succ) continue;
+          uint64_t key = encode(pred, succ);
+          if (dedup_edge_set.insert(key).second)
+            new_edges.emplace_back(pred, succ);
+        }
+      }
+    }
+    edges.swap(new_edges);
+    for (int removed : nodes_to_remove) nodes.erase(removed);
+  }
+
+  void emitDotOutput(const DfgNodeMap &nodes, const DfgEdgeList &edges) const {
+    std::error_code ec;
+    llvm::raw_fd_ostream dot_out("tmp-generated-dfg.dot", ec);
+    if (ec) return;
+
+    dot_out << "digraph DFG {\n  rankdir=LR;\n  node [shape=box, style=filled];\n";
+    auto color_for = [](const std::string &op) {
+      if (op == "DATA_MOV") return "lightgreen";
+      if (op == "CTRL_MOV") return "lightyellow";
+      if (op == "CONSTANT") return "lightblue";
+      return "white";
+    };
+    for (const auto &entry : nodes) {
+      int id = entry.first;
+      const DfgNodeInfo &node = entry.second;
+      dot_out << "  n" << id << " [label=\""
+              << escape(node.opcode) << "\\nID=" << id;
+      if (node.tile_x >= 0 && node.tile_y >= 0) {
+        dot_out << "\\n(" << node.tile_x << "," << node.tile_y << ")";
+      }
+      if (node.time_step >= 0) {
+        dot_out << " t=" << node.time_step;
+      }
+      dot_out << "\", fillcolor=" << color_for(node.opcode) << "];\n";
+    }
+    for (const auto &edge : edges) {
+      dot_out << "  n" << edge.first << " -> n" << edge.second << ";\n";
+    }
+    dot_out << "}\n";
+  }
+
+  void emitYamlOutput(const DfgNodeMap &nodes, const DfgEdgeList &edges) const {
+    std::error_code ec;
+    llvm::raw_fd_ostream yaml_out("tmp-generated-dfg.yaml", ec);
+    if (ec) return;
+
+    yaml_out << "nodes:\n";
+    for (const auto &entry : nodes) {
+      int id = entry.first;
+      const DfgNodeInfo &node = entry.second;
+      yaml_out << "  - id: " << id << "\n"
+               << "    opcode: \"" << escape(node.opcode) << "\"\n"
+               << "    tile_x: " << node.tile_x << "\n"
+               << "    tile_y: " << node.tile_y << "\n"
+               << "    time_step: " << node.time_step << "\n";
+    }
+    yaml_out << "edges:\n";
+    for (const auto &edge : edges) {
+      yaml_out << "  - from: " << edge.first << "\n"
+               << "    to: " << edge.second << "\n";
+    }
+  }
+
+  // Writes DOT and JSON DFG outputs based on SSA and dfg_id attributes.
+  // Applies hop-aware coordinates/middle-node insertion for DATA_MOV / CTRL_MOV,
+  // and bypasses reserve nodes (no node for reserve, edges direct from producer to consumer).
+  void writeDfgOutputSSA(func::FuncOp func, const Topology &topology,
+                         const std::unordered_set<int> &materialized_ids) {
+    DfgNodeMap nodes;
+    DfgEdgeList edges;
+
+    DenseMap<Value, SmallVector<Operation *, 2>> reserve_to_ctrl_movs;
+    collectCtrlMovReserves(func, reserve_to_ctrl_movs);
+
+    buildSsaNodesAndEdges(func, reserve_to_ctrl_movs, nodes, edges);
+
+    std::vector<std::pair<int,int>> original_edges = edges;
+    edges.clear();
+    llvm::SmallDenseSet<std::pair<int,int>, 32> edges_to_skip;
+    std::vector<HopRewriteInfo> hop_rewrites;
+
+    collectHopRewrites(func, topology, nodes, original_edges, edges, edges_to_skip, hop_rewrites);
+
+    adjustRegisterOnlyMovCoords(nodes, edges);
+
+    pruneMovNodesWithoutCoords(nodes, edges, materialized_ids);
+
+    emitDotOutput(nodes, edges);
+    emitYamlOutput(nodes, edges);
+
+    llvm::outs() << "[generate-code] DFG (SSA-based) emitted: nodes=" << nodes.size()
+                 << ", edges=" << edges.size()
+                 << " -> tmp-generated-dfg.dot, tmp-generated-dfg.yaml\n";
   }
 
   ArrayConfig buildArrayConfig(int columns, int rows, int compiled_ii = -1) {
@@ -705,6 +1240,8 @@ struct GenerateCodePass
         yaml_out << "            - timestep: " << timestep << "\n              operations:\n";
         for (const Instruction *inst : operations) {
           yaml_out << "                - opcode: \"" << inst->opcode << "\"\n";
+          if (inst->id >= 0)
+            yaml_out << "                  id: " << inst->id << "\n";
           // sources.
           if (!inst->src_operands.empty()) {
             yaml_out << "                  src_operands:\n";
@@ -752,7 +1289,7 @@ struct GenerateCodePass
     return result;
   }
 
-  void writeASMOutput(const ArrayConfig &config) {
+  void writeAsmOutput(const ArrayConfig &config) {
     std::error_code ec;
     llvm::raw_fd_ostream asm_out("tmp-generated-instructions.asm", ec);
     if (ec) return;
@@ -798,11 +1335,12 @@ struct GenerateCodePass
   // Endpoint deposits: on destination tiles at earliest reg ts, move [incoming_dir] -> [$reg].
   // CTRL_MOV paths emit CTRL_MOV deposits; DATA_MOV paths emit DATA_MOV deposits.
   void placeDstDeposit(const Topology &topo, int dst_tile_id, int ts,
-                       StringRef incoming_dir, int reg_id, bool asCtrlMov = false) {
+                       StringRef incoming_dir, int reg_id, bool asCtrlMov = false, int assigned_id = -1) {
     uint64_t signature = (uint64_t)dst_tile_id << 32 ^ (uint64_t)ts << 16 ^ (uint64_t)reg_id;
     if (!deposit_signatures.insert(signature).second) return; // already placed.
     auto [tile_x, tile_y] = topo.tile_location.lookup(dst_tile_id);
     Instruction inst(asCtrlMov ? "CTRL_MOV" : "DATA_MOV");
+    inst.id = assigned_id;
     inst.time_step = ts;
     inst.src_operands.emplace_back(incoming_dir.str(), "RED");
     inst.dst_operands.emplace_back("$" + std::to_string(reg_id), "RED");
@@ -861,6 +1399,7 @@ struct GenerateCodePass
       SmallVector<Operation*> ctrl_movs;
       DenseMap<Value, Operation*> reserve_to_phi_map;
       indexIR(func, data_movs, ctrl_movs, reserve_to_phi_map);
+      reserve_to_phi_for_ctrl = reserve_to_phi_map;
 
       // Expands forwarders without re-walking IR.
       for (Operation *op : data_movs)
@@ -870,9 +1409,12 @@ struct GenerateCodePass
       logUnresolvedOperands();
 
       int compiled_ii = getCompiledII(func);
+      std::unordered_set<int> materialized_ids;
+      assignInstructionIds(materialized_ids);
       ArrayConfig config = buildArrayConfig(columns, rows, compiled_ii);
       writeYAMLOutput(config);
-      writeASMOutput(config);
+      writeAsmOutput(config);
+      writeDfgOutputSSA(func, topo, materialized_ids);
     }
   }
 };

@@ -177,6 +177,7 @@
 // YAML-NEXT:             - timestep: 0
 // YAML-NEXT:               operations:
 // YAML-NEXT:                 - opcode: "CONSTANT"
+// YAML-NEXT:                   id: 1
 // YAML-NEXT:                   src_operands:
 // YAML-NEXT:                     - operand: "arg0"
 // YAML-NEXT:                       color: "RED"
@@ -186,6 +187,7 @@
 // YAML-NEXT:             - timestep: 2
 // YAML-NEXT:               operations:
 // YAML-NEXT:                 - opcode: "GRANT_ONCE"
+// YAML-NEXT:                   id: 2
 // YAML-NEXT:                   src_operands:
 // YAML-NEXT:                     - operand: "arg1"
 // YAML-NEXT:                       color: "RED"
