@@ -705,12 +705,12 @@ def Neura_FusedOp : Op<NeuraDialect, "fused_op", [NoTerminator]> {
     - frequency: how many times this pattern occurs in the original graph
     
     Example:
-      %result = neura.fused_op {pattern_id = 0, pattern_name = "addf->addf", frequency = 3} 
-                  (%arg0, %arg1, %arg2) : (f32, f32, f32) -> f32 {
-        %0 = arith.addf %arg0, %arg1 : f32
-        %1 = arith.addf %0, %arg2 : f32
-        neura.yield %1 : f32
-      }
+        %result = "neura.fused_op"(%arg0, %arg1) <{frequency = 5 : i64, pattern_id = 11 : i64, pattern_name = "mul->add"}> ({
+        ^bb0(%arg0: !neura.data<!llvm.ptr, i1>, %arg1: !neura.data<!llvm.ptr, i1>):
+          %0 = "neura.mul"(%arg0, %arg1) : (!neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1>) -> !neura.data<!llvm.ptr, i1>
+          %1 = "neura.add"(%0, %arg1) : (!neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1>) -> !neura.data<!llvm.ptr, i1>
+          "neura.yield"(%1) : (!neura.data<!llvm.ptr, i1>) -> ()
+        })
   }];
   
   let arguments = (ins 

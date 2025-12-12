@@ -228,8 +228,7 @@ struct InsertDataMovPass
     // First, handle fused_op operations specially
     wrapFusedOpsWithDataMov(module_op);
 
-    // Then apply patterns to every region inside the module (regardless of func type,
-    // e.g., mlir func or llvm func), now including fused_op regions
+    // Then applies patterns to every region inside the module, excluding fused_op regions.
     module_op.walk([&](Operation *op) {
       if (!op->getRegions().empty() && !llvm::isa<neura::FusedOp>(op)) {
         for (Region &region : op->getRegions()) {
