@@ -336,7 +336,7 @@ struct GenerateCodePass
   DenseMap<Value, Operation*>                   reserve_to_phi_for_ctrl;
   // Map dfg_id -> op for later adjustments.
   DenseMap<int, Operation*>                     dfg_id_to_op;
-  // Map (col,row,ts,local_idx_in_bucket) -> global instruction id.
+  // Map (col,row,index_per_ii,local_idx_in_bucket) -> global instruction id.
   std::map<std::tuple<int,int,int,int>, int>    instruction_id_map;
   int next_instruction_id = 0;
   int current_compiled_ii = -1;
