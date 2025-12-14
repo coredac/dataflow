@@ -88,15 +88,31 @@
 // MAPPING-NEXT:     %44 = neura.grant_predicate %42, %43 {dfg_id = 33 : i32, mapping_locs = [{id = 6 : i32, index_per_ii = 4 : i32, invalid_iterations = 1 : i32, resource = "tile", time_step = 9 : i32, x = 2 : i32, y = 1 : i32}]} : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
 // MAPPING-NEXT:     neura.ctrl_mov %44 -> %1 {dfg_id = 37 : i32, mapping_locs = [{id = 20 : i32, index_per_ii = 4 : i32, invalid_iterations = 1 : i32, resource = "link", time_step = 9 : i32}, {id = 320 : i32, index_per_ii = 0 : i32, invalid_iterations = 2 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 10 : i32}, {id = 320 : i32, index_per_ii = 1 : i32, invalid_iterations = 2 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 11 : i32}]} : !neura.data<i32, i1> !neura.data<i32, i1>
 // MAPPING-NEXT:     "neura.return"() {dfg_id = 3 : i32, mapping_locs = [{id = 9 : i32, index_per_ii = 4 : i32, invalid_iterations = 1 : i32, resource = "tile", time_step = 9 : i32, x = 1 : i32, y = 2 : i32}]} : () -> ()
-//
+
 // YAML:        compiled_ii: 5
 // YAML:        instructions:
 // YAML:        - opcode: "DATA_MOV"
 // YAML:        - opcode: "CAST_TRUNC"
 // YAML:        - opcode: "ICMP_EQ"
 // YAML:        - opcode: "ICMP_SGE"
-//
+
 // ASM:      PE(2,1):
 // ASM-NEXT: {
 // ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$1]
 // ASM-NEXT: } (t=5)
+
+// RUN: mlir-neura-opt %t-kernel.mlir \
+// RUN:   --assign-accelerator \
+// RUN:   --lower-llvm-to-neura \
+// RUN:   --promote-func-arg-to-const \
+// RUN:   --fold-constant \
+// RUN:   --canonicalize-live-in \
+// RUN:   --leverage-predicated-value \
+// RUN:   --transform-ctrl-to-data-flow \
+// RUN:   --fold-constant \
+// RUN:   --view-op-graph 2>&1 | sed -n '/^digraph G {/,/^}$/p' > relu_kernel.dot
+// RUN: dot -Tpng relu_kernel.dot -o relu_kernel.png
+// RUN: dot -tJson relu_kernel.dot -o relu_kernel.json
+// RUN: FileCheck %s --input-file=histogram_kernel.dot -check-prefix=DOT
+
+// DOT: digraph G {
