@@ -142,13 +142,46 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:                   id: 25
 // YAML-NEXT:                   time_step: 3
 // YAML-NEXT:                   invalid_iterations: 0
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "$1"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 4
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "DATA_MOV"
+// YAML-NEXT:                   id: 330001
+// YAML-NEXT:                   time_step: 4
+// YAML-NEXT:                   invalid_iterations: 0
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 5
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "GRANT_PREDICATE"
+// YAML-NEXT:                   id: 52
+// YAML-NEXT:                   time_step: 5
+// YAML-NEXT:                   invalid_iterations: 0
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
 
 
 // ASM:      # Compiled II: 6
 // ASM:      PE(0,0):
 // ASM-NEXT: {
-// ASM-NEXT:   CONSTANT, [#0] -> [EAST, RED] (t=0, inv_iter=0)
+// ASM-NEXT:   CONSTANT, [#0] -> [EAST, RED] (t=0, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=0)
 // ASM-NEXT: {
-// ASM-NEXT:   CONSTANT, [#10] -> [EAST, RED] (t=1, inv_iter=0)
+// ASM-NEXT:   CONSTANT, [#10] -> [EAST, RED] (t=1, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=1)

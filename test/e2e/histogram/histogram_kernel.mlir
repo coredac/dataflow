@@ -82,11 +82,82 @@
 // YAML:                - index_per_ii: 0
 // YAML:                  operations:
 // YAML:                    - opcode: "LOAD"
+// YAML:                      time_step: 10
+// YAML:                      invalid_iterations: 2
+// YAML:                - index_per_ii: 3
+// YAML:                  operations:
+// YAML:                    - opcode: "SEXT"
+// YAML:                      time_step: 8
+// YAML:                      invalid_iterations: 1
+// YAML:                - index_per_ii: 4
+// YAML:                  operations:
+// YAML:                    - opcode: "GEP"
+// YAML:                      time_step: 9
+// YAML:                      invalid_iterations: 1
+// YAML:        - column: 2
+// YAML:          row: 2
+// YAML:          entries:
+// YAML:            - entry_id: "entry0"
+// YAML:              instructions:
+// YAML:                - index_per_ii: 0
+// YAML:                  operations:
+// YAML:                    - opcode: "GRANT_PREDICATE"
+// YAML:                      time_step: 5
+// YAML:                      invalid_iterations: 1
+// YAML:                - index_per_ii: 1
+// YAML:                  operations:
+// YAML:                    - opcode: "FDIV"
+// YAML:                      time_step: 6
+// YAML:                      invalid_iterations: 1
+// YAML:                - index_per_ii: 2
+// YAML:                  operations:
+// YAML:                    - opcode: "DATA_MOV"
+// YAML:                      time_step: 2
+// YAML:                      invalid_iterations: 0
+// YAML:                - index_per_ii: 3
+// YAML:                  operations:
+// YAML:                    - opcode: "ICMP_EQ"
+// YAML:                      time_step: 3
+// YAML:                      invalid_iterations: 0
+// YAML:        - column: 3
+// YAML:          row: 2
+// YAML:          entries:
+// YAML:            - entry_id: "entry0"
+// YAML:              instructions:
+// YAML:                - index_per_ii: 0
+// YAML:                  operations:
+// YAML:                    - opcode: "GRANT_ONCE"
+// YAML:                      time_step: 0
+// YAML:                      invalid_iterations: 0
+// YAML:                - index_per_ii: 1
+// YAML:                  operations:
+// YAML:                    - opcode: "PHI"
+// YAML:                      time_step: 1
+// YAML:                      invalid_iterations: 0
+// YAML:                - index_per_ii: 2
+// YAML:                  operations:
+// YAML:                    - opcode: "ADD"
+// YAML:                      time_step: 2
+// YAML:                      invalid_iterations: 0
+// YAML:                - index_per_ii: 3
+// YAML:                  operations:
+// YAML:                    - opcode: "LOAD"
+// YAML:                      time_step: 3
+// YAML:                      invalid_iterations: 0
 
 // ASM:      PE(3,2):
 // ASM-NEXT: {
-// ASM-NEXT:   GRANT_ONCE, [#0] -> [$0] (t=0, inv_iter=0)
+// ASM-NEXT:   GRANT_ONCE, [#0] -> [$0] (t=0, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=0)
+// ASM-NEXT: {
+// ASM-NEXT:   PHI, [WEST, RED], [$0] -> [SOUTH, RED], [$0] (t=1, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=1)
+// ASM-NEXT: {
+// ASM-NEXT:   ADD, [$0], [#1] -> [WEST, RED] (t=2, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=2)
+// ASM-NEXT: {
+// ASM-NEXT:   LOAD, [SOUTH, RED] -> [NORTH, RED] (t=3, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=3)
 
 // RUN: mlir-neura-opt %t-kernel.mlir \
 // RUN:   --assign-accelerator \

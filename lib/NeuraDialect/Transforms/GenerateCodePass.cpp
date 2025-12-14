@@ -1406,7 +1406,7 @@ struct GenerateCodePass
             }
           }
           asm_out << " (t=" << inst->time_step
-                  << ", inv_iter=" << inst->invalid_iterations << ")\n";
+                  << ", inv_iters=" << inst->invalid_iterations << ")\n";
         }
         asm_out << "} (idx_per_ii=" << index_per_ii << ")\n";
       }

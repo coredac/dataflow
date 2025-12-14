@@ -72,27 +72,83 @@
 // MAPPING-NEXT:     %37 = "neura.data_mov"(%36) {dfg_id = 38 : i32, mapping_locs = [{id = 14 : i32, index_per_ii = 3 : i32, invalid_iterations = 1 : i32, resource = "link", time_step = 8 : i32}]} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
 // MAPPING-NEXT:     "neura.return"(%37) {dfg_id = 40 : i32, mapping_locs = [{id = 6 : i32, index_per_ii = 4 : i32, invalid_iterations = 1 : i32, resource = "tile", time_step = 9 : i32, x = 2 : i32, y = 1 : i32}]} : (!neura.data<i32, i1>) -> ()
 
-// YAML: instructions:
-// YAML: - opcode: "GRANT_ONCE"
-// YAML: - opcode: "RETURN"
-// YAML: - opcode: "ICMP_EQ"
+// YAML:      array_config:
+// YAML:        columns: 4
+// YAML:        rows: 4
+// YAML:        compiled_ii: 5
+// YAML:        cores:
+// YAML:          - column: 0
+// YAML:            row: 1
+// YAML:            entries:
+// YAML:              - entry_id: "entry0"
+// YAML:                instructions:
+// YAML:                  - index_per_ii: 3
+// YAML:                    operations:
+// YAML:                      - opcode: "GRANT_ONCE"
+// YAML:                        time_step: 3
+// YAML:                        invalid_iterations: 0
+// YAML:                  - index_per_ii: 4
+// YAML:                    operations:
+// YAML:                      - opcode: "PHI"
+// YAML:                        time_step: 4
+// YAML:                        invalid_iterations: 0
+// YAML:          - column: 1
+// YAML:            row: 1
+// YAML:            entries:
+// YAML:              - entry_id: "entry0"
+// YAML:                instructions:
+// YAML:                  - index_per_ii: 0
+// YAML:                    operations:
+// YAML:                      - opcode: "DATA_MOV"
+// YAML:                        time_step: 5
+// YAML:                        invalid_iterations: 1
+// YAML:                  - index_per_ii: 3
+// YAML:                    operations:
+// YAML:                      - opcode: "GRANT_PREDICATE"
+// YAML:                        time_step: 8
+// YAML:                        invalid_iterations: 1
+// YAML:          - column: 2
+// YAML:            row: 1
+// YAML:            entries:
+// YAML:              - entry_id: "entry0"
+// YAML:                instructions:
+// YAML:                  - index_per_ii: 3
+// YAML:                    operations:
+// YAML:                      - opcode: "LOAD"
+// YAML:                        time_step: 3
+// YAML:                        invalid_iterations: 0
+// YAML:                  - index_per_ii: 4
+// YAML:                    operations:
+// YAML:                      - opcode: "RETURN"
+// YAML:                        time_step: 9
+// YAML:                        invalid_iterations: 1
+// YAML:          - column: 3
+// YAML:            row: 1
+// YAML:            entries:
+// YAML:              - entry_id: "entry0"
+// YAML:                instructions:
+// YAML:                  - index_per_ii: 2
+// YAML:                    operations:
+// YAML:                      - opcode: "GEP"
+// YAML:                        time_step: 2
+// YAML:                        invalid_iterations: 0
 
 // ASM:      PE(0,1):
 // ASM-NEXT: {
-// ASM-NEXT:   GRANT_ONCE, [#0] -> [$0] (t=3, inv_iter=0)
+// ASM-NEXT:   GRANT_ONCE, [#0] -> [$0] (t=3, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=3)
 // ASM-NEXT: {
-// ASM-NEXT:   PHI, [NORTH, RED], [$0] -> [EAST, RED] (t=4, inv_iter=0)
+// ASM-NEXT:   PHI, [NORTH, RED], [$0] -> [EAST, RED] (t=4, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=4)
 // ASM:      PE(2,2):
 // ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [EAST, RED] (t=5, inv_iter=1)
+// ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [EAST, RED] (t=5, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=0)
 // ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$0] (t=2, inv_iter=0)
+// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$0] (t=2, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=2)
 // ASM-NEXT: {
-// ASM-NEXT:   ICMP_EQ, [EAST, RED], [#32] -> [$0], [WEST, RED] (t=3, inv_iter=0)
+// ASM-NEXT:   ICMP_EQ, [EAST, RED], [#32] -> [$0], [WEST, RED] (t=3, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=3)
 
 // RUN: mlir-neura-opt %t-kernel.mlir \
