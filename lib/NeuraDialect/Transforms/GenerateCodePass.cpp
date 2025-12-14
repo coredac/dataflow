@@ -422,7 +422,16 @@ struct GenerateCodePass
       }
     }
     if (!has_index || !has_invalid) {
-      op->emitError("mapping_locs missing index_per_ii or invalid_iterations");
+      std::string loc_str;
+      llvm::raw_string_ostream rso(loc_str);
+      rso << op->getLoc();
+      rso.flush();
+
+      std::string op_name = op->getName().getStringRef().str();
+      std::stringstream errMsg;
+      errMsg << "Operation '" << op_name << "' at " << loc_str
+             << " missing index_per_ii or invalid_iterations in mapping_locs";
+      op->emitError(errMsg.str());
       timing_field_error = true;
       return false;
     }
