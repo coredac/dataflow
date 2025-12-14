@@ -41,7 +41,9 @@ struct Instruction {
   std::vector<Operand> src_operands;
   std::vector<Operand> dst_operands;
   int id = -1;       // Unique instruction ID for debug/DFG.
-  int time_step = -1; // for ordering.
+  int time_step = -1; // original scheduling timestep.
+  int index_per_ii = -1; // grouping key (typically time_step % compiled_ii).
+  int invalid_iterations = 0; // prologue length before the op becomes valid.
   Instruction(const std::string &op) : opcode(op) {}
 };
 
@@ -70,6 +72,8 @@ struct ArrayConfig {
 
 struct TileLocation {
   int col_idx = -1, row_idx = -1, time_step = -1;
+  int index_per_ii = -1;
+  int invalid_iterations = 0;
   bool has_tile = false;
 };
 
@@ -88,12 +92,17 @@ static TileLocation getTileLocation(Operation *op) {
       auto d = dyn_cast<DictionaryAttr>(a);
       if (!d) continue;
       auto resource = dyn_cast_or_null<StringAttr>(d.get("resource"));
-      if (!resource || resource.getValue() != "tile") continue;
-      if (auto x_coord = dyn_cast_or_null<IntegerAttr>(d.get("x"))) tile_location.col_idx = x_coord.getInt();
-      if (auto y_coord = dyn_cast_or_null<IntegerAttr>(d.get("y"))) tile_location.row_idx = y_coord.getInt();
-      if (auto timestep = dyn_cast_or_null<IntegerAttr>(d.get("time_step"))) tile_location.time_step = timestep.getInt();
-      tile_location.has_tile = true;
-      break;
+      if (auto timestep = dyn_cast_or_null<IntegerAttr>(d.get("time_step")))
+        tile_location.time_step = timestep.getInt();
+      if (auto index_attr = dyn_cast_or_null<IntegerAttr>(d.get("index_per_ii")))
+        tile_location.index_per_ii = index_attr.getInt();
+      if (auto invalid_attr = dyn_cast_or_null<IntegerAttr>(d.get("invalid_iterations")))
+        tile_location.invalid_iterations = invalid_attr.getInt();
+      if (resource && resource.getValue() == "tile") {
+        if (auto x_coord = dyn_cast_or_null<IntegerAttr>(d.get("x"))) tile_location.col_idx = x_coord.getInt();
+        if (auto y_coord = dyn_cast_or_null<IntegerAttr>(d.get("y"))) tile_location.row_idx = y_coord.getInt();
+        tile_location.has_tile = true;
+      }
     }
   }
   // If tile mappings exist, x/y must be valid.
@@ -330,6 +339,8 @@ struct GenerateCodePass
   // Map (col,row,ts,local_idx_in_bucket) -> global instruction id.
   std::map<std::tuple<int,int,int,int>, int>    instruction_id_map;
   int next_instruction_id = 0;
+  int current_compiled_ii = -1;
+  bool timing_field_error = false;
 
   // De-dup sets.
   std::unordered_set<uint64_t> hop_signatures;     // (midTileId, ts, link_id).
@@ -343,9 +354,11 @@ struct GenerateCodePass
     Instruction instruction(asCtrlMov ? "CTRL_MOV" : "DATA_MOV");
     instruction.id = assigned_id;
     instruction.time_step = time_step;
+    instruction.index_per_ii = indexPerIiFromTimeStep(time_step);
+    instruction.invalid_iterations = syntheticInvalidIterations(time_step);
     instruction.src_operands.emplace_back(input_direction.str(), "RED");
     instruction.dst_operands.emplace_back(output_direction.str(), "RED");
-    tile_time_instructions[{tile_x, tile_y}][time_step].push_back(std::move(instruction));
+    tile_time_instructions[{tile_x, tile_y}][instruction.index_per_ii].push_back(std::move(instruction));
   }
 
   // ---------- initialization helpers ----------.
@@ -359,6 +372,7 @@ struct GenerateCodePass
     deposit_signatures.clear();
     instruction_id_map.clear();
     next_instruction_id = 0;
+    timing_field_error = false;
   }
 
   std::pair<int, int> getArrayDimensions(func::FuncOp function) {
@@ -377,6 +391,42 @@ struct GenerateCodePass
       }
     }
     return -1;
+  }
+
+  // Derives index_per_ii from an absolute time_step; falls back to time_step when II is unknown.
+  int indexPerIiFromTimeStep(int time_step) const {
+    return current_compiled_ii > 0 ? time_step % current_compiled_ii : time_step;
+  }
+
+  int syntheticInvalidIterations(int time_step) const {
+    return current_compiled_ii > 0 ? time_step / current_compiled_ii : 0;
+  }
+
+  // Extracts index_per_ii and invalid_iterations from mapping_locs.
+  bool getIndexAndInvalid(Operation *op, int &index_per_ii, int &invalid_iterations) {
+    index_per_ii = -1;
+    invalid_iterations = 0;
+    bool has_index = false, has_invalid = false;
+    if (auto arr = op->getAttrOfType<ArrayAttr>("mapping_locs")) {
+      for (Attribute a : arr) {
+        auto dict = dyn_cast<DictionaryAttr>(a);
+        if (!dict) continue;
+        if (auto idx_attr = dyn_cast_or_null<IntegerAttr>(dict.get("index_per_ii"))) {
+          index_per_ii = idx_attr.getInt();
+          has_index = true;
+        }
+        if (auto inv_attr = dyn_cast_or_null<IntegerAttr>(dict.get("invalid_iterations"))) {
+          invalid_iterations = inv_attr.getInt();
+          has_invalid = true;
+        }
+      }
+    }
+    if (!has_index || !has_invalid) {
+      op->emitError("mapping_locs missing index_per_ii or invalid_iterations");
+      timing_field_error = true;
+      return false;
+    }
+    return true;
   }
 
   // ---------- Single-walk indexing ----------.
@@ -443,10 +493,16 @@ struct GenerateCodePass
       if (auto mapped_register_id = getMappedRegId(op))
         inst.dst_operands.emplace_back("$" + std::to_string(*mapped_register_id), "RED");
 
-      auto &bucket = getInstructionBucket(placement.col_idx, placement.row_idx, placement.time_step);
+      int index_per_ii = -1, invalid_iterations = 0;
+      if (!getIndexAndInvalid(op, index_per_ii, invalid_iterations)) return;
+
+      inst.index_per_ii = index_per_ii;
+      inst.invalid_iterations = invalid_iterations;
+
+      auto &bucket = getInstructionBucket(placement.col_idx, placement.row_idx, index_per_ii);
       bucket.push_back(std::move(inst));
       operation_to_instruction_reference[op] =
-          InstructionReference{placement.col_idx, placement.row_idx, placement.time_step,
+          InstructionReference{placement.col_idx, placement.row_idx, index_per_ii,
                                (int)bucket.size() - 1};
     });
   }
@@ -760,6 +816,8 @@ struct GenerateCodePass
     int tile_x = -1;
     int tile_y = -1;
     int time_step = -1;
+    int index_per_ii = -1;
+    int invalid_iterations = 0;
     bool has_tile = false;
   };
 
@@ -775,6 +833,12 @@ struct GenerateCodePass
         if (auto ts_attr = dyn_cast_or_null<IntegerAttr>(d.get("time_step"))) {
           info.time_step = ts_attr.getInt();
         }
+        if (auto index_attr = dyn_cast_or_null<IntegerAttr>(d.get("index_per_ii"))) {
+          info.index_per_ii = index_attr.getInt();
+        }
+        if (auto invalid_attr = dyn_cast_or_null<IntegerAttr>(d.get("invalid_iterations"))) {
+          info.invalid_iterations = invalid_attr.getInt();
+        }
         
         // Only tile resources have x/y coordinates.
         if (resource && resource.getValue() == "tile") {
@@ -785,7 +849,6 @@ struct GenerateCodePass
             info.tile_y = y_attr.getInt();
           }
           info.has_tile = true;
-          break;  // Takes first tile location.
         }
       }
     }
@@ -1226,22 +1289,28 @@ struct GenerateCodePass
       yaml_out << "    - column: " << core.col_idx << "\n      row: " << core.row_idx
                << "\n      core_id: \"" << core.core_id << "\"\n      entries:\n";
       
-      // Groups instructions by timestep.
-      std::map<int, std::vector<const Instruction*>> timestep_groups;
+      // Groups instructions by index_per_ii.
+      std::map<int, std::vector<const Instruction*>> index_groups;
       for (const Instruction &inst : core.entry.instructions) {
-        timestep_groups[inst.time_step].push_back(&inst);
+        index_groups[inst.index_per_ii].push_back(&inst);
       }
       
       yaml_out << "        - entry_id: \"entry0\"\n          instructions:\n";
-      for (const auto &timestep_pair : timestep_groups) {
-        int timestep = timestep_pair.first;
-        const auto &operations = timestep_pair.second;
+      for (const auto &index_pair : index_groups) {
+        int index_per_ii = index_pair.first;
+        auto operations = index_pair.second;
+        std::stable_sort(operations.begin(), operations.end(),
+                         [](const Instruction *a, const Instruction *b) {
+                           return a->time_step < b->time_step;
+                         });
         
-        yaml_out << "            - timestep: " << timestep << "\n              operations:\n";
+        yaml_out << "            - index_per_ii: " << index_per_ii << "\n              operations:\n";
         for (const Instruction *inst : operations) {
           yaml_out << "                - opcode: \"" << inst->opcode << "\"\n";
           if (inst->id >= 0)
             yaml_out << "                  id: " << inst->id << "\n";
+          yaml_out << "                  time_step: " << inst->time_step << "\n"
+                   << "                  invalid_iterations: " << inst->invalid_iterations << "\n";
           // sources.
           if (!inst->src_operands.empty()) {
             yaml_out << "                  src_operands:\n";
@@ -1301,15 +1370,19 @@ struct GenerateCodePass
     for (const Tile &core : config.cores) {
       asm_out << "PE(" << core.col_idx << "," << core.row_idx << "):\n";
       
-      // Groups instructions by timestep.
-      std::map<int, std::vector<const Instruction*>> timestep_groups;
+      // Groups instructions by index_per_ii.
+      std::map<int, std::vector<const Instruction*>> index_groups;
       for (const Instruction &inst : core.entry.instructions) {
-        timestep_groups[inst.time_step].push_back(&inst);
+        index_groups[inst.index_per_ii].push_back(&inst);
       }
       
-      for (const auto &timestep_pair : timestep_groups) {
-        int timestep = timestep_pair.first;
-        const auto &instructions = timestep_pair.second;
+      for (const auto &index_pair : index_groups) {
+        int index_per_ii = index_pair.first;
+        auto instructions = index_pair.second;
+        std::stable_sort(instructions.begin(), instructions.end(),
+                         [](const Instruction *a, const Instruction *b) {
+                           return a->time_step < b->time_step;
+                         });
         
         asm_out << "{\n";
         for (size_t i = 0; i < instructions.size(); ++i) {
@@ -1323,9 +1396,10 @@ struct GenerateCodePass
               asm_out << formatOperand(inst->dst_operands[j]);
             }
           }
-          asm_out << "\n";
+          asm_out << " (t=" << inst->time_step
+                  << ", inv_iter=" << inst->invalid_iterations << ")\n";
         }
-        asm_out << "} (t=" << timestep << ")\n";
+        asm_out << "} (idx_per_ii=" << index_per_ii << ")\n";
       }
       asm_out << "\n";
     }
@@ -1342,9 +1416,11 @@ struct GenerateCodePass
     Instruction inst(asCtrlMov ? "CTRL_MOV" : "DATA_MOV");
     inst.id = assigned_id;
     inst.time_step = ts;
+    inst.index_per_ii = indexPerIiFromTimeStep(ts);
+    inst.invalid_iterations = syntheticInvalidIterations(ts);
     inst.src_operands.emplace_back(incoming_dir.str(), "RED");
     inst.dst_operands.emplace_back("$" + std::to_string(reg_id), "RED");
-    tile_time_instructions[{tile_x, tile_y}][ts].push_back(std::move(inst));
+    tile_time_instructions[{tile_x, tile_y}][inst.index_per_ii].push_back(std::move(inst));
   }
 
   // Utilities to access instruction buckets/pointers.
@@ -1391,6 +1467,7 @@ struct GenerateCodePass
 
       auto [columns, rows] = getArrayDimensions(func);
       Topology topo = getTopologyFromArchitecture(columns, rows);
+      current_compiled_ii = getCompiledII(func);
 
       clearState();
 
@@ -1408,13 +1485,13 @@ struct GenerateCodePass
         expandMovImpl<true>(op,  topo, reserve_to_phi_map);
       logUnresolvedOperands();
 
-      int compiled_ii = getCompiledII(func);
       std::unordered_set<int> materialized_ids;
       assignInstructionIds(materialized_ids);
-      ArrayConfig config = buildArrayConfig(columns, rows, compiled_ii);
+      ArrayConfig config = buildArrayConfig(columns, rows, current_compiled_ii);
       writeYAMLOutput(config);
       writeAsmOutput(config);
       writeDfgOutputSSA(func, topo, materialized_ids);
+      if (timing_field_error) signalPassFailure();
     }
   }
 };

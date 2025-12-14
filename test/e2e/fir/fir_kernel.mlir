@@ -79,15 +79,21 @@
 
 // ASM:      PE(0,1):
 // ASM-NEXT: {
-// ASM-NEXT:   GRANT_ONCE, [#0] -> [$0]
-// ASM-NEXT: } (t=3)
+// ASM-NEXT:   GRANT_ONCE, [#0] -> [$0] (t=3, inv_iter=0)
+// ASM-NEXT: } (idx_per_ii=3)
+// ASM-NEXT: {
+// ASM-NEXT:   PHI, [NORTH, RED], [$0] -> [EAST, RED] (t=4, inv_iter=0)
+// ASM-NEXT: } (idx_per_ii=4)
 // ASM:      PE(2,2):
 // ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$0]
-// ASM-NEXT: } (t=2)
+// ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [EAST, RED] (t=5, inv_iter=1)
+// ASM-NEXT: } (idx_per_ii=0)
 // ASM-NEXT: {
-// ASM-NEXT:   ICMP_EQ, [EAST, RED], [#32] -> [$0], [WEST, RED]
-// ASM-NEXT: } (t=3)
+// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$0] (t=2, inv_iter=0)
+// ASM-NEXT: } (idx_per_ii=2)
+// ASM-NEXT: {
+// ASM-NEXT:   ICMP_EQ, [EAST, RED], [#32] -> [$0], [WEST, RED] (t=3, inv_iter=0)
+// ASM-NEXT: } (idx_per_ii=3)
 
 // RUN: mlir-neura-opt %t-kernel.mlir \
 // RUN:   --assign-accelerator \

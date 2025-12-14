@@ -90,13 +90,17 @@
 // MAPPING-NEXT:     "neura.return"() {dfg_id = 3 : i32, mapping_locs = [{id = 9 : i32, index_per_ii = 4 : i32, invalid_iterations = 1 : i32, resource = "tile", time_step = 9 : i32, x = 1 : i32, y = 2 : i32}]} : () -> ()
 //
 // YAML:        compiled_ii: 5
-// YAML:        instructions:
-// YAML:        - opcode: "DATA_MOV"
-// YAML:        - opcode: "CAST_TRUNC"
-// YAML:        - opcode: "ICMP_EQ"
-// YAML:        - opcode: "ICMP_SGE"
+// YAML:        cores:
+// YAML:          - column: 2
+// YAML:            row: 1
+// YAML:            entries:
+// YAML:              - entry_id: "entry0"
+// YAML:                instructions:
+// YAML:                  - index_per_ii: 0
+// YAML:                    operations:
+// YAML:                      - opcode: "DATA_MOV"
 //
 // ASM:      PE(2,1):
 // ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$1]
-// ASM-NEXT: } (t=5)
+// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$1] (t=5, inv_iter=1)
+// ASM-NEXT: } (idx_per_ii=0)

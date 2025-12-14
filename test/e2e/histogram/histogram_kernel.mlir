@@ -72,15 +72,21 @@
 // MAPPING-NEXT: neura.ctrl_mov %34 -> %1 {dfg_id = 22 : i32, mapping_locs = [{id = 32 : i32, index_per_ii = 0 : i32, invalid_iterations = 1 : i32, resource = "link", time_step = 5 : i32}]} : !neura.data<i64, i1> !neura.data<i64, i1>
 // MAPPING-NEXT: "neura.return"() {dfg_id = 2 : i32, mapping_locs = [{id = 12 : i32, index_per_ii = 2 : i32, invalid_iterations = 2 : i32, resource = "tile", time_step = 12 : i32, x = 0 : i32, y = 3 : i32}]} : () -> ()
 
-// YAML: instructions:
-// YAML: - opcode: "GEP"
-// YAML: - opcode: "LOAD"
-// YAML: - opcode: "ADD"
+// YAML:      compiled_ii: 5
+// YAML:      cores:
+// YAML:        - column: 1
+// YAML:          row: 1
+// YAML:          entries:
+// YAML:            - entry_id: "entry0"
+// YAML:              instructions:
+// YAML:                - index_per_ii: 0
+// YAML:                  operations:
+// YAML:                    - opcode: "LOAD"
 
 // ASM:      PE(3,2):
 // ASM-NEXT: {
-// ASM-NEXT:   GRANT_ONCE, [#0] -> [$0]
-// ASM-NEXT: } (t=0)
+// ASM-NEXT:   GRANT_ONCE, [#0] -> [$0] (t=0, inv_iter=0)
+// ASM-NEXT: } (idx_per_ii=0)
 
 // RUN: mlir-neura-opt %t-kernel.mlir \
 // RUN:   --assign-accelerator \
