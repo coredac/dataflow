@@ -204,10 +204,12 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:       entries:
 // YAML-NEXT:         - entry_id: "entry0"
 // YAML-NEXT:           instructions:
-// YAML-NEXT:             - timestep: 2
+// YAML-NEXT:             - index_per_ii: 2
 // YAML-NEXT:               operations:
 // YAML-NEXT:                 - opcode: "GRANT_ONCE"
 // YAML-NEXT:                   id: 3
+// YAML-NEXT:                   time_step: 2
+// YAML-NEXT:                   invalid_iterations: 0
 // YAML-NEXT:                   src_operands:
 // YAML-NEXT:                     - operand: "#3.000000"
 // YAML-NEXT:                       color: "RED"
@@ -218,5 +220,5 @@ func.func @loop_test() -> f32 {
 
 // ASM:      PE(0,1):
 // ASM-NEXT: {
-// ASM-NEXT:   GRANT_ONCE, [#3.000000] -> [EAST, RED]
-// ASM-NEXT: } (t=2)
+// ASM-NEXT:   GRANT_ONCE, [#3.000000] -> [EAST, RED] (t=2, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=2)
