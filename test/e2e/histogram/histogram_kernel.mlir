@@ -93,6 +93,7 @@
 // RUN:   --fold-constant \
 // RUN:   --view-op-graph 2>&1 | sed -n '/^digraph G {/,/^}$/p' > histogram_kernel.dot
 // RUN: dot -Tpng histogram_kernel.dot -o histogram_kernel.png
+// RUN: dot -Tjson histogram_kernel.dot -o histogram_kernel.json
 // RUN: FileCheck %s --input-file=histogram_kernel.dot -check-prefix=DOT
 
 // DOT: digraph G {
