@@ -93,7 +93,7 @@ enum OperationKind {
 
 // Maps hardware resource names to their supported operations.
 static const std::map<std::string, std::vector<OperationKind>>
-    kHardwareResourceToOperations = {
+    kFunctionUnitsToOperations = {
         // Arithmetic operations.
         {"constant", {IConstant}},
         {"add", {IAdd, ISub}},

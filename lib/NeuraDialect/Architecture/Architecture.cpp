@@ -12,27 +12,30 @@ using namespace mlir::neura;
 
 // Configures all supported operations for a function unit.
 void configureSupportedOperations(CustomizableFunctionUnit *function_unit,
-                                  const std::string &operation) {
-  auto it = kHardwareResourceToOperations.find(operation);
-  if (it != kHardwareResourceToOperations.end()) {
+                                  const std::string &function_unit_name) {
+  auto it = kFunctionUnitsToOperations.find(function_unit_name);
+  if (it != kFunctionUnitsToOperations.end()) {
     for (const auto &operation : it->second) {
       function_unit->addSupportedOperation(operation);
     }
   } else {
+    llvm::errs() << "Warning: Unknown function unit name '"
+                 << function_unit_name << "'. No operations configured.\n";
     assert(false && "Unknown operation specified for function unit");
   }
 }
 
-// Creates a function unit for a specific operation.
-// Maps YAML operation names to OperationKind enum values and creates
+// Creates a function unit for a specific function unit name.
+// Maps YAML function unit names to OperationKind enum values and creates
 // appropriate function units.
-void createFunctionUnitForOperation(Tile *tile, const std::string &operation,
+void createFunctionUnitForOperation(Tile *tile,
+                                    const std::string &function_unit_name,
                                     int function_unit_id) {
   auto function_unit =
       std::make_unique<CustomizableFunctionUnit>(function_unit_id);
 
   // Configures all supported operations using the unified function.
-  configureSupportedOperations(function_unit.get(), operation);
+  configureSupportedOperations(function_unit.get(), function_unit_name);
 
   // TODO: Adds support for unknown operations with warning instead of silent
   // failure. Such support would help users identify typos in their YAML
@@ -303,8 +306,8 @@ void Architecture::configureDefaultTileSettings(
       createRegisterFileCluster(tile, tile_defaults.num_registers,
                                 num_already_assigned_global_registers);
 
-      // Configures function units based on tile_defaults.operations.
-      configureTileFunctionUnits(tile, tile_defaults.operations);
+      // Configures function units based on tile_defaults.function_units.
+      configureTileFunctionUnits(tile, tile_defaults.function_units);
     }
   }
 }
