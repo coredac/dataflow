@@ -18,65 +18,101 @@ namespace mlir {
 namespace neura {
 OperationKind getOperationKindFromMlirOp(Operation *op) {
   // Integer arithmetic operations
-  if (isa<neura::AddOp>(op)) return IAdd;
-  if (isa<neura::SubOp>(op)) return ISub;
-  if (isa<neura::MulOp>(op)) return IMul;
-  if (isa<neura::DivOp>(op)) return IDiv;
-  if (isa<neura::RemOp>(op)) return IRem;
-  
+  if (isa<neura::AddOp>(op))
+    return IAdd;
+  if (isa<neura::SubOp>(op))
+    return ISub;
+  if (isa<neura::MulOp>(op))
+    return IMul;
+  if (isa<neura::DivOp>(op))
+    return IDiv;
+  if (isa<neura::RemOp>(op))
+    return IRem;
+
   // Floating-point arithmetic operations
-  if (isa<neura::FAddOp>(op)) return FAdd;
-  if (isa<neura::FSubOp>(op)) return FSub;
-  if (isa<neura::FMulOp>(op)) return FMul;
-  if (isa<neura::FDivOp>(op)) return FDiv;
-  
+  if (isa<neura::FAddOp>(op))
+    return FAdd;
+  if (isa<neura::FSubOp>(op))
+    return FSub;
+  if (isa<neura::FMulOp>(op))
+    return FMul;
+  if (isa<neura::FDivOp>(op))
+    return FDiv;
+
   // Memory operations
-  if (isa<neura::LoadOp>(op)) return ILoad;
-  if (isa<neura::StoreOp>(op)) return IStore;
-  if (isa<neura::LoadIndexedOp>(op)) return ILoadIndexed;
-  if (isa<neura::StoreIndexedOp>(op)) return IStoreIndexed;
-  if (isa<neura::AllocaOp>(op)) return IAlloca;
-  
+  if (isa<neura::LoadOp>(op))
+    return ILoad;
+  if (isa<neura::StoreOp>(op))
+    return IStore;
+  if (isa<neura::LoadIndexedOp>(op))
+    return ILoadIndexed;
+  if (isa<neura::StoreIndexedOp>(op))
+    return IStoreIndexed;
+  if (isa<neura::AllocaOp>(op))
+    return IAlloca;
+
   // Logical operations
-  if (isa<neura::OrOp>(op)) return IOr;
-  if (isa<neura::NotOp>(op)) return INot;
-  if (isa<neura::ICmpOp>(op)) return ICmp;
-  if (isa<neura::FCmpOp>(op)) return FCmp;
-  if (isa<neura::SelOp>(op)) return ISel;
-  
+  if (isa<neura::OrOp>(op))
+    return IOr;
+  if (isa<neura::NotOp>(op))
+    return INot;
+  if (isa<neura::ICmpOp>(op))
+    return ICmp;
+  if (isa<neura::FCmpOp>(op))
+    return FCmp;
+  if (isa<neura::SelOp>(op))
+    return ISel;
+
   // Type conversion operations
-  if (isa<neura::CastOp>(op)) return ICast;
-  if (isa<neura::SExtOp>(op)) return ISExt;
-  if (isa<neura::ZExtOp>(op)) return IZExt;
-  if (isa<neura::ShlOp>(op)) return IShl;
-  
+  if (isa<neura::CastOp>(op))
+    return ICast;
+  if (isa<neura::SExtOp>(op))
+    return ISExt;
+  if (isa<neura::ZExtOp>(op))
+    return IZExt;
+  if (isa<neura::ShlOp>(op))
+    return IShl;
+
   // Vector operations
-  if (isa<neura::VFMulOp>(op)) return VFMul;
-  
+  if (isa<neura::VFMulOp>(op))
+    return VFMul;
+
   // Fused operations
-  if (isa<neura::FAddFAddOp>(op)) return FAddFAdd;
-  if (isa<neura::FMulFAddOp>(op)) return FMulFAdd;
-  
+  if (isa<neura::FAddFAddOp>(op))
+    return FAddFAdd;
+  if (isa<neura::FMulFAddOp>(op))
+    return FMulFAdd;
+
   // Control flow operations
-  if (isa<neura::ReturnOp>(op)) return IReturn;
-  if (isa<neura::PhiOp>(op)) return IPhi;
-  
+  if (isa<neura::ReturnOp>(op))
+    return IReturn;
+  if (isa<neura::PhiOp>(op))
+    return IPhi;
+
   // Data movement operations
-  if (isa<neura::DataMovOp>(op)) return IDataMov;
-  if (isa<neura::CtrlMovOp>(op)) return ICtrlMov;
-  
+  if (isa<neura::DataMovOp>(op))
+    return IDataMov;
+  if (isa<neura::CtrlMovOp>(op))
+    return ICtrlMov;
+
   // Predicate operations
-  if (isa<neura::ReserveOp>(op)) return IReserve;
-  if (isa<neura::GrantPredicateOp>(op)) return IGrantPredicate;
-  if (isa<neura::GrantOnceOp>(op)) return IGrantOnce;
-  if (isa<neura::GrantAlwaysOp>(op)) return IGrantAlways;
-  
+  if (isa<neura::ReserveOp>(op))
+    return IReserve;
+  if (isa<neura::GrantPredicateOp>(op))
+    return IGrantPredicate;
+  if (isa<neura::GrantOnceOp>(op))
+    return IGrantOnce;
+  if (isa<neura::GrantAlwaysOp>(op))
+    return IGrantAlways;
+
   // Loop control operations
-  if (isa<neura::LoopControlOp>(op)) return ILoopControl;
-  
+  if (isa<neura::LoopControlOp>(op))
+    return ILoopControl;
+
   // Constant operations
-  if (isa<neura::ConstantOp>(op)) return IConstant;
-  
+  if (isa<neura::ConstantOp>(op))
+    return IConstant;
+
   // Default fallback
   return IAdd;
 }
@@ -625,16 +661,18 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
 
 Operation *mlir::neura::getMaterializedProducer(Value operand) {
   Operation *producer = operand.getDefiningOp();
-  
+
   // ReserveOp is not wrapped by DataMovOp (see InsertDataMovPass).
-  // Return it directly as it represents the loop-carried dependency placeholder.
+  // Return it directly as it represents the loop-carried dependency
+  // placeholder.
   if (isa<neura::ReserveOp>(producer)) {
     return producer;
   }
-  
+
   // For operations wrapped by DataMovOp, find the actual producer.
-  assert(isa<neura::DataMovOp>(producer) &&
-         "Expected a DataMovOp as operand producer for non-ReserveOp operations");
+  assert(
+      isa<neura::DataMovOp>(producer) &&
+      "Expected a DataMovOp as operand producer for non-ReserveOp operations");
   auto mov_op = dyn_cast<neura::DataMovOp>(producer);
   auto materialized_producer = mov_op.getOperand().getDefiningOp();
   return materialized_producer;
@@ -831,8 +869,9 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
 
   for (Tile *tile : architecture.getAllTiles()) {
     if (!tile->canSupportOperation(getOperationKindFromMlirOp(op))) {
-      llvm::errs() << "[calculateAward] Tile<" << tile->getX() << ", " << tile->getY()
-                   << "> does not support operation: " << *op << "\n";
+      llvm::errs() << "[calculateAward] Tile<" << tile->getX() << ", "
+                   << tile->getY() << "> does not support operation: " << *op
+                   << "\n";
       continue; // Skip tiles that cannot support the operation.
     }
     int earliest_start_time_step = target_level;
@@ -968,18 +1007,17 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
         continue;
       }
       Operation *data_move = operand.getDefiningOp();
-      
+
       // ReserveOp is not wrapped by DataMovOp (see InsertDataMovPass).
       // Skip routing for ReserveOp as it represents loop-carried dependency.
       if (isa<neura::ReserveOp>(data_move)) {
-        llvm::errs() << "Skipping unwrapped operand: " << *data_move
-                     << "\n";
+        llvm::errs() << "Skipping unwrapped operand: " << *data_move << "\n";
         continue;
       }
-      
+
       assert(isa<neura::DataMovOp>(data_move) &&
              "Expected a DataMovOp as operand for non-ReserveOp operations");
-      
+
       Operation *producer = getMaterializedProducer(operand);
       MappingLoc src_loc = mapping_state.getAllLocsOfOp(producer).back();
 
