@@ -100,7 +100,7 @@
 // RUN:   --fold-constant \
 // RUN:   --view-op-graph 2>&1 | sed -n '/^digraph G {/,/^}$/p' > fir_kernel.dot
 // RUN: dot -Tpng fir_kernel.dot -o fir_kernel.png
-// RUN: dot -tJson fir_kernel.dot -o fir_kernel.json
+// RUN: dot -Tjson fir_kernel.dot -o fir_kernel.json
 // RUN: FileCheck %s --input-file=fir_kernel.dot -check-prefix=DOT
 
 // DOT: digraph G {
