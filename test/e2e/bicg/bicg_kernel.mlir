@@ -320,6 +320,7 @@
 // RUN:   --fold-constant \
 // RUN:   --view-op-graph 2>&1 | sed -n '/^digraph G {/,/^}$/p' > bicg_kernel.dot
 // RUN: dot -Tpng bicg_kernel.dot -o bicg_kernel.png
+// RUN: dot -Tjson bicg_kernel.dot -o bicg_kernel.json
 // RUN: FileCheck %s --input-file=bicg_kernel.dot -check-prefix=DOT
 
 // DOT: digraph G {

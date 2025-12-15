@@ -88,7 +88,7 @@
 // MAPPING-NEXT:     %44 = neura.grant_predicate %42, %43 {dfg_id = 33 : i32, mapping_locs = [{id = 6 : i32, index_per_ii = 4 : i32, invalid_iterations = 1 : i32, resource = "tile", time_step = 9 : i32, x = 2 : i32, y = 1 : i32}]} : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
 // MAPPING-NEXT:     neura.ctrl_mov %44 -> %1 {dfg_id = 37 : i32, mapping_locs = [{id = 20 : i32, index_per_ii = 4 : i32, invalid_iterations = 1 : i32, resource = "link", time_step = 9 : i32}, {id = 320 : i32, index_per_ii = 0 : i32, invalid_iterations = 2 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 10 : i32}, {id = 320 : i32, index_per_ii = 1 : i32, invalid_iterations = 2 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 11 : i32}]} : !neura.data<i32, i1> !neura.data<i32, i1>
 // MAPPING-NEXT:     "neura.return"() {dfg_id = 3 : i32, mapping_locs = [{id = 9 : i32, index_per_ii = 4 : i32, invalid_iterations = 1 : i32, resource = "tile", time_step = 9 : i32, x = 1 : i32, y = 2 : i32}]} : () -> ()
-//
+
 // YAML:        compiled_ii: 5
 // YAML:        cores:
 // YAML:          - column: 2
