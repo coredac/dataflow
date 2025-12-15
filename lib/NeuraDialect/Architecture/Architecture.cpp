@@ -329,12 +329,8 @@ void Architecture::applyTileOverrides(
 
       // Overrides num_registers if specified.
       if (override.num_registers > 0) {
-        // Removes existing register file cluster.
-        if (tile->getRegisterFileCluster()) {
-          delete tile->getRegisterFileCluster();
-        }
-
         // Creates new register file cluster with override capacity.
+        // Note: addRegisterFileCluster handles deletion of existing cluster.
         // Uses tile ID as base to avoid conflicts with existing registers.
         int dummy_ref = 0; // Not used when global_id_start is specified.
         createRegisterFileCluster(tile, override.num_registers, dummy_ref,
