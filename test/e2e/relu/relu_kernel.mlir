@@ -113,6 +113,6 @@
 // RUN:   --view-op-graph 2>&1 | sed -n '/^digraph G {/,/^}$/p' > relu_kernel.dot
 // RUN: dot -Tpng relu_kernel.dot -o relu_kernel.png
 // RUN: dot -Tjson relu_kernel.dot -o relu_kernel.json
-// RUN: FileCheck %s --input-file=histogram_kernel.dot -check-prefix=DOT
+// RUN: FileCheck %s --input-file=relu_kernel.dot -check-prefix=DOT
 
 // DOT: digraph G {
