@@ -12,30 +12,27 @@ using namespace mlir::neura;
 
 // Configures all supported operations for a function unit.
 void configureSupportedOperations(CustomizableFunctionUnit *function_unit,
-                                  const std::string &function_unit_name) {
-  auto it = kFunctionUnitsToOperations.find(function_unit_name);
+                                  const std::string &operation) {
+  auto it = kFunctionUnitsToOperations.find(operation);
   if (it != kFunctionUnitsToOperations.end()) {
     for (const auto &operation : it->second) {
       function_unit->addSupportedOperation(operation);
     }
   } else {
-    llvm::errs() << "Warning: Unknown function unit name '"
-                 << function_unit_name << "'. No operations configured.\n";
     assert(false && "Unknown operation specified for function unit");
   }
 }
 
-// Creates a function unit for a specific function unit name.
-// Maps YAML function unit names to OperationKind enum values and creates
+// Creates a function unit for a specific operation.
+// Maps YAML operation names to OperationKind enum values and creates
 // appropriate function units.
-void createFunctionUnitForOperation(Tile *tile,
-                                    const std::string &function_unit_name,
+void createFunctionUnitForOperation(Tile *tile, const std::string &operation,
                                     int function_unit_id) {
   auto function_unit =
       std::make_unique<CustomizableFunctionUnit>(function_unit_id);
 
   // Configures all supported operations using the unified function.
-  configureSupportedOperations(function_unit.get(), function_unit_name);
+  configureSupportedOperations(function_unit.get(), operation);
 
   // TODO: Adds support for unknown operations with warning instead of silent
   // failure. Such support would help users identify typos in their YAML
