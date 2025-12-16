@@ -10,7 +10,7 @@ namespace mlir {
 namespace neura {
 class HeuristicMapping : public Mapping {
 public:
-  HeuristicMapping(int max_location_to_try = 5, int max_backtrack_depth = 3)
+  HeuristicMapping(int max_location_to_try = 500, int max_backtrack_depth = 20)
       : max_location_to_try(max_location_to_try),
         max_backtrack_depth(max_backtrack_depth) {}
 
