@@ -16,15 +16,16 @@ enum class BaseTopology {
 
 // Structure for holding tile default configuration.
 struct TileDefaults {
-  int num_registers = 64; // default value.
+  // Default value.
+  int num_registers = 64;
+  // Default operations - include all supported
+  // operations for newbie convenience.
   std::vector<std::string> function_units = {
       "add",          "mul",   "div",       "fadd",      "fmul",
       "fdiv",         "logic", "cmp",       "sel",       "type_conv",
       "shift",        "vfmul", "fadd_fadd", "fmul_fadd", "grant",
       "loop_control", "phi",   "constant",  "mem",       "return",
-      "mem_indexed",  "alloca"}; // default operations - includes
-                                 // all supported operations for
-                                 // newbie convenience.
+      "mem_indexed",  "alloca"};
 };
 
 // Structure for holding memory configuration.
