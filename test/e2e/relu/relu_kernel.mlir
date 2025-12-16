@@ -90,29 +90,132 @@
 // MAPPING-NEXT:     "neura.return"() {dfg_id = 3 : i32, mapping_locs = [{id = 9 : i32, index_per_ii = 4 : i32, invalid_iterations = 1 : i32, resource = "tile", time_step = 9 : i32, x = 1 : i32, y = 2 : i32}]} : () -> ()
 
 // YAML:        compiled_ii: 5
-// YAML:        instructions:
-// YAML:        - opcode: "DATA_MOV"
-// YAML:        - opcode: "CAST_TRUNC"
-// YAML:        - opcode: "ICMP_EQ"
-// YAML:        - opcode: "ICMP_SGE"
-
+// YAML:        cores:
+// YAML:          - column: 2
+// YAML:            row: 1
+// YAML:            entries:
+// YAML:              - entry_id: "entry0"
+// YAML:                instructions:
+// YAML:                  - index_per_ii: 0
+// YAML:                    operations:
+// YAML:                      - opcode: "DATA_MOV"
+// YAML:                        id: 27
+// YAML:                        time_step: 5
+// YAML:                        invalid_iterations: 1
+// YAML:                        src_operands:
+// YAML:                          - operand: "NORTH"
+// YAML:                            color: "RED"
+// YAML:                        dst_operands:
+// YAML:                          - operand: "$1"
+// YAML:                            color: "RED"
+// YAML:                  - index_per_ii: 3
+// YAML:                    operations:
+// YAML:                      - opcode: "DATA_MOV"
+// YAML:                        id: 8
+// YAML:                        time_step: 8
+// YAML:                        invalid_iterations: 1
+// YAML:                        src_operands:
+// YAML:                          - operand: "NORTH"
+// YAML:                            color: "RED"
+// YAML:                        dst_operands:
+// YAML:                          - operand: "$0"
+// YAML:                            color: "RED"
+// YAML:                  - index_per_ii: 4
+// YAML:                    operations:
+// YAML:                      - opcode: "GRANT_PREDICATE"
+// YAML:                        id: 33
+// YAML:                        time_step: 9
+// YAML:                        invalid_iterations: 1
+// YAML:                        src_operands:
+// YAML:                          - operand: "$0"
+// YAML:                            color: "RED"
+// YAML:                          - operand: "$1"
+// YAML:                            color: "RED"
+// YAML:          - column: 3
+// YAML:            row: 2
+// YAML:            entries:
+// YAML:              - entry_id: "entry0"
+// YAML:                instructions:
+// YAML:                  - index_per_ii: 0
+// YAML:                    operations:
+// YAML:                      - opcode: "GRANT_ONCE"
+// YAML:                        id: 0
+// YAML:                        time_step: 0
+// YAML:                        invalid_iterations: 0
+// YAML:                        src_operands:
+// YAML:                          - operand: "#0"
+// YAML:                            color: "RED"
+// YAML:                        dst_operands:
+// YAML:                          - operand: "WEST"
+// YAML:                            color: "RED"
+// YAML:                          - operand: "$0"
+// YAML:                            color: "RED"
+// YAML:                  - index_per_ii: 1
+// YAML:                    operations:
+// YAML:                      - opcode: "PHI"
+// YAML:                        id: 7
+// YAML:                        time_step: 1
+// YAML:                        invalid_iterations: 0
+// YAML:                        src_operands:
+// YAML:                          - operand: "WEST"
+// YAML:                            color: "RED"
+// YAML:                          - operand: "$0"
+// YAML:                            color: "RED"
+// YAML:                        dst_operands:
+// YAML:                          - operand: "SOUTH"
+// YAML:                            color: "RED"
+// YAML:                          - operand: "$0"
+// YAML:                            color: "RED"
+// YAML:                  - index_per_ii: 2
+// YAML:                    operations:
+// YAML:                      - opcode: "ADD"
+// YAML:                        id: 12
+// YAML:                        time_step: 2
+// YAML:                        invalid_iterations: 0
+// YAML:                        src_operands:
+// YAML:                          - operand: "$0"
+// YAML:                            color: "RED"
+// YAML:                          - operand: "#1"
+// YAML:                            color: "RED"
+// YAML:                        dst_operands:
+// YAML:                          - operand: "WEST"
+// YAML:                            color: "RED"
+// YAML:                  - index_per_ii: 3
+// YAML:                    operations:
+// YAML:                      - opcode: "REM"
+// YAML:                        id: 19
+// YAML:                        time_step: 3
+// YAML:                        invalid_iterations: 0
+// YAML:                        src_operands:
+// YAML:                          - operand: "SOUTH"
+// YAML:                            color: "RED"
+// YAML:                          - operand: "#70"
+// YAML:                            color: "RED"
+// YAML:                        dst_operands:
+// YAML:                          - operand: "NORTH"
+// YAML:                            color: "RED"
+// YAML:                  - index_per_ii: 4
+// YAML:                    operations:
+// YAML:                      - opcode: "ZEXT"
+// YAML:                        id: 26
+// YAML:                        time_step: 4
+// YAML:                        invalid_iterations: 0
+// YAML:                        src_operands:
+// YAML:                          - operand: "SOUTH"
+// YAML:                            color: "RED"
+// YAML:                        dst_operands:
+// YAML:                          - operand: "NORTH"
+// YAML:                            color: "RED"
+// YAML:                          - operand: "WEST"
+// YAML:                            color: "RED"
+//
 // ASM:      PE(2,1):
 // ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$1]
-// ASM-NEXT: } (t=5)
-
-// RUN: mlir-neura-opt %t-kernel.mlir \
-// RUN:   --assign-accelerator \
-// RUN:   --lower-llvm-to-neura \
-// RUN:   --promote-func-arg-to-const \
-// RUN:   --fold-constant \
-// RUN:   --canonicalize-live-in \
-// RUN:   --leverage-predicated-value \
-// RUN:   --transform-ctrl-to-data-flow \
-// RUN:   --fold-constant \
-// RUN:   --view-op-graph 2>&1 | sed -n '/^digraph G {/,/^}$/p' > relu_kernel.dot
-// RUN: dot -Tpng relu_kernel.dot -o relu_kernel.png
-// RUN: dot -Tjson relu_kernel.dot -o relu_kernel.json
-// RUN: FileCheck %s --input-file=relu_kernel.dot -check-prefix=DOT
-
-// DOT: digraph G {
+// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$1] (t=5, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=0)
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$0] (t=8, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=3)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [NORTH, RED] (t=9, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=4)
