@@ -154,4 +154,23 @@ def InitPattern : Pass<"init-pattern", "ModuleOp"> {
   }];
   let constructor = "neura::createInitPatternPass()";
 }
+
+def HardwareMerge : Pass<"hardware-merge", "ModuleOp"> {
+  let summary = "Merge and optimize hardware units for pattern execution";
+  let description = [{
+    This pass analyzes patterns (fused_op regions) and designs an optimal
+    hardware configuration that supports all patterns while minimizing
+    hardware unit duplication. It considers the topological order of operations
+    within each pattern to ensure correct hardware pipeline design.
+    
+    Algorithm:
+    1. Extract pattern DAGs with topological structure from fused_op regions
+    2. Group patterns by structural similarity (same DAG shape)
+    3. For structurally similar patterns, create hardware templates where
+       each slot supports all operations that appear at that position
+    4. For structurally different patterns, use independent hardware units
+    5. Output the final hardware configuration as a JSON file
+  }];
+  let constructor = "neura::createHardwareMergePass()";
+}
 #endif // NEURA_PASSES_TD
