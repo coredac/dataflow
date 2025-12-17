@@ -1,4 +1,6 @@
 // Wraps the innermost loop within neura.kernel operation.
+// This function is a convolution followed by ReLU activation.
+
 // RUN: mlir-neura-opt %s \
 // RUN:  --wrap-loop-in-kernel \
 // RUN:  | FileCheck %s
