@@ -15,7 +15,7 @@ per_cgra_defaults:
 
 tile_defaults:
   num_registers: 32
-  operations: ["add", "mul", "sub", "div", "rem", "fadd", "fmul", "fsub", "fdiv", "or", "not", "icmp", "fcmp", "sel", "cast", "sext", "zext", "shl", "vfmul", "fadd_fadd", "fmul_fadd", "data_mov", "ctrl_mov", "reserve", "grant_predicate", "grant_once", "grant_always", "loop_control", "phi", "constant", "load", "store", "return", "load_indexed", "store_indexed", "alloca"]
+  operations: ["add", "mul", "div", "fadd", "fmul", "fdiv", "logic", "cmp", "sel", "type_conv", "vfmul", "fadd_fadd", "fmul_fadd", "grant", "loop_control", "phi", "constant", "mem", "return", "mem_indexed", "alloca", "shift"]
 
 link_defaults:
   latency: 1
