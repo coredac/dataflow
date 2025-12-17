@@ -48,7 +48,7 @@
 # CHECK-ITER-MERGE-PATTERN:     ^bb0(%arg5: !neura.data<i64, i1>):
 # CHECK-ITER-MERGE-PATTERN:         %61 = "neura.grant_once"() <{constant_value = 0 : i64}> : () -> !neura.data<i64, i1>
 # CHECK-ITER-MERGE-PATTERN:         %62 = "neura.phi"(%arg5, %61) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
-# CHECK-ITER-MERGE-PATTERN:         "neura.yield"(%61, %62) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> ()
+# CHECK-ITER-MERGE-PATTERN:         neura.yield %61, %62 : !neura.data<i64, i1>, !neura.data<i64, i1>
 # CHECK-ITER-MERGE-PATTERN:     }) : (!neura.data<i64, i1>) -> (!neura.data<i64, i1>, !neura.data<i64, i1>)
 # CHECK-ITER-MERGE-PATTERN:        %15:3 = "neura.fused_op"(%14, %11#0, %13, %4) <{frequency = 3 : i64, pattern_id = 6 : i64, pattern_name = "phi->fused_op:phi->fused_op:gep->load"}> ({
 # CHECK-ITER-MERGE-PATTERN:     ^bb0(%arg5: !neura.data<i64, i1>, %arg6: !neura.data<i64, i1>, %arg7: !neura.data<!llvm.ptr, i1>, %arg8: !neura.data<!llvm.ptr, i1>):
@@ -56,14 +56,14 @@
 # CHECK-ITER-MERGE-PATTERN:         %62 = "neura.phi"(%arg7, %arg8) : (!neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1>) -> !neura.data<!llvm.ptr, i1>
 # CHECK-ITER-MERGE-PATTERN:         %63 = "neura.gep"(%62, %61) <{operandSegmentSizes = array<i32: 1, 1>}> : (!neura.data<!llvm.ptr, i1>, !neura.data<i64, i1>) -> !neura.data<!llvm.ptr, i1>
 # CHECK-ITER-MERGE-PATTERN:         %64 = "neura.load"(%63) : (!neura.data<!llvm.ptr, i1>) -> !neura.data<i32, i1>
-# CHECK-ITER-MERGE-PATTERN:         "neura.yield"(%61, %62, %64) : (!neura.data<i64, i1>, !neura.data<!llvm.ptr, i1>, !neura.data<i32, i1>) -> ()
+# CHECK-ITER-MERGE-PATTERN:         neura.yield %61, %62, %64 : !neura.data<i64, i1>, !neura.data<!llvm.ptr, i1>, !neura.data<i32, i1>
 # CHECK-ITER-MERGE-PATTERN:     }) : (!neura.data<i64, i1>, !neura.data<i64, i1>, !neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1>) -> (!neura.data<i64, i1>, !neura.data<!llvm.ptr, i1>, !neura.data<i32, i1>)
 # CHECK-ITER-MERGE-PATTERN:         %16:3 = "neura.fused_op"(%12, %2, %15#0) <{frequency = 8 : i64, pattern_id = 10 : i64, pattern_name = "phi->fused_op:gep->load"}> ({
 # CHECK-ITER-MERGE-PATTERN:     ^bb0(%arg5: !neura.data<!llvm.ptr, i1>, %arg6: !neura.data<!llvm.ptr, i1>, %arg7: !neura.data<i64, i1>):
 # CHECK-ITER-MERGE-PATTERN:         %61 = "neura.phi"(%arg5, %arg6) : (!neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1>) -> !neura.data<!llvm.ptr, i1>
 # CHECK-ITER-MERGE-PATTERN:         %62 = "neura.gep"(%61, %arg7) <{operandSegmentSizes = array<i32: 1, 1>}> : (!neura.data<!llvm.ptr, i1>, !neura.data<i64, i1>) -> !neura.data<!llvm.ptr, i1>
 # CHECK-ITER-MERGE-PATTERN:         %63 = "neura.load"(%62) : (!neura.data<!llvm.ptr, i1>) -> !neura.data<i32, i1>
-# CHECK-ITER-MERGE-PATTERN:         "neura.yield"(%61, %62, %63) : (!neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1>, !neura.data<i32, i1>) -> ()
+# CHECK-ITER-MERGE-PATTERN:         neura.yield %61, %62, %63 : !neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1>, !neura.data<i32, i1>
 # CHECK-ITER-MERGE-PATTERN:     }) : (!neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1>, !neura.data<i64, i1>) -> (!neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1>, !neura.data<i32, i1>)
 
 # RUN: mlir-neura-opt --architecture-spec=%S/../../arch_spec/architecture.yaml --verify-each=true --mlir-print-ir-after-failure \
@@ -82,13 +82,13 @@
 # CHECK-INIT-PATTERN:    ^bb0(%arg5: !neura.data<!llvm.ptr, i1>, %arg6: !neura.data<i64, i1>):
 # CHECK-INIT-PATTERN:      %74 = "neura.gep"(%arg5, %arg6) <{operandSegmentSizes = array<i32: 1, 1>}> : (!neura.data<!llvm.ptr, i1>, !neura.data<i64, i1>) -> !neura.data<!llvm.ptr, i1>
 # CHECK-INIT-PATTERN:      %75 = "neura.load"(%74) : (!neura.data<!llvm.ptr, i1>) -> !neura.data<i32, i1>
-# CHECK-INIT-PATTERN:      "neura.yield"(%74, %75) : (!neura.data<!llvm.ptr, i1>, !neura.data<i32, i1>) -> ()
+# CHECK-INIT-PATTERN:      neura.yield %74, %75 : !neura.data<!llvm.ptr, i1>, !neura.data<i32, i1>
 # CHECK-INIT-PATTERN:    }) : (!neura.data<!llvm.ptr, i1>, !neura.data<i64, i1>) -> (!neura.data<!llvm.ptr, i1>, !neura.data<i32, i1>)
 # CHECK-INIT-PATTERN:    %22 = "neura.fused_op"(%18, %20) <{frequency = 6 : i64, pattern_id = 2 : i64, pattern_name = "gep->load"}> ({
 # CHECK-INIT-PATTERN:    ^bb0(%arg5: !neura.data<!llvm.ptr, i1>, %arg6: !neura.data<i64, i1>):
 # CHECK-INIT-PATTERN:      %74 = "neura.gep"(%arg5, %arg6) <{operandSegmentSizes = array<i32: 1, 1>}> : (!neura.data<!llvm.ptr, i1>, !neura.data<i64, i1>) -> !neura.data<!llvm.ptr, i1>
 # CHECK-INIT-PATTERN:      %75 = "neura.load"(%74) : (!neura.data<!llvm.ptr, i1>) -> !neura.data<i32, i1>
-# CHECK-INIT-PATTERN:      "neura.yield"(%75) : (!neura.data<i32, i1>) -> ()
+# CHECK-INIT-PATTERN:      neura.yield %75 : !neura.data<i32, i1>
 # CHECK-INIT-PATTERN:    }) : (!neura.data<!llvm.ptr, i1>, !neura.data<i64, i1>) -> !neura.data<i32, i1>
 
 # RUN: mlir-neura-opt --architecture-spec=%S/../../arch_spec/architecture.yaml --verify-each=true --mlir-print-ir-after-failure \
