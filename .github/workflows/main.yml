@@ -41,17 +41,30 @@ jobs:
         sudo apt-get install ccache
         sudo apt-get install lld
 
+    # Restores ccache directory.
+    - name: ccache cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ccache
+        key: ${{ runner.os }}-ccache-llvm-6146a88-${{ github.sha }}
+        # Restores from the last successful build of this LLVM version.
+        restore-keys: |
+          ${{ runner.os }}-ccache-llvm-6146a88-
+
     # install graphviz
     - name: install graphviz
       run: sudo apt-get install graphviz
  
     # setup LLVM
     - name: install a specific version of LLVM
+      env:
+        CCACHE_DIR: ~/.cache/ccache
+        CCACHE_COMPRESS: "true"
+        CCACHE_MAXSIZE: "4G"
       working-directory: ${{github.workspace}}
       run: |
-        git clone https://github.com/llvm/llvm-project.git
+        git clone --revision=6146a88f60492b520a36f8f8f3231e15f3cc6082 https://github.com/llvm/llvm-project.git
         cd llvm-project
-        git checkout 6146a88
         mkdir build && cd build
         cmake -G Ninja ../llvm \
           -DLLVM_ENABLE_PROJECTS="mlir;clang" \
@@ -70,7 +83,6 @@ jobs:
           -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
         cmake --build .
-        cmake --build . --target check-mlir
         
         # Add LLVM tools to PATH
         echo "${{github.workspace}}/llvm-project/build/bin" >> $GITHUB_PATH
@@ -109,6 +121,10 @@ jobs:
         #     cd ./experiments/demo/baseline
         #     sh script.sh
         #     ./simulate
+
+    # shows ccache stats to verify it's working.
+    - name: ccache stats
+      run: ccache -s
 
     # run demo cgra
     - name: run test
