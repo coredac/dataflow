@@ -319,9 +319,9 @@ void Architecture::applyTileOverrides(
     }
 
     if (tile) {
-      // Overrides operations if specified.
-      if (!override.operations.empty()) {
-        configureTileFunctionUnits(tile, override.operations, true);
+      // Overrides function unit types if specified.
+      if (!override.fu_types.empty()) {
+        configureTileFunctionUnits(tile, override.fu_types, true);
       }
 
       // Overrides num_registers if specified.
