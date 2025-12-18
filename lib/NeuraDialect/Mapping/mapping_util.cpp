@@ -911,50 +911,62 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
                    backward_user_loc.time_step + mapping_state.getII());
       backward_users_locs.push_back(backward_user_loc);
     }
-    int award = 2 * mapping_state.getII();
-    if (critical_ops.count(op)) {
-      award += tile->getDstTiles().size();
-      award += op->getOperands().size() -
-               getPhysicalHops(producers, tile, mapping_state);
+
+    // === Tile-based award (independent of time) ===
+    int tile_award = 0;
+
+    // Computes proximity bonus to producers. Closer tiles get higher scores.
+    int hops_to_producers = getPhysicalHops(producers, tile, mapping_state);
+    // Assumes max possible hops on a typical 4x4 grid is about 6 per producer.
+    int max_hops = static_cast<int>(producers.size()) * 6;
+    int proximity_bonus = std::max(0, max_hops - hops_to_producers);
+    tile_award += proximity_bonus;
+
+    // Computes proximity bonus to backward users. Closer is better for
+    // recurrence routing.
+    for (auto &backward_user_loc : backward_users_locs) {
+      Tile *backward_tile = dyn_cast<Tile>(backward_user_loc.resource);
+      if (backward_tile) {
+        int backward_hops = std::abs(backward_tile->getX() - tile->getX()) +
+                            std::abs(backward_tile->getY() - tile->getY());
+        tile_award += std::max(0, 6 - backward_hops);
+      }
     }
 
+    // Grants critical ops higher base award and routing flexibility bonus.
+    if (critical_ops.count(op)) {
+      tile_award += mapping_state.getII();
+      tile_award += tile->getDstTiles().size();
+    }
+
+    // === Time-based award ===
     for (int t = earliest_start_time_step; t < latest_end_time_step; t += 1) {
       MappingLoc tile_loc_candidate = {tile, t};
-      // If the tile at time `t` is available, we can consider it for mapping.
+      // Considers the tile at time `t` for mapping if available.
       if (mapping_state.isAvailableAcrossTime(tile_loc_candidate)) {
         bool meet_producer_constraint =
             producers.empty() ||
             canReachLocInTime(producers, tile_loc_candidate, t, mapping_state);
         bool meet_backward_user_constraint = true;
         for (auto &backward_user_loc : backward_users_locs) {
-          // If there is no backward user, we can consider it for mapping.
-          // Otherwise, check if the location can reach all backward users.
+          // Checks if the location can reach all backward users.
           if (!canReachLocInTime(tile_loc_candidate, backward_user_loc,
                                  backward_user_loc.time_step +
                                      mapping_state.getII(),
                                  mapping_state)) {
             meet_backward_user_constraint = false;
-            break; // No need to check further.
+            break;
           }
         }
-        // If no producer or the location is reachable by all producers, and
-        // no backward user or the location can reach all backward users,
-        // we can consider it for mapping and grant reward.
+        // Grants reward if all constraints are satisfied.
         if (meet_producer_constraint && meet_backward_user_constraint) {
-          // Grants higher award if the location is physically closed to
-          // producers. award += producers.size() - getPhysicalHops(producers,
-          // tile, mapping_state); if (op->getOperands().size() > 1 &&
-          // getPhysicalHops(producers, tile, mapping_state) < 2) {
-          //   award += 1;
-          // }
-          updateAward(locs_with_award, tile_loc_candidate, award);
+          // Earlier time steps get higher scores.
+          int time_bonus = latest_end_time_step - t;
+          int total_award = tile_award + time_bonus;
+          updateAward(locs_with_award, tile_loc_candidate, total_award);
         }
       }
-      // The mapping location with earlier time step is granted with a higher
-      // award.
-      award -= 1;
     }
-    // assert(award >= 0 && "Award should not be negative");
   }
 
   // Copies map entries into a vector of pairs for sorting.
