@@ -13,8 +13,8 @@ using namespace mlir::neura;
 // Configures all supported operations for a function unit.
 void configureSupportedOperations(CustomizableFunctionUnit *function_unit,
                                   const std::string &operation) {
-  auto it = kFunctionUnitsToOperations.find(operation);
-  if (it != kFunctionUnitsToOperations.end()) {
+  auto it = kFuTypesToOperations.find(operation);
+  if (it != kFuTypesToOperations.end()) {
     for (const auto &operation : it->second) {
       function_unit->addSupportedOperation(operation);
     }
@@ -319,9 +319,9 @@ void Architecture::applyTileOverrides(
     }
 
     if (tile) {
-      // Overrides operations if specified.
-      if (!override.operations.empty()) {
-        configureTileFunctionUnits(tile, override.operations, true);
+      // Overrides function unit types if specified.
+      if (!override.fu_types.empty()) {
+        configureTileFunctionUnits(tile, override.fu_types, true);
       }
 
       // Overrides num_registers if specified.

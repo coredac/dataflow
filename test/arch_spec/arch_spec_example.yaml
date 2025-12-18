@@ -19,7 +19,7 @@ cgra_defaults:
 
 tile_defaults:
   num_registers: 128
-  operations: ["add", "mul", "div", "fadd", "fmul", "fdiv", "logic", "cmp", "sel", "type_conv", "vfmul", "fadd_fadd", "fmul_fadd", "grant", "loop_control", "phi", "constant", "mem", "return", "mem_indexed", "alloca", "shift"]  # comprehensive operation set
+  fu_types: ["add", "mul", "div", "fadd", "fmul", "fdiv", "logic", "cmp", "sel", "type_conv", "vfmul", "fadd_fadd", "fmul_fadd", "grant", "loop_control", "phi", "constant", "mem", "return", "mem_indexed", "alloca", "shift"]  # comprehensive function unit types
 
 link_defaults:
   latency: 1
@@ -55,7 +55,7 @@ tile_overrides:
     cgra_y: 0
     tile_x: 0
     tile_y: 0
-    operations: ["load"]
+    fu_types: ["mem", "mem_indexed"]
     num_registers: 32
     existence: true
 
@@ -63,7 +63,7 @@ tile_overrides:
     cgra_y: 0
     tile_x: 3
     tile_y: 0
-    operations: ["store"]
+    fu_types: ["mem", "mem_indexed"]
     num_registers: 32
     existence: true
 

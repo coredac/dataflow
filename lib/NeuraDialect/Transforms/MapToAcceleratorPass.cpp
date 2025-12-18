@@ -97,7 +97,7 @@ void parseTileDefaults(llvm::yaml::MappingNode *tile_defaults_map,
       int temp_value = 0;
       if (parseYamlScalarInt(key_value_pair.getValue(), temp_value))
         tile_defaults.num_registers = temp_value;
-    } else if (key_ref == kOperations) {
+    } else if (key_ref == kFuTypes) {
       parseYamlStringSequence(key_value_pair.getValue(),
                               tile_defaults.function_units);
     } else {
@@ -118,8 +118,8 @@ void parseTileOverrideOperations(llvm::yaml::MappingNode *override_map,
     llvm::SmallString<64> key_string;
     llvm::StringRef key_ref = key_node->getValue(key_string);
 
-    if (key_ref == kOperations) {
-      parseYamlStringSequence(key_value_pair.getValue(), override.operations);
+    if (key_ref == kFuTypes) {
+      parseYamlStringSequence(key_value_pair.getValue(), override.fu_types);
     } else if (key_ref == kNumRegisters) {
       int temp_value = 0;
       if (parseYamlScalarInt(key_value_pair.getValue(), temp_value))
@@ -155,8 +155,8 @@ void parseSingleTileOverride(llvm::yaml::MappingNode *override_map,
     } else if (key_ref == kTileY) {
       if (parseYamlScalarInt(key_value_pair.getValue(), temp_value))
         override.tile_y = temp_value;
-    } else if (key_ref == kOperations) {
-      parseYamlStringSequence(key_value_pair.getValue(), override.operations);
+    } else if (key_ref == kFuTypes) {
+      parseYamlStringSequence(key_value_pair.getValue(), override.fu_types);
     } else if (key_ref == kNumRegisters) {
       if (parseYamlScalarInt(key_value_pair.getValue(), temp_value))
         override.num_registers = temp_value;

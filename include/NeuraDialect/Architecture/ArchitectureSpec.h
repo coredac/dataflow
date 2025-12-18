@@ -18,8 +18,8 @@ enum class BaseTopology {
 struct TileDefaults {
   // Default value.
   int num_registers = 64;
-  // Default operations - include all supported
-  // operations for newbie convenience.
+  // Default function unit types - include all supported function units
+  // types for newbie convenience.
   std::vector<std::string> function_units = {
       "add",          "mul",   "div",       "fadd",      "fmul",
       "fdiv",         "logic", "cmp",       "sel",       "type_conv",
@@ -42,7 +42,7 @@ struct TileOverride {
   // Tile coordinates within per-CGRA.
   int tile_x = -1;
   int tile_y = -1;
-  std::vector<std::string> operations;
+  std::vector<std::string> fu_types;
   int num_registers = 4;
   bool existence = true;
 };
