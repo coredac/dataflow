@@ -14,6 +14,12 @@
 using namespace mlir;
 using namespace mlir::neura;
 
+// Tuning constants for award calculation (modified by scripts)
+static const int AWARD_PROXIMITY_SCALE = 1;
+static const int AWARD_BACKWARD_PROXIMITY_SCALE = 1;
+static const int AWARD_BASE_MULTIPLIER = 1;
+static const int AWARD_CRITICAL_BONUS_DIV = 1;
+
 namespace mlir {
 namespace neura {
 OperationKind getOperationKindFromMlirOp(Operation *op) {
@@ -752,10 +758,12 @@ bool mlir::neura::canReachLocInTime(const MappingLoc &src_loc,
   };
 
   std::queue<QueueEntry> queue;
-  llvm::DenseSet<Tile *> visited;
+  // Tracks visited (tile, time) states to allow revisiting the same tile at
+  // different time steps (needed to faithfully model waiting in registers).
+  std::set<std::pair<Tile *, int>> visited;
 
   queue.push({src_loc, src_loc.time_step});
-  visited.insert(dyn_cast<Tile>(src_loc.resource));
+  visited.insert({dyn_cast<Tile>(src_loc.resource), src_loc.time_step});
 
   while (!queue.empty()) {
     auto [current_loc, current_step] = queue.front();
@@ -790,17 +798,34 @@ bool mlir::neura::canReachLocInTime(const MappingLoc &src_loc,
         continue;
       }
 
-      // Records the tile for further exploration.
+      // Records the tile (with time) for further exploration.
       Tile *next_tile =
           llvm::dyn_cast<Link>(current_loc_out_link.resource)->getDstTile();
       assert(next_tile && "Next location must be a Tile");
-      if (visited.contains(next_tile)) {
+      if (visited.find({next_tile, next_step}) != visited.end()) {
         continue;
       }
 
-      visited.insert(next_tile);
+      visited.insert({next_tile, next_step});
       MappingLoc next_loc_tile_with_step = {next_tile, next_step};
       queue.push({next_loc_tile_with_step, next_step});
+    }
+
+    // Option: can wait on a register on the current tile for one time step.
+    if (current_step + 1 <= deadline_step) {
+      Tile *cur_tile = dyn_cast<Tile>(current_loc.resource);
+      if (cur_tile) {
+        Register *wait_reg = getAvailableRegister(mapping_state, cur_tile,
+                                                 current_step,
+                                                 current_step + 1);
+        if (wait_reg) {
+          if (visited.find({cur_tile, current_step + 1}) == visited.end()) {
+            visited.insert({cur_tile, current_step + 1});
+            MappingLoc wait_loc = {cur_tile, current_step + 1};
+            queue.push({wait_loc, current_step + 1});
+          }
+        }
+      }
     }
   }
 
@@ -919,7 +944,7 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
     int hops_to_producers = getPhysicalHops(producers, tile, mapping_state);
     // Assumes max possible hops on a typical 4x4 grid is about 6 per producer.
     int max_hops = static_cast<int>(producers.size()) * 6;
-    int proximity_bonus = std::max(0, max_hops - hops_to_producers);
+    int proximity_bonus = std::max(0, max_hops - hops_to_producers) * AWARD_PROXIMITY_SCALE;
     tile_award += proximity_bonus;
 
     // Computes proximity bonus to backward users. Closer is better for
@@ -929,15 +954,18 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
       if (backward_tile) {
         int backward_hops = std::abs(backward_tile->getX() - tile->getX()) +
                             std::abs(backward_tile->getY() - tile->getY());
-        tile_award += std::max(0, 6 - backward_hops);
+        tile_award += std::max(0, (6 - backward_hops) * AWARD_BACKWARD_PROXIMITY_SCALE);
       }
     }
 
     // Grants critical ops higher base award and routing flexibility bonus.
     if (critical_ops.count(op)) {
-      tile_award += mapping_state.getII();
-      tile_award += tile->getDstTiles().size();
+      // Keep the original critical bonuses but allow tuning via division.
+      tile_award += (mapping_state.getII() + static_cast<int>(tile->getDstTiles().size())) / std::max(1, AWARD_CRITICAL_BONUS_DIV);
     }
+
+    // Apply base multiplier to amplify or dampen tile-based award.
+    tile_award *= AWARD_BASE_MULTIPLIER;
 
     // === Time-based award ===
     for (int t = earliest_start_time_step; t < latest_end_time_step; t += 1) {
