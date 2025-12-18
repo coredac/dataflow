@@ -23,16 +23,43 @@
 // RUN: FileCheck %s --input-file=tmp-generated-instructions.asm --check-prefix=ASM
 
 
-// MAPPING: module
-// MAPPING:      func.func
-// MAPPING-SAME:   compiled_ii = 5
-// MAPPING-SAME:   mapping_mode = "spatial-temporal"
-// MAPPING-SAME:   mapping_strategy = "heuristic"
-// MAPPING-SAME:   rec_mii = 5
-// MAPPING-SAME:   res_mii = 2
-// MAPPING-SAME:   x_tiles = 4
-// MAPPING-SAME:   y_tiles = 4
+
 //
+
+// YAML:      array_config:
+// YAML-NEXT:   columns: 4
+// YAML-NEXT:   rows: 4
+// YAML-NEXT:   compiled_ii: 5
+// YAML-NEXT:   cores:
+// ASM:      PE(3,2):
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_ONCE, [#0] -> [$0] (t=0, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=0)
+// ASM-NEXT: {
+// ASM-NEXT:   PHI, [WEST, RED], [$0] -> [WEST, RED], [$0] (t=1, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=1)
+// ASM-NEXT: {
+// ASM-NEXT:   ADD, [$0], [#1] -> [$0], [WEST, RED] (t=2, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=2)
+// ASM-NEXT: {
+// ASM-NEXT:   ICMP_EQ, [$0], [#20] -> [WEST, RED] (t=3, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=3)
+
+// RUN: mlir-neura-opt %t-kernel.mlir \
+// RUN:   --assign-accelerator \
+// RUN:   --lower-llvm-to-neura \
+// RUN:   --promote-func-arg-to-const \
+// RUN:   --fold-constant \
+// RUN:   --canonicalize-live-in \
+// RUN:   --leverage-predicated-value \
+// RUN:   --transform-ctrl-to-data-flow \
+// RUN:   --fold-constant \
+// RUN:   --view-op-graph 2>&1 | sed -n '/^digraph G {/,/^}$/p' > histogram_kernel.dot
+// RUN: dot -Tpng histogram_kernel.dot -o histogram_kernel.png
+// RUN: dot -Tjson histogram_kernel.dot -o histogram_kernel.json
+// RUN: FileCheck %s --input-file=histogram_kernel.dot -check-prefix=DOT
+
+// MAPPING: func.func @_Z6kernelPfPi(%arg0: !llvm.ptr {llvm.nocapture, llvm.noundef, llvm.readonly}, %arg1: !llvm.ptr {llvm.nocapture, llvm.noundef}) -> !llvm.void attributes {CConv = #llvm.cconv<ccc>, accelerator = "neura", dataflow_mode = "predicate", linkage = #llvm.linkage<external>, mapping_info = {compiled_ii = 5 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 5 : i32, res_mii = 2 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}, memory_effects = #llvm.memory_effects<other = none, argMem = readwrite, inaccessibleMem = none>, no_unwind, passthrough = ["mustprogress", "nofree", "norecurse", "nosync", ["uwtable", "2"], ["min-legal-vector-width", "0"], ["no-trapping-math", "true"], ["stack-protector-buffer-size", "8"], ["target-cpu", "x86-64"]], target_cpu = "x86-64", target_features = #llvm.target_features<["+cmov", "+cx8", "+fxsr", "+mmx", "+sse", "+sse2", "+x87"]>, tune_cpu = "generic", unnamed_addr = 1 : i64, visibility_ = 0 : i64} {
 // MAPPING-NEXT: %0 = "neura.grant_once"() <{constant_value = 0 : i64}> {dfg_id = 0 : i32, mapping_locs = [{id = 11 : i32, index_per_ii = 0 : i32, invalid_iterations = 0 : i32, resource = "tile", time_step = 0 : i32, x = 3 : i32, y = 2 : i32}]} : () -> !neura.data<i64, i1>
 // MAPPING-NEXT: %1 = neura.reserve {dfg_id = 1 : i32} : !neura.data<i64, i1>
 // MAPPING-NEXT: %2 = "neura.data_mov"(%0) {dfg_id = 3 : i32, mapping_locs = [{id = 352 : i32, index_per_ii = 0 : i32, invalid_iterations = 0 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 0 : i32}]} : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
@@ -71,159 +98,7 @@
 // MAPPING-NEXT: %34 = neura.grant_predicate %32, %33 {dfg_id = 20 : i32, mapping_locs = [{id = 10 : i32, index_per_ii = 0 : i32, invalid_iterations = 1 : i32, resource = "tile", time_step = 5 : i32, x = 2 : i32, y = 2 : i32}]} : !neura.data<i64, i1>, !neura.data<i1, i1> -> !neura.data<i64, i1>
 // MAPPING-NEXT: neura.ctrl_mov %34 -> %1 {dfg_id = 22 : i32, mapping_locs = [{id = 32 : i32, index_per_ii = 0 : i32, invalid_iterations = 1 : i32, resource = "link", time_step = 5 : i32}]} : !neura.data<i64, i1> !neura.data<i64, i1>
 // MAPPING-NEXT: "neura.return"() {dfg_id = 2 : i32, mapping_locs = [{id = 13 : i32, index_per_ii = 2 : i32, invalid_iterations = 2 : i32, resource = "tile", time_step = 12 : i32, x = 1 : i32, y = 3 : i32}]} : () -> ()
+// MAPPING-NEXT: }
 
-// YAML:      compiled_ii: 5
-// YAML:      cores:
-// YAML:        - column: 2
-// YAML:          row: 2
-// YAML:          entries:
-// YAML:            - entry_id: "entry0"
-// YAML:              instructions:
-// YAML:                - index_per_ii: 0
-// YAML:                  operations:
-// YAML:                    - opcode: "GRANT_PREDICATE"
-// YAML:                      time_step: 5
-// YAML:                      invalid_iterations: 1
-// YAML:                - index_per_ii: 2
-// YAML:                  operations:
-// YAML:                    - opcode: "GEP"
-// YAML:                      time_step: 2
-// YAML:                      invalid_iterations: 0
-// YAML:                - index_per_ii: 3
-// YAML:                  operations:
-// YAML:                    - opcode: "LOAD"
-// YAML:                      time_step: 3
-// YAML:                      invalid_iterations: 0
-// YAML:                    - opcode: "DATA_MOV"
-// YAML:                      time_step: 3
-// YAML:                      invalid_iterations: 0
-// YAML:                - index_per_ii: 4
-// YAML:                  operations:
-// YAML:                    - opcode: "NOT"
-// YAML:                      time_step: 4
-// YAML:                      invalid_iterations: 0
-// YAML:        - column: 3
-// YAML:          row: 2
-// YAML:          entries:
-// YAML:            - entry_id: "entry0"
-// YAML:              instructions:
-// YAML:                - index_per_ii: 0
-// YAML:                  operations:
-// YAML:                    - opcode: "GRANT_ONCE"
-// YAML:                      time_step: 0
-// YAML:                      invalid_iterations: 0
-// YAML:                - index_per_ii: 1
-// YAML:                  operations:
-// YAML:                    - opcode: "PHI"
-// YAML:                      time_step: 1
-// YAML:                      invalid_iterations: 0
-// YAML:                - index_per_ii: 2
-// YAML:                  operations:
-// YAML:                    - opcode: "ADD"
-// YAML:                      time_step: 2
-// YAML:                      invalid_iterations: 0
-// YAML:                - index_per_ii: 3
-// YAML:                  operations:
-// YAML:                    - opcode: "ICMP_EQ"
-// YAML:                      time_step: 3
-// YAML:                      invalid_iterations: 0
-// YAML:                - index_per_ii: 4
-// YAML:                  operations:
-// YAML:                    - opcode: "FADD"
-// YAML:                      time_step: 4
-// YAML:                      invalid_iterations: 0
-// YAML:        - column: 1
-// YAML:          row: 3
-// YAML:          entries:
-// YAML:            - entry_id: "entry0"
-// YAML:              instructions:
-// YAML:                - index_per_ii: 2
-// YAML:                  operations:
-// YAML:                    - opcode: "RETURN"
-// YAML:                      time_step: 12
-// YAML:                      invalid_iterations: 2
-// YAML:        - column: 2
-// YAML:          row: 3
-// YAML:          entries:
-// YAML:            - entry_id: "entry0"
-// YAML:              instructions:
-// YAML:                - index_per_ii: 0
-// YAML:                  operations:
-// YAML:                    - opcode: "LOAD"
-// YAML:                      time_step: 10
-// YAML:                      invalid_iterations: 2
-// YAML:                - index_per_ii: 1
-// YAML:                  operations:
-// YAML:                    - opcode: "ADD"
-// YAML:                      time_step: 11
-// YAML:                      invalid_iterations: 2
-// YAML:                - index_per_ii: 2
-// YAML:                  operations:
-// YAML:                    - opcode: "STORE"
-// YAML:                      time_step: 12
-// YAML:                      invalid_iterations: 2
-// YAML:                - index_per_ii: 4
-// YAML:                  operations:
-// YAML:                    - opcode: "DATA_MOV"
-// YAML:                      time_step: 9
-// YAML:                      invalid_iterations: 1
-// YAML:        - column: 3
-// YAML:          row: 3
-// YAML:          entries:
-// YAML:            - entry_id: "entry0"
-// YAML:              instructions:
-// YAML:                - index_per_ii: 0
-// YAML:                  operations:
-// YAML:                    - opcode: "FMUL"
-// YAML:                      time_step: 5
-// YAML:                      invalid_iterations: 1
-// YAML:                - index_per_ii: 1
-// YAML:                  operations:
-// YAML:                    - opcode: "FDIV"
-// YAML:                      time_step: 6
-// YAML:                      invalid_iterations: 1
-// YAML:                - index_per_ii: 2
-// YAML:                  operations:
-// YAML:                    - opcode: "CAST_FPTOSI"
-// YAML:                      time_step: 7
-// YAML:                      invalid_iterations: 1
-// YAML:                - index_per_ii: 3
-// YAML:                  operations:
-// YAML:                    - opcode: "SEXT"
-// YAML:                      time_step: 8
-// YAML:                      invalid_iterations: 1
-// YAML:                - index_per_ii: 4
-// YAML:                  operations:
-// YAML:                    - opcode: "GEP"
-// YAML:                      time_step: 9
-// YAML:                      invalid_iterations: 1
-
-// ASM:      PE(3,2):
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_ONCE, [#0] -> [$0] (t=0, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=0)
-// ASM-NEXT: {
-// ASM-NEXT:   PHI, [WEST, RED], [$0] -> [WEST, RED], [$0] (t=1, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=1)
-// ASM-NEXT: {
-// ASM-NEXT:   ADD, [$0], [#1] -> [$0], [WEST, RED] (t=2, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=2)
-// ASM-NEXT: {
-// ASM-NEXT:   ICMP_EQ, [$0], [#20] -> [WEST, RED] (t=3, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=3)
-
-// RUN: mlir-neura-opt %t-kernel.mlir \
-// RUN:   --assign-accelerator \
-// RUN:   --lower-llvm-to-neura \
-// RUN:   --promote-func-arg-to-const \
-// RUN:   --fold-constant \
-// RUN:   --canonicalize-live-in \
-// RUN:   --leverage-predicated-value \
-// RUN:   --transform-ctrl-to-data-flow \
-// RUN:   --fold-constant \
-// RUN:   --view-op-graph 2>&1 | sed -n '/^digraph G {/,/^}$/p' > histogram_kernel.dot
-// RUN: dot -Tpng histogram_kernel.dot -o histogram_kernel.png
-// RUN: dot -Tjson histogram_kernel.dot -o histogram_kernel.json
-// RUN: FileCheck %s --input-file=histogram_kernel.dot -check-prefix=DOT
 
 // DOT: digraph G {

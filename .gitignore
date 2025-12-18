@@ -20,3 +20,5 @@ lit.cfg
 .vscode
 
 # misc
+*.py
+*.bash
