@@ -23,8 +23,9 @@ static bool isInnermostLoop(affine::AffineForOp for_op) {
 }
 
 // Wraps an innermost affine for loop in a neura.kernel operation.
-static LogicalResult wrapLoopInKernel(affine::AffineForOp for_op,
-                                      OpBuilder &builder, unsigned &kernel_id) {
+static LogicalResult wrapInnermostLoopAsKernel(affine::AffineForOp for_op,
+                                               OpBuilder &builder,
+                                               unsigned &kernel_id) {
   Location loc = for_op.getLoc();
 
   // Collects values that need to be captured by the kernel.
@@ -127,7 +128,7 @@ struct WrapLoopInKernelPass
     OpBuilder builder(func_op->getContext());
     unsigned kernel_id = 0;
     for (affine::AffineForOp loop : innermost_loops) {
-      if (failed(wrapLoopInKernel(loop, builder, kernel_id))) {
+      if (failed(wrapInnermostLoopAsKernel(loop, builder, kernel_id))) {
         signalPassFailure();
         return;
       }
