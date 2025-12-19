@@ -27,9 +27,10 @@ jobs:
         submodules: true
     
     # Update references
-    - name: Git Sumbodule Update
+    - name: Git Submodule Update
       run: |
-        git submodule update --init
+        git submodule update --init --recursive
+        git submodule update --remote --recursive
     
     # install ninja
     - name: install ninja for LLVM build
