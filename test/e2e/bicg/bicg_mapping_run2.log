@@ -1,0 +1,8 @@
+[mlir-neura-opt] Architecture specification file: ../../arch_spec/architecture.yaml
+[MapToAcceleratorPass] Starting mapping pass...
+[MapToAcceleratorPass] Using Mapping Mode: spatial-temporal
+[MapToAcceleratorPass] Unknown YAML root key: extensions
+[MapToAcceleratorPass] Unknown YAML root key: simulator
+module {
+}
+

@@ -1,0 +1,4 @@
+[mlir-neura-opt] Architecture specification file: ../../arch_spec/architecture.yaml
+test.mlir:1:1: error: invalid attribute name
+# RUN: clang++ -S -emit-llvm -O3 -fno-unroll-loops -fno-vectorize -o %t-kernel.ll kernel.cpp
+^

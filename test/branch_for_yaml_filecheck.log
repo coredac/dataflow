@@ -1,0 +1,39 @@
+branch_for.mlir:210:15: error: YAML-NEXT: is not on the line after the previous match
+// YAML-NEXT: id: 1
+              ^
+tmp-generated-instructions.yaml:25:2: note: 'next' match was here
+ id: 180001
+ ^
+tmp-generated-instructions.yaml:14:24: note: previous match ended here
+ - opcode: "GRANT_ONCE"
+                       ^
+tmp-generated-instructions.yaml:15:1: note: non-matching line after previous match is here
+ id: 0
+^
+
+Input file: tmp-generated-instructions.yaml
+Check file: branch_for.mlir
+
+-dump-input=help explains the following input dump.
+
+Input was:
+<<<<<<
+          .
+          .
+          .
+         20:  color: "RED" 
+         21:  dst_operands: 
+         22:  - operand: "EAST" 
+         23:  color: "RED" 
+         24:  - opcode: "DATA_MOV" 
+         25:  id: 180001 
+next:210      !~~~~       error: match on wrong line
+         26:  time_step: 4 
+         27:  invalid_iterations: 1 
+         28:  src_operands: 
+         29:  - operand: "EAST" 
+         30:  color: "RED" 
+          .
+          .
+          .
+>>>>>>

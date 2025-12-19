@@ -124,6 +124,7 @@ func.func @loop_test() -> f32 {
 // ASM-NEXT: {
 // ASM-NEXT:   RETURN, [NORTH, RED] (t=8, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=3)
+// ASM-NEXT: 
 // ASM: PE(0,1):
 // ASM-NEXT: {
 // ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$0] (t=5, inv_iters=1)
@@ -141,6 +142,7 @@ func.func @loop_test() -> f32 {
 // ASM-NEXT: {
 // ASM-NEXT:   GRANT_PREDICATE, [$1], [$3] -> [NORTH, RED] (t=9, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=4)
+// ASM-NEXT: 
 // ASM: PE(1,1):
 // ASM-NEXT: {
 // ASM-NEXT:   GRANT_PREDICATE, [WEST, RED], [EAST, RED] -> [SOUTH, RED] (t=7, inv_iters=1)
@@ -153,6 +155,7 @@ func.func @loop_test() -> f32 {
 // ASM-NEXT: {
 // ASM-NEXT:   PHI, [$0], [WEST, RED] -> [WEST, RED], [$0] (t=4, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=4)
+// ASM-NEXT: 
 // ASM: PE(2,1):
 // ASM-NEXT: {
 // ASM-NEXT:   NOT, [NORTH, RED] -> [WEST, RED] (t=6, inv_iters=1)

@@ -1,0 +1,44 @@
+bicg_kernel.mlir:193:10: error: YAML: expected string not found in input
+// YAML: time_step: 2
+         ^
+tmp-generated-instructions.yaml:1598:7: note: scanning from here
+ id: 220001
+      ^
+tmp-generated-instructions.yaml:1599:2: note: possible intended match here
+ time_step: 12
+ ^
+
+Input file: tmp-generated-instructions.yaml
+Check file: bicg_kernel.mlir
+
+-dump-input=help explains the following input dump.
+
+Input was:
+<<<<<<
+             .
+             .
+             .
+          1593:  - entry_id: "entry0" 
+          1594:  instructions: 
+          1595:  - index_per_ii: 1 
+          1596:  operations: 
+          1597:  - opcode: "DATA_MOV" 
+          1598:  id: 220001 
+check:193'0           X~~~~~ error: no match found
+          1599:  time_step: 12 
+check:193'0     ~~~~~~~~~~~~~~~
+check:193'1      ?              possible intended match
+          1600:  invalid_iterations: 1 
+check:193'0     ~~~~~~~~~~~~~~~~~~~~~~~
+          1601:  src_operands: 
+check:193'0     ~~~~~~~~~~~~~~~
+          1602:  - operand: "NORTH" 
+check:193'0     ~~~~~~~~~~~~~~~~~~~~
+          1603:  color: "RED" 
+check:193'0     ~~~~~~~~~~~~~~
+          1604:  dst_operands: 
+check:193'0     ~~~~~~~~~~~~~~~
+             .
+             .
+             .
+>>>>>>

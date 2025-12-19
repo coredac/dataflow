@@ -299,7 +299,7 @@
 // ASM:        ICMP_EQ, [NORTH, RED], [WEST, RED] -> [NORTH, RED] (t=13, inv_iters=1)
 // ASM:      } (idx_per_ii=2)
 // ASM:      {
-// ASM:        DATA_MOV, [NORTH, RED] -> [WEST, RED] (t=15, inv_iters=1)
+// ASM:        DATA_MOV, [NORTH, RED] -> [WEST, RED] (t=15, inviters=1)
 // ASM:      } (idx_per_ii=4)
 // ASM:      {
 // ASM:        DATA_MOV, [WEST, RED] -> [EAST, RED] (t=6, inv_iters=0)
@@ -338,7 +338,7 @@
 // ASM:      } (idx_per_ii=4)
 // ASM:      {
 // ASM:        DATA_MOV, [SOUTH, RED] -> [EAST, RED] (t=5, inv_iters=0)
-// ASM:        DATA_MOV, [EAST, RED] -> [SOUTH, RED] (t=16, inv_iters=1)
+// ASM:        DATA_MOV, [EAST, RED] -> [SOUTH, RED] (t=16, inviters=1)
 // ASM:      } (idx_per_ii=5)
 // ASM:      {
 // ASM:        GRANT_PREDICATE, [$0], [SOUTH, RED] -> [$0], [EAST, RED] (t=6, inv_iters=0)

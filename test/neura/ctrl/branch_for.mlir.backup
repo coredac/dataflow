@@ -247,7 +247,8 @@ func.func @loop_test() -> f32 {
 // YAML:                 - opcode: "GRANT_ONCE"
 // YAML:                   id: 1
 // YAML:                   time_step: 2
-// ASM: # Compiled II: 4
+// ASM-NEXT: # Compiled II: 4
+// ASM-NEXT: 
 // ASM: PE(0,0):
 // ASM-NEXT: {
 // ASM-NEXT:   GRANT_ONCE, [#0] -> [EAST, RED] (t=0, inv_iters=0)
@@ -262,6 +263,7 @@ func.func @loop_test() -> f32 {
 // ASM-NEXT: {
 // ASM-NEXT:   PHI, [NORTH, RED], [$0] -> [EAST, RED] (t=3, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=3)
+// ASM-NEXT: 
 // ASM: PE(1,0):
 // ASM-NEXT: {
 // ASM-NEXT:   FADD, [WEST, RED], [#3.000000] -> [WEST, RED], [EAST, RED] (t=4, inv_iters=1)
@@ -275,6 +277,7 @@ func.func @loop_test() -> f32 {
 // ASM-NEXT: {
 // ASM-NEXT:   ICMP_SLT, [$0], [#10] -> [NORTH, RED], [WEST, RED], [EAST, RED] (t=3, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=3)
+// ASM-NEXT: 
 // ASM: PE(2,0):
 // ASM-NEXT: {
 // ASM-NEXT:   NOT, [WEST, RED] -> [$0] (t=4, inv_iters=1)
@@ -285,6 +288,7 @@ func.func @loop_test() -> f32 {
 // ASM-NEXT: {
 // ASM-NEXT:   RETURN, [$0] (t=6, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=2)
+// ASM-NEXT: 
 // ASM: PE(0,1):
 // ASM-NEXT: {
 // ASM-NEXT:   DATA_MOV, [SOUTH, RED] -> [$0] (t=5, inv_iters=1)
@@ -292,3 +296,4 @@ func.func @loop_test() -> f32 {
 // ASM-NEXT: {
 // ASM-NEXT:   GRANT_PREDICATE, [SOUTH, RED], [$0] -> [SOUTH, RED] (t=6, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=2)
+// ASM-NEXT: 

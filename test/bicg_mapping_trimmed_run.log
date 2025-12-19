@@ -1,0 +1,7 @@
+Created bicg_arch_trimmed.yaml with size: 553
+[mlir-neura-opt] Architecture specification file: bicg_arch_trimmed.yaml
+[MapToAcceleratorPass] Starting mapping pass...
+[MapToAcceleratorPass] Using Mapping Mode: spatial-temporal
+module {
+}
+
