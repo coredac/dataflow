@@ -12,7 +12,7 @@ env:
   LLVM_COMMIT: "6146a88f60492b520a36f8f8f3231e15f3cc6082"
   CCACHE_DIR: "${{ github.workspace }}/.ccache"
   CCACHE_COMPRESS: "true"
-  CCACHE_MAXSIZE: "4G"
+  CCACHE_MAXSIZE: "1G"
 
 jobs:
   build:
