@@ -1,7 +1,7 @@
 // Compiles the original C kernel to mlir, then lowers it via Neura.
 // TODO: Got error when using -O3 -fno-vectorize -fno-slp-vectorize -mllvm -force-vector-width=1 
 // Issue: https://github.com/coredac/dataflow/issues/164
-// RUN: clang++ -S -emit-llvm -O3 -fno-vectorize -fno-unroll-loops -o %t-kernel-full.ll %S/../../benchmark/CGRA-Bench/kernels/histogram/histogram.cpp
+// RUN: clang++ -S -emit-llvm -O3 -fno-vectorize -fno-unroll-loops -o %t-kernel-full.ll %S/../../benchmark/CGRA-Bench/kernels/histogram/histogram_int.cpp
 // RUN: llvm-extract --rfunc=".*kernel.*" %t-kernel-full.ll -o %t-kernel-only.ll
 // RUN: mlir-translate --import-llvm %t-kernel-only.ll -o %t-kernel.mlir
 
