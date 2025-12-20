@@ -319,6 +319,13 @@ void Architecture::applyTileOverrides(
     }
 
     if (tile) {
+      // Handles tile removal if existence is false.
+      if (!override.existence) {
+        removeTile(tile->getId());
+        // Skips other overrides since tile is removed.
+        continue;
+      }
+
       // Overrides function unit types if specified.
       if (!override.fu_types.empty()) {
         configureTileFunctionUnits(tile, override.fu_types, true);
@@ -382,7 +389,11 @@ void Architecture::createLinkIfValid(int &link_id, Tile *src_tile, int dst_x,
                                      const LinkDefaults &link_defaults) {
   if (dst_x >= 0 && dst_x < getPerCgraColumns() && dst_y >= 0 &&
       dst_y < getPerCgraRows()) {
-    createSingleLink(link_id, src_tile, getTile(dst_x, dst_y), link_defaults);
+    // Checks if the destination tile actually exists (not removed by tile_overrides).
+    auto it = coord_to_tile_.find({dst_x, dst_y});
+    if (it != coord_to_tile_.end()) {
+      createSingleLink(link_id, src_tile, it->second, link_defaults);
+    }
   }
 }
 
@@ -391,7 +402,12 @@ void Architecture::createMeshLinks(int &link_id,
                                    const LinkDefaults &link_defaults) {
   for (int j = 0; j < getPerCgraRows(); ++j) {
     for (int i = 0; i < getPerCgraColumns(); ++i) {
-      Tile *tile = getTile(i, j);
+      // Skips if tile was removed by tile_overrides.
+      auto it = coord_to_tile_.find({i, j});
+      if (it == coord_to_tile_.end()) {
+        continue;
+      }
+      Tile *tile = it->second;
 
       // Creates links to neighboring tiles with default properties.
       createLinkIfValid(link_id, tile, i - 1, j, link_defaults); // West
@@ -407,7 +423,12 @@ void Architecture::createKingMeshLinks(int &link_id,
                                        const LinkDefaults &link_defaults) {
   for (int j = 0; j < getPerCgraRows(); ++j) {
     for (int i = 0; i < getPerCgraColumns(); ++i) {
-      Tile *tile = getTile(i, j);
+      // Skips if tile was removed by tile_overrides.
+      auto it = coord_to_tile_.find({i, j});
+      if (it == coord_to_tile_.end()) {
+        continue;
+      }
+      Tile *tile = it->second;
 
       // Creates 4-connected links (N, S, W, E).
       createLinkIfValid(link_id, tile, i - 1, j, link_defaults); // West
@@ -434,7 +455,12 @@ void Architecture::createRingLinks(int &link_id,
   // Connects tiles on the outer boundary only.
   for (int j = 0; j < getPerCgraRows(); ++j) {
     for (int i = 0; i < getPerCgraColumns(); ++i) {
-      Tile *tile = getTile(i, j);
+      // Skips if tile was removed by tile_overrides.
+      auto it = coord_to_tile_.find({i, j});
+      if (it == coord_to_tile_.end()) {
+        continue;
+      }
+      Tile *tile = it->second;
 
       // Checks if tile is on the boundary.
       if (isTileOnBoundary(i, j, getPerCgraColumns(), getPerCgraRows())) {
