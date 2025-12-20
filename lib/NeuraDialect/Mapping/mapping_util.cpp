@@ -919,8 +919,9 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
 
     // Computes proximity bonus to producers. Closer tiles get higher scores.
     int hops_to_producers = getPhysicalHops(producers, tile, mapping_state);
-    // Assumes max possible hops on a typical 4x4 grid is about 6 per producer.
-    int max_hops = static_cast<int>(producers.size()) * 6;
+    // Calculates the maximum possible distance.
+    const int MAX_DIST = (architecture.getPerCgraRows() + architecture.getPerCgraColumns() -2);
+    int max_hops = static_cast<int>(producers.size()) * MAX_DIST;
     int proximity_bonus = std::max(0, max_hops - hops_to_producers) * AWARD_PROXIMITY_SCALE;
     tile_award += proximity_bonus;
 
@@ -931,7 +932,7 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
       if (backward_tile) {
         int backward_hops = std::abs(backward_tile->getX() - tile->getX()) +
                             std::abs(backward_tile->getY() - tile->getY());
-        tile_award += std::max(0, (6 - backward_hops) * AWARD_BACKWARD_PROXIMITY_SCALE);
+        tile_award += std::max(0, (MAX_DIST - backward_hops) * AWARD_BACKWARD_PROXIMITY_SCALE);
       }
     }
 
