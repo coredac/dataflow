@@ -1,7 +1,7 @@
 // Tests FIR kernel with removed tiles in architecture.
 // This test verifies that tiles marked with existence:false are not used in mapping.
 
-// RUN: clang++ -S -emit-llvm -O3 -fno-vectorize -fno-unroll-loops -o %t-kernel-full.ll %S/../../benchmark/CGRA-Bench/kernels/fir/fir_int.cpp
+// RUN: clang++ -S -emit-llvm -O3 -fno-vectorize -fno-unroll-loops -o %t-kernel-full.ll %S/../benchmark/CGRA-Bench/kernels/fir/fir_int.cpp
 // RUN: llvm-extract --rfunc=".*kernel.*" %t-kernel-full.ll -o %t-kernel-only.ll
 // RUN: mlir-translate --import-llvm %t-kernel-only.ll -o %t-kernel.mlir
 
@@ -16,7 +16,7 @@
 // RUN:   --fold-constant \
 // RUN:   --insert-data-mov \
 // RUN:   --map-to-accelerator="mapping-strategy=heuristic" \
-// RUN:   --architecture-spec=../../arch_spec/custom_arch_with_removed_tiles.yaml \
+// RUN:   --architecture-spec=%S/../arch_spec/custom_arch_with_removed_tiles.yaml \
 // RUN:   -o %t-after-mapping.mlir
 
 // RUN: FileCheck %s --input-file=%t-after-mapping.mlir
