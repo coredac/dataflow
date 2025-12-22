@@ -57,6 +57,28 @@ struct ArithAddIToNeuraAdd : public OpRewritePattern<mlir::arith::AddIOp> {
   }
 };
 
+struct ArithCmpFToNeuraFCmp : public OpRewritePattern<mlir::arith::CmpFOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(arith::CmpFOp op,
+                                PatternRewriter &rewriter) const override {
+  
+    Value lhs = op.getLhs();
+    Value rhs = op.getRhs();
+
+    mlir::arith::CmpFPredicate predicate_enum = op.getPredicate();
+
+    StringRef predicate_str = arith::stringifyCmpFPredicate(predicate_enum);
+    
+    StringAttr predicate_attr = rewriter.getStringAttr(predicate_str);
+// Converts arith CmpFOp to Neura FCmpOp.
+    rewriter.replaceOpWithNewOp<neura::FCmpOp>(
+        op, op.getResult().getType(), lhs, rhs, predicate_attr);
+
+    return success();
+  }
+};
+
 struct ArithFAddToNeuraFAdd : public OpRewritePattern<mlir::arith::AddFOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -338,7 +360,7 @@ struct LowerArithToNeuraPass
           mlir::neura::arith2neura::populateWithGenerated(patterns);
           patterns.add<
               ArithFAddToNeuraFAdd, ArithConstantToNeuraConstant,
-              ArithAddIToNeuraAdd, ArithCmpiToNeuraICmp, ArithSelectToNeuraSel,
+              ArithAddIToNeuraAdd, ArithCmpiToNeuraICmp, ArithCmpFToNeuraFCmp, ArithSelectToNeuraSel,
               ArithExtUIToNeuraCast, ArithIndexCastToNeuraCast,
               ArithFDivToNeuraFDiv, ArithExtfToNeuraCast, ArithMulFToNeuraFMul,
               ArithSubIToNeuraSub, ArithSubFToNeuraFSub, ArithMulIToNeuraMul,
