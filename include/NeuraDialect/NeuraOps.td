@@ -544,7 +544,7 @@ def Neura_DataMovOp : Op<NeuraDialect, "data_mov"> {
 
 // Defines phi operation for merging values in dataflow form.
 def Neura_PhiOp : Op<NeuraDialect, "phi"> {
-  let summary = "Phi node in dataflow form";
+  let summary = "Phi node in dataflow form.";
   let description = [{
     Merges values from different control paths in dataflow form.
     Used with reserve and ctrl_mov to represent control flow.
@@ -560,6 +560,36 @@ def Neura_PhiOp : Op<NeuraDialect, "phi"> {
 
   // Explicitly specifies types for operands in the assembly format.
   // let assemblyFormat = "$init_val `:` type($init_val) `,` $loop_val `:` type($loop_val) attr-dict `,` type($result)";
+}
+
+// Defines phi_start operation specifically for phi operations with neura.reserve as an operand.
+def Neura_PhiStartOp : Op<NeuraDialect, "phi_start">{
+  let summary = "Phi start operation for neura.reserve operand.";
+  let description = [{
+    Special phi operation for loop initialization where the first operand
+    must be a reserve operation (loop-carried value) and subsequent operands
+    are the initial values from different control paths.
+    
+    This operation distinguishes loop initialization patterns from general
+    phi merges, making it easier to identify and optimize recurrence cycles.
+    
+    The first operand (reserve) represents the placeholder for the loop-carried
+    value, while other operands provide the initial values for the first iteration.
+    
+    Example:
+      %reserved = neura.reserve : f32
+      %init = neura.grant_once ... : f32
+      %result = neura.phi_start %reserved, %init : !neura.data<f32, i1>, !neura.data<f32, i1> -> !neura.data<f32, i1>
+      // ... loop body uses %result ...
+      neura.ctrl_mov %next_val -> %reserved
+  }];
+
+  let arguments = (ins AnyType:$reserved, Variadic<AnyType>:$init_values);
+  let results = (outs AnyType:$result);
+
+  let assemblyFormat = "$reserved `,` $init_values attr-dict `:` type($reserved) `,` type($init_values) `->` type($result)";
+
+  let hasVerifier = 1;
 }
 
 // Defines control movement extending base move but with different signature.
