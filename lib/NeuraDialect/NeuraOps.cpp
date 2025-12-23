@@ -8,17 +8,30 @@ using namespace mlir;
 using namespace mlir::neura;
 
 LogicalResult PhiStartOp::verify() {
-  // Verifies that the first operand is produced by a neura.reserve operation.
-  Value reserved = getReserved();
-  Operation *def_op = reserved.getDefiningOp();
-
-  if (!def_op) {
-    return emitOpError("First operand must be defined by an operation.");
+  // Checks if this phi_start is inside a fused_op.
+  Operation *parent_op = getOperation()->getParentOp();
+  bool inside_fused_op = false;
+  while (parent_op) {
+    if (isa<FusedOp>(parent_op)) {
+      inside_fused_op = true;
+      break;
+    }
+    parent_op = parent_op->getParentOp();
   }
 
-  if (!isa<ReserveOp>(def_op)) {
-    return emitOpError("First operand must be produced by a neura.reserve "
-                       "operation.");
+  if (!inside_fused_op) {
+    // Verifies that the first operand is produced by a neura.reserve operation.
+    Value reserved = getReserved();
+    Operation *def_op = reserved.getDefiningOp();
+
+    if (!def_op) {
+      return emitOpError("First operand must be defined by an operation.");
+    }
+
+    if (!isa<ReserveOp>(def_op)) {
+      return emitOpError("First operand must be produced by a neura.reserve "
+                         "operation.");
+    }
   }
 
   // Verifies that there is at least one initialization value.
@@ -28,7 +41,7 @@ LogicalResult PhiStartOp::verify() {
 
   // Verifies type consistency.
   Type result_type = getResult().getType();
-  Type reserved_type = reserved.getType();
+  Type reserved_type = getReserved().getType();
 
   if (result_type != reserved_type) {
     return emitOpError("Result type must match the reserved value type.");
