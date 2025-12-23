@@ -34,7 +34,7 @@
 // MAPPING-NEXT:    %0 = "neura.grant_once"() <{constant_value = 0 : i64}> {dfg_id = 0 : i32, mapping_locs = [{id = 11 : i32, index_per_ii = 0 : i32, invalid_iterations = 0 : i32, resource = "tile", time_step = 0 : i32, x = 3 : i32, y = 2 : i32}]} : () -> !neura.data<i64, i1>
 // MAPPING-NEXT:    %1 = neura.reserve {dfg_id = 1 : i32} : !neura.data<i64, i1>
 // MAPPING-NEXT:    %2 = "neura.data_mov"(%0) {dfg_id = 3 : i32, mapping_locs = [{id = 352 : i32, index_per_ii = 0 : i32, invalid_iterations = 0 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 0 : i32}]} : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
-// MAPPING-NEXT:    %3 = neura.phi_start %2, %1 {dfg_id = 4 : i32, mapping_locs = [{id = 11 : i32, index_per_ii = 1 : i32, invalid_iterations = 0 : i32, resource = "tile", time_step = 1 : i32, x = 3 : i32, y = 2 : i32}]} : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
+// MAPPING-NEXT:    %3 = neura.phi_start %1, %2 {dfg_id = 4 : i32, mapping_locs = [{id = 11 : i32, index_per_ii = 1 : i32, invalid_iterations = 0 : i32, resource = "tile", time_step = 1 : i32, x = 3 : i32, y = 2 : i32}]} : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
 // MAPPING-NEXT:    %4 = "neura.data_mov"(%3) {dfg_id = 6 : i32, mapping_locs = [{id = 35 : i32, index_per_ii = 1 : i32, invalid_iterations = 0 : i32, resource = "link", time_step = 1 : i32}]} : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
 // MAPPING-NEXT:    %5 = "neura.gep"(%4) <{operandSegmentSizes = array<i32: 0, 1>}> {dfg_id = 8 : i32, lhs_value = "%arg0", mapping_locs = [{id = 10 : i32, index_per_ii = 2 : i32, invalid_iterations = 0 : i32, resource = "tile", time_step = 2 : i32, x = 2 : i32, y = 2 : i32}]} : (!neura.data<i64, i1>) -> !neura.data<!llvm.ptr, i1>
 // MAPPING-NEXT:    %6 = "neura.data_mov"(%5) {dfg_id = 11 : i32, mapping_locs = [{id = 320 : i32, index_per_ii = 2 : i32, invalid_iterations = 0 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 2 : i32}]} : (!neura.data<!llvm.ptr, i1>) -> !neura.data<!llvm.ptr, i1>
@@ -115,36 +115,36 @@
 // ASM:      # Compiled II: 5
 // ASM:      PE(2,2):
 // ASM-NEXT: {
-// ASM-NEXT: GRANT_PREDICATE, [$0], [$1] -> [EAST, RED] (t=5, inv_iters=1)
+// ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [EAST, RED] (t=5, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=0)
 // ASM-NEXT: {
-// ASM-NEXT: RETURN (t=11, inv_iters=2)
+// ASM-NEXT:   RETURN (t=11, inv_iters=2)
 // ASM-NEXT: } (idx_per_ii=1)
 // ASM-NEXT: {
-// ASM-NEXT: GEP, [EAST, RED] -> [$0] (t=2, inv_iters=0)
+// ASM-NEXT:   GEP, [EAST, RED] -> [$0] (t=2, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=2)
 // ASM-NEXT: {
-// ASM-NEXT: LOAD, [$0] -> [EAST, RED] (t=3, inv_iters=0)
-// ASM-NEXT: DATA_MOV, [EAST, RED] -> [$0] (t=3, inv_iters=0)
+// ASM-NEXT:   LOAD, [$0] -> [EAST, RED] (t=3, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$0] (t=3, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=3)
 // ASM-NEXT: {
-// ASM-NEXT: NOT, [EAST, RED] -> [$1] (t=4, inv_iters=0)
+// ASM-NEXT:   NOT, [EAST, RED] -> [$1] (t=4, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=4)
 // ASM:      PE(3,2):
 // ASM-NEXT: {
-// ASM-NEXT: GRANT_ONCE, [#0] -> [$0] (t=0, inv_iters=0)
+// ASM-NEXT:   GRANT_ONCE, [#0] -> [$0] (t=0, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=0)
 // ASM-NEXT: {
-// ASM-NEXT: PHI_START, [UNRESOLVED, ERROR], [$0] -> [WEST, RED], [$0] (t=1, inv_iters=0)
+// ASM-NEXT:   PHI_START, [$0], [UNRESOLVED, ERROR] -> [WEST, RED], [$0] (t=1, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=1)
 // ASM-NEXT: {
-// ASM-NEXT: ADD, [$0], [#1] -> [$0], [WEST, RED] (t=2, inv_iters=0)
+// ASM-NEXT:   ADD, [$0], [#1] -> [$0], [WEST, RED] (t=2, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=2)
 // ASM-NEXT: {
-// ASM-NEXT: ICMP_EQ, [$0], [#20] -> [WEST, RED] (t=3, inv_iters=0)
+// ASM-NEXT:   ICMP_EQ, [$0], [#20] -> [WEST, RED] (t=3, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=3)
 // ASM-NEXT: {
-// ASM-NEXT: MUL, [WEST, RED], [#5] -> [NORTH, RED] (t=4, inv_iters=0)
+// ASM-NEXT:   MUL, [WEST, RED], [#5] -> [NORTH, RED] (t=4, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=4)
 
 // RUN: mlir-neura-opt %t-kernel.mlir \

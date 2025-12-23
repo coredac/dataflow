@@ -132,13 +132,13 @@ module attributes {} {
 // CTRL2DATA-NEXT:     %6 = "neura.constant"() <{value = 0 : i64}> : () -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %7 = "neura.grant_once"(%6) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %8 = neura.reserve : !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %9 = neura.phi_start %1, %8 : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %9 = neura.phi_start %8, %1 : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %10 = neura.reserve : !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %11 = neura.phi_start %3, %10 : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %11 = neura.phi_start %10, %3 : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %12 = neura.reserve : !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %13 = neura.phi_start %5, %12 : !neura.data<i32, i1>, !neura.data<i32, i1> -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %13 = neura.phi_start %12, %5 : !neura.data<i32, i1>, !neura.data<i32, i1> -> !neura.data<i32, i1>
 // CTRL2DATA-NEXT:     %14 = neura.reserve : !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %15 = neura.phi_start %7, %14 : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %15 = neura.phi_start %14, %7 : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %16 = "neura.icmp"(%15, %11) <{cmpType = "slt"}> : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i1, i1>
 // CTRL2DATA-NEXT:     %17 = neura.grant_predicate %15, %16 : !neura.data<i64, i1>, !neura.data<i1, i1> -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %18 = neura.grant_predicate %13, %16 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
@@ -160,7 +160,7 @@ module attributes {} {
 // FUSE:        func.func @_Z10simpleloopv() -> i32 attributes {accelerator = "neura", dataflow_mode = "predicate", llvm.linkage = #llvm.linkage<external>} {
 // FUSE-NEXT:     %0 = "neura.grant_once"() <{constant_value = 0 : i32}> : () -> !neura.data<i32, i1>
 // FUSE-NEXT:     %1 = neura.reserve : !neura.data<i32, i1>
-// FUSE-NEXT:     %2 = neura.phi_start %0, %1 : !neura.data<i32, i1>, !neura.data<i32, i1> -> !neura.data<i32, i1>
+// FUSE-NEXT:     %2 = neura.phi_start %1, %0 : !neura.data<i32, i1>, !neura.data<i32, i1> -> !neura.data<i32, i1>
 // FUSE-NEXT:     %3 = "neura.grant_always"() <{constant_value = true}> : () -> !neura.data<i1, i1>
 // FUSE-NEXT:     %nextindex, %valid = "neura.loop_control"(%3) <{end = 128 : i64, iterationType = "increment", start = 0 : i64, step = 1 : i64}> : (!neura.data<i1, i1>) -> (!neura.data<i64, i1>, !neura.data<i1, i1>)
 // FUSE-NEXT:     %4 = "neura.not"(%valid) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>

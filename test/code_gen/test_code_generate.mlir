@@ -120,11 +120,11 @@ func.func @loop_test() -> f32 {
 // YAML:             - index_per_ii: 1
 // YAML:               operations:
 // ASM: # Compiled II: 5
-// ASM: PE(1,0):
+// ASM:      PE(1,0):
 // ASM-NEXT: {
 // ASM-NEXT:   RETURN, [NORTH, RED] (t=8, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=3)
-// ASM: PE(0,1):
+// ASM:      PE(0,1):
 // ASM-NEXT: {
 // ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$0] (t=5, inv_iters=1)
 // ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$3] (t=5, inv_iters=1)
@@ -141,7 +141,7 @@ func.func @loop_test() -> f32 {
 // ASM-NEXT: {
 // ASM-NEXT:   GRANT_PREDICATE, [$1], [$3] -> [NORTH, RED] (t=9, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=4)
-// ASM: PE(1,1):
+// ASM:      PE(1,1):
 // ASM-NEXT: {
 // ASM-NEXT:   GRANT_PREDICATE, [WEST, RED], [EAST, RED] -> [SOUTH, RED] (t=7, inv_iters=1)
 // ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$1] (t=7, inv_iters=1)
@@ -151,16 +151,28 @@ func.func @loop_test() -> f32 {
 // ASM-NEXT:   DATA_MOV, [EAST, RED] -> [WEST, RED] (t=8, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=3)
 // ASM-NEXT: {
-// ASM-NEXT:   PHI_START, [UNRESOLVED, ERROR], [WEST, RED] -> [WEST, RED], [$0] (t=4, inv_iters=0)
+// ASM-NEXT:   PHI_START, [WEST, RED], [UNRESOLVED, ERROR] -> [WEST, RED], [$0] (t=4, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=4)
-// ASM: PE(2,1):
+// ASM:      PE(2,1):
 // ASM-NEXT: {
 // ASM-NEXT:   NOT, [NORTH, RED] -> [WEST, RED] (t=6, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=1)
 // ASM-NEXT: {
 // ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [WEST, RED] (t=7, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=2)
-// ASM: PE(0,2):
+// ASM:      PE(0,2):
 // ASM-NEXT: {
-// ASM-NEXT:   PHI_START, [UNRESOLVED, ERROR], [$0] -> [SOUTH, RED] (t=5, inv_iters=1)
+// ASM-NEXT:   PHI_START, [$0], [UNRESOLVED, ERROR] -> [SOUTH, RED] (t=5, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=0)
+// ASM-NEXT: {
+// ASM-NEXT:   CONSTANT, [#10] -> [$0] (t=1, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=1)
+// ASM-NEXT: {
+// ASM-NEXT:   CONSTANT, [#0.000000] -> [$1] (t=2, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=2)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_ONCE, [$0] -> [EAST, RED] (t=3, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=3)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_ONCE, [$1] -> [$0] (t=4, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=4)
