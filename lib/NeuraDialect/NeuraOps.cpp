@@ -20,7 +20,7 @@ LogicalResult PhiStartOp::verify() {
   }
 
   if (!inside_fused_op) {
-    // Verifies that the reserve operand is produced by a neura.reserve
+    // Verifies that the reserved operand is produced by a neura.reserve
     // operation.
     Value reserved = getReserved();
     Operation *def_op = reserved.getDefiningOp();

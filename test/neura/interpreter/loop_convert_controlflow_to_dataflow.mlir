@@ -37,21 +37,22 @@ func.func @loop_sum() -> f32 {
   "neura.return"(%ret_sum) : (f32) -> ()
 }
 
+
 // DATAFLOW_IR:        func.func @loop_sum() -> f32 attributes {accelerator = "neura", dataflow_mode = "predicate"} {
 // DATAFLOW_IR-NEXT:     %0 = "neura.grant_once"() <{constant_value = 0.000000e+00 : f32}> : () -> !neura.data<f32, i1>
 // DATAFLOW_IR-NEXT:     %1 = "neura.grant_once"() <{constant_value = 1.000000e+00 : f32}> : () -> !neura.data<f32, i1>
 // DATAFLOW_IR-NEXT:     %2 = "neura.grant_once"() <{constant_value = 3.000000e+00 : f32}> : () -> !neura.data<f32, i1>
 // DATAFLOW_IR-NEXT:     %3 = "neura.grant_once"() <{constant_value = 5.000000e+00 : f32}> : () -> !neura.data<f32, i1>
 // DATAFLOW_IR-NEXT:     %4 = neura.reserve : !neura.data<f32, i1>
-// DATAFLOW_IR-NEXT:     %5 = "neura.phi"(%4, %1) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// DATAFLOW_IR-NEXT:     %5 = neura.phi_start %4, %1 : !neura.data<f32, i1>, !neura.data<f32, i1> -> !neura.data<f32, i1>
 // DATAFLOW_IR-NEXT:     %6 = neura.reserve : !neura.data<f32, i1>
-// DATAFLOW_IR-NEXT:     %7 = "neura.phi"(%6, %2) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// DATAFLOW_IR-NEXT:     %7 = neura.phi_start %6, %2 : !neura.data<f32, i1>, !neura.data<f32, i1> -> !neura.data<f32, i1>
 // DATAFLOW_IR-NEXT:     %8 = neura.reserve : !neura.data<f32, i1>
-// DATAFLOW_IR-NEXT:     %9 = "neura.phi"(%8, %3) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// DATAFLOW_IR-NEXT:     %9 = neura.phi_start %8, %3 : !neura.data<f32, i1>, !neura.data<f32, i1> -> !neura.data<f32, i1>
 // DATAFLOW_IR-NEXT:     %10 = neura.reserve : !neura.data<f32, i1>
-// DATAFLOW_IR-NEXT:     %11 = "neura.phi"(%10, %0) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// DATAFLOW_IR-NEXT:     %11 = neura.phi_start %10, %0 : !neura.data<f32, i1>, !neura.data<f32, i1> -> !neura.data<f32, i1>
 // DATAFLOW_IR-NEXT:     %12 = neura.reserve : !neura.data<f32, i1>
-// DATAFLOW_IR-NEXT:     %13 = "neura.phi"(%12, %0) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// DATAFLOW_IR-NEXT:     %13 = neura.phi_start %12, %0 : !neura.data<f32, i1>, !neura.data<f32, i1> -> !neura.data<f32, i1>
 // DATAFLOW_IR-NEXT:     %14 = "neura.fcmp"(%13, %9) <{cmpType = "lt"}> : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<i1, i1>
 // DATAFLOW_IR-NEXT:     %15 = neura.grant_predicate %13, %14 : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
 // DATAFLOW_IR-NEXT:     %16 = neura.grant_predicate %11, %14 : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>

@@ -1,3 +1,4 @@
+#include <iterator>
 #include <stdlib.h>
 
 #include <cassert>
@@ -16,6 +17,7 @@
 #include "mlir/Parser/Parser.h"
 #include "mlir/Support/FileUtilities.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
@@ -2540,21 +2542,17 @@ bool handleCondBrOp(
  * (neura.phi_start), specifically designed for loop initialization with a
  * reserve operand.
  *
- * This function processes Neura's phi_start operations, which are used for loop
- * initialization where the first operand must be an initial value and
- * subsequent operand is the reserved value. In control flow
- * mode, it should not exist. In data flow mode, it merges inputs by selecting
- * the first input with a true predicate.
+ * In control flow mode, phi_start behaves the same as phi: selects input based
+ * on the predecessor block.
  *
- * The key difference from phi is that phi_start explicitly separates the
- * reserved (loop-carried) operand from initialization values, making loop
- * patterns clearer.
+ * In data flow mode, phi_start has special semantics:
+ * - On first execution: selects from init_values (the non-reserve operands)
+ * - On subsequent executions: selects the operand with a true predicate
  *
- * @param op                             The neura.phi_start operation to
- * handle.
+ * @param op                             The neura.phi_start operation to handle
  * @param value_to_predicated_data_map   Reference to the map storing input
  *                                       values and where the result will be
- *                                       stored.
+ * stored
  * @param current_block                  [ControlFlow only] The block containing
  *                                       the phi_start operation (nullptr in
  * DataFlow mode)
@@ -2562,12 +2560,268 @@ bool handleCondBrOp(
  *                                       visited predecessor block (nullptr in
  * DataFlow mode)
  * @return bool                          True if the phi_start is successfully
- *                                       executed; false if validation fails.
+ *                                       executed; false if validation fails
  */
 bool handlePhiStartOp(
     neura::PhiStartOp op,
     llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map,
-    Block *current_block = nullptr, Block *last_visited_block = nullptr) {}
+    Block *current_block = nullptr, Block *last_visited_block = nullptr) {
+  // Static map to track if this phi_start has been executed before (for
+  // dataflow mode)
+  static llvm::DenseMap<Operation *, bool> phi_start_executed;
+
+  if (isVerboseMode()) {
+    if (!isDataflowMode()) {
+      llvm::outs() << "[neura-interpreter]  Executing neura.phi_start:\n";
+    } else {
+      llvm::outs()
+          << "[neura-interpreter]  Executing neura.phi_start(dataflow):\n";
+    }
+  }
+
+  // Collects all inputs: reserved operand and init values
+  Value reserved = op.getReserved();
+  auto init_values = op.getInitValues();
+
+  SmallVector<Value> all_inputs;
+  all_inputs.push_back(reserved);
+  for (Value init_val : init_values) {
+    all_inputs.push_back(init_val);
+  }
+
+  size_t input_count = all_inputs.size();
+  if (input_count < 2) {
+    if (isVerboseMode()) {
+      llvm::errs()
+          << "[neura-interpreter]  └─ Error: phi_start requires at least "
+             "reserved + one init value\n";
+    }
+    return false;
+  }
+
+  PredicatedData selected_input_data;
+  bool selection_success = false;
+
+  if (!isDataflowMode()) {
+    // ControlFlow mode: same logic as phi - select based on predecessor block.
+    if (!current_block || !last_visited_block) {
+      if (isVerboseMode()) {
+        llvm::errs()
+            << "[neura-interpreter]  └─ Error: ControlFlow mode requires "
+               "current_block and last_visited_block\n";
+      }
+      return false;
+    }
+
+    auto predecessors_range = current_block->getPredecessors();
+    std::vector<Block *> predecessors(predecessors_range.begin(),
+                                      predecessors_range.end());
+    size_t pred_count = predecessors.size();
+    if (pred_count == 0) {
+      if (isVerboseMode()) {
+        llvm::errs() << "[neura-interpreter]  └─ Error: No predecessors for "
+                        "current block\n";
+      }
+      return false;
+    }
+
+    if (input_count != pred_count) {
+      if (isVerboseMode()) {
+        llvm::errs() << "[neura-interpreter]  └─ Error: Input count ("
+                     << input_count << ") != predecessor count (" << pred_count
+                     << ")\n";
+      }
+      return false;
+    }
+
+    size_t pred_index = 0;
+    bool found = false;
+    for (auto pred : predecessors) {
+      if (pred == last_visited_block) {
+        found = true;
+        break;
+      }
+      ++pred_index;
+    }
+    if (!found) {
+      if (isVerboseMode()) {
+        llvm::errs() << "[neura-interpreter]  └─ Error: Last visited block not "
+                        "found among predecessors\n";
+      }
+      return false;
+    }
+
+    if (pred_index >= input_count) {
+      if (isVerboseMode()) {
+        llvm::errs() << "[neura-interpreter]  └─ Error: Predecessor index out "
+                        "of bounds\n";
+      }
+      return false;
+    }
+
+    Value selected_input = all_inputs[pred_index];
+    if (!value_to_predicated_data_map.count(selected_input)) {
+      if (isVerboseMode()) {
+        llvm::errs() << "[neura-interpreter]  └─ Error: Selected input not "
+                        "found in value map\n";
+      }
+      return false;
+    }
+    selected_input_data = value_to_predicated_data_map[selected_input];
+    selection_success = true;
+
+    if (isVerboseMode()) {
+      llvm::outs() << "[neura-interpreter]  ├─ Predecessor blocks ("
+                   << pred_count << ")\n";
+      for (size_t i = 0; i < pred_count; ++i) {
+        llvm::outs() << "[neura-interpreter]  │  "
+                     << (i < pred_count - 1 ? "├─" : "└─") << " Block@"
+                     << predecessors[i]
+                     << (i == pred_index ? " (selected)" : "") << "\n";
+      }
+    }
+  } else {
+    // DataFlow mode: special logic for phi_start.
+    bool is_first_execution = !phi_start_executed[op.getOperation()];
+
+    if (isVerboseMode()) {
+      llvm::outs() << "[neura-interpreter]  ├─ Execution state: "
+                   << (is_first_execution ? "FIRST" : "SUBSEQUENT") << "\n";
+    }
+
+    if (is_first_execution) {
+      // First execution: selects from init_values (prefer one with true
+      // predicate)
+      bool found_valid_init = false;
+      for (Value init_val : init_values) {
+        if (!value_to_predicated_data_map.count(init_val)) {
+          continue;
+        }
+        auto init_data = value_to_predicated_data_map[init_val];
+        if (init_data.predicate) {
+          selected_input_data = init_data;
+          found_valid_init = true;
+          if (isVerboseMode()) {
+            llvm::outs() << "[neura-interpreter]  ├─ First execution: Selected "
+                            "init value "
+                         << "with value = " << init_data.value
+                         << ", [pred = " << init_data.predicate << "]\n";
+          }
+          break;
+        }
+      }
+
+      // If no valid init value found on first execution, this is an error.
+      if (!found_valid_init) {
+        if (isVerboseMode()) {
+          llvm::errs() << "[neura-interpreter]  └─ Error: First execution of "
+                          "phi_start requires at least one init value with "
+                          "predicate = true\n";
+        }
+        return false;
+      }
+
+      // Mark as executed for subsequent iterations
+      phi_start_executed[op.getOperation()] = true;
+      selection_success = true;
+    } else {
+      // Subsequent executions: select the operand with true predicate from ALL
+      // inputs.
+      bool found_valid_input = false;
+      for (size_t i = 0; i < all_inputs.size(); ++i) {
+        Value input = all_inputs[i];
+        if (!value_to_predicated_data_map.count(input)) {
+          continue;
+        }
+        auto input_data = value_to_predicated_data_map[input];
+        if (input_data.predicate) {
+          selected_input_data = input_data;
+          found_valid_input = true;
+          if (isVerboseMode()) {
+            llvm::outs()
+                << "[neura-interpreter]  ├─ Subsequent execution: Selected "
+                   "input["
+                << i << "] " << (i == 0 ? "(reserved)" : "(init)")
+                << " with value = " << input_data.value
+                << ", [pred = " << input_data.predicate << "]\n";
+          }
+          break;
+        }
+      }
+
+      // If no valid input found, this is also an error.
+      if (!found_valid_input) {
+        if (isVerboseMode()) {
+          llvm::errs() << "[neura-interpreter]  └─ Error: Subsequent execution "
+                          "of phi_start requires at least one operand with "
+                          "predicate = true\n";
+        }
+        return false;
+      }
+
+      selection_success = true;
+    }
+
+    // Logs input details in dataflow mode.
+    if (isVerboseMode()) {
+      llvm::outs() << "[neura-interpreter]  ├─ Input values:\n";
+      llvm::outs() << "[neura-interpreter]  │  ├─ Reserved: ";
+      if (value_to_predicated_data_map.count(reserved)) {
+        auto &data = value_to_predicated_data_map[reserved];
+        llvm::outs() << "value = " << data.value
+                     << ", [pred = " << data.predicate
+                     << ", is_reserve = " << data.is_reserve << "]\n";
+      } else {
+        llvm::outs() << "(not in map)\n";
+      }
+
+      for (size_t i = 0; i < init_values.size(); ++i) {
+        Value init_val = init_values[i];
+        llvm::outs() << "[neura-interpreter]  │  "
+                     << (i < init_values.size() - 1 ? "├─" : "└─") << " Init["
+                     << i << "]: ";
+        if (value_to_predicated_data_map.count(init_val)) {
+          auto &data = value_to_predicated_data_map[init_val];
+          llvm::outs() << "value = " << data.value
+                       << ", [pred = " << data.predicate << "]\n";
+        } else {
+          llvm::outs() << "(not in map)\n";
+        }
+      }
+    }
+  }
+
+  // Checks for changes
+  bool is_updated = false;
+  if (value_to_predicated_data_map.count(op.getResult())) {
+    auto old_result = value_to_predicated_data_map[op.getResult()];
+    is_updated = selected_input_data.isUpdatedComparedTo(old_result);
+  } else {
+    is_updated = true;
+  }
+
+  PredicatedData result = selected_input_data;
+  result.is_updated = is_updated;
+  result.is_reserve = false;
+  value_to_predicated_data_map[op.getResult()] = result;
+
+  if (isVerboseMode()) {
+    if (!isDataflowMode()) {
+      llvm::outs() << "[neura-interpreter]  └─ Result    : " << op.getResult()
+                   << "\n";
+      llvm::outs() << "[neura-interpreter]     └─ Value : " << result.value
+                   << ", [Pred = " << result.predicate << "]\n";
+    } else {
+      llvm::outs() << "[neura-interpreter]  └─ Execution "
+                   << (selection_success ? "succeeded" : "partially succeeded")
+                   << " | Result: value = " << result.value
+                   << ", pred = " << result.predicate
+                   << ", is_updated = " << result.is_updated << "\n";
+    }
+  }
+
+  return selection_success;
+}
 
 /**
  * @brief Handles the execution of a Neura phi operation (neura.phi),
@@ -3417,6 +3671,17 @@ OperationHandleResult handleOperation(
                                    *current_block, *last_visited_block);
     } else {
       result.success = handlePhiOp(phi_op, value_to_predicated_data_map);
+    }
+  } else if (auto phi_start_op = dyn_cast<neura::PhiStartOp>(op)) {
+    // PhiStart operations need block information in control flow mode, but
+    // not in data flow.
+    if (current_block && last_visited_block) {
+      result.success =
+          handlePhiStartOp(phi_start_op, value_to_predicated_data_map,
+                           *current_block, *last_visited_block);
+    } else {
+      result.success =
+          handlePhiStartOp(phi_start_op, value_to_predicated_data_map);
     }
   } else if (auto reserve_op = dyn_cast<neura::ReserveOp>(op)) {
     result.success = handleReserveOp(reserve_op, value_to_predicated_data_map);
