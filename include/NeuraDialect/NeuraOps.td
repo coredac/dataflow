@@ -567,8 +567,8 @@ def Neura_PhiStartOp : Op<NeuraDialect, "phi_start">{
   let summary = "Phi start operation for neura.reserve operand.";
   let description = [{
     Special phi operation for loop initialization where the first operand
-    must be a reserve operation (loop-carried value) and subsequent operands
-    are the initial values from different control paths.
+    must be initial values and subsequent operands
+    are the reserved or other values from different control paths.
     
     This operation distinguishes loop initialization patterns from general
     phi merges, making it easier to identify and optimize recurrence cycles.
@@ -579,7 +579,7 @@ def Neura_PhiStartOp : Op<NeuraDialect, "phi_start">{
     Example:
       %reserved = neura.reserve : f32
       %init = neura.grant_once ... : f32
-      %result = neura.phi_start %reserved, %init : !neura.data<f32, i1>, !neura.data<f32, i1> -> !neura.data<f32, i1>
+      %result = neura.phi_start %init, %reserved : !neura.data<f32, i1>, !neura.data<f32, i1> -> !neura.data<f32, i1>
       // ... loop body uses %result ...
       neura.ctrl_mov %next_val -> %reserved
   }];
@@ -587,7 +587,7 @@ def Neura_PhiStartOp : Op<NeuraDialect, "phi_start">{
   let arguments = (ins AnyType:$reserved, Variadic<AnyType>:$init_values);
   let results = (outs AnyType:$result);
 
-  let assemblyFormat = "$reserved `,` $init_values attr-dict `:` type($reserved) `,` type($init_values) `->` type($result)";
+  let assemblyFormat = "$init_values `,` $reserved  attr-dict `:` type($init_values) `,` type($reserved) `->` type($result)";
 
   let hasVerifier = 1;
 }

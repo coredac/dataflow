@@ -82,11 +82,11 @@ func.func @complex_test(%in: i64) -> f32 {
 // CTRL2DATA-NEXT:     %16 = neura.grant_predicate %5, %14 : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:     %17 = neura.grant_predicate %3, %14 : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:     %18 = neura.reserve : !neura.data<f32, i1>
-// CTRL2DATA-NEXT:     %19 = neura.phi_start %18, %17 : !neura.data<f32, i1>, !neura.data<f32, i1> -> !neura.data<f32, i1>
+// CTRL2DATA-NEXT:     %19 = neura.phi_start %17, %18 : !neura.data<f32, i1>, !neura.data<f32, i1> -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:     %20 = neura.reserve : !neura.data<f32, i1>
-// CTRL2DATA-NEXT:     %21 = neura.phi_start %20, %16 : !neura.data<f32, i1>, !neura.data<f32, i1> -> !neura.data<f32, i1>
+// CTRL2DATA-NEXT:     %21 = neura.phi_start %16, %20 : !neura.data<f32, i1>, !neura.data<f32, i1> -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:     %22 = neura.reserve : !neura.data<f32, i1>
-// CTRL2DATA-NEXT:     %23 = neura.phi_start %22, %15 : !neura.data<f32, i1>, !neura.data<f32, i1> -> !neura.data<f32, i1>
+// CTRL2DATA-NEXT:     %23 = neura.phi_start %15, %22 : !neura.data<f32, i1>, !neura.data<f32, i1> -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:     %24 = "neura.fcmp"(%23, %21) <{cmpType = "olt"}> : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<i1, i1>
 // CTRL2DATA-NEXT:     %25 = neura.grant_predicate %23, %24 : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:     %26 = neura.grant_predicate %19, %24 : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>

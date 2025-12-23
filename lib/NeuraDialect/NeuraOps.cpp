@@ -20,16 +20,17 @@ LogicalResult PhiStartOp::verify() {
   }
 
   if (!inside_fused_op) {
-    // Verifies that the first operand is produced by a neura.reserve operation.
+    // Verifies that the reserve operand is produced by a neura.reserve
+    // operation.
     Value reserved = getReserved();
     Operation *def_op = reserved.getDefiningOp();
 
     if (!def_op) {
-      return emitOpError("First operand must be defined by an operation.");
+      return emitOpError("reserve operand must be defined by an operation.");
     }
 
     if (!isa<ReserveOp>(def_op)) {
-      return emitOpError("First operand must be produced by a neura.reserve "
+      return emitOpError("reserve operand must be produced by a neura.reserve "
                          "operation.");
     }
   }

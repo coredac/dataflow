@@ -390,8 +390,8 @@ bool handleNeuraConstantOp(
            "Duplicate constant result?");
     value_to_predicated_data_map[op.getResult()] = val;
     if (isVerboseMode()) {
-      llvm::outs() << "[neura-interpreter]  └─ Constant  : value = " << val.value
-                  << " [pred = " << val.predicate << "]\n";
+      llvm::outs() << "[neura-interpreter]  └─ Constant  : value = "
+                   << val.value << " [pred = " << val.predicate << "]\n";
     }
   }
   // Handles integer scalar constants.
@@ -409,8 +409,8 @@ bool handleNeuraConstantOp(
            "Duplicate constant result?");
     value_to_predicated_data_map[op.getResult()] = val;
     if (isVerboseMode()) {
-      llvm::outs() << "[neura-interpreter]  └─ Constant  : value = " << val.value
-                  << " [pred = " << val.predicate << "]\n";
+      llvm::outs() << "[neura-interpreter]  └─ Constant  : value = "
+                   << val.value << " [pred = " << val.predicate << "]\n";
     }
   }
   // Handles vector constants (dense element attributes).
@@ -443,7 +443,8 @@ bool handleNeuraConstantOp(
     value_to_predicated_data_map[op.getResult()] = val;
 
     if (isVerboseMode()) {
-      llvm::outs() << "[neura-interpreter]  ├─ Constant  : pred = " << val.predicate << "]\n";
+      llvm::outs() << "[neura-interpreter]  ├─ Constant  : pred = "
+                   << val.predicate << "]\n";
       llvm::outs() << "[neura-interpreter]  └─ Parsed vector constant of size: "
                    << vector_size << "\n";
     }
@@ -968,11 +969,11 @@ bool handleFMaxOp(
 
   float lhs_float = static_cast<float>(lhs.value);
   float rhs_float = static_cast<float>(rhs.value);
-  
+
   // Get NaN semantic attribute (default is "maxnum")
   std::string nan_semantic = op.getNanSemantic().str();
   float result_float;
-  
+
   if (nan_semantic == "maxnum") {
     // maxnum semantic: return non-NaN value when one operand is NaN
     if (std::isnan(lhs_float) && !std::isnan(rhs_float)) {
@@ -997,7 +998,8 @@ bool handleFMaxOp(
   result.is_vector = false;
 
   if (isVerboseMode()) {
-    llvm::outs() << "[neura-interpreter]  ├─ NaN semantic: " << nan_semantic << "\n";
+    llvm::outs() << "[neura-interpreter]  ├─ NaN semantic: " << nan_semantic
+                 << "\n";
     llvm::outs() << "[neura-interpreter]  └─ Result  : value = " << result.value
                  << " [pred = " << result.predicate << "]\n";
   }
@@ -1064,11 +1066,11 @@ bool handleFMinOp(
 
   float lhs_float = static_cast<float>(lhs.value);
   float rhs_float = static_cast<float>(rhs.value);
-  
+
   // Get NaN semantic attribute (default is "minnum")
   std::string nan_semantic = op.getNanSemantic().str();
   float result_float;
-  
+
   if (nan_semantic == "minnum") {
     // minnum semantic: return non-NaN value when one operand is NaN
     if (std::isnan(lhs_float) && !std::isnan(rhs_float)) {
@@ -1093,7 +1095,8 @@ bool handleFMinOp(
   result.is_vector = false;
 
   if (isVerboseMode()) {
-    llvm::outs() << "[neura-interpreter]  ├─ NaN semantic: " << nan_semantic << "\n";
+    llvm::outs() << "[neura-interpreter]  ├─ NaN semantic: " << nan_semantic
+                 << "\n";
     llvm::outs() << "[neura-interpreter]  └─ Result  : value = " << result.value
                  << " [pred = " << result.predicate << "]\n";
   }
@@ -1986,8 +1989,7 @@ bool handleCastOp(
   }
   if (op.getOperation()->getNumOperands() != 1) {
     if (isVerboseMode()) {
-      llvm::errs()
-          << "[neura-interpreter]  └─ neura.cast expects 1 operand\n";
+      llvm::errs() << "[neura-interpreter]  └─ neura.cast expects 1 operand\n";
     }
     return false;
   }
@@ -2437,7 +2439,6 @@ bool handleCondBrOp(
     llvm::outs() << "[neura-interpreter]  ├─ Execution Context\n";
   }
 
-
   // Retrieves successor blocks (targets of the conditional branch).
   auto current_succs_range = current_block->getSuccessors();
   std::vector<Block *> succ_blocks(current_succs_range.begin(),
@@ -2535,6 +2536,40 @@ bool handleCondBrOp(
 }
 
 /**
+ * @brief Handles the execution of a Neura phi_start operation
+ * (neura.phi_start), specifically designed for loop initialization with a
+ * reserve operand.
+ *
+ * This function processes Neura's phi_start operations, which are used for loop
+ * initialization where the first operand must be an initial value and
+ * subsequent operand is the reserved value. In control flow
+ * mode, it should not exist. In data flow mode, it merges inputs by selecting
+ * the first input with a true predicate.
+ *
+ * The key difference from phi is that phi_start explicitly separates the
+ * reserved (loop-carried) operand from initialization values, making loop
+ * patterns clearer.
+ *
+ * @param op                             The neura.phi_start operation to
+ * handle.
+ * @param value_to_predicated_data_map   Reference to the map storing input
+ *                                       values and where the result will be
+ *                                       stored.
+ * @param current_block                  [ControlFlow only] The block containing
+ *                                       the phi_start operation (nullptr in
+ * DataFlow mode)
+ * @param last_visited_block             [ControlFlow only] The most recently
+ *                                       visited predecessor block (nullptr in
+ * DataFlow mode)
+ * @return bool                          True if the phi_start is successfully
+ *                                       executed; false if validation fails.
+ */
+bool handlePhiStartOp(
+    neura::PhiStartOp op,
+    llvm::DenseMap<Value, PredicatedData> &value_to_predicated_data_map,
+    Block *current_block = nullptr, Block *last_visited_block = nullptr) {}
+
+/**
  * @brief Handles the execution of a Neura phi operation (neura.phi),
  *        supporting both control flow and data flow modes.
  *
@@ -2555,13 +2590,12 @@ bool handleCondBrOp(
  * @param current_block                  [ControlFlow only] The block
  *                                       containing the phi operation
  *                                       (nullptr in DataFlow mode)
- * @param last_visited_block             [ControlFlow only] The most recently
- *                                       visited predecessor block (nullptr
- *                                       in DataFlow mode)
+ * @param last_visited_block             [ControlFlow only] The most
+ * recently visited predecessor block (nullptr in DataFlow mode)
  * @return bool                          True if the phi is successfully
  *                                       executed; false if validation fails
- *                                       in control flow mode (always true in
- *                                       data flow mode)
+ *                                       in control flow mode (always true
+ * in data flow mode)
  */
 bool handlePhiOp(
     neura::PhiOp op,
