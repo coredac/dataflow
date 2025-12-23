@@ -8,7 +8,8 @@
 // RUN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \
 // RUN:   --fold-constant \
-// RUN:   --insert-data-mov %t-kernel.mlir | FileCheck %s --check-prefix=CHECK-LLVM2NEURA
+// RUN:   --insert-data-mov %t-kernel.mlir \
+// RUN:   | FileCheck %s --check-prefix=CHECK-LLVM2NEURA
 
 // RUN: mlir-neura-opt --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
@@ -23,7 +24,7 @@
 
 // CHECK-LLVM2NEURA: accelerator = "neura"
 // CHECK-LLVM2NEURA: %25 = neura.alloca %24 : !neura.data<i32, i1> -> !neura.data<!llvm.ptr, i1>
-// CHECK-LLVM2NEURA: %38 = "neura.phi"(%36, %37) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
+// CHECK-LLVM2NEURA: %38 = neura.phi_start %36, %37 : !neura.data<i32, i1>, !neura.data<i32, i1> -> !neura.data<i32, i1>
 // CHECK-LLVM2NEURA: %182 = neura.sext %181 : !neura.data<i32, i1> -> !neura.data<i64, i1>
 // CHECK-LLVM2NEURA: %201 = "neura.mul"(%199, %200) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
 

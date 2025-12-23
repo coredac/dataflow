@@ -5,8 +5,7 @@
 // RUN: --lower-memref-to-neura \
 // RUN: --lower-builtin-to-neura \
 // RUN: --lower-llvm-to-neura \
-// RUN: -o %t-neura.mlir \
-// RUN: | FileCheck %s --input-file=%t-neura.mlir
+// RUN: | FileCheck %s
 
 // RUN: mlir-neura-opt %t-llvm.mlir \
 // RUN: --assign-accelerator \
@@ -19,8 +18,7 @@
 // RUN: --canonicalize-live-in \
 // RUN: --leverage-predicated-value \
 // RUN: --transform-ctrl-to-data-flow \
-// RUN: -o %t-neura-dataflow.mlir \
-// RUN: | FileCheck %s --input-file=%t-neura-dataflow.mlir --check-prefix=CTRL2DATA
+// RUN: | FileCheck %s --check-prefix=CTRL2DATA
 module attributes {} {
   func.func @_Z10bert_node1PA1_A1_A1_A1_A128_bPA1_A128_S1_(%arg0: memref<?x1x1x1x1x128xi8>, %arg1: memref<?x1x128x1x1x128xi8>) attributes {} {
     affine.for %arg2 = 0 to 128 {

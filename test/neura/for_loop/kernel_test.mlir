@@ -61,8 +61,8 @@
 // CHECK-NEXT:   }
 
 // Verifies the neura ops are generated. And fusion happens.
-// CHECK-FUSED:       func.func @_Z6kernelPfS_S_
-// CHECK-FUSED:       accelerator = "neura"
+// CHECK-FUSED:        func.func @_Z6kernelPfS_S_
+// CHECK-FUSED-SAME:   accelerator = "neura"
 // CHECK-FUSED-NEXT:     %0 = "neura.grant_once"() <{constant_value = "%arg0"}> : () -> !neura.data<!llvm.ptr, i1>
 // CHECK-FUSED-NEXT:     %1 = "neura.grant_once"() <{constant_value = "%arg1"}> : () -> !neura.data<!llvm.ptr, i1>
 // CHECK-FUSED-NEXT:     %2 = "neura.constant"() <{value = "%arg1"}> : () -> !neura.data<!llvm.ptr, i1>
@@ -73,19 +73,19 @@
 // CHECK-FUSED-NEXT:     %7 = "neura.load"(%2) : (!neura.data<!llvm.ptr, i1>) -> !neura.data<f32, i1>
 // CHECK-FUSED-NEXT:     %8 = "neura.grant_once"(%7) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
 // CHECK-FUSED-NEXT:     %9 = neura.reserve : !neura.data<i64, i1>
-// CHECK-FUSED-NEXT:     %10 = "neura.phi"(%9, %6) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
+// CHECK-FUSED-NEXT:     %10 = neura.phi_start %9, %6 : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
 // CHECK-FUSED-NEXT:     %11 = neura.reserve : !neura.data<i64, i1>
-// CHECK-FUSED-NEXT:     %12 = "neura.phi"(%11, %5) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
+// CHECK-FUSED-NEXT:     %12 = neura.phi_start %11, %5 : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
 // CHECK-FUSED-NEXT:     %13 = neura.reserve : !neura.data<!llvm.ptr, i1>
-// CHECK-FUSED-NEXT:     %14 = "neura.phi"(%13, %1) : (!neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1>) -> !neura.data<!llvm.ptr, i1>
+// CHECK-FUSED-NEXT:     %14 = neura.phi_start %13, %1 : !neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1> -> !neura.data<!llvm.ptr, i1>
 // CHECK-FUSED-NEXT:     %15 = neura.reserve : !neura.data<!llvm.ptr, i1>
-// CHECK-FUSED-NEXT:     %16 = "neura.phi"(%15, %3) : (!neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1>) -> !neura.data<!llvm.ptr, i1>
+// CHECK-FUSED-NEXT:     %16 = neura.phi_start %15, %3 : !neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1> -> !neura.data<!llvm.ptr, i1>
 // CHECK-FUSED-NEXT:     %17 = neura.reserve : !neura.data<!llvm.ptr, i1>
-// CHECK-FUSED-NEXT:     %18 = "neura.phi"(%17, %0) : (!neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1>) -> !neura.data<!llvm.ptr, i1>
+// CHECK-FUSED-NEXT:     %18 = neura.phi_start %17, %0 : !neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1> -> !neura.data<!llvm.ptr, i1>
 // CHECK-FUSED-NEXT:     %19 = neura.reserve : !neura.data<f32, i1>
-// CHECK-FUSED-NEXT:     %20 = "neura.phi"(%19, %8) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// CHECK-FUSED-NEXT:     %20 = neura.phi_start %19, %8 : !neura.data<f32, i1>, !neura.data<f32, i1> -> !neura.data<f32, i1>
 // CHECK-FUSED-NEXT:     %21 = neura.reserve : !neura.data<i64, i1>
-// CHECK-FUSED-NEXT:     %22 = "neura.phi"(%21, %4) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
+// CHECK-FUSED-NEXT:     %22 = neura.phi_start %21, %4 : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
 // CHECK-FUSED-NEXT:     %23 = neura.load_indexed %18[%22 : !neura.data<i64, i1>] !neura.data<!llvm.ptr, i1> : !neura.data<f32, i1>
 // CHECK-FUSED-NEXT:     %24 = neura.load_indexed %16[%22 : !neura.data<i64, i1>] !neura.data<!llvm.ptr, i1> : !neura.data<f32, i1>
 // CHECK-FUSED-NEXT:     %25 = "neura.fmul_fadd"(%23, %24, %20) : (!neura.data<f32, i1>, !neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
@@ -111,7 +111,7 @@
 // CHECK-FUSED-NEXT:   }
 
 // CHECK-MOV:        func.func @_Z6kernelPfS_S_
-// CHECK-MOV:        accelerator = "neura"
+// CHECK-MOV-SAME:   accelerator = "neura"
 // CHECK-MOV-NEXT:     %0 = "neura.grant_once"() <{constant_value = "%arg0"}> : () -> !neura.data<!llvm.ptr, i1>
 // CHECK-MOV-NEXT:     %1 = "neura.grant_once"() <{constant_value = "%arg1"}> : () -> !neura.data<!llvm.ptr, i1>
 // CHECK-MOV-NEXT:     %2 = "neura.constant"() <{value = "%arg1"}> : () -> !neura.data<!llvm.ptr, i1>
@@ -125,25 +125,25 @@
 // CHECK-MOV-NEXT:     %10 = "neura.grant_once"(%9) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
 // CHECK-MOV-NEXT:     %11 = neura.reserve : !neura.data<i64, i1>
 // CHECK-MOV-NEXT:     %12 = "neura.data_mov"(%6) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
-// CHECK-MOV-NEXT:     %13 = "neura.phi"(%11, %12) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
+// CHECK-MOV-NEXT:     %13 = neura.phi_start %11, %12 : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
 // CHECK-MOV-NEXT:     %14 = neura.reserve : !neura.data<i64, i1>
 // CHECK-MOV-NEXT:     %15 = "neura.data_mov"(%5) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
-// CHECK-MOV-NEXT:     %16 = "neura.phi"(%14, %15) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
+// CHECK-MOV-NEXT:     %16 = neura.phi_start %14, %15 : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
 // CHECK-MOV-NEXT:     %17 = neura.reserve : !neura.data<!llvm.ptr, i1>
 // CHECK-MOV-NEXT:     %18 = "neura.data_mov"(%1) : (!neura.data<!llvm.ptr, i1>) -> !neura.data<!llvm.ptr, i1>
-// CHECK-MOV-NEXT:     %19 = "neura.phi"(%17, %18) : (!neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1>) -> !neura.data<!llvm.ptr, i1>
+// CHECK-MOV-NEXT:     %19 = neura.phi_start %17, %18 : !neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1> -> !neura.data<!llvm.ptr, i1>
 // CHECK-MOV-NEXT:     %20 = neura.reserve : !neura.data<!llvm.ptr, i1>
 // CHECK-MOV-NEXT:     %21 = "neura.data_mov"(%3) : (!neura.data<!llvm.ptr, i1>) -> !neura.data<!llvm.ptr, i1>
-// CHECK-MOV-NEXT:     %22 = "neura.phi"(%20, %21) : (!neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1>) -> !neura.data<!llvm.ptr, i1>
+// CHECK-MOV-NEXT:     %22 = neura.phi_start %20, %21 : !neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1> -> !neura.data<!llvm.ptr, i1>
 // CHECK-MOV-NEXT:     %23 = neura.reserve : !neura.data<!llvm.ptr, i1>
 // CHECK-MOV-NEXT:     %24 = "neura.data_mov"(%0) : (!neura.data<!llvm.ptr, i1>) -> !neura.data<!llvm.ptr, i1>
-// CHECK-MOV-NEXT:     %25 = "neura.phi"(%23, %24) : (!neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1>) -> !neura.data<!llvm.ptr, i1>
+// CHECK-MOV-NEXT:     %25 = neura.phi_start %23, %24 : !neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1> -> !neura.data<!llvm.ptr, i1>
 // CHECK-MOV-NEXT:     %26 = neura.reserve : !neura.data<f32, i1>
 // CHECK-MOV-NEXT:     %27 = "neura.data_mov"(%10) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
-// CHECK-MOV-NEXT:     %28 = "neura.phi"(%26, %27) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// CHECK-MOV-NEXT:     %28 = neura.phi_start %26, %27 : !neura.data<f32, i1>, !neura.data<f32, i1> -> !neura.data<f32, i1>
 // CHECK-MOV-NEXT:     %29 = neura.reserve : !neura.data<i64, i1>
 // CHECK-MOV-NEXT:     %30 = "neura.data_mov"(%4) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
-// CHECK-MOV-NEXT:     %31 = "neura.phi"(%29, %30) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
+// CHECK-MOV-NEXT:     %31 = neura.phi_start %29, %30 : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
 // CHECK-MOV-NEXT:     %32 = "neura.data_mov"(%25) : (!neura.data<!llvm.ptr, i1>) -> !neura.data<!llvm.ptr, i1>
 // CHECK-MOV-NEXT:     %33 = "neura.data_mov"(%31) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
 // CHECK-MOV-NEXT:     %34 = neura.load_indexed %32[%33 : !neura.data<i64, i1>] !neura.data<!llvm.ptr, i1> : !neura.data<f32, i1>

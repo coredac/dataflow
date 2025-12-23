@@ -1,48 +1,51 @@
-# RUN: clang++ -S -emit-llvm -O3 -fno-unroll-loops -fno-vectorize -o %t-kernel.ll kernel.cpp
-# RUN: mlir-translate --import-llvm %t-kernel.ll -o %t-kernel.mlir
-# RUN: mlir-neura-opt --architecture-spec=%S/../../arch_spec/architecture.yaml --assign-accelerator \
-# RUN:           --lower-llvm-to-neura \
-# RUN:           --promote-func-arg-to-const \
-# RUN:           --canonicalize-live-in \
-# RUN:           --leverage-predicated-value \
-# RUN:           --fold-constant \
-# RUN:           --transform-ctrl-to-data-flow \
-# RUN:           --fold-constant \
-# RUN:           --fuse-pattern \
-# RUN:           --view-op-graph \
-# RUN:           --insert-data-mov %t-kernel.mlir | FileCheck %s --check-prefix=CHECK-FUSED
+// RUN: clang++ -S -emit-llvm -O3 -fno-unroll-loops -fno-vectorize -o %t-kernel.ll kernel.cpp
+// RUN: mlir-translate --import-llvm %t-kernel.ll -o %t-kernel.mlir
+// RUN: mlir-neura-opt --architecture-spec=%S/../../arch_spec/architecture.yaml --assign-accelerator \
+// RUN:           --lower-llvm-to-neura \
+// RUN:           --promote-func-arg-to-const \
+// RUN:           --canonicalize-live-in \
+// RUN:           --leverage-predicated-value \
+// RUN:           --fold-constant \
+// RUN:           --transform-ctrl-to-data-flow \
+// RUN:           --fold-constant \
+// RUN:           --fuse-pattern \
+// RUN:           --view-op-graph \
+// RUN:           --insert-data-mov %t-kernel.mlir \
+// RUN: | FileCheck %s --check-prefix=CHECK-FUSED
 
-# RUN: mlir-neura-opt --architecture-spec=%S/../../arch_spec/architecture.yaml --assign-accelerator \
-# RUN:           --lower-llvm-to-neura \
-# RUN:           --promote-func-arg-to-const \
-# RUN:           --canonicalize-live-in \
-# RUN:           --leverage-predicated-value \
-# RUN:           --fold-constant \
-# RUN:           --transform-ctrl-to-data-flow \
-# RUN:           --fold-constant \
-# RUN:           --fuse-pattern \
-# RUN:           --insert-data-mov \
-# RUN:           --map-to-accelerator="mapping-strategy=heuristic backtrack-config=customized" %t-kernel.mlir | FileCheck %s --check-prefix=CHECK-MAPPING
+// RUN: mlir-neura-opt --architecture-spec=%S/../../arch_spec/architecture.yaml --assign-accelerator \
+// RUN:           --lower-llvm-to-neura \
+// RUN:           --promote-func-arg-to-const \
+// RUN:           --canonicalize-live-in \
+// RUN:           --leverage-predicated-value \
+// RUN:           --fold-constant \
+// RUN:           --transform-ctrl-to-data-flow \
+// RUN:           --fold-constant \
+// RUN:           --fuse-pattern \
+// RUN:           --insert-data-mov \
+// RUN:           --map-to-accelerator="mapping-strategy=heuristic backtrack-config=customized" %t-kernel.mlir | FileCheck %s --check-prefix=CHECK-MAPPING
 
-# CHECK-FUSED: func.func @_Z6kernelPA1024_iPiS1_S1_S1_
-# CHECK-FUSED: accelerator = "neura"
-# CHECK-FUSED-DAG: %94 = neura.load_indexed %92[%93 : !neura.data<i64, i1>] !neura.data<!llvm.ptr, i1> : !neura.data<i32, i1>
-# CHECK-FUSED-DAG: %85 = "neura.mul_add"(%82, %83, %84) : (!neura.data<i32, i1>, !neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
-# CHECK-FUSED-DAG: %98 = "neura.mul_add"(%95, %96, %97) : (!neura.data<i32, i1>, !neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
+// CHECK-FUSED: func.func @_Z6kernelPA1024_iPiS1_S1_S1_
+// CHECK-FUSED: accelerator = "neura"
+// CHECK-FUSED-DAG: %94 = neura.load_indexed %92[%93 : !neura.data<i64, i1>] !neura.data<!llvm.ptr, i1> : !neura.data<i32, i1>
+// CHECK-FUSED-DAG: %85 = "neura.mul_add"(%82, %83, %84) : (!neura.data<i32, i1>, !neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
+// CHECK-FUSED-DAG: %98 = "neura.mul_add"(%95, %96, %97) : (!neura.data<i32, i1>, !neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
 
-# CHECK-MAPPING: mapping_info = {compiled_ii = 13 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 9 : i32, res_mii = 5 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}
+// CHECK-MAPPING: mapping_info = {compiled_ii = 13 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 9 : i32, res_mii = 5 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}
 
-# RUN: mlir-neura-opt --architecture-spec=%S/../../arch_spec/architecture.yaml --verify-each=true --mlir-print-ir-after-failure \
-# RUN:           --assign-accelerator \
-# RUN:           --lower-llvm-to-neura \
-# RUN:           --promote-func-arg-to-const \
-# RUN:           --canonicalize-cast \
-# RUN:           --canonicalize-live-in \
-# RUN:           --leverage-predicated-value \
-# RUN:           --fold-constant \
-# RUN:           --transform-ctrl-to-data-flow \
-# RUN:           --fold-constant \
-# RUN:           --iter-merge-pattern="min-support=3 max-iter=4" %t-kernel.mlir | FileCheck %s --check-prefix=CHECK-ITER-MERGE-PATTERN
+// RUN: mlir-neura-opt --architecture-spec=%S/../../arch_spec/architecture.yaml --verify-each=true --mlir-print-ir-after-failure \
+// RUN:           --assign-accelerator \
+// RUN:           --lower-llvm-to-neura \
+// RUN:           --promote-func-arg-to-const \
+// RUN:           --canonicalize-cast \
+// RUN:           --canonicalize-live-in \
+// RUN:           --leverage-predicated-value \
+// RUN:           --fold-constant \
+// RUN:           --transform-ctrl-to-data-flow \
+// RUN:           --fold-constant \
+// RUN:           --iter-merge-pattern="min-support=3 max-iter=4" %t-kernel.mlir \
+// RUN:           -o %t-kernel-fused.mlir 
+// RU: | FileCheck %s --check-prefix=CHECK-ITER-MERGE-PATTERN
 
 # CHECK-ITER-MERGE-PATTERN:         %11:2 = "neura.fused_op"(%10) <{frequency = 4 : i64, pattern_id = 9 : i64, pattern_name = "grant_once->phi"}> ({
 # CHECK-ITER-MERGE-PATTERN:     ^bb0(%arg5: !neura.data<i64, i1>):
@@ -75,8 +78,8 @@
 # RUN:           --leverage-predicated-value \
 # RUN:           --fold-constant \
 # RUN:           --transform-ctrl-to-data-flow \
-# RUN:           --fold-constant \
-# RUN:           --init-pattern %t-kernel.mlir | FileCheck %s --check-prefix=CHECK-INIT-PATTERN
+# RUN:           --fold-constant 
+# RU:           --init-pattern %t-kernel.mlir | FileCheck %s --check-prefix=CHECK-INIT-PATTERN
 
 # CHECK-INIT-PATTERN:    %21:2 = "neura.fused_op"(%16, %20) <{frequency = 6 : i64, pattern_id = 2 : i64, pattern_name = "gep->load"}> ({
 # CHECK-INIT-PATTERN:    ^bb0(%arg5: !neura.data<!llvm.ptr, i1>, %arg6: !neura.data<i64, i1>):
@@ -102,7 +105,7 @@
 # RUN:           --transform-ctrl-to-data-flow \
 # RUN:           --fold-constant \
 # RUN:           --iter-merge-pattern="min-support=3 max-iter=4" \
-# RUN:           --insert-data-mov \
-# RUN:           --map-to-accelerator="mapping-strategy=heuristic backtrack-config=simple" %t-kernel.mlir | FileCheck %s --check-prefix=CHECK-ITER-MERGE-PATTERN-MAPPING
+# RUN:           --insert-data-mov 
+# RU:           --map-to-accelerator="mapping-strategy=heuristic backtrack-config=simple" %t-kernel.mlir | FileCheck %s --check-prefix=CHECK-ITER-MERGE-PATTERN-MAPPING
 
 # CHECK-ITER-MERGE-PATTERN-MAPPING: mapping_info = {compiled_ii = 12 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 8 : i32, res_mii = 3 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}

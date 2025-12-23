@@ -41,7 +41,7 @@ func.func @loop_test() -> f32 {
 // Tile (1,1) : per-cycle schedule and routing summary.
 //
 // entry0 @ t=2:
-//   PHI merges tokens arriving from EAST and SOUTH, then forwards the selected
+//   PHI_START merges tokens arriving from EAST and SOUTH, then forwards the selected
 //   value out to EAST.
 //
 // entry1 @ t=4:
@@ -151,7 +151,7 @@ func.func @loop_test() -> f32 {
 // ASM-NEXT:   DATA_MOV, [EAST, RED] -> [WEST, RED] (t=8, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=3)
 // ASM-NEXT: {
-// ASM-NEXT:   PHI, [$0], [WEST, RED] -> [WEST, RED], [$0] (t=4, inv_iters=0)
+// ASM-NEXT:   PHI_START, [UNRESOLVED, ERROR], [WEST, RED] -> [WEST, RED], [$0] (t=4, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=4)
 // ASM: PE(2,1):
 // ASM-NEXT: {
@@ -162,5 +162,5 @@ func.func @loop_test() -> f32 {
 // ASM-NEXT: } (idx_per_ii=2)
 // ASM: PE(0,2):
 // ASM-NEXT: {
-// ASM-NEXT:   PHI, [SOUTH, RED], [$0] -> [SOUTH, RED] (t=5, inv_iters=1)
+// ASM-NEXT:   PHI_START, [UNRESOLVED, ERROR], [$0] -> [SOUTH, RED] (t=5, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=0)

@@ -31,7 +31,8 @@
 // RUN: --promote-func-arg-to-const \
 // RUN: --canonicalize-live-in \
 // RUN: --leverage-predicated-value \
-// RUN: --transform-ctrl-to-data-flow | FileCheck %s -check-prefix=CTRL2DATA
+// RUN: --transform-ctrl-to-data-flow \
+// RUN: | FileCheck %s -check-prefix=CTRL2DATA
 
 // RUN: mlir-neura-opt %t-llvm.mlir \
 // RUN: --assign-accelerator \
@@ -48,7 +49,7 @@
 // RUN: --fold-constant \
 // RUN: --fuse-loop-control \
 // RUN: --fold-constant \
-// RUN: | FileCheck %s -check-prefix=FUSE
+// RUN: | FileCheck %s --check-prefix=FUSE
 
 // RUN: mlir-neura-opt %t-llvm.mlir \
 // RUN: --assign-accelerator \
@@ -67,7 +68,8 @@
 // RUN: --fold-constant \
 // RUN: --insert-data-mov \
 // RUN: --map-to-accelerator="mapping-strategy=heuristic backtrack-config=customized" \
-// RUN: --architecture-spec=../../arch_spec/architecture.yaml | FileCheck %s -check-prefix=FUSE-MAPPING
+// RUN: --architecture-spec=../../arch_spec/architecture.yaml \
+// RUN: | FileCheck %s --check-prefix=FUSE-MAPPING
 
 module attributes {} {
   func.func @_Z11simple_loopPiS_(%arg0: memref<?xi32>, %arg1: memref<?xi32>) attributes {llvm.linkage = #llvm.linkage<external>} {
@@ -147,19 +149,19 @@ module attributes {} {
 // CTRL2DATA-NEXT:     %12 = "neura.constant"() <{value = 0 : i64}> : () -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %13 = "neura.grant_once"(%12) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %14 = neura.reserve : !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %15 = "neura.phi"(%14, %5) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %15 = neura.phi_start %14, %5 : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %16 = neura.reserve : !neura.data<memref<?xi32>, i1>
-// CTRL2DATA-NEXT:     %17 = "neura.phi"(%16, %3) : (!neura.data<memref<?xi32>, i1>, !neura.data<memref<?xi32>, i1>) -> !neura.data<memref<?xi32>, i1>
+// CTRL2DATA-NEXT:     %17 = neura.phi_start %16, %3 : !neura.data<memref<?xi32>, i1>, !neura.data<memref<?xi32>, i1> -> !neura.data<memref<?xi32>, i1>
 // CTRL2DATA-NEXT:     %18 = neura.reserve : !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %19 = "neura.phi"(%18, %9) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %19 = neura.phi_start %18, %9 : !neura.data<i32, i1>, !neura.data<i32, i1> -> !neura.data<i32, i1>
 // CTRL2DATA-NEXT:     %20 = neura.reserve : !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     %21 = "neura.phi"(%20, %11) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     %21 = neura.phi_start %20, %11 : !neura.data<i32, i1>, !neura.data<i32, i1> -> !neura.data<i32, i1>
 // CTRL2DATA-NEXT:     %22 = neura.reserve : !neura.data<memref<?xi32>, i1>
-// CTRL2DATA-NEXT:     %23 = "neura.phi"(%22, %1) : (!neura.data<memref<?xi32>, i1>, !neura.data<memref<?xi32>, i1>) -> !neura.data<memref<?xi32>, i1>
+// CTRL2DATA-NEXT:     %23 = neura.phi_start %22, %1 : !neura.data<memref<?xi32>, i1>, !neura.data<memref<?xi32>, i1> -> !neura.data<memref<?xi32>, i1>
 // CTRL2DATA-NEXT:     %24 = neura.reserve : !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %25 = "neura.phi"(%24, %7) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %25 = neura.phi_start %24, %7 : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %26 = neura.reserve : !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %27 = "neura.phi"(%26, %13) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %27 = neura.phi_start %26, %13 : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %28 = "neura.icmp"(%27, %25) <{cmpType = "slt"}> : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i1, i1>
 // CTRL2DATA-NEXT:     %29 = neura.grant_predicate %23, %28 : !neura.data<memref<?xi32>, i1>, !neura.data<i1, i1> -> !neura.data<memref<?xi32>, i1>
 // CTRL2DATA-NEXT:     %30 = neura.grant_predicate %27, %28 : !neura.data<i64, i1>, !neura.data<i1, i1> -> !neura.data<i64, i1>
@@ -187,11 +189,11 @@ module attributes {} {
 // FUSE:        func.func @_Z11simple_loopPiS_(%arg0: memref<?xi32>, %arg1: memref<?xi32>) attributes {accelerator = "neura", dataflow_mode = "predicate", llvm.linkage = #llvm.linkage<external>} {
 // FUSE-NEXT:     %0 = "neura.grant_always"() <{constant_value = true}> : () -> !neura.data<i1, i1>
 // FUSE-NEXT:     %nextindex, %valid = "neura.loop_control"(%0) <{end = 128 : i64, iterationType = "increment", start = 0 : i64, step = 1 : i64}> : (!neura.data<i1, i1>) -> (!neura.data<i64, i1>, !neura.data<i1, i1>)
-// FUSE-NEXT:     %1 = neura.load_indexed [%nextindex : !neura.data<i64, i1>] {lhs_value = "%arg0"} : !neura.data<i32, i1>
+// FUSE-NEXT:     %1 = neura.load_indexed [%nextindex : !neura.data<i64, i1>]  {lhs_value = "%arg0"} : !neura.data<i32, i1>
 // FUSE-NEXT:     %2 = "neura.mul"(%1) {rhs_value = 2 : i32} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
 // FUSE-NEXT:     %3 = "neura.add"(%2) {rhs_value = 1 : i32} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
-// FUSE-NEXT:     neura.store_indexed %3 to [%nextindex : !neura.data<i64, i1>] {rhs_value = "%arg1"} : !neura.data<i32, i1>
+// FUSE-NEXT:     neura.store_indexed %3 to [%nextindex : !neura.data<i64, i1>]  {rhs_value = "%arg1"} : !neura.data<i32, i1>
 // FUSE-NEXT:     "neura.return"() : () -> ()
 // FUSE-NEXT:   }
 
-// FUSE-MAPPING:      func.func @_Z11simple_loopPiS_(%arg0: memref<?xi32>, %arg1: memref<?xi32>) attributes {accelerator = "neura", dataflow_mode = "predicate", llvm.linkage = #llvm.linkage<external>, mapping_info = {compiled_ii = 1 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 1 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {
+// FUSE-MAPPING:  func.func @_Z11simple_loopPiS_(%arg0: memref<?xi32>, %arg1: memref<?xi32>) attributes {accelerator = "neura", dataflow_mode = "predicate", llvm.linkage = #llvm.linkage<external>, mapping_info = {compiled_ii = 1 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 1 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {

@@ -129,9 +129,9 @@ func.func @loop_test() -> f32 {
 // CTRL2DATA-NEXT:     %2 = "neura.constant"() <{value = 0.000000e+00 : f32}> : () -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:     %3 = "neura.grant_once"(%2) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:     %4 = neura.reserve : !neura.data<f32, i1>
-// CTRL2DATA-NEXT:     %5 = "neura.phi"(%4, %3) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// CTRL2DATA-NEXT:     %5 = neura.phi_start %4, %3 : !neura.data<f32, i1>, !neura.data<f32, i1> -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:     %6 = neura.reserve : !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %7 = "neura.phi"(%6, %1) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %7 = neura.phi_start %6, %1 : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %8 = "neura.fadd"(%5) {rhs_value = 3.000000e+00 : f32} : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:     %9 = "neura.add"(%7) {rhs_value = 1 : i64} : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %10 = "neura.icmp"(%9) <{cmpType = "slt"}> {rhs_value = 10 : i64} : (!neura.data<i64, i1>) -> !neura.data<i1, i1>
@@ -144,13 +144,14 @@ func.func @loop_test() -> f32 {
 // CTRL2DATA-NEXT:     "neura.return"(%14) : (!neura.data<f32, i1>) -> ()
 // CTRL2DATA-NEXT:   }
 
+
 // FUSE:        func.func @loop_test() -> f32 attributes {accelerator = "neura", dataflow_mode = "predicate"} {
 // FUSE-NEXT:     %0 = "neura.grant_once"() <{constant_value = 0 : i64}> : () -> !neura.data<i64, i1>
 // FUSE-NEXT:     %1 = "neura.grant_once"() <{constant_value = 0.000000e+00 : f32}> : () -> !neura.data<f32, i1>
 // FUSE-NEXT:     %2 = neura.reserve : !neura.data<f32, i1>
-// FUSE-NEXT:     %3 = "neura.phi"(%2, %1) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// FUSE-NEXT:     %3 = neura.phi_start %2, %1 : !neura.data<f32, i1>, !neura.data<f32, i1> -> !neura.data<f32, i1>
 // FUSE-NEXT:     %4 = neura.reserve : !neura.data<i64, i1>
-// FUSE-NEXT:     %5 = "neura.phi"(%4, %0) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
+// FUSE-NEXT:     %5 = neura.phi_start %4, %0 : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
 // FUSE-NEXT:     %6 = "neura.fadd"(%3) {rhs_value = 3.000000e+00 : f32} : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
 // FUSE-NEXT:     %7 = "neura.add"(%5) {rhs_value = 1 : i64} : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
 // FUSE-NEXT:     %8 = "neura.icmp"(%7) <{cmpType = "slt"}> {rhs_value = 10 : i64} : (!neura.data<i64, i1>) -> !neura.data<i1, i1>
@@ -168,10 +169,10 @@ func.func @loop_test() -> f32 {
 // MOV-NEXT:     %1 = "neura.grant_once"() <{constant_value = 0.000000e+00 : f32}> : () -> !neura.data<f32, i1>
 // MOV-NEXT:     %2 = neura.reserve : !neura.data<f32, i1>
 // MOV-NEXT:     %3 = "neura.data_mov"(%1) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
-// MOV-NEXT:     %4 = "neura.phi"(%2, %3) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// MOV-NEXT:     %4 = neura.phi_start %2, %3 : !neura.data<f32, i1>, !neura.data<f32, i1> -> !neura.data<f32, i1>
 // MOV-NEXT:     %5 = neura.reserve : !neura.data<i64, i1>
 // MOV-NEXT:     %6 = "neura.data_mov"(%0) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
-// MOV-NEXT:     %7 = "neura.phi"(%5, %6) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
+// MOV-NEXT:     %7 = neura.phi_start %5, %6 : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
 // MOV-NEXT:     %8 = "neura.data_mov"(%4) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
 // MOV-NEXT:     %9 = "neura.fadd"(%8) {rhs_value = 3.000000e+00 : f32} : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
 // MOV-NEXT:     %10 = "neura.data_mov"(%7) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
@@ -197,58 +198,43 @@ func.func @loop_test() -> f32 {
 
 // MAPPING:        func.func @loop_test() -> f32 attributes {accelerator = "neura", dataflow_mode = "predicate", mapping_info = {compiled_ii = 4 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 4 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {
 
-// YAML: array_config:
-// YAML:   columns: 4
-// YAML:   rows: 4
-// YAML:   compiled_ii: 4
-// YAML:   cores:
-// YAML:     - column: 0
-// YAML:       row: 0
-// YAML:       core_id: "0"
-// YAML:       entries:
-// YAML:         - entry_id: "entry0"
-// YAML:           instructions:
-// YAML:             - index_per_ii: 0
-// YAML:               operations:
-// YAML:                 - opcode: "GRANT_ONCE"
-// YAML:                   id: 0
-// YAML:                   time_step: 0
-// YAML:                   invalid_iterations: 0
-// YAML:                   src_operands:
-// YAML:                     - operand: "#0"
-// YAML:                       color: "RED"
-// YAML:                   dst_operands:
-// YAML:                     - operand: "EAST"
-// YAML:                       color: "RED"
-// YAML:                 - opcode: "DATA_MOV"
-// YAML:                   id: 180001
-// YAML:                   time_step: 4
-// YAML:                   invalid_iterations: 1
-// YAML:                   src_operands:
-// YAML:                     - operand: "EAST"
-// YAML:                       color: "RED"
-// YAML:                   dst_operands:
-// YAML:                     - operand: "NORTH"
-// YAML:                       color: "RED"
-// YAML:             - index_per_ii: 1
-// YAML:               operations:
-// YAML:                 - opcode: "DATA_MOV"
-// YAML:                   id: 150001
-// YAML:                   time_step: 5
-// YAML:                   invalid_iterations: 1
-// YAML:                   src_operands:
-// YAML:                     - operand: "EAST"
-// YAML:                       color: "RED"
-// YAML:                   dst_operands:
-// YAML:                     - operand: "NORTH"
-// YAML:                       color: "RED"
-// YAML:             - index_per_ii: 2
-// YAML:               operations:
-// YAML:                 - opcode: "GRANT_ONCE"
-// YAML:                   id: 1
-// YAML:                   time_step: 2
-// ASM: # Compiled II: 4
-// ASM: PE(0,0):
+// YAML:      array_config:
+// YAML-NEXT:   columns: 4
+// YAML-NEXT:   rows: 4
+// YAML-NEXT:   compiled_ii: 4
+// YAML-NEXT:   cores:
+// YAML-NEXT:     - column: 0
+// YAML-NEXT:       row: 0
+// YAML-NEXT:       core_id: "0"
+// YAML-NEXT:       entries:
+// YAML-NEXT:         - entry_id: "entry0"
+// YAML-NEXT:           instructions:
+// YAML-NEXT:             - index_per_ii: 0
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "GRANT_ONCE"
+// YAML-NEXT:                   id: 0
+// YAML-NEXT:                   time_step: 0
+// YAML-NEXT:                   invalid_iterations: 0
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "#0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                 - opcode: "DATA_MOV"
+// YAML-NEXT:                   id: 180001
+// YAML-NEXT:                   time_step: 4
+// YAML-NEXT:                   invalid_iterations: 1
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
+
+
+// ASM:      # Compiled II: 4
+// ASM:      PE(0,0):
 // ASM-NEXT: {
 // ASM-NEXT:   GRANT_ONCE, [#0] -> [EAST, RED] (t=0, inv_iters=0)
 // ASM-NEXT:   DATA_MOV, [EAST, RED] -> [NORTH, RED] (t=4, inv_iters=1)
@@ -260,14 +246,14 @@ func.func @loop_test() -> f32 {
 // ASM-NEXT:   GRANT_ONCE, [#0.000000] -> [$0] (t=2, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=2)
 // ASM-NEXT: {
-// ASM-NEXT:   PHI, [NORTH, RED], [$0] -> [EAST, RED] (t=3, inv_iters=0)
+// ASM-NEXT:   PHI_START, [UNRESOLVED, ERROR], [$0] -> [EAST, RED] (t=3, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=3)
-// ASM: PE(1,0):
+// ASM:      PE(1,0):
 // ASM-NEXT: {
 // ASM-NEXT:   FADD, [WEST, RED], [#3.000000] -> [WEST, RED], [EAST, RED] (t=4, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=0)
 // ASM-NEXT: {
-// ASM-NEXT:   PHI, [NORTH, RED], [WEST, RED] -> [$0] (t=1, inv_iters=0)
+// ASM-NEXT:   PHI_START, [UNRESOLVED, ERROR], [WEST, RED] -> [$0] (t=1, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=1)
 // ASM-NEXT: {
 // ASM-NEXT:   ADD, [$0], [#1] -> [$0], [NORTH, RED] (t=2, inv_iters=0)
@@ -275,7 +261,7 @@ func.func @loop_test() -> f32 {
 // ASM-NEXT: {
 // ASM-NEXT:   ICMP_SLT, [$0], [#10] -> [NORTH, RED], [WEST, RED], [EAST, RED] (t=3, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=3)
-// ASM: PE(2,0):
+// ASM:      PE(2,0):
 // ASM-NEXT: {
 // ASM-NEXT:   NOT, [WEST, RED] -> [$0] (t=4, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=0)
@@ -284,11 +270,4 @@ func.func @loop_test() -> f32 {
 // ASM-NEXT: } (idx_per_ii=1)
 // ASM-NEXT: {
 // ASM-NEXT:   RETURN, [$0] (t=6, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=2)
-// ASM: PE(0,1):
-// ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [SOUTH, RED] -> [$0] (t=5, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=1)
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [SOUTH, RED], [$0] -> [SOUTH, RED] (t=6, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=2)
