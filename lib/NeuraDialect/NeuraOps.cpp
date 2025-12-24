@@ -36,7 +36,7 @@ LogicalResult PhiStartOp::verify() {
   }
 
   // Verifies that there is at least one initialization value.
-  if (getInitValues().empty()) {
+  if (!getInitValue()) {
     return emitOpError("At least one initialization value is required.");
   }
 
@@ -48,11 +48,8 @@ LogicalResult PhiStartOp::verify() {
     return emitOpError("Result type must match the reserved value type.");
   }
 
-  for (Value init_val : getInitValues()) {
-    if (init_val.getType() != result_type) {
-      return emitOpError(
-          "All initialization values must match the result type.");
-    }
+  if (getInitValue().getType() != result_type) {
+    return emitOpError("All initialization values must match the result type.");
   }
 
   return success();

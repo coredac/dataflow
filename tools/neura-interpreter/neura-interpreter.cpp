@@ -2581,13 +2581,11 @@ bool handlePhiStartOp(
 
   // Collects all inputs: reserved operand and init values
   Value reserved = op.getReserved();
-  auto init_values = op.getInitValues();
+  auto init_value = op.getInitValue();
 
   SmallVector<Value> all_inputs;
   all_inputs.push_back(reserved);
-  for (Value init_val : init_values) {
-    all_inputs.push_back(init_val);
-  }
+  all_inputs.push_back(init_value);
 
   size_t input_count = all_inputs.size();
   if (input_count < 2) {
@@ -2693,21 +2691,15 @@ bool handlePhiStartOp(
       // First execution: selects from init_values (prefer one with true
       // predicate)
       bool found_valid_init = false;
-      for (Value init_val : init_values) {
-        if (!value_to_predicated_data_map.count(init_val)) {
-          continue;
-        }
-        auto init_data = value_to_predicated_data_map[init_val];
-        if (init_data.predicate) {
-          selected_input_data = init_data;
-          found_valid_init = true;
-          if (isVerboseMode()) {
-            llvm::outs() << "[neura-interpreter]  ├─ First execution: Selected "
-                            "init value "
-                         << "with value = " << init_data.value
-                         << ", [pred = " << init_data.predicate << "]\n";
-          }
-          break;
+      auto init_data = value_to_predicated_data_map[init_value];
+      if (init_data.predicate) {
+        selected_input_data = init_data;
+        found_valid_init = true;
+        if (isVerboseMode()) {
+          llvm::outs() << "[neura-interpreter]  ├─ First execution: Selected "
+                          "init value "
+                       << "with value = " << init_data.value
+                       << ", [pred = " << init_data.predicate << "]\n";
         }
       }
 
@@ -2775,18 +2767,12 @@ bool handlePhiStartOp(
         llvm::outs() << "(not in map)\n";
       }
 
-      for (size_t i = 0; i < init_values.size(); ++i) {
-        Value init_val = init_values[i];
-        llvm::outs() << "[neura-interpreter]  │  "
-                     << (i < init_values.size() - 1 ? "├─" : "└─") << " Init["
-                     << i << "]: ";
-        if (value_to_predicated_data_map.count(init_val)) {
-          auto &data = value_to_predicated_data_map[init_val];
-          llvm::outs() << "value = " << data.value
-                       << ", [pred = " << data.predicate << "]\n";
-        } else {
-          llvm::outs() << "(not in map)\n";
-        }
+      if (value_to_predicated_data_map.count(init_value)) {
+        auto &data = value_to_predicated_data_map[init_value];
+        llvm::outs() << "value = " << data.value
+                     << ", [pred = " << data.predicate << "]\n";
+      } else {
+        llvm::outs() << "(not in map)\n";
       }
     }
   }

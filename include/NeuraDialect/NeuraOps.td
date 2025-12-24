@@ -579,15 +579,15 @@ def Neura_PhiStartOp : Op<NeuraDialect, "phi_start">{
     Example:
       %reserved = neura.reserve : f32
       %init = neura.grant_once ... : f32
-      %result = neura.phi_start %reserved, %init : !neura.data<f32, i1>, !neura.data<f32, i1> -> !neura.data<f32, i1>
+      %result = neura.phi_start %init, %reserved : !neura.data<f32, i1>, !neura.data<f32, i1> -> !neura.data<f32, i1>
       // ... loop body uses %result ...
       neura.ctrl_mov %next_val -> %reserved
   }];
 
-  let arguments = (ins Variadic<AnyType>:$init_values, AnyType:$reserved);
+  let arguments = (ins AnyType:$init_value, AnyType:$reserved);
   let results = (outs AnyType:$result);
 
-  let assemblyFormat = "$reserved `,` $init_values  attr-dict `:` type($reserved) `,` type($init_values) `->` type($result)";
+  let assemblyFormat = "$init_value `,` $reserved attr-dict `:` type($init_value) `,` type($reserved) `->` type($result)";
 
   let hasVerifier = 1;
 }

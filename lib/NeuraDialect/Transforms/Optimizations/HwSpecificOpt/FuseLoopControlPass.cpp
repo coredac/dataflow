@@ -158,11 +158,8 @@ std::unique_ptr<LoopInfo> identifyLoop(Operation *index_reserve_op) {
 
   // Finds the start value for loop index.
   Value initial_value = nullptr;
-  for (Value input : index_phi_start_op.getInitValues()) {
-    if (input != loop->index_reserve_val) {
-      initial_value = input;
-      break;
-    }
+  if (index_phi_start_op.getInitValue() != loop->index_reserve_val) {
+    initial_value = index_phi_start_op.getInitValue();
   }
 
   if (!initial_value) {

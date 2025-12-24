@@ -647,7 +647,7 @@ void convertPhiToPhiStart(Region &region, OpBuilder &builder) {
     // Creates phi_start operation.
     builder.setInsertionPoint(phi_op);
     neura::PhiStartOp phi_start_op = builder.create<neura::PhiStartOp>(
-        phi_op.getLoc(), phi_op.getResult().getType(), other_operands,
+        phi_op.getLoc(), phi_op.getResult().getType(), other_operands.front(),
         reserve_operand);
 
     // Replaces uses and erases the original phi operation.
