@@ -52,8 +52,7 @@
 // RUN:   --insert-data-mov \
 // RUN:   --map-to-accelerator="mapping-strategy=heuristic backtrack-config=customized" \
 // RUN:   --architecture-spec=../arch_spec/architecture.yaml \
-// RUN:   -o %t-mapping.mlir
-// RUN:   FileCheck %s --input-file=%t-mapping.mlir -check-prefix=MAPPING
+// RUN:   | FileCheck %s -check-prefix=MAPPING
 
 // RUN: mlir-neura-opt %s \
 // RUN:   --assign-accelerator \
@@ -123,9 +122,9 @@ func.func @loop_test() -> f32 {
 // CTRL2DATA-NEXT:     %2 = "neura.constant"() <{value = 0.000000e+00 : f32}> : () -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:     %3 = "neura.grant_once"(%2) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:     %4 = neura.reserve : !neura.data<f32, i1>
-// CTRL2DATA-NEXT:     %5 = "neura.phi"(%4, %3) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// CTRL2DATA-NEXT:     %5 = neura.phi_start %3, %4 : !neura.data<f32, i1>, !neura.data<f32, i1> -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:     %6 = neura.reserve : !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %7 = "neura.phi"(%6, %1) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %7 = neura.phi_start %1, %6 : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %8 = "neura.fadd"(%5) {rhs_value = 3.000000e+00 : f32} : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:     %9 = "neura.add"(%7) {rhs_value = 1 : i64} : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %10 = "neura.icmp"(%9) <{cmpType = "slt"}> {rhs_value = 10 : i64} : (!neura.data<i64, i1>) -> !neura.data<i1, i1>
@@ -142,9 +141,9 @@ func.func @loop_test() -> f32 {
 // FUSE-NEXT:     %0 = "neura.grant_once"() <{constant_value = 0 : i64}> : () -> !neura.data<i64, i1>
 // FUSE-NEXT:     %1 = "neura.grant_once"() <{constant_value = 0.000000e+00 : f32}> : () -> !neura.data<f32, i1>
 // FUSE-NEXT:     %2 = neura.reserve : !neura.data<f32, i1>
-// FUSE-NEXT:     %3 = "neura.phi"(%2, %1) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// FUSE-NEXT:     %3 = neura.phi_start %1, %2 : !neura.data<f32, i1>, !neura.data<f32, i1> -> !neura.data<f32, i1>
 // FUSE-NEXT:     %4 = neura.reserve : !neura.data<i64, i1>
-// FUSE-NEXT:     %5 = "neura.phi"(%4, %0) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
+// FUSE-NEXT:     %5 = neura.phi_start %0, %4 : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
 // FUSE-NEXT:     %6 = "neura.fadd"(%3) {rhs_value = 3.000000e+00 : f32} : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
 // FUSE-NEXT:     %7 = "neura.add"(%5) {rhs_value = 1 : i64} : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
 // FUSE-NEXT:     %8 = "neura.icmp"(%7) <{cmpType = "slt"}> {rhs_value = 10 : i64} : (!neura.data<i64, i1>) -> !neura.data<i1, i1>
@@ -157,68 +156,124 @@ func.func @loop_test() -> f32 {
 // FUSE-NEXT:     "neura.return"(%12) : (!neura.data<f32, i1>) -> ()
 // FUSE-NEXT:   }
 
-// MOV:        func.func @loop_test() -> f32 attributes {accelerator = "neura", dataflow_mode = "predicate"} {
-// MOV-NEXT:     %0 = "neura.grant_once"() <{constant_value = 0 : i64}> : () -> !neura.data<i64, i1>
-// MOV-NEXT:     %1 = "neura.grant_once"() <{constant_value = 0.000000e+00 : f32}> : () -> !neura.data<f32, i1>
-// MOV-NEXT:     %2 = neura.reserve : !neura.data<f32, i1>
-// MOV-NEXT:     %3 = "neura.data_mov"(%1) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
-// MOV-NEXT:     %4 = "neura.phi"(%2, %3) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
-// MOV-NEXT:     %5 = neura.reserve : !neura.data<i64, i1>
-// MOV-NEXT:     %6 = "neura.data_mov"(%0) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
-// MOV-NEXT:     %7 = "neura.phi"(%5, %6) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
-// MOV-NEXT:     %8 = "neura.data_mov"(%4) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
-// MOV-NEXT:     %9 = "neura.fadd"(%8) {rhs_value = 3.000000e+00 : f32} : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
-// MOV-NEXT:     %10 = "neura.data_mov"(%7) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
-// MOV-NEXT:     %11 = "neura.add"(%10) {rhs_value = 1 : i64} : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
-// MOV-NEXT:     %12 = "neura.data_mov"(%11) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
-// MOV-NEXT:     %13 = "neura.icmp"(%12) <{cmpType = "slt"}> {rhs_value = 10 : i64} : (!neura.data<i64, i1>) -> !neura.data<i1, i1>
-// MOV-NEXT:     %14 = "neura.data_mov"(%11) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
-// MOV-NEXT:     %15 = "neura.data_mov"(%13) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
-// MOV-NEXT:     %16 = neura.grant_predicate %14, %15 : !neura.data<i64, i1>, !neura.data<i1, i1> -> !neura.data<i64, i1>
-// MOV-NEXT:     neura.ctrl_mov %16 -> %5 : !neura.data<i64, i1> !neura.data<i64, i1>
-// MOV-NEXT:     %17 = "neura.data_mov"(%9) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
-// MOV-NEXT:     %18 = "neura.data_mov"(%13) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
-// MOV-NEXT:     %19 = neura.grant_predicate %17, %18 : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
-// MOV-NEXT:     neura.ctrl_mov %19 -> %2 : !neura.data<f32, i1> !neura.data<f32, i1>
-// MOV-NEXT:     %20 = "neura.data_mov"(%13) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
-// MOV-NEXT:     %21 = "neura.not"(%20) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
-// MOV-NEXT:     %22 = "neura.data_mov"(%9) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
-// MOV-NEXT:     %23 = "neura.data_mov"(%21) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
-// MOV-NEXT:     %24 = neura.grant_predicate %22, %23 : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
-// MOV-NEXT:     %25 = "neura.data_mov"(%24) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
-// MOV-NEXT:     "neura.return"(%25) : (!neura.data<f32, i1>) -> ()
-// MOV-NEXT:   }
+// MOV:      func.func @loop_test() -> f32 attributes {accelerator = "neura", dataflow_mode = "predicate"} {
+// MOV-NEXT:   %0 = "neura.grant_once"() <{constant_value = 0 : i64}> : () -> !neura.data<i64, i1>
+// MOV-NEXT:   %1 = "neura.grant_once"() <{constant_value = 0.000000e+00 : f32}> : () -> !neura.data<f32, i1>
+// MOV-NEXT:   %2 = neura.reserve : !neura.data<f32, i1>
+// MOV-NEXT:   %3 = "neura.data_mov"(%1) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
+// MOV-NEXT:   %4 = neura.phi_start %3, %2 : !neura.data<f32, i1>, !neura.data<f32, i1> -> !neura.data<f32, i1>
+// MOV-NEXT:   %5 = neura.reserve : !neura.data<i64, i1>
+// MOV-NEXT:   %6 = "neura.data_mov"(%0) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
+// MOV-NEXT:   %7 = neura.phi_start %6, %5 : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
+// MOV-NEXT:   %8 = "neura.data_mov"(%4) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
+// MOV-NEXT:   %9 = "neura.fadd"(%8) {rhs_value = 3.000000e+00 : f32} : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
+// MOV-NEXT:   %10 = "neura.data_mov"(%7) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
+// MOV-NEXT:   %11 = "neura.add"(%10) {rhs_value = 1 : i64} : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
+// MOV-NEXT:   %12 = "neura.data_mov"(%11) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
+// MOV-NEXT:   %13 = "neura.icmp"(%12) <{cmpType = "slt"}> {rhs_value = 10 : i64} : (!neura.data<i64, i1>) -> !neura.data<i1, i1>
+// MOV-NEXT:   %14 = "neura.data_mov"(%11) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
+// MOV-NEXT:   %15 = "neura.data_mov"(%13) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
+// MOV-NEXT:   %16 = neura.grant_predicate %14, %15 : !neura.data<i64, i1>, !neura.data<i1, i1> -> !neura.data<i64, i1>
+// MOV-NEXT:   neura.ctrl_mov %16 -> %5 : !neura.data<i64, i1> !neura.data<i64, i1>
+// MOV-NEXT:   %17 = "neura.data_mov"(%9) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
+// MOV-NEXT:   %18 = "neura.data_mov"(%13) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
+// MOV-NEXT:   %19 = neura.grant_predicate %17, %18 : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
+// MOV-NEXT:   neura.ctrl_mov %19 -> %2 : !neura.data<f32, i1> !neura.data<f32, i1>
+// MOV-NEXT:   %20 = "neura.data_mov"(%13) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
+// MOV-NEXT:   %21 = "neura.not"(%20) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
+// MOV-NEXT:   %22 = "neura.data_mov"(%9) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
+// MOV-NEXT:   %23 = "neura.data_mov"(%21) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
+// MOV-NEXT:   %24 = neura.grant_predicate %22, %23 : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
+// MOV-NEXT:   %25 = "neura.data_mov"(%24) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
+// MOV-NEXT:   "neura.return"(%25) : (!neura.data<f32, i1>) -> ()
 
-// MAPPING:      module {
-// MAPPING-NEXT:   func.func @loop_test() -> f32 attributes {accelerator = "neura", dataflow_mode = "predicate", mapping_info = {compiled_ii = 4 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 4 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {
+// MAPPING:   func.func @loop_test() -> f32 attributes {accelerator = "neura", dataflow_mode = "predicate", mapping_info = {compiled_ii = 4 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 4 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {
 
 
 // YAML:      array_config:
 // YAML-NEXT:   columns: 4
 // YAML-NEXT:   rows: 4
-// YAML-NEXT:   compiled_ii: 5
+// YAML-NEXT:   compiled_ii: 4
 // YAML-NEXT:   cores:
 // YAML-NEXT:     - column: 0
-// YAML-NEXT:       row: 1
-// YAML-NEXT:       core_id: "4"
+// YAML-NEXT:       row: 0
+// YAML-NEXT:       core_id: "0"
 // YAML-NEXT:       entries:
 // YAML-NEXT:         - entry_id: "entry0"
 // YAML-NEXT:           instructions:
-// YAML-NEXT:             - index_per_ii: 2
+// YAML-NEXT:             - index_per_ii: 0
 // YAML-NEXT:               operations:
 // YAML-NEXT:                 - opcode: "GRANT_ONCE"
-// YAML-NEXT:                   id: 3
-// YAML-NEXT:                   time_step: 2
+// YAML-NEXT:                   id: 1
+// YAML-NEXT:                   time_step: 0
 // YAML-NEXT:                   invalid_iterations: 0
 // YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "#3.000000"
+// YAML-NEXT:                     - operand: "#0"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                   dst_operands:
 // YAML-NEXT:                     - operand: "EAST"
 // YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 1
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "GRANT_ONCE"
+// YAML-NEXT:                   id: 0
+// YAML-NEXT:                   time_step: 1
+// YAML-NEXT:                   invalid_iterations: 0
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "#10"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 3
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "DATA_MOV"
+// YAML-NEXT:                   id: 200001
+// YAML-NEXT:                   time_step: 3
+// YAML-NEXT:                   invalid_iterations: 0
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
 
 
+// ASM:      # Compiled II: 4
+// ASM:      PE(0,0):
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_ONCE, [#0] -> [EAST, RED] (t=0, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=0)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_ONCE, [#10] -> [EAST, RED] (t=1, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=1)
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [NORTH, RED] (t=3, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=3)
+// ASM:      PE(1,0):
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [$0], [NORTH, RED] -> [$0] (t=4, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=0)
+// ASM-NEXT: {
+// ASM-NEXT:   PHI_START, [WEST, RED], [UNRESOLVED, ERROR] -> [NORTH, RED] (t=1, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=1)
+// ASM-NEXT: {
+// ASM-NEXT:   PHI_START, [WEST, RED], [UNRESOLVED, ERROR] -> [NORTH, RED], [WEST, RED] (t=2, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=2)
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$0] (t=3, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=3)
+// ASM:      PE(2,0):
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$0] (t=4, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=0)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [$0], [$0] -> [NORTH, RED] (t=6, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=2)
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$0] (t=3, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=3)
 // ASM:      PE(0,1):
 // ASM-NEXT: {
-// ASM-NEXT:   GRANT_ONCE, [#3.000000] -> [EAST, RED] (t=2, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=2)
+// ASM-NEXT:   GRANT_PREDICATE, [SOUTH, RED], [EAST, RED] -> [EAST, RED] (t=4, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=0)

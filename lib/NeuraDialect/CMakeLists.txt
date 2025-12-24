@@ -1,6 +1,7 @@
 # Add the dialect library
 add_mlir_dialect_library(MLIRNeura
         Neura.cpp
+        NeuraOps.cpp
         NeuraTypes.cpp
         NeuraPasses.cpp
         Mapping/mapping_util.cpp

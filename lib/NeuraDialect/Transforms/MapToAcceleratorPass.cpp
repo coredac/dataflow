@@ -160,6 +160,11 @@ void parseSingleTileOverride(llvm::yaml::MappingNode *override_map,
     } else if (key_ref == kNumRegisters) {
       if (parseYamlScalarInt(key_value_pair.getValue(), temp_value))
         override.num_registers = temp_value;
+    } else if (key_ref == kExistence) {
+      std::string value;
+      if (parseYamlScalarString(key_value_pair.getValue(), value)) {
+        override.existence = (value == "true" || value == "True" || value == "1");
+      }
     } else {
       llvm::errs() << "[MapToAcceleratorPass] Unknown tile_override key: "
                    << key_ref << "\n";

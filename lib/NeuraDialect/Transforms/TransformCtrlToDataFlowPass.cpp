@@ -596,23 +596,63 @@ void transformControlFlowToDataFlow(Region &region, ControlFlowInfo &ctrl_info,
       func->setAttr("dataflow_mode",
                     StringAttr::get(func.getContext(), "predicate"));
     }
-  } else if (auto llvm_func =
-                 dyn_cast<LLVM::LLVMFuncOp>(region.getParentOp())) {
-    if (!llvm_func->hasAttr("dataflow_mode")) {
-      llvm_func->setAttr("dataflow_mode",
-                         StringAttr::get(llvm_func.getContext(), "predicate"));
-      llvm::errs()
-          << "[ctrl2data] Set dataflow mode to predicate for LLVM function: "
-          << llvm_func.getName() << "\n";
-    } else {
-      llvm::errs()
-          << "[ctrl2data] LLVM function " << llvm_func.getName()
-          << " already has dataflow_mode set to "
-          << llvm_func->getAttrOfType<StringAttr>("dataflow_mode").getValue()
-          << "\n";
-      llvm_func->setAttr("dataflow_mode",
-                         StringAttr::get(llvm_func.getContext(), "predicate"));
+  } else {
+    assert(false &&
+           "[ctrl2data] Warning: Parent operation is not a func::FuncOp.\n");
+  }
+}
+
+// Converts phi operations with reserve operands to phi_start operations.
+void convertPhiToPhiStart(Region &region, OpBuilder &builder) {
+  llvm::errs() << "[ctrl2data] Converting phi operations to phi_start...\n";
+
+  Block *entry_block = &region.front();
+  SmallVector<neura::PhiOp> phi_ops_to_convert;
+
+  // Step 1: Collects all phi operations that need conversion.
+  entry_block->walk([&](neura::PhiOp phi_op) {
+    // Checks if any operand is produced by a reserve operation.
+    for (Value operand : phi_op.getInputs()) {
+      if (auto def_op = operand.getDefiningOp()) {
+        if (isa<neura::ReserveOp>(def_op)) {
+          phi_ops_to_convert.push_back(phi_op);
+          break;
+        }
+      }
     }
+  });
+
+  // Step 2: Converts each collected phi operation to phi_start.
+  for (neura::PhiOp phi_op : phi_ops_to_convert) {
+    Value reserve_operand;
+    SmallVector<Value> other_operands;
+
+    // Separates reserve operand from other operands.
+    for (Value operand : phi_op.getInputs()) {
+      if (auto def_op = operand.getDefiningOp()) {
+        if (isa<neura::ReserveOp>(def_op)) {
+          reserve_operand = operand;
+          continue;
+        }
+      }
+      other_operands.push_back(operand);
+    }
+
+    if (!reserve_operand || other_operands.empty()) {
+      llvm::errs()
+          << "[ctrl2data] Error: Invalid phi operands for conversion.\n";
+      assert(false && "Invalid phi operands for conversion.");
+    }
+
+    // Creates phi_start operation.
+    builder.setInsertionPoint(phi_op);
+    neura::PhiStartOp phi_start_op = builder.create<neura::PhiStartOp>(
+        phi_op.getLoc(), phi_op.getResult().getType(), other_operands.front(),
+        reserve_operand);
+
+    // Replaces uses and erases the original phi operation.
+    phi_op.getResult().replaceAllUsesWith(phi_start_op.getResult());
+    phi_op.erase();
   }
 }
 
@@ -650,24 +690,15 @@ struct TransformCtrlToDataFlowPass
         domInfo = DominanceInfo(func);
         GrantPredicateInEntryBlock(&region->front(), builder);
         assertLiveOutValuesDominatedByBlockArgs(*region);
-      } else if (auto llvmFunc = dyn_cast<LLVM::LLVMFuncOp>(op)) {
-        if (llvmFunc.isDeclaration()) {
-          return;
-        }
-        auto accel_attr = llvmFunc->getAttrOfType<StringAttr>("accelerator");
-        if (!accel_attr || accel_attr.getValue() != "neura") {
-          return;
-        }
-        region = &llvmFunc.getBody();
-        domInfo = DominanceInfo(llvmFunc);
-        GrantPredicateInEntryBlock(&region->front(), builder);
-        assertLiveOutValuesDominatedByBlockArgs(*region);
       } else {
         return;
       }
       ControlFlowInfo ctrlInfo;
       buildControlFlowInfo(*region, ctrlInfo, domInfo);
       transformControlFlowToDataFlow(*region, ctrlInfo, domInfo, builder);
+
+      // Converts phi operations to phi_start operations.
+      convertPhiToPhiStart(*region, builder);
     });
   }
 };

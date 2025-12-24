@@ -14,6 +14,12 @@
 using namespace mlir;
 using namespace mlir::neura;
 
+// Constants for award calculation.
+static const int AWARD_PROXIMITY_SCALE = 1;
+static const int AWARD_BACKWARD_PROXIMITY_SCALE = 1;
+static const int AWARD_BASE_MULTIPLIER = 1;
+static const int AWARD_CRITICAL_BONUS_DIV = 1;
+
 namespace mlir {
 namespace neura {
 OperationKind getOperationKindFromMlirOp(Operation *op) {
@@ -416,10 +422,11 @@ mlir::Operation *mlir::neura::getMaterializedBackwardUser(Operation *op) {
   }
 
   // print info
-  llvm::errs() << "No materialized backward user (i.e., phi) found for ctrl_mov: " << *op << "\n";
+  llvm::errs()
+      << "No materialized backward user (i.e., phi) found for ctrl_mov: " << *op
+      << "\n";
   llvm::errs() << "Target: " << *target.getDefiningOp() << "\n";
   llvm::errs() << "\n";
-
 
   assert(false &&
          "No materialized backward user (i.e., phi) found for ctrl_mov");
@@ -742,28 +749,27 @@ bool mlir::neura::canReachLocInTime(const MappingLoc &src_loc,
   }
 
   // Checks if the destination is reachable from the source tile within given
-  // steps.
+  // steps. This uses BFS similar to tryRouteDataMove, considering both link
+  // traversal and register-based waiting.
   assert(isa<Tile>(src_loc.resource));
   assert(isa<Tile>(dst_loc.resource));
 
-  struct QueueEntry {
-    MappingLoc loc;
-    int current_step;
-  };
+  Tile *dst_tile = dyn_cast<Tile>(dst_loc.resource);
 
-  std::queue<QueueEntry> queue;
-  llvm::DenseSet<Tile *> visited;
+  std::queue<std::pair<Tile *, int>> queue;
+  // Tracks visited (tile, time) states to allow revisiting the same tile at
+  // different time steps (needed to faithfully model waiting in registers).
+  std::set<std::pair<Tile *, int>> visited;
 
-  queue.push({src_loc, src_loc.time_step});
-  visited.insert(dyn_cast<Tile>(src_loc.resource));
+  queue.push({dyn_cast<Tile>(src_loc.resource), src_loc.time_step});
+  visited.insert({dyn_cast<Tile>(src_loc.resource), src_loc.time_step});
 
   while (!queue.empty()) {
-    auto [current_loc, current_step] = queue.front();
+    auto [current_tile, current_step] = queue.front();
     queue.pop();
 
-    // If we reach the destination tile and time step is not after dst_loc
-    if (current_loc.resource == dst_loc.resource &&
-        current_step <= deadline_step) {
+    // If we reach the destination tile within deadline
+    if (current_tile == dst_tile && current_step <= deadline_step) {
       return true;
     }
 
@@ -771,36 +777,30 @@ bool mlir::neura::canReachLocInTime(const MappingLoc &src_loc,
       continue;
     }
 
-    // // Explores all next step tiles from the current location.
-    // for (const MappingLoc &next_loc_tile :
-    //      mapping_state.getNextStepTiles(current_loc)) {
+    int next_step = current_step + 1;
 
-    // Explores all next step tiles from the current location.
-    for (const MappingLoc &current_loc_out_link :
-         mapping_state.getCurrentStepLinks(current_loc)) {
+    // Option 1: Move to adjacent tile through link.
+    for (Link *out_link : current_tile->getOutLinks()) {
+      MappingLoc link_loc = {out_link, current_step};
 
-      // Makes sure the link is not occupied.
-      if (!mapping_state.isAvailableAcrossTime(current_loc_out_link)) {
+      // Checks if link is available at current time step.
+      if (!mapping_state.isAvailableAcrossTime(link_loc)) {
         continue;
       }
 
-      // Skips if already miss the deadline.
-      int next_step = current_step + 1;
-      if (next_step > deadline_step) {
-        continue;
+      Tile *next_tile = out_link->getDstTile();
+      if (visited.insert({next_tile, next_step}).second) {
+        queue.push({next_tile, next_step});
       }
+    }
 
-      // Records the tile for further exploration.
-      Tile *next_tile =
-          llvm::dyn_cast<Link>(current_loc_out_link.resource)->getDstTile();
-      assert(next_tile && "Next location must be a Tile");
-      if (visited.contains(next_tile)) {
-        continue;
+    // Option 2: Wait on current tile using register (if available).
+    Register *wait_register = getAvailableRegister(
+        mapping_state, current_tile, current_step, current_step + 1);
+    if (wait_register) {
+      if (visited.insert({current_tile, next_step}).second) {
+        queue.push({current_tile, next_step});
       }
-
-      visited.insert(next_tile);
-      MappingLoc next_loc_tile_with_step = {next_tile, next_step};
-      queue.push({next_loc_tile_with_step, next_step});
     }
   }
 
@@ -808,9 +808,6 @@ bool mlir::neura::canReachLocInTime(const MappingLoc &src_loc,
 }
 
 bool mlir::neura::isMaterializedReserveUser(Operation *user) {
-  if (isa<neura::PhiOp>(user)) {
-    return true;
-  }
   if (isa<neura::InvariantOp>(user)) {
     return true;
   }
@@ -818,6 +815,9 @@ bool mlir::neura::isMaterializedReserveUser(Operation *user) {
     return true;
   }
   if (isa<neura::FusedOp>(user)) {
+    return true;
+  }
+  if (isa<neura::PhiStartOp>(user)) {
     return true;
   }
   return false;
@@ -911,50 +911,71 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
                    backward_user_loc.time_step + mapping_state.getII());
       backward_users_locs.push_back(backward_user_loc);
     }
-    int award = 2 * mapping_state.getII();
-    if (critical_ops.count(op)) {
-      award += tile->getDstTiles().size();
-      award += op->getOperands().size() -
-               getPhysicalHops(producers, tile, mapping_state);
+
+    // === Tile-based award (independent of time) ===
+    int tile_award = 0;
+
+    // Computes proximity bonus to producers. Closer tiles get higher scores.
+    int hops_to_producers = getPhysicalHops(producers, tile, mapping_state);
+    // Calculates the maximum possible distance.
+    int kMaxDist =
+        (architecture.getPerCgraRows() + architecture.getPerCgraColumns() - 2);
+    int max_hops = static_cast<int>(producers.size()) * kMaxDist;
+    int proximity_bonus =
+        std::max(0, max_hops - hops_to_producers) * AWARD_PROXIMITY_SCALE;
+    tile_award += proximity_bonus;
+
+    // Computes proximity bonus to backward users. Closer is better for
+    // recurrence routing.
+    for (auto &backward_user_loc : backward_users_locs) {
+      Tile *backward_tile = dyn_cast<Tile>(backward_user_loc.resource);
+      if (backward_tile) {
+        int backward_hops = std::abs(backward_tile->getX() - tile->getX()) +
+                            std::abs(backward_tile->getY() - tile->getY());
+        tile_award += std::max(0, (kMaxDist - backward_hops) *
+                                      AWARD_BACKWARD_PROXIMITY_SCALE);
+      }
     }
 
+    // Grants critical ops higher base award and routing flexibility bonus.
+    if (critical_ops.count(op)) {
+      // Keep the original critical bonuses but allow tuning via division.
+      tile_award += (mapping_state.getII() +
+                     static_cast<int>(tile->getDstTiles().size())) /
+                    std::max(1, AWARD_CRITICAL_BONUS_DIV);
+    }
+
+    // Apply base multiplier to amplify or dampen tile-based award.
+    tile_award *= AWARD_BASE_MULTIPLIER;
+
+    // === Time-based award ===
     for (int t = earliest_start_time_step; t < latest_end_time_step; t += 1) {
       MappingLoc tile_loc_candidate = {tile, t};
-      // If the tile at time `t` is available, we can consider it for mapping.
+      // Considers the tile at time `t` for mapping if available.
       if (mapping_state.isAvailableAcrossTime(tile_loc_candidate)) {
         bool meet_producer_constraint =
             producers.empty() ||
             canReachLocInTime(producers, tile_loc_candidate, t, mapping_state);
         bool meet_backward_user_constraint = true;
         for (auto &backward_user_loc : backward_users_locs) {
-          // If there is no backward user, we can consider it for mapping.
-          // Otherwise, check if the location can reach all backward users.
+          // Checks if the location can reach all backward users.
           if (!canReachLocInTime(tile_loc_candidate, backward_user_loc,
                                  backward_user_loc.time_step +
                                      mapping_state.getII(),
                                  mapping_state)) {
             meet_backward_user_constraint = false;
-            break; // No need to check further.
+            break;
           }
         }
-        // If no producer or the location is reachable by all producers, and
-        // no backward user or the location can reach all backward users,
-        // we can consider it for mapping and grant reward.
+        // Grants reward if all constraints are satisfied.
         if (meet_producer_constraint && meet_backward_user_constraint) {
-          // Grants higher award if the location is physically closed to
-          // producers. award += producers.size() - getPhysicalHops(producers,
-          // tile, mapping_state); if (op->getOperands().size() > 1 &&
-          // getPhysicalHops(producers, tile, mapping_state) < 2) {
-          //   award += 1;
-          // }
-          updateAward(locs_with_award, tile_loc_candidate, award);
+          // Earlier time steps get higher scores.
+          int time_bonus = latest_end_time_step - t;
+          int total_award = tile_award + time_bonus;
+          updateAward(locs_with_award, tile_loc_candidate, total_award);
         }
       }
-      // The mapping location with earlier time step is granted with a higher
-      // award.
-      award -= 1;
     }
-    // assert(award >= 0 && "Award should not be negative");
   }
 
   // Copies map entries into a vector of pairs for sorting.

@@ -139,30 +139,27 @@ std::unique_ptr<LoopInfo> identifyLoop(Operation *index_reserve_op) {
   loop->addOpToRemove(index_reserve_op);
 
   // Identifies the phi operation.
-  neura::PhiOp index_phi_op = nullptr;
+  neura::PhiStartOp index_phi_start_op = nullptr;
   for (Operation *user : loop->index_reserve_val.getUsers()) {
-    if (auto phi = dyn_cast<neura::PhiOp>(user)) {
-      index_phi_op = phi;
+    if (auto phi = dyn_cast<neura::PhiStartOp>(user)) {
+      index_phi_start_op = phi;
       break;
     }
   }
 
-  if (!index_phi_op) {
+  if (!index_phi_start_op) {
     llvm::errs()
         << "[CtrlFlowFuse] No index phi operation found for the loop.\n";
     return nullptr; // No phi operation found.
   }
 
-  loop->index_phi_val = index_phi_op.getResult();
-  loop->addOpToRemove(index_phi_op);
+  loop->index_phi_val = index_phi_start_op.getResult();
+  loop->addOpToRemove(index_phi_start_op);
 
   // Finds the start value for loop index.
   Value initial_value = nullptr;
-  for (Value input : index_phi_op.getInputs()) {
-    if (input != loop->index_reserve_val) {
-      initial_value = input;
-      break;
-    }
+  if (index_phi_start_op.getInitValue() != loop->index_reserve_val) {
+    initial_value = index_phi_start_op.getInitValue();
   }
 
   if (!initial_value) {
@@ -186,7 +183,7 @@ std::unique_ptr<LoopInfo> identifyLoop(Operation *index_reserve_op) {
   loop->addOpToRemove(initial_value.getDefiningOp());
 
   // Identifies the phi->icmp->[not]->grant_predicate pattern.
-  for (Operation *phi_user : index_phi_op->getUsers()) {
+  for (Operation *phi_user : index_phi_start_op->getUsers()) {
     if (neura::ICmpOp icmp_op = dyn_cast<neura::ICmpOp>(phi_user)) {
       if (icmp_op.getCmpType() == "slt" &&
           icmp_op.getLhs() == loop->index_phi_val) {
