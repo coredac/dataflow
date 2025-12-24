@@ -213,386 +213,84 @@
 // YAML:                     - operand: "$1"
 // YAML:                       color: "RED"
 // YAML:                     - operand: "$3"
+
+
 // ASM:      # Compiled II: 11
 // ASM:      PE(0,0):
-// ASM:      {
-// ASM:        CONSTANT, [arg0] -> [$0] (t=0, inv_iters=0)
-// ASM:      } (idx_per_ii=0)
-// ASM:      {
-// ASM:        ICMP_SGT, [$0], [#0] -> [$0] (t=1, inv_iters=0)
-// ASM:      } (idx_per_ii=1)
-// ASM:      {
-// ASM:        GRANT_ONCE, [arg1] -> [$1], [$3] (t=2, inv_iters=0)
-// ASM:      } (idx_per_ii=2)
-// ASM:      {
-// ASM:        GRANT_ONCE, [$0] -> [EAST, RED], [NORTH, RED], [$0], [$2] (t=3, inv_iters=0)
-// ASM:      } (idx_per_ii=3)
-// ASM:      {
-// ASM:        GRANT_PREDICATE, [$1], [$0] -> [$0], [$1] (t=4, inv_iters=0)
-// ASM:      } (idx_per_ii=4)
-// ASM:      {
-// ASM:        ICMP_SGT, [$0], [#0] -> [$0], [EAST, RED], [NORTH, RED] (t=5, inv_iters=0)
-// ASM:      } (idx_per_ii=5)
-// ASM:      {
-// ASM:        GRANT_PREDICATE, [NORTH, RED], [EAST, RED] -> [NORTH, RED] (t=17, inv_iters=1)
-// ASM:      } (idx_per_ii=6)
-// ASM:      {
-// ASM:        GRANT_PREDICATE, [$1], [$0] -> [EAST, RED] (t=7, inv_iters=0)
-// ASM:      } (idx_per_ii=7)
-// ASM:      {
-// ASM:        NOT, [$2] -> [$0], [EAST, RED] (t=8, inv_iters=0)
-// ASM:      } (idx_per_ii=8)
-// ASM:      {
-// ASM:        GRANT_PREDICATE, [$3], [$0] -> [$0], [NORTH, RED] (t=9, inv_iters=0)
-// ASM:      } (idx_per_ii=9)
-// ASM:      {
-// ASM:        ICMP_SGT, [$0], [#0] -> [NORTH, RED], [EAST, RED] (t=10, inv_iters=0)
-// ASM:      } (idx_per_ii=10)
-
+// ASM-NEXT: {
+// ASM-NEXT:   CONSTANT, [arg0] -> [$0] (t=0, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=0)
+// ASM-NEXT: {
+// ASM-NEXT:   ICMP_SGT, [$0], [#0] -> [$0] (t=1, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=1)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_ONCE, [arg1] -> [$1], [$3] (t=2, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=2)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_ONCE, [$0] -> [EAST, RED], [NORTH, RED], [$0], [$2] (t=3, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=3)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [$1], [$0] -> [$0], [$1] (t=4, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=4)
+// ASM-NEXT: {
+// ASM-NEXT:   ICMP_SGT, [$0], [#0] -> [$0], [EAST, RED], [NORTH, RED] (t=5, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=5)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [NORTH, RED], [EAST, RED] -> [NORTH, RED] (t=17, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=6)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [$1], [$0] -> [EAST, RED] (t=7, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=7)
+// ASM-NEXT: {
+// ASM-NEXT:   NOT, [$2] -> [$0], [EAST, RED] (t=8, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=8)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [$3], [$0] -> [$0], [NORTH, RED] (t=9, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=9)
+// ASM-NEXT: {
+// ASM-NEXT:   ICMP_SGT, [$0], [#0] -> [NORTH, RED], [EAST, RED] (t=10, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=10)
 // ASM:      PE(1,0):
-// ASM:      {
-// ASM:        GRANT_ONCE, [arg4] -> [$2] (t=11, inv_iters=1)
-// ASM:        DATA_MOV, [WEST, RED] -> [EAST, RED] (t=11, inv_iters=1)
-// ASM:        DATA_MOV, [NORTH, RED] -> [$1] (t=11, inv_iters=1)
-// ASM:      } (idx_per_ii=0)
-// ASM:      {
-// ASM:        GRANT_PREDICATE, [$0], [$1] -> [EAST, RED], [$5] (t=12, inv_iters=1)
-// ASM:      } (idx_per_ii=1)
-// ASM:      {
-// ASM:        GRANT_PREDICATE, [$2], [$3] -> [$0] (t=13, inv_iters=1)
-// ASM:        DATA_MOV, [EAST, RED] -> [$2] (t=13, inv_iters=1)
-// ASM:      } (idx_per_ii=2)
-// ASM:      {
-// ASM:        GRANT_PREDICATE, [$0], [$1] -> [NORTH, RED] (t=14, inv_iters=1)
-// ASM:      } (idx_per_ii=3)
-// ASM:      {
-// ASM:        DATA_MOV, [WEST, RED] -> [NORTH, RED] (t=4, inv_iters=0)
-// ASM:        GRANT_PREDICATE, [$4], [$2] -> [$1] (t=15, inv_iters=1)
-// ASM:      } (idx_per_ii=4)
-// ASM:      {
-// ASM:        DATA_MOV, [WEST, RED] -> [EAST, RED] (t=5, inv_iters=0)
-// ASM:        GRANT_PREDICATE, [$5], [NORTH, RED] -> [$2] (t=16, inv_iters=1)
-// ASM:        DATA_MOV, [EAST, RED] -> [WEST, RED] (t=16, inv_iters=1)
-// ASM:      } (idx_per_ii=5)
-// ASM:      {
-// ASM:        DATA_MOV, [WEST, RED] -> [NORTH, RED] (t=6, inv_iters=0)
-// ASM:      } (idx_per_ii=6)
-// ASM:      {
-// ASM:        ZEXT, [WEST, RED] -> [$0] (t=8, inv_iters=0)
-// ASM:        DATA_MOV, [WEST, RED] -> [$3] (t=8, inv_iters=0)
-// ASM:      } (idx_per_ii=8)
-// ASM:      {
-// ASM:        PHI, [$2], [$0] -> [$0] (t=9, inv_iters=0)
-// ASM:        DATA_MOV, [WEST, RED] -> [EAST, RED] (t=9, inv_iters=0)
-// ASM:      } (idx_per_ii=9)
-// ASM:      {
-// ASM:        PHI, [$1], [$0] -> [$4], [$0] (t=10, inv_iters=0)
-// ASM:        DATA_MOV, [WEST, RED] -> [$1] (t=10, inv_iters=0)
-// ASM:      } (idx_per_ii=10)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_ONCE, [arg4] -> [$2] (t=11, inv_iters=1)
+// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [EAST, RED] (t=11, inv_iters=1)
+// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$1] (t=11, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=0)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [EAST, RED], [$5] (t=12, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=1)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [$2], [$3] -> [$0] (t=13, inv_iters=1)
+// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$2] (t=13, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=2)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [NORTH, RED] (t=14, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=3)
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [NORTH, RED] (t=4, inv_iters=0)
+// ASM-NEXT:   GRANT_PREDICATE, [$4], [$2] -> [$1] (t=15, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=4)
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [EAST, RED] (t=5, inv_iters=0)
+// ASM-NEXT:   GRANT_PREDICATE, [$5], [NORTH, RED] -> [$2] (t=16, inv_iters=1)
+// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [WEST, RED] (t=16, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=5)
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [NORTH, RED] (t=6, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=6)
+// ASM-NEXT: {
+// ASM-NEXT:   ZEXT, [WEST, RED] -> [$0] (t=8, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$3] (t=8, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=8)
+// ASM-NEXT: {
+// ASM-NEXT:   PHI_START, [$0], [UNRESOLVED, ERROR] -> [$0] (t=9, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [EAST, RED] (t=9, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=9)
+// ASM-NEXT: {
+// ASM-NEXT:   PHI_START, [$0], [UNRESOLVED, ERROR] -> [$4], [$0] (t=10, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$1] (t=10, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=10)
 
-// ASM:      PE(2,0):
-// ASM:      {
-// ASM:        DATA_MOV, [WEST, RED] -> [EAST, RED] (t=12, inv_iters=1)
-// ASM:        DATA_MOV, [NORTH, RED] -> [WEST, RED] (t=12, inv_iters=1)
-// ASM:      } (idx_per_ii=1)
-// ASM:      {
-// ASM:        ICMP_EQ, [NORTH, RED], [WEST, RED] -> [NORTH, RED] (t=13, inv_iters=1)
-// ASM:      } (idx_per_ii=2)
-// ASM:      {
-// ASM:        DATA_MOV, [NORTH, RED] -> [WEST, RED] (t=15, inv_iters=1)
-// ASM:      } (idx_per_ii=4)
-// ASM:      {
-// ASM:        DATA_MOV, [WEST, RED] -> [EAST, RED] (t=6, inv_iters=0)
-// ASM:      } (idx_per_ii=6)
-// ASM:      {
-// ASM:        DATA_MOV, [WEST, RED] -> [EAST, RED] (t=10, inv_iters=0)
-// ASM:      } (idx_per_ii=10)
-
-// ASM:      PE(3,0):
-// ASM:      {
-// ASM:        DATA_MOV, [WEST, RED] -> [NORTH, RED] (t=11, inv_iters=1)
-// ASM:      } (idx_per_ii=0)
-// ASM:      {
-// ASM:        DATA_MOV, [WEST, RED] -> [NORTH, RED] (t=13, inv_iters=1)
-// ASM:      } (idx_per_ii=2)
-// ASM:      {
-// ASM:        DATA_MOV, [WEST, RED] -> [NORTH, RED] (t=7, inv_iters=0)
-// ASM:      } (idx_per_ii=7)
-
-// ASM:      PE(0,1):
-// ASM:      {
-// ASM:        GRANT_PREDICATE, [$0], [SOUTH, RED] -> [$0] (t=11, inv_iters=1)
-// ASM:      } (idx_per_ii=0)
-// ASM:      {
-// ASM:        GEP, [$1], [$2] -> [NORTH, RED], [$1] (t=12, inv_iters=1)
-// ASM:      } (idx_per_ii=1)
-// ASM:      {
-// ASM:        ZEXT, [$0] -> [NORTH, RED] (t=13, inv_iters=1)
-// ASM:      } (idx_per_ii=2)
-// ASM:      {
-// ASM:        LOAD, [$1] -> [NORTH, RED] (t=14, inv_iters=1)
-// ASM:        CTRL_MOV, [EAST, RED] -> [$1] (t=14, inv_iters=1)
-// ASM:      } (idx_per_ii=3)
-// ASM:      {
-// ASM:        GRANT_PREDICATE, [EAST, RED], [SOUTH, RED] -> [$0] (t=4, inv_iters=0)
-// ASM:      } (idx_per_ii=4)
-// ASM:      {
-// ASM:        DATA_MOV, [SOUTH, RED] -> [EAST, RED] (t=5, inv_iters=0)
-// ASM:        DATA_MOV, [EAST, RED] -> [SOUTH, RED] (t=16, inv_iters=1)
-// ASM:      } (idx_per_ii=5)
-// ASM:      {
-// ASM:        GRANT_PREDICATE, [$0], [SOUTH, RED] -> [$0], [EAST, RED] (t=6, inv_iters=0)
-// ASM:      } (idx_per_ii=6)
-// ASM:      {
-// ASM:        PHI, [SOUTH, RED], [$0] -> [NORTH, RED], [$0] (t=7, inv_iters=0)
-// ASM:      } (idx_per_ii=7)
-// ASM:      {
-// ASM:        PHI, [EAST, RED], [$0] -> [NORTH, RED], [$2], [$0] (t=8, inv_iters=0)
-// ASM:      } (idx_per_ii=8)
-// ASM:      {
-// ASM:        ADD, [$0], [#1] -> [EAST, RED] (t=9, inv_iters=0)
-// ASM:      } (idx_per_ii=9)
-// ASM:      {
-// ASM:        DATA_MOV, [SOUTH, RED] -> [$0] (t=10, inv_iters=0)
-// ASM:        DATA_MOV, [EAST, RED] -> [$1] (t=10, inv_iters=0)
-// ASM:      } (idx_per_ii=10)
-
-// ASM:      PE(1,1):
-// ASM:      {
-// ASM:        GRANT_PREDICATE, [$0], [$1] -> [EAST, RED] (t=11, inv_iters=1)
-// ASM:      } (idx_per_ii=0)
-// ASM:      {
-// ASM:        GEP, [$2] -> [$2], [NORTH, RED] (t=12, inv_iters=1)
-// ASM:        DATA_MOV, [EAST, RED] -> [$1] (t=12, inv_iters=1)
-// ASM:      } (idx_per_ii=1)
-// ASM:      {
-// ASM:        GRANT_PREDICATE, [$0], [$1] -> [WEST, RED] (t=13, inv_iters=1)
-// ASM:      } (idx_per_ii=2)
-// ASM:      {
-// ASM:        GRANT_ONCE, [#0] -> [WEST, RED] (t=3, inv_iters=0)
-// ASM:      } (idx_per_ii=3)
-// ASM:      {
-// ASM:        STORE, [$2] (t=15, inv_iters=1)
-// ASM:        DATA_MOV, [SOUTH, RED] -> [$0] (t=15, inv_iters=1)
-// ASM:        DATA_MOV, [NORTH, RED] -> [WEST, RED] (t=15, inv_iters=1)
-// ASM:        DATA_MOV, [EAST, RED] -> [SOUTH, RED] (t=15, inv_iters=1)
-// ASM:        CTRL_MOV, [EAST, RED] -> [$1] (t=15, inv_iters=1)
-// ASM:      } (idx_per_ii=4)
-// ASM:      {
-// ASM:        DATA_MOV, [SOUTH, RED] -> [NORTH, RED] (t=5, inv_iters=0)
-// ASM:        DATA_MOV, [EAST, RED] -> [$1] (t=16, inv_iters=1)
-// ASM:        CTRL_MOV, [EAST, RED] -> [$2] (t=16, inv_iters=1)
-// ASM:      } (idx_per_ii=5)
-// ASM:      {
-// ASM:        DATA_MOV, [WEST, RED] -> [EAST, RED] (t=6, inv_iters=0)
-// ASM:        MEMSET, [$0], [$1], [NORTH, RED] (t=17, inv_iters=1)
-// ASM:      } (idx_per_ii=6)
-// ASM:      {
-// ASM:        DATA_MOV, [SOUTH, RED] -> [NORTH, RED] (t=7, inv_iters=0)
-// ASM:        DATA_MOV, [WEST, RED] -> [$0] (t=7, inv_iters=0)
-// ASM:      } (idx_per_ii=7)
-// ASM:      {
-// ASM:        PHI, [EAST, RED], [$0] -> [$2], [NORTH, RED], [$0] (t=8, inv_iters=0)
-// ASM:      } (idx_per_ii=8)
-// ASM:      {
-// ASM:        PHI, [EAST, RED], [$0] -> [WEST, RED], [EAST, RED], [$0] (t=9, inv_iters=0)
-// ASM:        DATA_MOV, [WEST, RED] -> [$0] (t=9, inv_iters=0)
-// ASM:      } (idx_per_ii=9)
-// ASM:      {
-// ASM:        ICMP_EQ, [WEST, RED], [NORTH, RED] -> [EAST, RED], [$1], [SOUTH, RED], [NORTH, RED] (t=10, inv_iters=0)
-// ASM:      } (idx_per_ii=10)
-
-// ASM:      PE(2,1):
-// ASM:      {
-// ASM:        NOT, [WEST, RED] -> [WEST, RED], [$1], [SOUTH, RED], [NORTH, RED] (t=11, inv_iters=1)
-// ASM:      } (idx_per_ii=0)
-// ASM:      {
-// ASM:        ADD, [WEST, RED], [#1] -> [SOUTH, RED], [$2] (t=12, inv_iters=1)
-// ASM:      } (idx_per_ii=1)
-// ASM:      {
-// ASM:        NOT, [SOUTH, RED] -> [$3], [SOUTH, RED], [WEST, RED] (t=14, inv_iters=1)
-// ASM:      } (idx_per_ii=3)
-// ASM:      {
-// ASM:        GRANT_PREDICATE, [$0], [$1] -> [WEST, RED] (t=15, inv_iters=1)
-// ASM:        DATA_MOV, [EAST, RED] -> [WEST, RED] (t=15, inv_iters=1)
-// ASM:      } (idx_per_ii=4)
-// ASM:      {
-// ASM:        GRANT_PREDICATE, [$2], [$3] -> [WEST, RED] (t=16, inv_iters=1)
-// ASM:      } (idx_per_ii=5)
-// ASM:      {
-// ASM:        DATA_MOV, [WEST, RED] -> [NORTH, RED] (t=7, inv_iters=0)
-// ASM:      } (idx_per_ii=7)
-// ASM:      {
-// ASM:        DATA_MOV, [WEST, RED] -> [$0] (t=10, inv_iters=0)
-// ASM:      } (idx_per_ii=10)
-
-// ASM:      PE(3,1):
-// ASM:      {
-// ASM:        DATA_MOV, [SOUTH, RED] -> [$0] (t=12, inv_iters=1)
-// ASM:      } (idx_per_ii=1)
-// ASM:      {
-// ASM:        GRANT_PREDICATE, [NORTH, RED], [$0] -> [$0] (t=13, inv_iters=1)
-// ASM:      } (idx_per_ii=2)
-// ASM:      {
-// ASM:        GRANT_PREDICATE, [$0], [SOUTH, RED] -> [WEST, RED] (t=14, inv_iters=1)
-// ASM:      } (idx_per_ii=3)
-// ASM:      {
-// ASM:        DATA_MOV, [SOUTH, RED] -> [NORTH, RED] (t=8, inv_iters=0)
-// ASM:      } (idx_per_ii=8)
-
-// ASM:      PE(0,2):
-// ASM:      {
-// ASM:        GEP, [$0] -> [$0] (t=11, inv_iters=1)
-// ASM:      } (idx_per_ii=0)
-// ASM:      {
-// ASM:        PHI, [EAST, RED], [$1] -> [EAST, RED] (t=12, inv_iters=1)
-// ASM:        DATA_MOV, [EAST, RED] -> [$3] (t=12, inv_iters=1)
-// ASM:      } (idx_per_ii=1)
-// ASM:      {
-// ASM:        LOAD, [$0] -> [$1] (t=13, inv_iters=1)
-// ASM:        DATA_MOV, [SOUTH, RED] -> [$0] (t=13, inv_iters=1)
-// ASM:      } (idx_per_ii=2)
-// ASM:      {
-// ASM:        LOAD, [$0] -> [EAST, RED] (t=14, inv_iters=1)
-// ASM:        DATA_MOV, [SOUTH, RED] -> [$0] (t=14, inv_iters=1)
-// ASM:        DATA_MOV, [EAST, RED] -> [$2] (t=14, inv_iters=1)
-// ASM:      } (idx_per_ii=3)
-// ASM:      {
-// ASM:        SHL, [$0], [#3] -> [EAST, RED] (t=15, inv_iters=1)
-// ASM:        DATA_MOV, [SOUTH, RED] -> [$0] (t=15, inv_iters=1)
-// ASM:      } (idx_per_ii=4)
-// ASM:      {
-// ASM:        FMUL_FADD, [$0], [$1], [$2] -> [$0] (t=16, inv_iters=1)
-// ASM:      } (idx_per_ii=5)
-// ASM:      {
-// ASM:        STORE, [$0], [$3] (t=17, inv_iters=1)
-// ASM:        CTRL_MOV, [EAST, RED] -> [$2] (t=17, inv_iters=1)
-// ASM:      } (idx_per_ii=6)
-// ASM:      {
-// ASM:        DATA_MOV, [SOUTH, RED] -> [$1] (t=8, inv_iters=0)
-// ASM:      } (idx_per_ii=8)
-// ASM:      {
-// ASM:        DATA_MOV, [SOUTH, RED] -> [$0] (t=9, inv_iters=0)
-// ASM:      } (idx_per_ii=9)
-// ASM:      {
-// ASM:        DATA_MOV, [SOUTH, RED] -> [NORTH, RED] (t=10, inv_iters=0)
-// ASM:      } (idx_per_ii=10)
-
-// ASM:      PE(1,2):
-// ASM:      {
-// ASM:        GEP, [$0] -> [$0] (t=11, inv_iters=1)
-// ASM:        DATA_MOV, [SOUTH, RED] -> [$1] (t=11, inv_iters=1)
-// ASM:      } (idx_per_ii=0)
-// ASM:      {
-// ASM:        LOAD, [$0] -> [$2] (t=12, inv_iters=1)
-// ASM:        DATA_MOV, [WEST, RED] -> [$1] (t=12, inv_iters=1)
-// ASM:      } (idx_per_ii=1)
-// ASM:      {
-// ASM:        LOAD, [SOUTH, RED] -> [WEST, RED] (t=13, inv_iters=1)
-// ASM:        DATA_MOV, [EAST, RED] -> [$3] (t=13, inv_iters=1)
-// ASM:        DATA_MOV, [WEST, RED] -> [$0] (t=13, inv_iters=1)
-// ASM:      } (idx_per_ii=2)
-// ASM:      {
-// ASM:        GRANT_PREDICATE, [$0], [$1] -> [SOUTH, RED] (t=14, inv_iters=1)
-// ASM:        DATA_MOV, [NORTH, RED] -> [$0] (t=14, inv_iters=1)
-// ASM:        DATA_MOV, [SOUTH, RED] -> [WEST, RED] (t=14, inv_iters=1)
-// ASM:      } (idx_per_ii=3)
-// ASM:      {
-// ASM:        FMUL_FADD, [$2], [WEST, RED], [$0] -> [NORTH, RED] (t=15, inv_iters=1)
-// ASM:      } (idx_per_ii=4)
-// ASM:      {
-// ASM:        GRANT_PREDICATE, [$1], [$3] -> [WEST, RED] (t=16, inv_iters=1)
-// ASM:        DATA_MOV, [WEST, RED] -> [SOUTH, RED] (t=16, inv_iters=1)
-// ASM:      } (idx_per_ii=5)
-// ASM:      {
-// ASM:        DATA_MOV, [SOUTH, RED] -> [NORTH, RED] (t=6, inv_iters=0)
-// ASM:      } (idx_per_ii=6)
-// ASM:      {
-// ASM:        GRANT_PREDICATE, [NORTH, RED], [SOUTH, RED] -> [$0] (t=8, inv_iters=0)
-// ASM:      } (idx_per_ii=8)
-// ASM:      {
-// ASM:        ZEXT, [$0] -> [SOUTH, RED] (t=9, inv_iters=0)
-// ASM:        DATA_MOV, [SOUTH, RED] -> [$0] (t=9, inv_iters=0)
-// ASM:      } (idx_per_ii=9)
-
-// ASM:      PE(2,2):
-// ASM:      {
-// ASM:        DATA_MOV, [SOUTH, RED] -> [WEST, RED] (t=12, inv_iters=1)
-// ASM:      } (idx_per_ii=1)
-// ASM:      {
-// ASM:        DATA_MOV, [SOUTH, RED] -> [EAST, RED] (t=8, inv_iters=0)
-// ASM:      } (idx_per_ii=8)
-
-// ASM:      PE(3,2):
-// ASM:      {
-// ASM:        DATA_MOV, [NORTH, RED] -> [SOUTH, RED] (t=12, inv_iters=1)
-// ASM:      } (idx_per_ii=1)
-// ASM:      {
-// ASM:        GRANT_PREDICATE, [NORTH, RED], [$0] -> [NORTH, RED] (t=13, inv_iters=1)
-// ASM:      } (idx_per_ii=2)
-// ASM:      {
-// ASM:        DATA_MOV, [WEST, RED] -> [$0] (t=3, inv_iters=0)
-// ASM:      } (idx_per_ii=3)
-// ASM:      {
-// ASM:        DATA_MOV, [SOUTH, RED] -> [NORTH, RED] (t=9, inv_iters=0)
-// ASM:      } (idx_per_ii=9)
-
-// ASM:      PE(0,3):
-// ASM:      {
-// ASM:        GEP, [$1] -> [$0], [EAST, RED] (t=11, inv_iters=1)
-// ASM:      } (idx_per_ii=0)
-// ASM:      {
-// ASM:        LOAD, [$0] -> [EAST, RED] (t=12, inv_iters=1)
-// ASM:      } (idx_per_ii=1)
-// ASM:      {
-// ASM:        DATA_MOV, [SOUTH, RED] -> [$1] (t=8, inv_iters=0)
-// ASM:      } (idx_per_ii=8)
-
-// ASM:      PE(1,3):
-// ASM:      {
-// ASM:        ZEXT, [$0] -> [$0] (t=12, inv_iters=1)
-// ASM:        DATA_MOV, [WEST, RED] -> [$1] (t=12, inv_iters=1)
-// ASM:      } (idx_per_ii=1)
-// ASM:      {
-// ASM:        SHL, [$0], [#3] -> [EAST, RED] (t=13, inv_iters=1)
-// ASM:        DATA_MOV, [WEST, RED] -> [SOUTH, RED] (t=13, inv_iters=1)
-// ASM:      } (idx_per_ii=2)
-// ASM:      {
-// ASM:        STORE, [SOUTH, RED], [$1] (t=16, inv_iters=1)
-// ASM:      } (idx_per_ii=5)
-// ASM:      {
-// ASM:        GRANT_PREDICATE, [EAST, RED], [SOUTH, RED] -> [$0], [SOUTH, RED] (t=7, inv_iters=0)
-// ASM:      } (idx_per_ii=7)
-
-// ASM:      PE(2,3):
-// ASM:      {
-// ASM:        RETURN (t=14, inv_iters=1)
-// ASM:        DATA_MOV, [WEST, RED] -> [EAST, RED] (t=14, inv_iters=1)
-// ASM:      } (idx_per_ii=3)
-// ASM:      {
-// ASM:        DATA_MOV, [EAST, RED] -> [WEST, RED] (t=6, inv_iters=0)
-// ASM:      } (idx_per_ii=6)
-
-// ASM:      PE(3,3):
-// ASM:      {
-// ASM:        GRANT_ONCE, [#0] -> [$0], [SOUTH, RED] (t=11, inv_iters=1)
-// ASM:      } (idx_per_ii=0)
-// ASM:      {
-// ASM:        GRANT_ONCE, [arg3] -> [SOUTH, RED] (t=12, inv_iters=1)
-// ASM:      } (idx_per_ii=1)
-// ASM:      {
-// ASM:        GRANT_PREDICATE, [$0], [$1] -> [$1] (t=13, inv_iters=1)
-// ASM:      } (idx_per_ii=2)
-// ASM:      {
-// ASM:        DATA_MOV, [SOUTH, RED] -> [$1] (t=3, inv_iters=0)
-// ASM:        DATA_MOV, [SOUTH, RED] -> [$0] (t=14, inv_iters=1)
-// ASM:      } (idx_per_ii=3)
-// ASM:      {
-// ASM:        MEMSET, [$0], [$1], [WEST, RED] (t=15, inv_iters=1)
-// ASM:      } (idx_per_ii=4)
-// ASM:      {
-// ASM:        GRANT_ONCE, [arg0] -> [WEST, RED] (t=5, inv_iters=0)
-// ASM:      } (idx_per_ii=5)
 
 // RUN: mlir-neura-opt %t-kernel.mlir \
 // RUN:   --assign-accelerator \

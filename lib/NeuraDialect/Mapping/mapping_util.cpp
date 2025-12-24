@@ -422,10 +422,11 @@ mlir::Operation *mlir::neura::getMaterializedBackwardUser(Operation *op) {
   }
 
   // print info
-  llvm::errs() << "No materialized backward user (i.e., phi) found for ctrl_mov: " << *op << "\n";
+  llvm::errs()
+      << "No materialized backward user (i.e., phi) found for ctrl_mov: " << *op
+      << "\n";
   llvm::errs() << "Target: " << *target.getDefiningOp() << "\n";
   llvm::errs() << "\n";
-
 
   assert(false &&
          "No materialized backward user (i.e., phi) found for ctrl_mov");
@@ -755,7 +756,7 @@ bool mlir::neura::canReachLocInTime(const MappingLoc &src_loc,
 
   Tile *dst_tile = dyn_cast<Tile>(dst_loc.resource);
 
-  std::queue<std::pair<Tile*, int>> queue;
+  std::queue<std::pair<Tile *, int>> queue;
   // Tracks visited (tile, time) states to allow revisiting the same tile at
   // different time steps (needed to faithfully model waiting in registers).
   std::set<std::pair<Tile *, int>> visited;
@@ -795,24 +796,18 @@ bool mlir::neura::canReachLocInTime(const MappingLoc &src_loc,
 
     // Option 2: Wait on current tile using register (if available).
     Register *wait_register = getAvailableRegister(
-        mapping_state, current_tile, current_step,
-        current_step + 1);
+        mapping_state, current_tile, current_step, current_step + 1);
     if (wait_register) {
       if (visited.insert({current_tile, next_step}).second) {
         queue.push({current_tile, next_step});
       }
     }
-
-
   }
 
   return false;
 }
 
 bool mlir::neura::isMaterializedReserveUser(Operation *user) {
-  if (isa<neura::PhiOp>(user)) {
-    return true;
-  }
   if (isa<neura::InvariantOp>(user)) {
     return true;
   }
@@ -820,6 +815,9 @@ bool mlir::neura::isMaterializedReserveUser(Operation *user) {
     return true;
   }
   if (isa<neura::FusedOp>(user)) {
+    return true;
+  }
+  if (isa<neura::PhiStartOp>(user)) {
     return true;
   }
   return false;
@@ -920,9 +918,11 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
     // Computes proximity bonus to producers. Closer tiles get higher scores.
     int hops_to_producers = getPhysicalHops(producers, tile, mapping_state);
     // Calculates the maximum possible distance.
-    int kMaxDist = (architecture.getPerCgraRows() + architecture.getPerCgraColumns() - 2);
+    int kMaxDist =
+        (architecture.getPerCgraRows() + architecture.getPerCgraColumns() - 2);
     int max_hops = static_cast<int>(producers.size()) * kMaxDist;
-    int proximity_bonus = std::max(0, max_hops - hops_to_producers) * AWARD_PROXIMITY_SCALE;
+    int proximity_bonus =
+        std::max(0, max_hops - hops_to_producers) * AWARD_PROXIMITY_SCALE;
     tile_award += proximity_bonus;
 
     // Computes proximity bonus to backward users. Closer is better for
@@ -932,14 +932,17 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
       if (backward_tile) {
         int backward_hops = std::abs(backward_tile->getX() - tile->getX()) +
                             std::abs(backward_tile->getY() - tile->getY());
-        tile_award += std::max(0, (kMaxDist - backward_hops) * AWARD_BACKWARD_PROXIMITY_SCALE);
+        tile_award += std::max(0, (kMaxDist - backward_hops) *
+                                      AWARD_BACKWARD_PROXIMITY_SCALE);
       }
     }
 
     // Grants critical ops higher base award and routing flexibility bonus.
     if (critical_ops.count(op)) {
       // Keep the original critical bonuses but allow tuning via division.
-      tile_award += (mapping_state.getII() + static_cast<int>(tile->getDstTiles().size())) / std::max(1, AWARD_CRITICAL_BONUS_DIV);
+      tile_award += (mapping_state.getII() +
+                     static_cast<int>(tile->getDstTiles().size())) /
+                    std::max(1, AWARD_CRITICAL_BONUS_DIV);
     }
 
     // Apply base multiplier to amplify or dampen tile-based award.
