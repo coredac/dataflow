@@ -135,7 +135,7 @@
 // ASM-NEXT:   GRANT_ONCE, [#0] -> [$0] (t=0, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=0)
 // ASM-NEXT: {
-// ASM-NEXT:   PHI_START, [$0], [UNRESOLVED, ERROR] -> [WEST, RED], [$0] (t=1, inv_iters=0)
+// ASM-NEXT:   PHI_START, [$0], [WEST, RED] -> [WEST, RED], [$0] (t=1, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=1)
 // ASM-NEXT: {
 // ASM-NEXT:   ADD, [$0], [#1] -> [$0], [WEST, RED] (t=2, inv_iters=0)
