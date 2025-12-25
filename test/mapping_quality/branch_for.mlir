@@ -255,10 +255,10 @@ func.func @loop_test() -> f32 {
 // ASM-NEXT:   GRANT_PREDICATE, [$0], [NORTH, RED] -> [$0] (t=4, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=0)
 // ASM-NEXT: {
-// ASM-NEXT:   PHI_START, [WEST, RED], [UNRESOLVED, ERROR] -> [NORTH, RED] (t=1, inv_iters=0)
+// ASM-NEXT:   PHI_START, [WEST, RED], [$0] -> [NORTH, RED] (t=1, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=1)
 // ASM-NEXT: {
-// ASM-NEXT:   PHI_START, [WEST, RED], [UNRESOLVED, ERROR] -> [NORTH, RED], [WEST, RED] (t=2, inv_iters=0)
+// ASM-NEXT:   PHI_START, [WEST, RED], [NORTH, RED] -> [NORTH, RED], [WEST, RED] (t=2, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=2)
 // ASM-NEXT: {
 // ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$0] (t=3, inv_iters=0)

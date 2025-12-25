@@ -151,7 +151,7 @@ func.func @loop_test() -> f32 {
 // ASM-NEXT:   DATA_MOV, [EAST, RED] -> [WEST, RED] (t=8, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=3)
 // ASM-NEXT: {
-// ASM-NEXT:   PHI_START, [WEST, RED], [UNRESOLVED, ERROR] -> [WEST, RED], [$0] (t=4, inv_iters=0)
+// ASM-NEXT:   PHI_START, [WEST, RED], [$0] -> [WEST, RED], [$0] (t=4, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=4)
 // ASM:      PE(2,1):
 // ASM-NEXT: {
@@ -162,7 +162,7 @@ func.func @loop_test() -> f32 {
 // ASM-NEXT: } (idx_per_ii=2)
 // ASM:      PE(0,2):
 // ASM-NEXT: {
-// ASM-NEXT:   PHI_START, [$0], [UNRESOLVED, ERROR] -> [SOUTH, RED] (t=5, inv_iters=1)
+// ASM-NEXT:   PHI_START, [$0], [SOUTH, RED] -> [SOUTH, RED] (t=5, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=0)
 // ASM-NEXT: {
 // ASM-NEXT:   CONSTANT, [#10] -> [$0] (t=1, inv_iters=0)

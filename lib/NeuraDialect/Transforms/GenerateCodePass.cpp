@@ -80,19 +80,18 @@ struct TileLocation {
 // ---- Operation kind helpers ----.
 static bool isDataMov(Operation *op) { return dyn_cast<DataMovOp>(op) != nullptr; }
 static bool isCtrlMov(Operation *op) { return dyn_cast<CtrlMovOp>(op) != nullptr; }
-static bool isPhiLike(Operation *op) {
-  return dyn_cast<PhiOp>(op) != nullptr || dyn_cast<PhiStartOp>(op) != nullptr;
-}
+static bool isPhiLike(Operation *op) { return dyn_cast<PhiStartOp>(op) != nullptr; }
 static bool isReserve(Operation *op) { return dyn_cast<ReserveOp>(op) != nullptr; }
 static bool isConstant(Operation *op) { return dyn_cast<ConstantOp>(op) != nullptr; }
 
-// Returns the reserve operand for phi-like ops.
+// Returns the reserve operand for phi_start (operand #1). Guards to ReserveOp.
 static Value getReserveOperand(Operation *op) {
-  if (auto phi = dyn_cast<PhiOp>(op)) {
-    return op->getNumOperands() >= 1 ? phi->getOperand(0) : Value();
-  }
   if (auto phi_start = dyn_cast<PhiStartOp>(op)) {
-    return op->getNumOperands() >= 2 ? phi_start->getOperand(1) : Value();
+    if (op->getNumOperands() >= 2) {
+      Value candidate = phi_start->getOperand(1);
+      if (candidate && isa<ReserveOp>(candidate.getDefiningOp()))
+        return candidate;
+    }
   }
   return Value();
 }
