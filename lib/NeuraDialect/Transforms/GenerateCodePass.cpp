@@ -83,17 +83,18 @@ static bool isCtrlMov(Operation *op) { return dyn_cast<CtrlMovOp>(op) != nullptr
 static bool isPhiStart(Operation *op) { return dyn_cast<PhiStartOp>(op) != nullptr; }
 static bool isReserve(Operation *op) { return dyn_cast<ReserveOp>(op) != nullptr; }
 static bool isConstant(Operation *op) { return dyn_cast<ConstantOp>(op) != nullptr; }
-// ---- Constants for phi_start operation ----.
+// ---- Constant for phi_start operation ----.
 static constexpr unsigned kReserveOpIndex = 1;
 
 // Returns the reserve operand for phi_start (operand #1). Guards to ReserveOp.
 static Value getReserveOperand(Operation *op) {
   if (auto phi_start = dyn_cast<PhiStartOp>(op)) {
-    if (op->getNumOperands() > kReserveOpIndex) {
-      Value candidate = phi_start->getOperand(kReserveOpIndex);
-      if (candidate && isa<ReserveOp>(candidate.getDefiningOp()))
-        return candidate;
-    }
+    assert(op->getNumOperands() > kReserveOpIndex &&
+           "phi_start must have a reserve at operand #1");
+    Value candidate = phi_start->getOperand(kReserveOpIndex);
+    assert((!candidate || isa<ReserveOp>(candidate.getDefiningOp())) &&
+           "phi_start operand #1 must be a ReserveOp");
+    return candidate;
   }
   return Value();
 }
