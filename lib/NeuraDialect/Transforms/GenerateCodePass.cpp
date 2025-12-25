@@ -80,15 +80,17 @@ struct TileLocation {
 // ---- Operation kind helpers ----.
 static bool isDataMov(Operation *op) { return dyn_cast<DataMovOp>(op) != nullptr; }
 static bool isCtrlMov(Operation *op) { return dyn_cast<CtrlMovOp>(op) != nullptr; }
-static bool isPhiLike(Operation *op) { return dyn_cast<PhiStartOp>(op) != nullptr; }
+static bool isPhiStart(Operation *op) { return dyn_cast<PhiStartOp>(op) != nullptr; }
 static bool isReserve(Operation *op) { return dyn_cast<ReserveOp>(op) != nullptr; }
 static bool isConstant(Operation *op) { return dyn_cast<ConstantOp>(op) != nullptr; }
+// ---- Constants for phi_start operation ----.
+static constexpr unsigned kReserveOpIndex = 1;
 
 // Returns the reserve operand for phi_start (operand #1). Guards to ReserveOp.
 static Value getReserveOperand(Operation *op) {
   if (auto phi_start = dyn_cast<PhiStartOp>(op)) {
-    if (op->getNumOperands() >= 2) {
-      Value candidate = phi_start->getOperand(1);
+    if (op->getNumOperands() > kReserveOpIndex) {
+      Value candidate = phi_start->getOperand(kReserveOpIndex);
       if (candidate && isa<ReserveOp>(candidate.getDefiningOp()))
         return candidate;
     }
@@ -465,7 +467,7 @@ struct GenerateCodePass
       operation_placements[op] = getTileLocation(op);
 
       // build reserve -> phi mapping.
-      if (isPhiLike(op)) {
+      if (isPhiStart(op)) {
         if (Value reserve = getReserveOperand(op)) {
           reserve_to_phi_map[reserve] = op;
         }
