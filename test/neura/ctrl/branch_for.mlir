@@ -246,14 +246,14 @@ func.func @loop_test() -> f32 {
 // ASM-NEXT:   GRANT_ONCE, [#0.000000] -> [$0] (t=2, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=2)
 // ASM-NEXT: {
-// ASM-NEXT:   PHI_START, [$0], [UNRESOLVED, ERROR] -> [EAST, RED] (t=3, inv_iters=0)
+// ASM-NEXT:   PHI_START, [$0], [NORTH, RED] -> [EAST, RED] (t=3, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=3)
 // ASM:      PE(1,0):
 // ASM-NEXT: {
 // ASM-NEXT:   FADD, [WEST, RED], [#3.000000] -> [WEST, RED], [EAST, RED] (t=4, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=0)
 // ASM-NEXT: {
-// ASM-NEXT:   PHI_START, [WEST, RED], [UNRESOLVED, ERROR] -> [$0] (t=1, inv_iters=0)
+// ASM-NEXT:   PHI_START, [WEST, RED], [NORTH, RED] -> [$0] (t=1, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=1)
 // ASM-NEXT: {
 // ASM-NEXT:   ADD, [$0], [#1] -> [$0], [NORTH, RED] (t=2, inv_iters=0)

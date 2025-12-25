@@ -283,11 +283,11 @@
 // ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$3] (t=8, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=8)
 // ASM-NEXT: {
-// ASM-NEXT:   PHI_START, [$0], [UNRESOLVED, ERROR] -> [$0] (t=9, inv_iters=0)
+// ASM-NEXT:   PHI_START, [$0], [$2] -> [$0] (t=9, inv_iters=0)
 // ASM-NEXT:   DATA_MOV, [WEST, RED] -> [EAST, RED] (t=9, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=9)
 // ASM-NEXT: {
-// ASM-NEXT:   PHI_START, [$0], [UNRESOLVED, ERROR] -> [$4], [$0] (t=10, inv_iters=0)
+// ASM-NEXT:   PHI_START, [$0], [$1] -> [$4], [$0] (t=10, inv_iters=0)
 // ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$1] (t=10, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=10)
 

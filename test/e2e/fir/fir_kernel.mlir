@@ -94,6 +94,16 @@
 // YAML-NEXT:                   dst_operands:
 // YAML-NEXT:                     - operand: "$0"
 // YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                 - opcode: "CTRL_MOV"
+// YAML-NEXT:                   id: 39
+// YAML-NEXT:                   time_step: 8
+// YAML-NEXT:                   invalid_iterations: 1
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$1"
+// YAML-NEXT:                       color: "RED"
 // YAML-NEXT:             - index_per_ii: 4
 // YAML-NEXT:               operations:
 // YAML-NEXT:                 - opcode: "PHI_START"
@@ -103,8 +113,8 @@
 // YAML-NEXT:                   src_operands:
 // YAML-NEXT:                     - operand: "$0"
 // YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                     - operand: "UNRESOLVED"
-// YAML-NEXT:                       color: "ERROR"
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                   dst_operands:
 // YAML-NEXT:                     - operand: "EAST"
 // YAML-NEXT:                       color: "RED"
@@ -114,9 +124,10 @@
 // ASM:      PE(0,1):
 // ASM-NEXT: {
 // ASM-NEXT:   GRANT_ONCE, [#0] -> [$0] (t=3, inv_iters=0)
+// ASM-NEXT:   CTRL_MOV, [EAST, RED] -> [$1] (t=8, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=3)
 // ASM-NEXT: {
-// ASM-NEXT:   PHI_START, [$0], [UNRESOLVED, ERROR] -> [EAST, RED] (t=4, inv_iters=0)
+// ASM-NEXT:   PHI_START, [$0], [EAST, RED] -> [EAST, RED] (t=4, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=4)
 // ASM:      PE(1,1):
 // ASM-NEXT: {
