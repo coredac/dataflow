@@ -51,8 +51,8 @@ public:
   struct LoopRecurrenceInfo {
     // The reserve operation that starts the loop.
     neura::ReserveOp reserve_op;
-    // The phi operation that merges values from different iterations.
-    neura::PhiOp phi_op;
+    // The phi_start operation that merges values from different iterations.
+    neura::PhiStartOp phi_start_op;
     // The initial value before the loop starts.
     Value initial_value;
     // The condition that controls the loop continuation.
@@ -79,9 +79,9 @@ public:
           {op.getValue(), op});
     });
 
-    // Analyzes phi operations and the backward edges.
-    func.walk([&](neura::PhiOp phi_op) {
-      for (Value input : phi_op->getOperands()) {
+    // Analyzes phi_start operations and the backward edges.
+    func.walk([&](neura::PhiStartOp phi_start_op) {
+      for (Value input : phi_start_op->getOperands()) {
         auto reserve_it = value_to_reserve_map.find(input);
         if (reserve_it == value_to_reserve_map.end()) {
           continue;
@@ -95,7 +95,7 @@ public:
 
         for (auto &[source_value, ctrl_mov_op] : ctrl_mov_it->second) {
           Value initial_value = nullptr;
-          for (Value phi_input : phi_op->getOperands()) {
+          for (Value phi_input : phi_start_op->getOperands()) {
             if (phi_input != reserve_op.getResult()) {
               initial_value = phi_input;
               break;
@@ -105,10 +105,10 @@ public:
 
           Value condition = nullptr;
           neura::GrantPredicateOp grant_op = nullptr;
-          for (auto phi_user : phi_op->getUsers()) {
+          for (auto phi_user : phi_start_op->getUsers()) {
             if (isa<neura::GrantPredicateOp>(phi_user)) {
               auto def_op = llvm::dyn_cast<neura::GrantPredicateOp>(phi_user);
-              if (def_op.getValue() == phi_op.getResult() &&
+              if (def_op.getValue() == phi_start_op.getResult() &&
                   !isa<neura::NotOp>(def_op.getPredicate().getDefiningOp())) {
                 llvm::errs() << "[ctrl2steer] Found loop condition: "
                              << def_op.getPredicate() << "\n";
@@ -129,12 +129,12 @@ public:
           }
 
           // Records the loop information.
-          this->loop_recurrences.push_back({reserve_op, phi_op, initial_value,
-                                            condition, source_value,
-                                            is_invariant});
+          this->loop_recurrences.push_back({reserve_op, phi_start_op,
+                                            initial_value, condition,
+                                            source_value, is_invariant});
 
           // Maps the phi operation to its loop recurrence index.
-          this->phi_to_loop_recurrences[phi_op.getResult()] =
+          this->phi_to_loop_recurrences[phi_start_op.getResult()] =
               loop_recurrences.size() - 1;
 
           // Records the reserve operations that are part of loops.
@@ -207,59 +207,61 @@ private:
   llvm::DenseMap<Value, Value> backward_value_reserve_map;
 };
 
-class PhiToCarryPattern : public OpRewritePattern<neura::PhiOp> {
+class PhiStartToCarryPattern : public OpRewritePattern<neura::PhiStartOp> {
 public:
-  PhiToCarryPattern(MLIRContext *context, const LoopAnalyzer &loop_analyzer,
-                    BackwardValueHandler &backward_value_handler,
-                    OperationsToErase &ops_to_erase)
-      : OpRewritePattern<neura::PhiOp>(context), loop_analyzer(loop_analyzer),
+  PhiStartToCarryPattern(MLIRContext *context,
+                         const LoopAnalyzer &loop_analyzer,
+                         BackwardValueHandler &backward_value_handler,
+                         OperationsToErase &ops_to_erase)
+      : OpRewritePattern<neura::PhiStartOp>(context),
+        loop_analyzer(loop_analyzer),
         backward_value_handler(backward_value_handler),
         ops_to_erase(ops_to_erase) {}
 
-  LogicalResult matchAndRewrite(neura::PhiOp phi_op,
+  LogicalResult matchAndRewrite(neura::PhiStartOp phi_start_op,
                                 PatternRewriter &rewriter) const override {
     // If the phi operation is not part of a loop, we do not handle it here.
-    if (!loop_analyzer.isLoopPhi(phi_op.getResult())) {
+    if (!loop_analyzer.isLoopPhi(phi_start_op.getResult())) {
       return failure();
     }
 
     const auto *loop_recurrence_info =
-        loop_analyzer.getLoopRecurrenceInfo(phi_op.getResult());
+        loop_analyzer.getLoopRecurrenceInfo(phi_start_op.getResult());
     assert(loop_recurrence_info && "Loop recurrence info must be available");
 
     // Creates a reserve operation for the loop condition.
     Value condition = loop_recurrence_info->condition;
     assert(condition && "Loop condition must be available");
     Value condition_reserve =
-        this->backward_value_handler.createReserveForBackwardValue(condition,
-                                                                   phi_op);
+        this->backward_value_handler.createReserveForBackwardValue(
+            condition, phi_start_op);
 
     // Creates a carry or a invariant operation based on whether the loop
     // recurrence is invariant.
-    rewriter.setInsertionPoint(phi_op);
+    rewriter.setInsertionPoint(phi_start_op);
     Value result;
     if (loop_recurrence_info->is_invariant) {
       auto invariant_op = rewriter.create<neura::InvariantOp>(
-          phi_op.getLoc(), phi_op.getType(),
+          phi_start_op.getLoc(), phi_start_op.getType(),
           loop_recurrence_info->initial_value, condition_reserve);
       result = invariant_op.getResult();
       // rewriter.replaceOp(phi_op, invariant_op.getResult());
     } else {
       Value backward_reserve =
           this->backward_value_handler.createReserveForBackwardValue(
-              loop_recurrence_info->backward_value, phi_op);
-      auto carry_op =
-          rewriter.create<neura::CarryOp>(phi_op.getLoc(), phi_op.getType(),
-                                          loop_recurrence_info->initial_value,
-                                          condition_reserve, backward_reserve);
+              loop_recurrence_info->backward_value, phi_start_op);
+      auto carry_op = rewriter.create<neura::CarryOp>(
+          phi_start_op.getLoc(), phi_start_op.getType(),
+          loop_recurrence_info->initial_value, condition_reserve,
+          backward_reserve);
       result = carry_op.getResult();
       // rewriter.replaceOp(phi_op, carry_op.getResult());
     }
 
     llvm::SmallVector<neura::GrantPredicateOp> related_grant_ops;
-    for (auto *user : phi_op->getUsers()) {
+    for (auto *user : phi_start_op->getUsers()) {
       if (auto grant_op = dyn_cast<neura::GrantPredicateOp>(user)) {
-        if (grant_op.getValue() == phi_op.getResult() &&
+        if (grant_op.getValue() == phi_start_op.getResult() &&
             grant_op.getPredicate() == condition) {
           related_grant_ops.push_back(grant_op);
         }
@@ -272,7 +274,7 @@ public:
       ops_to_erase.markForErasure(grant_op);
     }
 
-    rewriter.replaceOp(phi_op, result);
+    rewriter.replaceOp(phi_start_op, result);
 
     this->ops_to_erase.markForErasure(loop_recurrence_info->reserve_op);
     for (auto *user : loop_recurrence_info->reserve_op->getUsers()) {
@@ -674,8 +676,8 @@ struct TransformToSteerControlPass
     BackwardValueHandler backward_value_handler(rewriter);
 
     RewritePatternSet phi_patterns(&context);
-    phi_patterns.add<PhiToCarryPattern>(&context, loop_analyzer,
-                                        backward_value_handler, ops_to_erase);
+    phi_patterns.add<PhiStartToCarryPattern>(
+        &context, loop_analyzer, backward_value_handler, ops_to_erase);
     if (failed(applyPatternsGreedily(func, std::move(phi_patterns)))) {
       signalPassFailure();
     }

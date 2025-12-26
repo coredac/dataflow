@@ -1,9 +1,90 @@
 // NeuraOps.td - Custom operation definitions.
 
 include "NeuraDialect/NeuraDialect.td"
+include "mlir/Interfaces/ControlFlowInterfaces.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/IR/OpBase.td"
+
+
+// ----------------------------------------------------
+// Defines neura kernel related operations.
+// ----------------------------------------------------
+
+def Neura_KernelOp : Op<NeuraDialect, "kernel", [RecursiveMemoryEffects, SingleBlockImplicitTerminator<"YieldOp">]> {
+  let summary = "Marks a region for CGRA execution.";
+  let description = [{
+    Defines a computation region that should be offloaded to CGRA.
+    The region contains operations that will be lowered to neura dataflow IR.
+    Operations outside this region remain on CPU.
+
+    The kernel captures values from the surrounding context through explicit
+    operands via `ins`. Results are returned via `neura.yield`.
+
+    Example with return value (reduction pattern):
+      %result = neura.kernel ins(%input, %coeff : memref<?xf32>, memref<?xf32>) {
+        %sum = scf.for ... iter_args(%acc = %init) -> (f32) {
+          ...
+          scf.yield %new_acc : f32
+        }
+        neura.yield %sum : f32
+      } : f32
+      memref.store %result, %output[%idx] : memref<?xf32>
+
+    Example without return value:
+      neura.kernel ins(%input, %output : memref<?xf32>, memref<?xf32>) {
+        affine.for %i = 0 to 128 {
+          %v = affine.load %input[%i] : memref<?xf32>
+          affine.store %v, %output[%i] : memref<?xf32>
+        }
+      }
+  }];
+
+  let arguments = (ins
+    Variadic<AnyType>:$inputs, // Input operands from surrounding context.
+    OptionalAttr<I32Attr>:$cgra_id, // Target CGRA ID (for multi-CGRA systems).
+    OptionalAttr<StrAttr>:$kernel_name, // Name of the kernel (for identification).
+    OptionalAttr<StrAttr>:$accelerator // Target accelerator name.
+  );
+
+  let results = (outs Variadic<AnyType>:$outputs);
+
+  let regions = (region SizedRegion<1>:$body);
+
+  let assemblyFormat = [{
+    (`ins` `(` $inputs^ `:` type($inputs) `)` )?
+    attr-dict-with-keyword
+    $body
+    (`:` type($outputs)^)?
+  }];
+}
+
+// Yield operation for fused_op and kernel regions.
+def Neura_YieldOp : Op<NeuraDialect, "yield", [Terminator, Pure, ReturnLike, HasParent<"FusedOp, KernelOp">]> {
+  let summary = "Yield values from a neura.kernel or neura.fused_op region.";
+  let description = [{
+    Returns values from a neura.kernel or neura.fused_op region to the parent operation.
+    This operation must be the terminator of a region when the parent operation is a neura.kernel or neura.fused_op.
+
+    Example:
+      %result = neura.kernel ins(...) {
+        %v = ... // computations
+        neura.yield %v : f32
+      } : f32
+  }];
+  
+  let arguments = (ins Variadic<AnyType>:$values);
+
+  let builders = [
+    OpBuilder<(ins), [{ build($_builder, $_state, ValueRange{}); }]>
+  ];
+
+  let assemblyFormat = [{($values^ `:` type($values))? attr-dict}];
+}
+
 
 // ----------------------------------------------------
 // Defines basic scalar operations.
+// ----------------------------------------------------
 
 def Neura_ConstantOp : Op<NeuraDialect, "constant"> {
   let arguments = (ins AnyAttr:$value);
@@ -366,6 +447,7 @@ def Neura_ShlOp : Op<NeuraDialect, "shl"> {
 
 // ----------------------------------------------------
 // Defines vector operations.
+// ----------------------------------------------------
 
 // Defines a vector multiplication operation.
 def Neura_VFMulOp : Op<NeuraDialect, "vfmul"> {
@@ -421,6 +503,7 @@ def Neura_VectorReduceAddOp : Op<NeuraDialect, "vector.reduce.add"> {
 
 // ----------------------------------------------------
 // Defines fused operations.
+// ----------------------------------------------------
 
 def Neura_FAddFAddOp : Op<NeuraDialect, "fadd_fadd"> {
   let summary = "Fused fadd(fadd(a, b), c)";
@@ -457,10 +540,11 @@ def Neura_DataMovOp : Op<NeuraDialect, "data_mov"> {
 
 // ----------------------------------------------------
 // Defines ctrl-related operations.
+// ----------------------------------------------------
 
 // Defines phi operation for merging values in dataflow form.
 def Neura_PhiOp : Op<NeuraDialect, "phi"> {
-  let summary = "Phi node in dataflow form";
+  let summary = "Phi node in dataflow form.";
   let description = [{
     Merges values from different control paths in dataflow form.
     Used with reserve and ctrl_mov to represent control flow.
@@ -476,6 +560,36 @@ def Neura_PhiOp : Op<NeuraDialect, "phi"> {
 
   // Explicitly specifies types for operands in the assembly format.
   // let assemblyFormat = "$init_val `:` type($init_val) `,` $loop_val `:` type($loop_val) attr-dict `,` type($result)";
+}
+
+// Defines phi_start operation specifically for phi operations with neura.reserve as an operand.
+def Neura_PhiStartOp : Op<NeuraDialect, "phi_start">{
+  let summary = "Phi start operation for neura.reserve operand.";
+  let description = [{
+    Special phi operation for loop initialization where the first operand
+    must be initial values and subsequent operands
+    are the reserved or other values from different control paths.
+    
+    This operation distinguishes loop initialization patterns from general
+    phi merges, making it easier to identify and optimize recurrence cycles.
+    
+    The first operand (reserve) represents the placeholder for the loop-carried
+    value, while other operands provide the initial values for the first iteration.
+    
+    Example:
+      %reserved = neura.reserve : f32
+      %init = neura.grant_once ... : f32
+      %result = neura.phi_start %init, %reserved : !neura.data<f32, i1>, !neura.data<f32, i1> -> !neura.data<f32, i1>
+      // ... loop body uses %result ...
+      neura.ctrl_mov %next_val -> %reserved
+  }];
+
+  let arguments = (ins AnyType:$init_value, AnyType:$reserved);
+  let results = (outs AnyType:$result);
+
+  let assemblyFormat = "$init_value `,` $reserved attr-dict `:` type($init_value) `,` type($reserved) `->` type($result)";
+
+  let hasVerifier = 1;
 }
 
 // Defines control movement extending base move but with different signature.
@@ -570,6 +684,7 @@ def Neura_GrantAlwaysOp : Op<NeuraDialect, "grant_always"> {
 
 // ----------------------------------------------------
 // Defines fused control flow operations.
+// ----------------------------------------------------
 
 def Neura_LoopControlOp : Op<NeuraDialect, "loop_control">{
   let summary = "Generates loop indicies and valid predicates.";
@@ -691,6 +806,10 @@ def Neura_InvariantOp : Op<NeuraDialect, "invariant">{
   let assemblyFormat = "$initial `,` $condition attr-dict `:` type($initial) `,` type($condition) `->` type($result)";
 }
 
+// ----------------------------------------------------
+// Defines fused operations identified by graph mining.
+// ----------------------------------------------------
+
 // Fused Operation - wraps a frequently occurring pattern
 def Neura_FusedOp : Op<NeuraDialect, "fused_op", [NoTerminator]> {
   let summary = "Represents a fused operation identified by graph mining";
@@ -724,15 +843,4 @@ def Neura_FusedOp : Op<NeuraDialect, "fused_op", [NoTerminator]> {
   let regions = (region SizedRegion<1>:$body);
   
   let hasVerifier = 0;
-} 
-
-// Yield operation for common pattern region
-def Neura_YieldOp : Op<NeuraDialect, "yield", [Terminator]> {
-  let summary = "Yield operation for common pattern regions";
-  let description = [{
-    This operation yields values from a common pattern region back to the parent.
-  }];
-  
-  let arguments = (ins Variadic<AnyType>:$operands);
-  let builders = [OpBuilder<(ins), [{ /* nothing to do */ }]>];
 }

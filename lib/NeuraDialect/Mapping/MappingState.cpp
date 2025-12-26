@@ -1,4 +1,6 @@
 #include "NeuraDialect/Mapping/MappingState.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -233,8 +235,9 @@ void MappingState::dumpOpToLocs(llvm::raw_ostream &os) const {
   // Time slots range from 0 to II-1.
   std::set<int> time_slots;
   // Maps (tile_id, time_slot) to list of (operation, actual_time_step).
-  std::map<std::pair<int, int>, std::vector<std::pair<Operation*, int>>> tile_slot_to_ops;
-  
+  std::map<std::pair<int, int>, std::vector<std::pair<Operation *, int>>>
+      tile_slot_to_ops;
+
   for (const auto &[op, locs] : op_to_locs) {
     for (const MappingLoc &loc : locs) {
       auto *res = loc.resource;
@@ -244,111 +247,125 @@ void MappingState::dumpOpToLocs(llvm::raw_ostream &os) const {
         // Computes modulo II.
         int time_slot = loc.time_step % II;
         time_slots.insert(time_slot);
-        tile_slot_to_ops[{res->getId(), time_slot}].push_back({op, loc.time_step});
+        tile_slot_to_ops[{res->getId(), time_slot}].push_back(
+            {op, loc.time_step});
       }
     }
   }
-  
+
   if (tile_ids.empty() || time_slots.empty()) {
     os << "No tile operations mapped.\n";
     os << "=== End ===\n";
     return;
   }
-  
+
   os << "II = " << II << "\n";
-  
+
   // Prints header - time slots (0 to II-1) as columns.
   os << "\nTile     | ";
   for (int slot : time_slots) {
     os << "t%" << II << "=" << slot;
-    int padding = kKeyMaxLen - (II < kTwoDigitThreshold ? kHeaderPrefixLenSingleDigit : kHeaderPrefixLenDoubleDigit) 
-                  - (slot < kTwoDigitThreshold ? kSingleDigitLen : kDoubleDigitLen);
-    for (int i = 0; i < padding; ++i) os << " ";
+    int padding =
+        kKeyMaxLen -
+        (II < kTwoDigitThreshold ? kHeaderPrefixLenSingleDigit
+                                 : kHeaderPrefixLenDoubleDigit) -
+        (slot < kTwoDigitThreshold ? kSingleDigitLen : kDoubleDigitLen);
+    for (int i = 0; i < padding; ++i)
+      os << " ";
     os << " | ";
   }
   os << "\n";
-  
+
   // Prints separator line.
   os << "---------+";
   for (size_t i = 0; i < time_slots.size(); ++i) {
-    for (int j = 0; j < kKeyMaxLen + 1; ++j) os << "-";
+    for (int j = 0; j < kKeyMaxLen + 1; ++j)
+      os << "-";
     os << "+";
   }
   os << "\n";
-  
+
   // Prints each tile as a row.
   for (int tile_id : tile_ids) {
     os << "Tile#" << tile_id;
-    if (tile_id < kTwoDigitThreshold) os << "  ";
-    else if (tile_id < kThreeDigitThreshold) os << " ";
+    if (tile_id < kTwoDigitThreshold)
+      os << "  ";
+    else if (tile_id < kThreeDigitThreshold)
+      os << " ";
     os << " | ";
-    
+
     for (int slot : time_slots) {
       auto it = tile_slot_to_ops.find({tile_id, slot});
       if (it != tile_slot_to_ops.end() && !it->second.empty()) {
-        // Multiple operations may exist in the same slot (from different iterations).
-        // Shows the first one.
+        // Multiple operations may exist in the same slot (from different
+        // iterations). Shows the first one.
         Operation *op = it->second[0].first;
         int actual_time = it->second[0].second;
-        
-        // Builds operation string: %result = op_name(%operand1, %operand2, ...).
+
+        // Builds operation string: %result = op_name(%operand1, %operand2,
+        // ...).
         std::string op_str;
         llvm::raw_string_ostream op_stream(op_str);
         mlir::OpPrintingFlags flags;
-        
+
         // Prints result (if exists).
         if (op->getNumResults() > 0) {
           op->getResult(0).printAsOperand(op_stream, flags);
           op_stream << " = ";
         }
-        
+
         // Prints operation name (removes "neura." prefix).
         std::string op_name = op->getName().getStringRef().str();
         if (op_name.rfind("neura.", 0) == 0) {
           op_name = op_name.substr(6);
         }
         op_stream << op_name;
-        
+
         // Prints operands.
         if (op->getNumOperands() > 0) {
           op_stream << "(";
           for (unsigned i = 0; i < op->getNumOperands(); ++i) {
-            if (i > 0) op_stream << ", ";
+            if (i > 0)
+              op_stream << ", ";
             op->getOperand(i).printAsOperand(op_stream, flags);
           }
           op_stream << ")";
         }
-        
+
         // Adds time annotation if not in [0, II).
         if (actual_time >= II) {
           op_stream << " (t=" << actual_time << ")";
         }
-        
+
         op_stream.flush();
-        
+
         // Truncates string if too long to fit in the cell.
         if (op_str.length() > kCellWidth) {
           op_str = op_str.substr(0, kCellWidth - 3) + "...";
         }
-        
+
         // Pads to fixed width (kCellWidth chars).
         os << op_str;
         int padding = kCellWidth - op_str.length();
-        for (int i = 0; i < padding; ++i) os << " ";
+        for (int i = 0; i < padding; ++i)
+          os << " ";
       } else {
         // Renders empty cell.
-        for (int i = 0; i < kCellWidth; ++i) os << " ";
+        for (int i = 0; i < kCellWidth; ++i)
+          os << " ";
       }
       os << " | ";
     }
     os << "\n";
   }
-  
+
   os << "\n=== Legend ===\n";
   os << "- Table shows operations mapped to tiles (modulo II scheduling)\n";
   os << "- Column headers: t%II=X means time slot X (t=X, X+II, X+2*II, ...)\n";
-  os << "- Operations with (t=Y) annotation are scheduled at actual time step Y\n";
-  os << "- Operations without annotation are scheduled at t=0 to t=" << (II-1) << "\n";
+  os << "- Operations with (t=Y) annotation are scheduled at actual time step "
+        "Y\n";
+  os << "- Operations without annotation are scheduled at t=0 to t=" << (II - 1)
+     << "\n";
   os << "=== End ===\n";
 }
 
@@ -361,6 +378,8 @@ void MappingState::encodeMappingState() {
       if (loc.resource->getKind() == ResourceKind::Tile) {
         kind_str = "tile";
         Tile *tile = dyn_cast<Tile>(loc.resource);
+        int invalid_iterations = loc.time_step / II;
+        int index_per_ii = loc.time_step % II;
         auto dict = mlir::DictionaryAttr::get(
             ctx, {mlir::NamedAttribute(mlir::StringAttr::get(ctx, "resource"),
                                        mlir::StringAttr::get(ctx, kind_str)),
@@ -373,6 +392,14 @@ void MappingState::encodeMappingState() {
                       mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
                                              loc.time_step)),
                   mlir::NamedAttribute(
+                      mlir::StringAttr::get(ctx, "invalid_iterations"),
+                      mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
+                                             invalid_iterations)),
+                  mlir::NamedAttribute(
+                      mlir::StringAttr::get(ctx, "index_per_ii"),
+                      mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
+                                             index_per_ii)),
+                  mlir::NamedAttribute(
                       mlir::StringAttr::get(ctx, "x"),
                       mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
                                              tile->getX())),
@@ -383,6 +410,8 @@ void MappingState::encodeMappingState() {
         mapping_entries.push_back(dict);
       } else if (loc.resource->getKind() == ResourceKind::Link) {
         kind_str = "link";
+        int invalid_iterations = loc.time_step / II;
+        int index_per_ii = loc.time_step % II;
         auto dict = mlir::DictionaryAttr::get(
             ctx, {mlir::NamedAttribute(mlir::StringAttr::get(ctx, "resource"),
                                        mlir::StringAttr::get(ctx, kind_str)),
@@ -393,14 +422,24 @@ void MappingState::encodeMappingState() {
                   mlir::NamedAttribute(
                       mlir::StringAttr::get(ctx, "time_step"),
                       mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
-                                             loc.time_step))});
+                                             loc.time_step)),
+                  mlir::NamedAttribute(
+                      mlir::StringAttr::get(ctx, "invalid_iterations"),
+                      mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
+                                             invalid_iterations)),
+                  mlir::NamedAttribute(
+                      mlir::StringAttr::get(ctx, "index_per_ii"),
+                      mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
+                                             index_per_ii))});
         mapping_entries.push_back(dict);
       } else if (loc.resource->getKind() == ResourceKind::Register) {
         kind_str = "register";
         Register *reg = static_cast<Register *>(loc.resource);
         int global_id = loc.resource->getId();
         int per_tile_register_id = reg->getPerTileId();
-        
+        int invalid_iterations = loc.time_step / II;
+        int index_per_ii = loc.time_step % II;
+
         auto dict = mlir::DictionaryAttr::get(
             ctx, {mlir::NamedAttribute(mlir::StringAttr::get(ctx, "resource"),
                                        mlir::StringAttr::get(ctx, kind_str)),
@@ -415,10 +454,20 @@ void MappingState::encodeMappingState() {
                   mlir::NamedAttribute(
                       mlir::StringAttr::get(ctx, "time_step"),
                       mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
-                                             loc.time_step))});
+                                             loc.time_step)),
+                  mlir::NamedAttribute(
+                      mlir::StringAttr::get(ctx, "invalid_iterations"),
+                      mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
+                                             invalid_iterations)),
+                  mlir::NamedAttribute(
+                      mlir::StringAttr::get(ctx, "index_per_ii"),
+                      mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
+                                             index_per_ii))});
         mapping_entries.push_back(dict);
       } else {
         kind_str = "unknown";
+        int invalid_iterations = loc.time_step / II;
+        int index_per_ii = loc.time_step % II;
         auto dict = mlir::DictionaryAttr::get(
             ctx, {mlir::NamedAttribute(mlir::StringAttr::get(ctx, "resource"),
                                        mlir::StringAttr::get(ctx, kind_str)),
@@ -429,7 +478,15 @@ void MappingState::encodeMappingState() {
                   mlir::NamedAttribute(
                       mlir::StringAttr::get(ctx, "time_step"),
                       mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
-                                             loc.time_step))});
+                                             loc.time_step)),
+                  mlir::NamedAttribute(
+                      mlir::StringAttr::get(ctx, "invalid_iterations"),
+                      mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
+                                             invalid_iterations)),
+                  mlir::NamedAttribute(
+                      mlir::StringAttr::get(ctx, "index_per_ii"),
+                      mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 32),
+                                             index_per_ii))});
         mapping_entries.push_back(dict);
       }
     }

@@ -8,7 +8,8 @@ build/
 !architecture.yaml
 /test/**/*.asm
 /test/**/*.json
-/test/**/.sh
+/test/**/*.dot
+/test/**/*.png
 .lit_test_times.txt
 lit.cfg
 *.dot

@@ -155,6 +155,14 @@ def InitPattern : Pass<"init-pattern", "ModuleOp"> {
   let constructor = "neura::createInitPatternPass()";
 }
 
+def WrapLoopInKernelPass : Pass<"wrap-loop-in-kernel", "func::FuncOp">{
+  let summary = "Wrap loops in neura.kernel operations";
+  let description = [{
+    This pass wraps loops in neura.kernel operations to encapsulate loop bodies.
+  }];
+  let constructor = "neura::createWrapLoopInKernelPass()";
+}
+
 def HardwareMerge : Pass<"hardware-merge", "ModuleOp"> {
   let summary = "Merge and optimize hardware units for pattern execution";
   let description = [{

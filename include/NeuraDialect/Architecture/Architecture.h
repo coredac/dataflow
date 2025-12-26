@@ -33,33 +33,108 @@ enum class FunctionUnitKind {
 };
 
 // Enumeration for supported operation types.
-enum OperationKind { 
+enum OperationKind {
   // Integer arithmetic operations.
-  IAdd = 0, IMul = 1, ISub = 2, IDiv = 3, IRem = 4,
+  IAdd = 0,
+  IMul = 1,
+  ISub = 2,
+  IDiv = 3,
+  IRem = 4,
   // Floating-point arithmetic operations.
-  FAdd = 5, FMul = 6, FSub = 7, FDiv = 8,
+  FAdd = 5,
+  FMul = 6,
+  FSub = 7,
+  FDiv = 8,
   // Memory operations.
-  ILoad = 9, IStore = 10, ILoadIndexed = 11, IStoreIndexed = 12, IAlloca = 13,
+  ILoad = 9,
+  IStore = 10,
+  ILoadIndexed = 11,
+  IStoreIndexed = 12,
+  IAlloca = 13,
   // Logical operations.
-  IOr = 14, INot = 15, ICmp = 16, FCmp = 17, ISel = 18,
+  IOr = 14,
+  INot = 15,
+  IAnd = 16,
+  IXor = 17,
+  ICmp = 18,
+  FCmp = 19,
+  ISel = 20,
   // Type conversion operations.
-  ICast = 19, ISExt = 20, IZExt = 21, IShl = 22,
+  ICast = 21,
+  ISExt = 22,
+  IZExt = 23,
   // Vector operations.
-  VFMul = 23,
+  VFMul = 24,
   // Fused operations.
-  FAddFAdd = 24, FMulFAdd = 25,
+  FAddFAdd = 25,
+  FMulFAdd = 26,
   // Control flow operations.
-  IReturn = 26, IPhi = 27,
-  // Data movement operations.
-  IDataMov = 28, ICtrlMov = 29,
+  IReturn = 27,
+  IPhi = 28,
   // Predicate operations.
-  IReserve = 30, IGrantPredicate = 31, IGrantOnce = 32, IGrantAlways = 33,
+  IGrantPredicate = 29,
+  IGrantOnce = 30,
+  IGrantAlways = 31,
   // Loop control operations.
-  ILoopControl = 34,
+  ILoopControl = 32,
   // Constant operations.
-  IConstant = 35,
+  IConstant = 33,
   // Steering control fused operations.
-  ICarryInvariant = 36, IConditionalSelect = 37, IInvariantGroup = 38
+  ICarryInvariant = 34,
+  IConditionalSelect = 35,
+  IInvariantGroup = 36,
+  // Shift operations.
+  IShl = 37,
+  // Data movement operations.
+  IReserve = 38,
+  IDataMov = 39,
+  ICtrlMov = 40
+};
+
+// Maps hardware resource names to their supported operations.
+static const std::map<std::string, std::vector<OperationKind>>
+    kFuTypesToOperations = {
+        // Arithmetic operations.
+        {"constant", {IConstant}},
+        {"add", {IAdd, ISub}},
+        {"mul", {IMul}},
+        {"div", {IDiv, IRem}},
+
+        // Floating-point operations.
+        {"fadd", {FAdd, FSub}},
+        {"fmul", {FMul}},
+        {"fdiv", {FDiv}},
+
+        // Memory operations.
+        {"mem", {ILoad, IStore}},
+        {"mem_indexed", {ILoadIndexed, IStoreIndexed}},
+        {"alloca", {IAlloca}},
+
+        // Logical operations.
+        {"logic", {IOr, INot, IAnd, IXor}},
+        {"cmp", {ICmp, FCmp}},
+        {"sel", {ISel}},
+
+        // Type conversion operations.
+        {"type_conv", {ICast, ISExt, IZExt}},
+
+        // Vector operations.
+        {"vfmul", {VFMul}},
+
+        // Fused operations.
+        {"fadd_fadd", {FAddFAdd}},
+        {"fmul_fadd", {FMulFAdd}},
+
+        // Shift operations.
+        {"shift", {IShl}},
+
+        // Control flow operations.
+        {"return", {IReturn}},
+        {"phi", {IPhi}},
+        {"loop_control", {ILoopControl}},
+
+        // Predicate operations.
+        {"grant", {IGrantPredicate, IGrantOnce, IGrantAlways}},
 };
 
 //===----------------------------------------------------------------------===//
@@ -194,7 +269,9 @@ public:
 
   // Port management.
   const std::vector<std::string> &getPorts() const { return ports; }
-  void setPorts(const std::vector<std::string> &new_ports) { ports = new_ports; }
+  void setPorts(const std::vector<std::string> &new_ports) {
+    ports = new_ports;
+  }
   bool hasPort(const std::string &port) const {
     return std::find(ports.begin(), ports.end(), port) != ports.end();
   }
@@ -214,10 +291,10 @@ private:
       functional_unit_storage;               // Owns FUs.
   std::set<FunctionUnit *> functional_units; // Non-owning, for fast lookup.
   RegisterFileCluster *register_file_cluster = nullptr;
-  
+
   // Port and memory configuration.
   std::vector<std::string> ports;
-  int memory_capacity = -1;  // -1 means not configured.
+  int memory_capacity = -1; // -1 means not configured.
 };
 
 //===----------------------------------------------------------------------===//
@@ -252,8 +329,8 @@ private:
   int id;
   Tile *src_tile;
   Tile *dst_tile;
-  int latency = 1;        // Latency in cycles.
-  int bandwidth = 32;     // Bandwidth in bits per cycle.
+  int latency = 1;    // Latency in cycles.
+  int bandwidth = 32; // Bandwidth in bits per cycle.
 };
 
 //===----------------------------------------------------------------------===//
@@ -265,7 +342,7 @@ public:
   Register(int global_id, int per_tile_id);
 
   int getId() const override;
-  
+
   int getPerTileId() const;
 
   std::string getType() const override { return "register"; }
@@ -368,20 +445,21 @@ struct LinkDefaults;
 struct LinkOverride;
 
 // Describes the CGRA architecture template.
-// Now supports comprehensive configuration via YAML including ports, memory, and function units.
+// Now supports comprehensive configuration via YAML including ports, memory,
+// and function units.
 class Architecture {
 public:
   // Single constructor - handles all cases internally.
-  Architecture(int multi_cgra_rows,
-               int multi_cgra_columns,
+  Architecture(int multi_cgra_rows, int multi_cgra_columns,
                BaseTopology multi_cgra_base_topology = BaseTopology::MESH,
-               int per_cgra_rows = 4,
-               int per_cgra_columns = 4,
+               int per_cgra_rows = 4, int per_cgra_columns = 4,
                BaseTopology per_cgra_base_topology = BaseTopology::MESH,
-               const TileDefaults& tile_defaults = TileDefaults(),
-               const std::vector<TileOverride>& tile_overrides = std::vector<TileOverride>(),
-               const LinkDefaults& link_defaults = LinkDefaults(),
-               const std::vector<LinkOverride>& link_overrides = std::vector<LinkOverride>());
+               const TileDefaults &tile_defaults = TileDefaults(),
+               const std::vector<TileOverride> &tile_overrides =
+                   std::vector<TileOverride>(),
+               const LinkDefaults &link_defaults = LinkDefaults(),
+               const std::vector<LinkOverride> &link_overrides =
+                   std::vector<LinkOverride>());
 
   Tile *getTile(int id);
   Tile *getTile(int x, int y);
@@ -395,7 +473,8 @@ public:
   Link *getLink(int src_tile_x, int src_tile_y, int dst_tile_x, int dst_tile_y);
   void removeLink(int link_id);
   void removeLink(Tile *src_tile, Tile *dst_tile);
-  void removeLink(int src_tile_x, int src_tile_y, int dst_tile_x, int dst_tile_y);
+  void removeLink(int src_tile_x, int src_tile_y, int dst_tile_x,
+                  int dst_tile_y);
 
   // Tile management.
   void removeTile(int tile_id);
@@ -407,26 +486,35 @@ public:
 private:
   // Helper methods for constructor initialization.
   void initializeTiles(int rows, int columns);
-  void configureDefaultTileSettings(const TileDefaults& tile_defaults);
-  void applyTileOverrides(const std::vector<TileOverride>& tile_overrides);
-  void createLinks(const LinkDefaults& link_defaults, BaseTopology base_topology);
-  void applyLinkOverrides(const std::vector<LinkOverride>& link_overrides);
-  void createRegisterFileCluster(Tile *tile, int num_registers, int &num_already_assigned_global_registers, int global_id_start = -1);
+  void configureDefaultTileSettings(const TileDefaults &tile_defaults);
+  void applyTileOverrides(const std::vector<TileOverride> &tile_overrides);
+  void createLinks(const LinkDefaults &link_defaults,
+                   BaseTopology base_topology);
+  void applyLinkOverrides(const std::vector<LinkOverride> &link_overrides);
+  void createRegisterFileCluster(Tile *tile, int num_registers,
+                                 int &num_already_assigned_global_registers,
+                                 int global_id_start = -1);
   bool linkExists(Tile *src_tile, Tile *dst_tile);
-  
+
   // Helper methods for creating different topology links.
-  void createSingleLink(int &link_id, Tile *src_tile, Tile *dst_tile, const LinkDefaults& link_defaults);
-  void createLinkIfValid(int &link_id, Tile *src_tile, int dst_x, int dst_y, const LinkDefaults& link_defaults);
-  void createMeshLinks(int &link_id, const LinkDefaults& link_defaults);
-  void createKingMeshLinks(int &link_id, const LinkDefaults& link_defaults);
-  void createRingLinks(int &link_id, const LinkDefaults& link_defaults);
+  void createSingleLink(int &link_id, Tile *src_tile, Tile *dst_tile,
+                        const LinkDefaults &link_defaults);
+  void createLinkIfValid(int &link_id, Tile *src_tile, int dst_x, int dst_y,
+                         const LinkDefaults &link_defaults);
+  void createMeshLinks(int &link_id, const LinkDefaults &link_defaults);
+  void createKingMeshLinks(int &link_id, const LinkDefaults &link_defaults);
+  void createRingLinks(int &link_id, const LinkDefaults &link_defaults);
 
   // Architecture components: tiles, links, and their mappings.
   // Ports and memory are now modeled as part of Tile class.
-  std::map<int, std::unique_ptr<Tile>> tile_storage_;  // Owns tiles, key is unique tile_id.
-  std::map<int, std::unique_ptr<Link>> link_storage_;  // Owns links, key is unique link_id.
-  std::unordered_map<int, Tile *> id_to_tile_;  // Maps unique tile_id to Tile pointer.
-  std::unordered_map<std::pair<int, int>, Tile *, PairHash> coord_to_tile_;  // Maps (x,y) coordinates to Tile pointer.
+  std::map<int, std::unique_ptr<Tile>>
+      tile_storage_; // Owns tiles, key is unique tile_id.
+  std::map<int, std::unique_ptr<Link>>
+      link_storage_; // Owns links, key is unique link_id.
+  std::unordered_map<int, Tile *>
+      id_to_tile_; // Maps unique tile_id to Tile pointer.
+  std::unordered_map<std::pair<int, int>, Tile *, PairHash>
+      coord_to_tile_; // Maps (x,y) coordinates to Tile pointer.
 
   int multi_cgra_rows_;
   int multi_cgra_columns_;

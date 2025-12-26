@@ -7,12 +7,10 @@
 // RUN:   --insert-data-mov \
 // RUN:   --map-to-accelerator="mapping-strategy=heuristic" \
 // RUN:   --architecture-spec=../arch_spec/architecture.yaml \
-// RUN:   --generate-code
-
-// -o %t-mapping.mlir 
-// RN: FileCheck %s --input-file=%t-mapping.mlir -check-prefix=MAPPING
-// RN: FileCheck %s --input-file=tmp-generated-instructions.yaml --check-prefix=YAML
-// RN: FileCheck %s --input-file=tmp-generated-instructions.asm --check-prefix=ASM
+// RUN:   --generate-code -o %t-mapping.mlir
+// RUN: FileCheck %s --input-file=%t-mapping.mlir -check-prefix=MAPPING
+// RUN: FileCheck %s --input-file=tmp-generated-instructions.yaml --check-prefix=YAML
+// RUN: FileCheck %s --input-file=tmp-generated-instructions.asm --check-prefix=ASM
 
 
 func.func @loop_test() -> f32 {
@@ -34,7 +32,7 @@ func.func @loop_test() -> f32 {
   return %result : f32
 }
 
-// MAPPING:        func.func @loop_test() -> f32 attributes {accelerator = "neura", dataflow_mode = "predicate", mapping_info = {compiled_ii = 6 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 4 : i32, res_mii = 2 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {
+// MAPPING:        func.func @loop_test() -> f32 attributes {accelerator = "neura", dataflow_mode = "predicate", mapping_info = {compiled_ii = 5 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 4 : i32, res_mii = 2 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {
 
 // Each core represents a processing element in the CGRA array
 // Example: column: 1, row: 1 represents the core at position (1,1) in the 4x4 grid
@@ -43,7 +41,7 @@ func.func @loop_test() -> f32 {
 // Tile (1,1) : per-cycle schedule and routing summary.
 //
 // entry0 @ t=2:
-//   PHI merges tokens arriving from EAST and SOUTH, then forwards the selected
+//   PHI_START merges tokens arriving from EAST and SOUTH, then forwards the selected
 //   value out to EAST.
 //
 // entry1 @ t=4:
@@ -71,69 +69,110 @@ func.func @loop_test() -> f32 {
 //   written into local register $20.
 //
 
-// YAML:          - column: 1
-// YAML-NEXT:       row: 0
-// YAML-NEXT:       core_id: "1"
-// YAML-NEXT:       entries:
-// YAML-NEXT:         - entry_id: "entry0"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - timestep: 1
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "GRANT_ONCE"
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "WEST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "NORTH"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:             - timestep: 2
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "GRANT_ONCE"
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "WEST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "$32"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:             - timestep: 3
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "PHI"
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "$33"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                     - operand: "$32"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "NORTH"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                     - operand: "$32"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:             - timestep: 4
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "EAST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "NORTH"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:             - timestep: 5
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "GRANT_PREDICATE"
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "$32"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                     - operand: "NORTH"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "$33"
-// YAML-NEXT:                       color: "RED"
-
-
-// ASM:      PE(0,0):
+// YAML: array_config:
+// YAML:   columns: 4
+// YAML:   rows: 4
+// YAML:   compiled_ii: 5
+// YAML:   cores:
+// YAML:     - column: 1
+// YAML:       row: 0
+// YAML:       core_id: "1"
+// YAML:       entries:
+// YAML:         - entry_id: "entry0"
+// YAML:           instructions:
+// YAML:             - index_per_ii: 3
+// YAML:               operations:
+// YAML:                 - opcode: "RETURN"
+// YAML:                   id: 65
+// YAML:                   time_step: 8
+// YAML:                   invalid_iterations: 1
+// YAML:                   src_operands:
+// YAML:                     - operand: "NORTH"
+// YAML:                       color: "RED"
+// YAML:     - column: 0
+// YAML:       row: 1
+// YAML:       core_id: "4"
+// YAML:       entries:
+// YAML:         - entry_id: "entry0"
+// YAML:           instructions:
+// YAML:             - index_per_ii: 0
+// YAML:               operations:
+// YAML:                 - opcode: "DATA_MOV"
+// YAML:                   id: 36
+// YAML:                   time_step: 5
+// YAML:                   invalid_iterations: 1
+// YAML:                   src_operands:
+// YAML:                     - operand: "EAST"
+// YAML:                       color: "RED"
+// YAML:                   dst_operands:
+// YAML:                     - operand: "$0"
+// YAML:                       color: "RED"
+// YAML:                 - opcode: "DATA_MOV"
+// YAML:                   id: 49
+// YAML:                   time_step: 5
+// YAML:                   invalid_iterations: 1
+// YAML:                   src_operands:
+// YAML:                     - operand: "EAST"
+// YAML:                       color: "RED"
+// YAML:                   dst_operands:
+// YAML:                     - operand: "$3"
+// YAML:                       color: "RED"
+// YAML:             - index_per_ii: 1
+// YAML:               operations:
+// ASM: # Compiled II: 5
+// ASM:      PE(1,0):
 // ASM-NEXT: {
-// ASM-NEXT:   CONSTANT, [#0] -> [EAST, RED]
-// ASM-NEXT: } (t=0)
+// ASM-NEXT:   RETURN, [NORTH, RED] (t=8, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=3)
+// ASM:      PE(0,1):
 // ASM-NEXT: {
-// ASM-NEXT:   CONSTANT, [#10] -> [EAST, RED]
-// ASM-NEXT: } (t=1)
+// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$0] (t=5, inv_iters=1)
+// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$3] (t=5, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=0)
+// ASM-NEXT: {
+// ASM-NEXT:   FADD, [NORTH, RED], [$0] -> [$1], [EAST, RED] (t=6, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=1)
+// ASM-NEXT: {
+// ASM-NEXT:   CONSTANT, [#3.000000] -> [$0] (t=2, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=2)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_ONCE, [$0] -> [EAST, RED] (t=3, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=3)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [$1], [$3] -> [NORTH, RED] (t=9, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=4)
+// ASM:      PE(1,1):
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [WEST, RED], [EAST, RED] -> [SOUTH, RED] (t=7, inv_iters=1)
+// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$1] (t=7, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=2)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [$0] (t=8, inv_iters=1)
+// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [WEST, RED] (t=8, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=3)
+// ASM-NEXT: {
+// ASM-NEXT:   PHI_START, [WEST, RED], [$0] -> [WEST, RED], [$0] (t=4, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=4)
+// ASM:      PE(2,1):
+// ASM-NEXT: {
+// ASM-NEXT:   NOT, [NORTH, RED] -> [WEST, RED] (t=6, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=1)
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [WEST, RED] (t=7, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=2)
+// ASM:      PE(0,2):
+// ASM-NEXT: {
+// ASM-NEXT:   PHI_START, [$0], [SOUTH, RED] -> [SOUTH, RED] (t=5, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=0)
+// ASM-NEXT: {
+// ASM-NEXT:   CONSTANT, [#10] -> [$0] (t=1, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=1)
+// ASM-NEXT: {
+// ASM-NEXT:   CONSTANT, [#0.000000] -> [$1] (t=2, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=2)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_ONCE, [$0] -> [EAST, RED] (t=3, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=3)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_ONCE, [$1] -> [$0] (t=4, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=4)

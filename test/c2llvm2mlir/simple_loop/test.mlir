@@ -56,7 +56,7 @@
 
 // CHECK-LLVM2NEURA: accelerator = "neura"
 // CHECK-LLVM2NEURA: dataflow_mode = "predicate"
-// CHECK-LLVM2NEURA: neura.phi
+// CHECK-LLVM2NEURA: neura.phi_start
 // CHECK-LLVM2NEURA: neura.gep
 // CHECK-LLVM2NEURA-SAME: operandSegmentSizes = array<i32: 0, 1>
 // CHECK-LLVM2NEURA-SAME: lhs_value

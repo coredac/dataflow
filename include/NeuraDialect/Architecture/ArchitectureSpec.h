@@ -16,51 +16,22 @@ enum class BaseTopology {
 
 // Structure for holding tile default configuration.
 struct TileDefaults {
-  int num_registers = 64;  // default value.
-  std::vector<std::string> operations = {
-    "add",
-    "mul",
-    "sub",
-    "div",
-    "rem", 
-    "fadd",
-    "fmul",
-    "fsub",
-    "fdiv", 
-    "or",
-    "not",
-    "icmp",
-    "fcmp",
-    "sel",
-    "cast",
-    "sext",
-    "zext",
-    "shl",
-    "vfmul",
-    "fadd_fadd",
-    "fmul_fadd",
-    "data_mov",
-    "ctrl_mov",
-    "reserve",
-    "grant_predicate",
-    "grant_once",
-    "grant_always",
-    "loop_control",
-    "phi",
-    "constant",
-    "load",
-    "store",
-    "return",
-    "load_indexed",
-    "store_indexed",
-    "alloca"
-  };  // default operations - includes all supported operations for newbie convenience.
+  // Default value.
+  int num_registers = 64;
+  // Default function unit types - include all supported function units
+  // types for newbie convenience.
+  std::vector<std::string> function_units = {
+      "add",          "mul",   "div",       "fadd",      "fmul",
+      "fdiv",         "logic", "cmp",       "sel",       "type_conv",
+      "shift",        "vfmul", "fadd_fadd", "fmul_fadd", "grant",
+      "loop_control", "phi",   "constant",  "mem",       "return",
+      "mem_indexed",  "alloca"};
 };
 
 // Structure for holding memory configuration.
 struct MemoryConfig {
-  int capacity = 1024;  // Memory capacity in bytes.
-  int banks_per_cgra = 4;  // Number of banks per CGRA.
+  int capacity = 1024;    // Memory capacity in bytes.
+  int banks_per_cgra = 4; // Number of banks per CGRA.
 };
 
 // Structure for holding tile override configuration.
@@ -71,15 +42,15 @@ struct TileOverride {
   // Tile coordinates within per-CGRA.
   int tile_x = -1;
   int tile_y = -1;
-  std::vector<std::string> operations;
+  std::vector<std::string> fu_types;
   int num_registers = 4;
   bool existence = true;
 };
 
 // Structure for holding link default configuration.
 struct LinkDefaults {
-  int latency = 1;  // default latency.
-  int bandwidth = 32;  // default bandwidth.
+  int latency = 1;    // default latency.
+  int bandwidth = 32; // default bandwidth.
 };
 
 // Structure for holding link override configuration.
