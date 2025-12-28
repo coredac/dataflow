@@ -608,10 +608,10 @@ void injectExitPredicateForReturn(Region &region, ControlFlowInfo &ctrl_info,
                                    OpBuilder &builder) {
   Block *entry_block = &region.front();
   
-  // Find the ReturnOp
+  // Finds the ReturnOp.
   neura::ReturnOp return_op = nullptr;
   for (Operation &op : *entry_block) {
-    if (auto rt =dyn_cast<neura::ReturnOp>(op)) {
+    if (auto rt = dyn_cast<neura::ReturnOp>(op)) {
       return_op = rt;
       llvm::errs() << "[ctrl2data] ReturnOp found: " << *rt << "\n";
       break;
@@ -753,7 +753,7 @@ struct TransformCtrlToDataFlowPass
       buildControlFlowInfo(*region, ctrlInfo, domInfo);
       transformControlFlowToDataFlow(*region, ctrlInfo, domInfo, builder);
 
-      // Inject exit predicate for void returns
+      // Injects exit predicate for void returns.
       injectExitPredicateForReturn(*region, ctrlInfo, builder);
 
       // Converts phi operations to phi_start operations.
