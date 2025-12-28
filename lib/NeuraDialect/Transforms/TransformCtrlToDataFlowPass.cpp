@@ -262,6 +262,8 @@ void buildControlFlowInfo(Region &region, ControlFlowInfo &ctrl_info,
 
     } else if (auto rt = dyn_cast<neura::ReturnOp>(terminator)) {
       llvm::errs() << "[ctrl2data] ReturnOp found: " << *rt << "\n";
+    } else if (auto rt = dyn_cast<neura::ReturnVoidOp>(terminator)) {
+      llvm::errs() << "[ctrl2data] ReturnVoidOp found: " << *rt << "\n";
     } else {
       llvm::errs() << "[ctrl2data] Unknown terminator: " << *terminator << "\n";
       assert(false);

@@ -375,6 +375,24 @@ def Neura_ReturnOp : Op<NeuraDialect, "return", [Terminator]> {
   // let assemblyFormat = "($values^)? `,` attr-dict";
 }
 
+// Defines a return operation for void functions.
+def Neura_ReturnVoidOp : Op<NeuraDialect, "return_void", [Terminator]>{
+  let summary = "Return operation for void functions with execution trigger.";
+  let description = [{
+    Terminates a void function. The trigger operand provides the execution
+    condition in dataflow mode - the return executes when the trigger becomes valid.
+    
+    Without a trigger (empty operands), this represents a static return that
+    always executes. After canonicalization, void returns should have triggers.
+
+    Example:
+      neura.return_void %trigger : i1       // Triggered return in ctrl mode
+      neura.return_void %cond : !neura.data<i1, i1>  // In dataflow mode
+  }];
+  let arguments = (ins Optional<AnyType>:$trigger);
+  let assemblyFormat = "($trigger^ `:` type($trigger))? attr-dict";
+}
+
 // Defines a cast operation for type conversion.
 def Neura_CastOp : Op<NeuraDialect, "cast">{
   let summary = "Generic type conversion operation";
