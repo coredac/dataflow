@@ -189,7 +189,7 @@
 // YAML:             - index_per_ii: 1
 // YAML:               operations:
 // YAML:                 - opcode: "ICMP_SGT"
-// YAML:                   id: 24
+// YAML:                   id: 25
 // YAML:                   time_step: 1
 // YAML:                   invalid_iterations: 0
 // YAML:                   src_operands:
@@ -213,7 +213,59 @@
 // YAML:                     - operand: "$1"
 // YAML:                       color: "RED"
 // YAML:                     - operand: "$3"
-
+// YAML:                       color: "RED"
+// YAML:             - index_per_ii: 3
+// YAML:               operations:
+// YAML:                 - opcode: "GRANT_ONCE"
+// YAML:                   id: 28
+// YAML:                   time_step: 3
+// YAML:                   invalid_iterations: 0
+// YAML:                   src_operands:
+// YAML:                     - operand: "$0"
+// YAML:                       color: "RED"
+// YAML:                   dst_operands:
+// YAML:                     - operand: "EAST"
+// YAML:                       color: "RED"
+// YAML:                     - operand: "NORTH"
+// YAML:                       color: "RED"
+// YAML:                     - operand: "$0"
+// YAML:                       color: "RED"
+// YAML:                     - operand: "$2"
+// YAML:                       color: "RED"
+// YAML:             - index_per_ii: 4
+// YAML:               operations:
+// YAML:                 - opcode: "GRANT_PREDICATE"
+// YAML:                   id: 37
+// YAML:                   time_step: 4
+// YAML:                   invalid_iterations: 0
+// YAML:                   src_operands:
+// YAML:                     - operand: "$1"
+// YAML:                       color: "RED"
+// YAML:                     - operand: "$0"
+// YAML:                       color: "RED"
+// YAML:                   dst_operands:
+// YAML:                     - operand: "$0"
+// YAML:                       color: "RED"
+// YAML:                     - operand: "$1"
+// YAML:                       color: "RED"
+// YAML:             - index_per_ii: 5
+// YAML:               operations:
+// YAML:                 - opcode: "ICMP_SGT"
+// YAML:                   id: 54
+// YAML:                   time_step: 5
+// YAML:                   invalid_iterations: 0
+// YAML:                   src_operands:
+// YAML:                     - operand: "$0"
+// YAML:                       color: "RED"
+// YAML:                     - operand: "#0"
+// YAML:                       color: "RED"
+// YAML:                   dst_operands:
+// YAML:                     - operand: "$0"
+// YAML:                       color: "RED"
+// YAML:                     - operand: "EAST"
+// YAML:                       color: "RED"
+// YAML:                     - operand: "NORTH"
+// YAML:                       color: "RED"
 
 // ASM:      # Compiled II: 11
 // ASM:      PE(0,0):
@@ -235,9 +287,6 @@
 // ASM-NEXT: {
 // ASM-NEXT:   ICMP_SGT, [$0], [#0] -> [$0], [EAST, RED], [NORTH, RED] (t=5, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=5)
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [NORTH, RED], [EAST, RED] -> [NORTH, RED] (t=17, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=6)
 // ASM-NEXT: {
 // ASM-NEXT:   GRANT_PREDICATE, [$1], [$0] -> [EAST, RED] (t=7, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=7)
@@ -269,11 +318,11 @@
 // ASM-NEXT: {
 // ASM-NEXT:   DATA_MOV, [WEST, RED] -> [NORTH, RED] (t=4, inv_iters=0)
 // ASM-NEXT:   GRANT_PREDICATE, [$4], [$2] -> [$1] (t=15, inv_iters=1)
+// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$0] (t=15, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=4)
 // ASM-NEXT: {
 // ASM-NEXT:   DATA_MOV, [WEST, RED] -> [EAST, RED] (t=5, inv_iters=0)
-// ASM-NEXT:   GRANT_PREDICATE, [$5], [NORTH, RED] -> [$2] (t=16, inv_iters=1)
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [WEST, RED] (t=16, inv_iters=1)
+// ASM-NEXT:   GRANT_PREDICATE, [$5], [$0] -> [$2] (t=16, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=5)
 // ASM-NEXT: {
 // ASM-NEXT:   DATA_MOV, [WEST, RED] -> [NORTH, RED] (t=6, inv_iters=0)
@@ -290,7 +339,6 @@
 // ASM-NEXT:   PHI_START, [$0], [$1] -> [$4], [$0] (t=10, inv_iters=0)
 // ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$1] (t=10, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=10)
-
 
 // RUN: mlir-neura-opt %t-kernel.mlir \
 // RUN:   --assign-accelerator \

@@ -28,29 +28,33 @@ module attributes {} {
   }
 }
 
-// CHECK:      func.func @_Z11simple_loopPiS_(%arg0: memref<?xi32>, %arg1: memref<?xi32>) attributes {accelerator = "neura", dataflow_mode = "steering", llvm.linkage = #llvm.linkage<external>} {
-// CHECK-NEXT:   %0 = neura.reserve : i64
-// CHECK-NEXT:   %1 = neura.reserve : i1
-// CHECK-NEXT:   %2 = "neura.constant"() <{value = "%arg0"}> : () -> memref<?xi32>
-// CHECK-NEXT:   %3 = "neura.constant"() <{value = "%arg1"}> : () -> memref<?xi32>
-// CHECK-NEXT:   %4 = "neura.constant"() <{value = 1 : i64}> : () -> i64
-// CHECK-NEXT:   %5 = "neura.constant"() <{value = 128 : i64}> : () -> i64
-// CHECK-NEXT:   %6 = "neura.constant"() <{value = 1 : i32}> : () -> i32
-// CHECK-NEXT:   %7 = "neura.constant"() <{value = 2 : i32}> : () -> i32
-// CHECK-NEXT:   %8 = "neura.constant"() <{value = 0 : i64}> : () -> i64
-// CHECK-NEXT:   %9 = neura.invariant %4, %1 : i64, i1 -> i64
-// CHECK-NEXT:   %10 = neura.invariant %3, %1 : memref<?xi32>, i1 -> memref<?xi32>
-// CHECK-NEXT:   %11 = neura.invariant %6, %1 : i32, i1 -> i32
-// CHECK-NEXT:   %12 = neura.invariant %7, %1 : i32, i1 -> i32
-// CHECK-NEXT:   %13 = neura.invariant %2, %1 : memref<?xi32>, i1 -> memref<?xi32>
-// CHECK-NEXT:   %14 = neura.invariant %5, %1 : i64, i1 -> i64
-// CHECK-NEXT:   %15 = neura.carry %8, %1, %0 : i64, i1, i64 -> i64
-// CHECK-NEXT:   %16 = "neura.icmp"(%15, %14) <{cmpType = "slt"}> : (i64, i64) -> i1
-// CHECK-NEXT:   neura.ctrl_mov %16 -> %1 : i1 i1
-// CHECK-NEXT:   %17 = neura.load_indexed %13[%15 : i64] memref<?xi32> : i32
-// CHECK-NEXT:   %18 = "neura.mul"(%17, %12) : (i32, i32) -> i32
-// CHECK-NEXT:   %19 = "neura.add"(%18, %11) : (i32, i32) -> i32
-// CHECK-NEXT:   neura.store_indexed %19 to %10[%15 : i64] memref<?xi32> : i32
-// CHECK-NEXT:   %20 = "neura.add"(%15, %9) : (i64, i64) -> i64
-// CHECK-NEXT:   neura.ctrl_mov %20 -> %0 : i64 i64
-// CHECK-NEXT:   "neura.return"() : () -> ()
+// CHECK:      module {
+// CHECK-NEXT:   func.func @_Z11simple_loopPiS_(%arg0: memref<?xi32>, %arg1: memref<?xi32>) attributes {accelerator = "neura", dataflow_mode = "steering", llvm.linkage = #llvm.linkage<external>} {
+// CHECK-NEXT:     %0 = neura.reserve : i64
+// CHECK-NEXT:     %1 = neura.reserve : i1
+// CHECK-NEXT:     %2 = "neura.constant"() <{value = "%arg0"}> : () -> memref<?xi32>
+// CHECK-NEXT:     %3 = "neura.constant"() <{value = "%arg1"}> : () -> memref<?xi32>
+// CHECK-NEXT:     %4 = "neura.constant"() <{value = 1 : i64}> : () -> i64
+// CHECK-NEXT:     %5 = "neura.constant"() <{value = 128 : i64}> : () -> i64
+// CHECK-NEXT:     %6 = "neura.constant"() <{value = 1 : i32}> : () -> i32
+// CHECK-NEXT:     %7 = "neura.constant"() <{value = 2 : i32}> : () -> i32
+// CHECK-NEXT:     %8 = "neura.constant"() <{value = 0 : i64}> : () -> i64
+// CHECK-NEXT:     %9 = neura.invariant %4, %1 : i64, i1 -> i64
+// CHECK-NEXT:     %10 = neura.invariant %3, %1 : memref<?xi32>, i1 -> memref<?xi32>
+// CHECK-NEXT:     %11 = neura.invariant %6, %1 : i32, i1 -> i32
+// CHECK-NEXT:     %12 = neura.invariant %7, %1 : i32, i1 -> i32
+// CHECK-NEXT:     %13 = neura.invariant %2, %1 : memref<?xi32>, i1 -> memref<?xi32>
+// CHECK-NEXT:     %14 = neura.invariant %5, %1 : i64, i1 -> i64
+// CHECK-NEXT:     %15 = neura.carry %8, %1, %0 : i64, i1, i64 -> i64
+// CHECK-NEXT:     %16 = "neura.icmp"(%15, %14) <{cmpType = "slt"}> : (i64, i64) -> i1
+// CHECK-NEXT:     neura.ctrl_mov %16 -> %1 : i1 i1
+// CHECK-NEXT:     %17 = neura.load_indexed %13[%15 : i64] memref<?xi32> : i32
+// CHECK-NEXT:     %18 = "neura.mul"(%17, %12) : (i32, i32) -> i32
+// CHECK-NEXT:     %19 = "neura.add"(%18, %11) : (i32, i32) -> i32
+// CHECK-NEXT:     neura.store_indexed %19 to %10[%15 : i64] memref<?xi32> : i32
+// CHECK-NEXT:     %20 = "neura.add"(%15, %9) : (i64, i64) -> i64
+// CHECK-NEXT:     neura.ctrl_mov %20 -> %0 : i64 i64
+// CHECK-NEXT:     %21 = "neura.constant"() <{value = true}> : () -> i1
+// CHECK-NEXT:     "neura.return"(%21) : (i1) -> ()
+// CHECK-NEXT:   }
+// CHECK-NEXT: }

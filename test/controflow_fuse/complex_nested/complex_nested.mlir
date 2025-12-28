@@ -66,7 +66,8 @@ module attributes {} {
   }
 }
 
-// CHECK:   func.func @_Z14complex_nestedPA32_A32_iPS_(%arg0: memref<?x32x32xi32>, %arg1: memref<?x32xi32>) attributes {accelerator = "neura", llvm.linkage = #llvm.linkage<external>} {
+// CHECK:      module {
+// CHECK-NEXT:   func.func @_Z14complex_nestedPA32_A32_iPS_(%arg0: memref<?x32x32xi32>, %arg1: memref<?x32xi32>) attributes {accelerator = "neura", llvm.linkage = #llvm.linkage<external>} {
 // CHECK-NEXT:     %0 = "neura.constant"() <{value = 1 : index}> : () -> index
 // CHECK-NEXT:     %1 = "neura.constant"() <{value = 32 : index}> : () -> index
 // CHECK-NEXT:     %2 = "neura.constant"() <{value = 128 : i32}> : () -> i32
@@ -175,8 +176,10 @@ module attributes {} {
 // CHECK-NEXT:   ^bb23:  // pred: ^bb1
 // CHECK-NEXT:     "neura.return"() : () -> ()
 // CHECK-NEXT:   }
+// CHECK-NEXT: }
 
-// CTRL2DATA:        func.func @_Z14complex_nestedPA32_A32_iPS_(%arg0: memref<?x32x32xi32>, %arg1: memref<?x32xi32>) attributes {accelerator = "neura", dataflow_mode = "predicate", llvm.linkage = #llvm.linkage<external>} {
+// CTRL2DATA:      module {
+// CTRL2DATA-NEXT:   func.func @_Z14complex_nestedPA32_A32_iPS_(%arg0: memref<?x32x32xi32>, %arg1: memref<?x32xi32>) attributes {accelerator = "neura", dataflow_mode = "predicate", llvm.linkage = #llvm.linkage<external>} {
 // CTRL2DATA-NEXT:     %0 = "neura.constant"() <{value = "%arg0"}> : () -> !neura.data<memref<?x32x32xi32>, i1>
 // CTRL2DATA-NEXT:     %1 = "neura.grant_once"(%0) : (!neura.data<memref<?x32x32xi32>, i1>) -> !neura.data<memref<?x32x32xi32>, i1>
 // CTRL2DATA-NEXT:     %2 = "neura.constant"() <{value = "%arg1"}> : () -> !neura.data<memref<?x32xi32>, i1>
@@ -668,5 +671,8 @@ module attributes {} {
 // CTRL2DATA-NEXT:     neura.ctrl_mov %384 -> %354 : !neura.data<i32, i1> !neura.data<i32, i1>
 // CTRL2DATA-NEXT:     neura.ctrl_mov %385 -> %352 : !neura.data<i32, i1> !neura.data<i32, i1>
 // CTRL2DATA-NEXT:     neura.ctrl_mov %386 -> %350 : !neura.data<i32, i1> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     "neura.return"() : () -> ()
+// CTRL2DATA-NEXT:     %404 = "neura.constant"() <{value = true}> : () -> !neura.data<i1, i1>
+// CTRL2DATA-NEXT:     %405 = "neura.grant_once"(%404) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
+// CTRL2DATA-NEXT:     "neura.return"(%405) : (!neura.data<i1, i1>) -> ()
 // CTRL2DATA-NEXT:   }
+// CTRL2DATA-NEXT: }

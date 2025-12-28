@@ -602,6 +602,62 @@ void transformControlFlowToDataFlow(Region &region, ControlFlowInfo &ctrl_info,
   }
 }
 
+// Injects exit predicate for ReturnOp (only for void returns).
+// Value-returning functions are not modified.
+void injectExitPredicateForReturn(Region &region, ControlFlowInfo &ctrl_info,
+                                   OpBuilder &builder) {
+  Block *entry_block = &region.front();
+  
+  // Find the ReturnOp
+  neura::ReturnOp return_op = nullptr;
+  for (Operation &op : *entry_block) {
+    if (auto rt =dyn_cast<neura::ReturnOp>(op)) {
+      return_op = rt;
+      llvm::errs() << "[ctrl2data] ReturnOp found: " << *rt << "\n";
+      break;
+    }
+  }
+  
+  if (!return_op) {
+    return; // No ReturnOp to process
+  }
+  
+  // Checks if ReturnOp has operands (value return).
+  // Only injects exit predicate for void returns.
+  if (return_op.getNumOperands() > 0) {
+    llvm::errs() << "[ctrl2data] ReturnOp has return value, skipping exit predicate injection.\n";
+    return;  // Skips modification for value-returning functions.
+  }
+  
+  // Computes exit predicate: use a constant true predicate for now.
+  llvm::errs() << "[ctrl2data] Injecting exit predicate for void ReturnOp.\n";
+  
+  builder.setInsertionPoint(return_op);
+  
+  // Creates a constant true predicate.
+  auto i1_type = builder.getI1Type();
+  auto pred_type = neura::PredicatedValue::get(builder.getContext(), i1_type, i1_type);
+  
+  Value true_constant = builder.create<neura::ConstantOp>(
+      return_op.getLoc(),
+      pred_type,
+      builder.getIntegerAttr(i1_type, 1));
+  
+  Value granted_true = builder.create<neura::GrantOnceOp>(
+      return_op.getLoc(),
+      pred_type,
+      true_constant);
+  
+  // Replaces the old ReturnOp with a new one that includes the exit predicate.
+  builder.setInsertionPoint(return_op);
+  auto new_return = builder.create<neura::ReturnOp>(
+      return_op.getLoc(),
+      ValueRange{granted_true});
+  return_op.erase();
+  
+  llvm::errs() << "[ctrl2data] Injected exit predicate for ReturnOp.\n";
+}
+
 // Converts phi operations with reserve operands to phi_start operations.
 void convertPhiToPhiStart(Region &region, OpBuilder &builder) {
   llvm::errs() << "[ctrl2data] Converting phi operations to phi_start...\n";
@@ -696,6 +752,9 @@ struct TransformCtrlToDataFlowPass
       ControlFlowInfo ctrlInfo;
       buildControlFlowInfo(*region, ctrlInfo, domInfo);
       transformControlFlowToDataFlow(*region, ctrlInfo, domInfo, builder);
+
+      // Inject exit predicate for void returns
+      injectExitPredicateForReturn(*region, ctrlInfo, builder);
 
       // Converts phi operations to phi_start operations.
       convertPhiToPhiStart(*region, builder);

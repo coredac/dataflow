@@ -66,7 +66,8 @@ module attributes {} {
   }
 }
 
-// CHECK:   func.func @_Z29non_perfect_extra_computationPA128_iS0_(%arg0: memref<?x128xi32>, %arg1: memref<?x128xi32>) attributes {accelerator = "neura", llvm.linkage = #llvm.linkage<external>} {
+// CHECK:      module {
+// CHECK-NEXT:   func.func @_Z29non_perfect_extra_computationPA128_iS0_(%arg0: memref<?x128xi32>, %arg1: memref<?x128xi32>) attributes {accelerator = "neura", llvm.linkage = #llvm.linkage<external>} {
 // CHECK-NEXT:     %0 = "neura.constant"() <{value = 4 : index}> : () -> index
 // CHECK-NEXT:     %1 = "neura.constant"() <{value = 3 : index}> : () -> index
 // CHECK-NEXT:     %2 = "neura.constant"() <{value = 2 : index}> : () -> index
@@ -137,9 +138,11 @@ module attributes {} {
 // CHECK-NEXT:   ^bb10:  // pred: ^bb1
 // CHECK-NEXT:     "neura.return"() : () -> ()
 // CHECK-NEXT:   }
+// CHECK-NEXT: }
 
 
-// CTRL2DATA:        func.func @_Z29non_perfect_extra_computationPA128_iS0_(%arg0: memref<?x128xi32>, %arg1: memref<?x128xi32>) attributes {accelerator = "neura", dataflow_mode = "predicate", llvm.linkage = #llvm.linkage<external>} {
+// CTRL2DATA:      module {
+// CTRL2DATA-NEXT:   func.func @_Z29non_perfect_extra_computationPA128_iS0_(%arg0: memref<?x128xi32>, %arg1: memref<?x128xi32>) attributes {accelerator = "neura", dataflow_mode = "predicate", llvm.linkage = #llvm.linkage<external>} {
 // CTRL2DATA-NEXT:     %0 = "neura.constant"() <{value = "%arg0"}> : () -> !neura.data<memref<?x128xi32>, i1>
 // CTRL2DATA-NEXT:     %1 = "neura.grant_once"(%0) : (!neura.data<memref<?x128xi32>, i1>) -> !neura.data<memref<?x128xi32>, i1>
 // CTRL2DATA-NEXT:     %2 = "neura.constant"() <{value = "%arg1"}> : () -> !neura.data<memref<?x128xi32>, i1>
@@ -429,5 +432,8 @@ module attributes {} {
 // CTRL2DATA-NEXT:     neura.ctrl_mov %146 -> %89 : !neura.data<i32, i1> !neura.data<i32, i1>
 // CTRL2DATA-NEXT:     neura.ctrl_mov %147 -> %87 : !neura.data<i32, i1> !neura.data<i32, i1>
 // CTRL2DATA-NEXT:     neura.ctrl_mov %148 -> %85 : !neura.data<i32, i1> !neura.data<i32, i1>
-// CTRL2DATA-NEXT:     "neura.return"() : () -> ()
+// CTRL2DATA-NEXT:     %246 = "neura.constant"() <{value = true}> : () -> !neura.data<i1, i1>
+// CTRL2DATA-NEXT:     %247 = "neura.grant_once"(%246) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
+// CTRL2DATA-NEXT:     "neura.return"(%247) : (!neura.data<i1, i1>) -> ()
 // CTRL2DATA-NEXT:   }
+// CTRL2DATA-NEXT: }
