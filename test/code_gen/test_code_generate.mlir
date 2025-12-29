@@ -32,7 +32,7 @@ func.func @loop_test() -> f32 {
   return %result : f32
 }
 
-// MAPPING:        func.func @loop_test() -> f32 attributes {accelerator = "neura", dataflow_mode = "predicate", mapping_info = {compiled_ii = 5 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 4 : i32, res_mii = 2 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {
+// MAPPING:        func.func @loop_test() -> f32 attributes {accelerator = "neura", dataflow_mode = "predicate", mapping_info = {compiled_ii = 4 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 4 : i32, res_mii = 2 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {
 
 // Each core represents a processing element in the CGRA array
 // Example: column: 1, row: 1 represents the core at position (1,1) in the 4x4 grid
@@ -65,14 +65,14 @@ func.func @loop_test() -> f32 {
 //   new grant and forwards it to EAST.
 //
 // entry6 @ t=7:
-//   CTRL_MOV performs a control deposit: control token arriving from WEST is
+ //   CTRL_MOV performs a control deposit: control token arriving from WEST is
 //   written into local register $20.
 //
 
 // YAML: array_config:
 // YAML:   columns: 4
 // YAML:   rows: 4
-// YAML:   compiled_ii: 5
+// YAML:   compiled_ii: 4
 // YAML:   cores:
 // YAML:     - column: 1
 // YAML:       row: 0
@@ -119,7 +119,7 @@ func.func @loop_test() -> f32 {
 // YAML:                       color: "RED"
 // YAML:             - index_per_ii: 1
 // YAML:               operations:
-// ASM: # Compiled II: 5
+// ASM: # Compiled II: 4
 // ASM:      PE(1,0):
 // ASM-NEXT: {
 // ASM-NEXT:   RETURN, [NORTH, RED] (t=8, inv_iters=1)
