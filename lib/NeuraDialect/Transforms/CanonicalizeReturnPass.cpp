@@ -9,6 +9,7 @@
 #include "mlir/IR/Dominance.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
 #include <memory>
 
@@ -36,31 +37,17 @@ static bool isVoidFunction(func::FuncOp func_op) {
   return false;
 }
 
-// Converts neura.return with no operands to neura.return_void.
-static void convertEmptyReturnToReturnVoid(Region &region, OpBuilder &builder) {
-  SmallVector<neura::ReturnOp> empty_returns;
-
-  region.walk([&](neura::ReturnOp ret_op) {
-    if (ret_op.getNumOperands() == 0) {
-      empty_returns.push_back(ret_op);
-    }
-  });
-
-  for (neura::ReturnOp ret_op : empty_returns) {
-    builder.setInsertionPoint(ret_op);
-    builder.create<neura::ReturnVoidOp>(ret_op.getLoc(), Value{});
-    ret_op.erase();
-  }
-}
-
 // Marks empty returns with "is_void" attribute and adds trigger values.
-static void processVoidReturns(Region &region, OpBuilder &builder) {
+static void processReturns(Region &region, OpBuilder &builder) {
   SmallVector<neura::ReturnOp> empty_returns;
 
   region.walk([&](neura::ReturnOp ret_op) {
+    llvm::errs() << "[ctrl2data] Processing neura.return operation...\n";
+    llvm::errs() << ret_op << "\n";
     if (ret_op.getNumOperands() == 0) {
       empty_returns.push_back(ret_op);
     } else {
+      llvm::errs() << "[ctrl2data] Marking neura.return with value...\n";
       ret_op->setAttr(kReturnTypeAttr, builder.getStringAttr(kReturnTypeValue));
     }
   });
@@ -206,11 +193,6 @@ struct CanonicalizeReturnPass
       return;
     }
 
-    // Skips non-void functions.
-    if (!isVoidFunction(func_op)) {
-      return;
-    }
-
     Region &region = func_op.getBody();
     if (region.empty()) {
       return;
@@ -218,8 +200,14 @@ struct CanonicalizeReturnPass
 
     OpBuilder builder(func_op.getContext());
 
-    // Step 1: Marks empty returns with "is_void" attribute.
-    processVoidReturns(region, builder);
+    // Step 1: Marks empty returns with "void" attribute.
+    processReturns(region, builder);
+
+    if (!isVoidFunction(func_op)) {
+      llvm::errs() << "[ctrl2data] Function is not void, no further action "
+                      "needed.\n";
+      return;
+    }
 
     // Step 2: Collects all return operations with "is_void" attribute.
     SmallVector<neura::ReturnOp> ret_void_ops;

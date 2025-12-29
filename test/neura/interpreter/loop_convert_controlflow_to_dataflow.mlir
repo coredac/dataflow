@@ -1,6 +1,7 @@
 // RUN: mlir-neura-opt \
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
+// RUN:   --canonicalize-return \
 // RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \

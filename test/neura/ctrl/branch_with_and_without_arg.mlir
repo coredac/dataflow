@@ -10,6 +10,7 @@
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
 // RUN:   --promote-func-arg-to-const \
+// RUN:   --canonicalize-return \
 // RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \
@@ -72,5 +73,6 @@ func.func @test(%in: i64) -> f32 {
 // CTRL2DATA-NEXT:     %15 = "neura.fadd"(%13, %14) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:     %16 = "neura.fmul"(%10, %11) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:     %17 = "neura.phi"(%15, %16) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
-// CTRL2DATA-NEXT:     "neura.return"(%17) : (!neura.data<f32, i1>) -> ()
+// CTRL2DATA-NEXT:     neura.return_value %17 : !neura.data<f32, i1>
+// CTRL2DATA-NEXT:     neura.yield
 // CTRL2DATA-NEXT:   }

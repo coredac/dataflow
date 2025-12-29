@@ -16,6 +16,7 @@
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
 // RUN:   --promote-func-arg-to-const \
+// RUN:   --canonicalize-return \
 // RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \
@@ -27,6 +28,7 @@
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
 // RUN:   --promote-func-arg-to-const \
+// RUN:   --canonicalize-return \
 // RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \
@@ -107,7 +109,9 @@
 // CHECK-FUSED-NEXT:     neura.ctrl_mov %34 -> %11 : !neura.data<i64, i1> !neura.data<i64, i1>
 // CHECK-FUSED-NEXT:     %35 = neura.grant_predicate %10, %28 : !neura.data<i64, i1>, !neura.data<i1, i1> -> !neura.data<i64, i1>
 // CHECK-FUSED-NEXT:     neura.ctrl_mov %35 -> %9 : !neura.data<i64, i1> !neura.data<i64, i1>
-// CHECK-FUSED-NEXT:     "neura.return"() : () -> ()
+// CHECK-FUSED-NEXT:     %36 = neura.grant_predicate %27, %27 : !neura.data<i1, i1>, !neura.data<i1, i1> -> !neura.data<i1, i1>
+// CHECK-FUSED-NEXT:     neura.return_void %36 : !neura.data<i1, i1>
+// CHECK-FUSED-NEXT:     neura.yield
 // CHECK-FUSED-NEXT:   }
 
 // CHECK-MOV:        func.func @_Z6kernelPfS_S_
@@ -193,5 +197,10 @@
 // CHECK-MOV-NEXT:     %71 = "neura.data_mov"(%51) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
 // CHECK-MOV-NEXT:     %72 = neura.grant_predicate %70, %71 : !neura.data<i64, i1>, !neura.data<i1, i1> -> !neura.data<i64, i1>
 // CHECK-MOV-NEXT:     neura.ctrl_mov %72 -> %11 : !neura.data<i64, i1> !neura.data<i64, i1>
-// CHECK-MOV-NEXT:     "neura.return"() : () -> ()
+// CHECK-MOV-NEXT:     %73 = "neura.data_mov"(%49) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
+// CHECK-MOV-NEXT:     %74 = "neura.data_mov"(%49) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
+// CHECK-MOV-NEXT:     %75 = neura.grant_predicate %73, %74 : !neura.data<i1, i1>, !neura.data<i1, i1> -> !neura.data<i1, i1>
+// CHECK-MOV-NEXT:     %76 = "neura.data_mov"(%75) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
+// CHECK-MOV-NEXT:     neura.return_void %76 : !neura.data<i1, i1>
+// CHECK-MOV-NEXT:     neura.yield
 // CHECK-MOV-NEXT:   }

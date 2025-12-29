@@ -32,6 +32,7 @@
 // RUN:   --lower-llvm-to-neura \
 // RUN:   --promote-func-arg-to-const \
 // RUN:   --fold-constant \
+// RUN:   --canonicalize-return \
 // RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \
@@ -161,243 +162,91 @@
 
 //MAPPING: func.func @kernel
 //MAPPING-SAME: accelerator = "neura", dataflow_mode = "predicate"
-//MAPPING-SAME: mapping_info = {compiled_ii = 11 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 9 : i32, res_mii = 5 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}
+//MAPPING-SAME: mapping_info = {compiled_ii = 13 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 9 : i32, res_mii = 6 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}
 
 // YAML:      array_config:
-// YAML-NEXT:     columns: 4
-// YAML-NEXT:     rows: 4
-// YAML-NEXT:     compiled_ii: 11
-// YAML-NEXT:     cores:
+// YAML-NEXT:   columns: 4
+// YAML-NEXT:   rows: 4
+// YAML-NEXT:   compiled_ii: 13
+// YAML-NEXT:   cores:
 // YAML-NEXT:     - column: 0
-// YAML-NEXT:     row: 0
-// YAML-NEXT:     core_id: "0"
-// YAML-NEXT:     entries:
-// YAML-NEXT:     - entry_id: "entry0"
-// YAML-NEXT:     instructions:
-// YAML-NEXT:     - index_per_ii: 0
-// YAML-NEXT:     operations:
-// YAML-NEXT:     - opcode: "CONSTANT"
-// YAML-NEXT:     id: 1
-// YAML-NEXT:     time_step: 0
-// YAML-NEXT:     invalid_iterations: 0
-// YAML-NEXT:     src_operands:
-// YAML-NEXT:     - operand: "arg0"
-// YAML-NEXT:     color: "RED"
-// YAML-NEXT:     dst_operands:
-// YAML-NEXT:     - operand: "$0"
-// YAML-NEXT:     color: "RED"
-// YAML-NEXT:     - index_per_ii: 1
-// YAML-NEXT:     operations:
-// YAML-NEXT:     - opcode: "ICMP_SGT"
-// YAML-NEXT:     id: 24
-// YAML-NEXT:     time_step: 1
-// YAML-NEXT:     invalid_iterations: 0
-// YAML-NEXT:     src_operands:
-// YAML-NEXT:     - operand: "$0"
-// YAML-NEXT:     color: "RED"
-// YAML-NEXT:     - operand: "#0"
-// YAML-NEXT:     color: "RED"
-// YAML-NEXT:     dst_operands:
-// YAML-NEXT:     - operand: "$0"
-// YAML-NEXT:     color: "RED"
-// YAML-NEXT:     - opcode: "DATA_MOV"
-// YAML-NEXT:     id: 1050001
-// YAML-NEXT:     time_step: 12
-// YAML-NEXT:     invalid_iterations: 1
-// YAML-NEXT:     src_operands:
-// YAML-NEXT:     - operand: "NORTH"
-// YAML-NEXT:     color: "RED"
-// YAML-NEXT:     dst_operands:
-// YAML-NEXT:     - operand: "NORTH"
-// YAML-NEXT:     color: "RED"
-// YAML-NEXT:     - index_per_ii: 2
-// YAML-NEXT:     operations:
-// YAML-NEXT:     - opcode: "GRANT_ONCE"
-// YAML-NEXT:     id: 26
-// YAML-NEXT:     time_step: 2
-// YAML-NEXT:     invalid_iterations: 0
-// YAML-NEXT:     src_operands:
-// YAML-NEXT:     - operand: "$0"
-// YAML-NEXT:     color: "RED"
-// YAML-NEXT:     dst_operands:
-// YAML-NEXT:     - operand: "EAST"
-// YAML-NEXT:     color: "RED"
-// YAML-NEXT:     - operand: "NORTH"
-// YAML-NEXT:     color: "RED"
-// YAML-NEXT:     - operand: "$0"
-// YAML-NEXT:     color: "RED"
-// YAML-NEXT:     - operand: "$2"
-// YAML-NEXT:     color: "RED"
-// YAML-NEXT:     - opcode: "DATA_MOV"
-// YAML-NEXT:     id: 18
-// YAML-NEXT:     time_step: 2
-// YAML-NEXT:     invalid_iterations: 0
-// YAML-NEXT:     src_operands:
-// YAML-NEXT:     - operand: "EAST"
-// YAML-NEXT:     color: "RED"
-// YAML-NEXT:     dst_operands:
-// YAML-NEXT:     - operand: "$3"
-// YAML-NEXT:     color: "RED"
-// YAML-NEXT:     - index_per_ii: 3
-// YAML-NEXT:     operations:
-// YAML-NEXT:     - opcode: "GRANT_PREDICATE"
+// YAML-NEXT:       row: 0
+// YAML-NEXT:       core_id: "0"
+// YAML-NEXT:       entries:
+// YAML-NEXT:         - entry_id: "entry0"
+// YAML-NEXT:           instructions:
+// YAML-NEXT:             - index_per_ii: 0
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "CONSTANT"
+// YAML-NEXT:                   id: 1
+// YAML-NEXT:                   time_step: 0
+// YAML-NEXT:                   invalid_iterations: 0
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "arg0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 1
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "ICMP_SGT"
+// YAML-NEXT:                   id: 24
+// YAML-NEXT:                   time_step: 1
+// YAML-NEXT:                   invalid_iterations: 0
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "#0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
 
 
-
-// ASM:      # Compiled II: 11
-// ASM:     PE(0,0):
-// ASM-NEXT:     {
-// ASM-NEXT:     CONSTANT, [arg0] -> [$0] (t=0, inv_iters=0)
-// ASM-NEXT:     } (idx_per_ii=0)
-// ASM-NEXT:     {
-// ASM-NEXT:     ICMP_SGT, [$0], [#0] -> [$0] (t=1, inv_iters=0)
-// ASM-NEXT:     DATA_MOV, [NORTH, RED] -> [NORTH, RED] (t=12, inv_iters=1)
-// ASM-NEXT:     } (idx_per_ii=1)
-// ASM-NEXT:     {
-// ASM-NEXT:     GRANT_ONCE, [$0] -> [EAST, RED], [NORTH, RED], [$0], [$2] (t=2, inv_iters=0)
-// ASM-NEXT:     DATA_MOV, [EAST, RED] -> [$3] (t=2, inv_iters=0)
-// ASM-NEXT:     } (idx_per_ii=2)
-// ASM-NEXT:     {
-// ASM-NEXT:     GRANT_PREDICATE, [EAST, RED], [$0] -> [$0], [$1] (t=3, inv_iters=0)
-// ASM-NEXT:     } (idx_per_ii=3)
-// ASM-NEXT:     {
-// ASM-NEXT:     ICMP_SGT, [$0], [#0] -> [$0], [EAST, RED], [NORTH, RED] (t=4, inv_iters=0)
-// ASM-NEXT:     } (idx_per_ii=4)
-// ASM-NEXT:     {
-// ASM-NEXT:     GRANT_PREDICATE, [$1], [$0] -> [EAST, RED] (t=7, inv_iters=0)
-// ASM-NEXT:     } (idx_per_ii=7)
-// ASM-NEXT:     {
-// ASM-NEXT:     NOT, [$2] -> [$0], [NORTH, RED], [EAST, RED] (t=8, inv_iters=0)
-// ASM-NEXT:     } (idx_per_ii=8)
-// ASM-NEXT:     {
-// ASM-NEXT:     GRANT_PREDICATE, [$3], [$0] -> [$0], [EAST, RED] (t=9, inv_iters=0)
-// ASM-NEXT:     } (idx_per_ii=9)
-// ASM-NEXT:     {
-// ASM-NEXT:     ICMP_SGT, [$0], [#0] -> [EAST, RED], [NORTH, RED] (t=10, inv_iters=0)
-// ASM-NEXT:     } (idx_per_ii=10)
-// ASM:     PE(1,0):
-// ASM-NEXT:     {
-// ASM-NEXT:     GRANT_PREDICATE, [$0], [WEST, RED] -> [$0] (t=11, inv_iters=1)
-// ASM-NEXT:     } (idx_per_ii=0)
-// ASM-NEXT:     {
-// ASM-NEXT:     ZEXT, [$0] -> [EAST, RED] (t=12, inv_iters=1)
-// ASM-NEXT:     DATA_MOV, [WEST, RED] -> [EAST, RED] (t=12, inv_iters=1)
-// ASM-NEXT:     } (idx_per_ii=1)
-// ASM-NEXT:     {
-// ASM-NEXT:     GRANT_ONCE, [arg1] -> [WEST, RED] (t=2, inv_iters=0)
-// ASM-NEXT:     } (idx_per_ii=2)
-// ASM-NEXT:     {
-// ASM-NEXT:     DATA_MOV, [WEST, RED] -> [EAST, RED] (t=3, inv_iters=0)
-// ASM-NEXT:     } (idx_per_ii=3)
-// ASM-NEXT:     {
-// ASM-NEXT:     DATA_MOV, [WEST, RED] -> [EAST, RED] (t=4, inv_iters=0)
-// ASM-NEXT:     } (idx_per_ii=4)
-// ASM-NEXT:     {
-// ASM-NEXT:     DATA_MOV, [WEST, RED] -> [EAST, RED] (t=5, inv_iters=0)
-// ASM-NEXT:     CTRL_MOV, [NORTH, RED] -> [$1] (t=16, inv_iters=1)
-// ASM-NEXT:     } (idx_per_ii=5)
-// ASM-NEXT:     {
-// ASM-NEXT:     ZEXT, [WEST, RED] -> [$0] (t=8, inv_iters=0)
-// ASM-NEXT:     CTRL_MOV, [NORTH, RED] -> [$2] (t=19, inv_iters=1)
-// ASM-NEXT:     } (idx_per_ii=8)
-// ASM-NEXT:     {
-// ASM-NEXT:     PHI_START, [$0], [NORTH, RED] -> [$0] (t=9, inv_iters=0)
-// ASM-NEXT:     DATA_MOV, [WEST, RED] -> [EAST, RED] (t=9, inv_iters=0)
-// ASM-NEXT:     } (idx_per_ii=9)
-// ASM-NEXT:     {
-// ASM-NEXT:     PHI_START, [$0], [NORTH, RED] -> [NORTH, RED] (t=10, inv_iters=0)
-// ASM-NEXT:     DATA_MOV, [WEST, RED] -> [$0] (t=10, inv_iters=0)
-// ASM-NEXT:     } (idx_per_ii=10)
-// ASM:     PE(2,0):
-// ASM-NEXT:     {
-// ASM-NEXT:     LOAD, [NORTH, RED] -> [NORTH, RED] (t=12, inv_iters=1)
-// ASM-NEXT:     DATA_MOV, [WEST, RED] -> [$0] (t=12, inv_iters=1)
-// ASM-NEXT:     } (idx_per_ii=1)
-// ASM-NEXT:     {
-// ASM-NEXT:     DATA_MOV, [WEST, RED] -> [$0] (t=2, inv_iters=0)
-// ASM-NEXT:     GRANT_PREDICATE, [NORTH, RED], [$0] -> [NORTH, RED] (t=13, inv_iters=1)
-// ASM-NEXT:     DATA_MOV, [WEST, RED] -> [EAST, RED] (t=13, inv_iters=1)
-// ASM-NEXT:     } (idx_per_ii=2)
-// ASM-NEXT:     {
-// ASM-NEXT:     SHL, [$0], [#3] -> [NORTH, RED] (t=14, inv_iters=1)
-// ASM-NEXT:     } (idx_per_ii=3)
-// ASM-NEXT:     {
-// ASM-NEXT:     DATA_MOV, [WEST, RED] -> [EAST, RED] (t=4, inv_iters=0)
-// ASM-NEXT:     DATA_MOV, [EAST, RED] -> [NORTH, RED] (t=15, inv_iters=1)
-// ASM-NEXT:     } (idx_per_ii=4)
-// ASM-NEXT:     {
-// ASM-NEXT:     DATA_MOV, [WEST, RED] -> [NORTH, RED] (t=6, inv_iters=0)
-// ASM-NEXT:     } (idx_per_ii=6)
-// ASM-NEXT:     {
-// ASM-NEXT:     DATA_MOV, [WEST, RED] -> [NORTH, RED] (t=10, inv_iters=0)
-// ASM-NEXT:     } (idx_per_ii=10)
-// ASM:     PE(3,0):
-// ASM-NEXT:     {
-// ASM-NEXT:     GRANT_PREDICATE, [NORTH, RED], [$0] -> [WEST, RED] (t=14, inv_iters=1)
-// ASM-NEXT:     } (idx_per_ii=3)
-// ASM-NEXT:     {
-// ASM-NEXT:     DATA_MOV, [WEST, RED] -> [NORTH, RED] (t=5, inv_iters=0)
-// ASM-NEXT:     } (idx_per_ii=5)
-// ASM-NEXT:     {
-// ASM-NEXT:     DATA_MOV, [WEST, RED] -> [$0] (t=10, inv_iters=0)
-// ASM-NEXT:     } (idx_per_ii=10)
-// ASM:     PE(0,1):
-// ASM-NEXT:     {
-// ASM-NEXT:     GEP, [$0] -> [EAST, RED], [NORTH, RED], [SOUTH, RED] (t=11, inv_iters=1)
-// ASM-NEXT:     DATA_MOV, [SOUTH, RED] -> [EAST, RED] (t=11, inv_iters=1)
-// ASM-NEXT:     } (idx_per_ii=0)
-// ASM-NEXT:     {
-// ASM-NEXT:     PHI_START, [$1], [NORTH, RED] -> [NORTH, RED], [$0] (t=12, inv_iters=1)
-// ASM-NEXT:     DATA_MOV, [NORTH, RED] -> [$1] (t=12, inv_iters=1)
-// ASM-NEXT:     } (idx_per_ii=1)
-// ASM-NEXT:     {
-// ASM-NEXT:     GRANT_PREDICATE, [$0], [$1] -> [EAST, RED] (t=13, inv_iters=1)
-// ASM-NEXT:     DATA_MOV, [SOUTH, RED] -> [NORTH, RED] (t=13, inv_iters=1)
-// ASM-NEXT:     } (idx_per_ii=2)
-// ASM-NEXT:     {
-// ASM-NEXT:     DATA_MOV, [SOUTH, RED] -> [$0] (t=3, inv_iters=0)
-// ASM-NEXT:     DATA_MOV, [EAST, RED] -> [NORTH, RED] (t=14, inv_iters=1)
-// ASM-NEXT:     } (idx_per_ii=3)
-// ASM-NEXT:     {
-// ASM-NEXT:     GRANT_PREDICATE, [EAST, RED], [$0] -> [$0] (t=4, inv_iters=0)
-// ASM-NEXT:     DATA_MOV, [SOUTH, RED] -> [EAST, RED] (t=4, inv_iters=0)
-// ASM-NEXT:     CTRL_MOV, [NORTH, RED] -> [$2] (t=15, inv_iters=1)
-// ASM-NEXT:     } (idx_per_ii=4)
-// ASM-NEXT:     {
-// ASM-NEXT:     GRANT_PREDICATE, [$0], [SOUTH, RED] -> [EAST, RED], [$0] (t=5, inv_iters=0)
-// ASM-NEXT:     } (idx_per_ii=5)
-// ASM-NEXT:     {
-// ASM-NEXT:     DATA_MOV, [EAST, RED] -> [$1] (t=7, inv_iters=0)
-// ASM-NEXT:     } (idx_per_ii=7)
-// ASM-NEXT:     {
-// ASM-NEXT:     PHI_START, [$0], [EAST, RED] -> [$0], [NORTH, RED], [EAST, RED] (t=8, inv_iters=0)
-// ASM-NEXT:     } (idx_per_ii=8)
-// ASM-NEXT:     {
-// ASM-NEXT:     DATA_MOV, [SOUTH, RED] -> [EAST, RED] (t=9, inv_iters=0)
-// ASM-NEXT:     } (idx_per_ii=9)
-// ASM:     PE(1,1):
-// ASM-NEXT:     {
-// ASM-NEXT:     GRANT_PREDICATE, [$0], [NORTH, RED] -> [EAST, RED] (t=11, inv_iters=1)
-// ASM-NEXT:     DATA_MOV, [NORTH, RED] -> [$0] (t=11, inv_iters=1)
-// ASM-NEXT:     DATA_MOV, [SOUTH, RED] -> [NORTH, RED] (t=11, inv_iters=1)
-// ASM-NEXT:     } (idx_per_ii=0)
-// ASM-NEXT:     {
-// ASM-NEXT:     GEP, [$1], [$2] -> [EAST, RED], [NORTH, RED] (t=12, inv_iters=1)
-// ASM-NEXT:     DATA_MOV, [NORTH, RED] -> [$0] (t=12, inv_iters=1)
-// ASM-NEXT:     } (idx_per_ii=1)
-// ASM-NEXT:     {
-// ASM-NEXT:     GRANT_PREDICATE, [$3], [$0] -> [$1] (t=13, inv_iters=1)
-// ASM-NEXT:     DATA_MOV, [WEST, RED] -> [EAST, RED] (t=13, inv_iters=1)
-// ASM-NEXT:     DATA_MOV, [WEST, RED] -> [WEST, RED] (t=13, inv_iters=1)
-// ASM-NEXT:     } (idx_per_ii=2)
-// ASM-NEXT:     {
-// ASM-NEXT:     GRANT_ONCE, [#0] -> [WEST, RED] (t=3, inv_iters=0)
-// ASM-NEXT:     DATA_MOV, [WEST, RED] -> [NORTH, RED] (t=14, inv_iters=1)
-// ASM-NEXT:     } (idx_per_ii=3)
-// ASM-NEXT:     {
-// ASM-NEXT:     GRANT_PREDICATE, [$2], [$0] -> [SOUTH, RED] (t=15, inv_iters=1)
-// ASM-NEXT:     } (idx_per_ii=4)
-// ASM-NEXT:     {
+// ASM:      # Compiled II: 13
+// ASM:      PE(0,0):
+// ASM-NEXT: {
+// ASM-NEXT:   CONSTANT, [arg0] -> [$0] (t=0, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=0)
+// ASM-NEXT: {
+// ASM-NEXT:   ICMP_SGT, [$0], [#0] -> [NORTH, RED] (t=1, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=1)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_ONCE, [arg1] -> [NORTH, RED], [$0] (t=2, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=2)
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [EAST, RED] (t=3, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=3)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [$0], [NORTH, RED] -> [$0], [$1] (t=10, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=10)
+// ASM-NEXT: {
+// ASM-NEXT:   ICMP_SGT, [$0], [#0] -> [EAST, RED], [$0], [NORTH, RED] (t=11, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=11)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [$1], [$0] -> [EAST, RED] (t=12, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=12)
+// ASM:      PE(1,0):
+// ASM-NEXT: {
+// ASM-NEXT:   ZEXT, [WEST, RED] -> [EAST, RED] (t=13, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=0)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [NORTH, RED] (t=14, inv_iters=1)
+// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$0] (t=14, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=1)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [EAST, RED] (t=15, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=2)
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [EAST, RED] (t=4, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=4)
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$1] (t=11, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=11)
+// ASM-NEXT: {
+// ASM-NEXT:   NOT, [WEST, RED] -> [$0], [$1] (t=12, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [EAST, RED] (t=12, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=12)
 
 
 // RUN: mlir-neura-opt %t-kernel.mlir --view-op-graph 2>&1 | sed -n '/^digraph G {/,/^}$/p' > bicg_kernel_original.dot
@@ -408,6 +257,7 @@
 // RUN:   --lower-llvm-to-neura \
 // RUN:   --promote-func-arg-to-const \
 // RUN:   --fold-constant \
+// RUN:   --canonicalize-return \
 // RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \

@@ -25,6 +25,7 @@
 // RUN: --lower-llvm-to-neura \
 // RUN: --canonicalize-cast \
 // RUN: --promote-func-arg-to-const \
+// RUN: --canonicalize-return \
 // RUN: --canonicalize-live-in \
 // RUN: --leverage-predicated-value \
 // RUN: --transform-ctrl-to-data-flow \
@@ -107,7 +108,7 @@ module attributes {} {
 // CAST-NEXT:   }
 
 
-// CTRL2DATA:   func.func @_Z27perfect_nested_reduction_2dPA128_i(%arg0: memref<?x128xi32>) -> i32 attributes {accelerator = "neura", dataflow_mode = "predicate", llvm.linkage = #llvm.linkage<external>} {
+// CTRL2DATA:        func.func @_Z27perfect_nested_reduction_2dPA128_i(%arg0: memref<?x128xi32>) -> i32 attributes {accelerator = "neura", dataflow_mode = "predicate", llvm.linkage = #llvm.linkage<external>} {
 // CTRL2DATA-NEXT:     %0 = "neura.constant"() <{value = "%arg0"}> : () -> !neura.data<memref<?x128xi32>, i1>
 // CTRL2DATA-NEXT:     %1 = "neura.grant_once"(%0) : (!neura.data<memref<?x128xi32>, i1>) -> !neura.data<memref<?x128xi32>, i1>
 // CTRL2DATA-NEXT:     %2 = "neura.constant"() <{value = 1 : i64}> : () -> !neura.data<i64, i1>
@@ -139,6 +140,7 @@ module attributes {} {
 // CTRL2DATA-NEXT:     %28 = neura.grant_predicate %11, %22 : !neura.data<i64, i1>, !neura.data<i1, i1> -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %29 = "neura.not"(%22) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
 // CTRL2DATA-NEXT:     %30 = neura.grant_predicate %19, %29 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     neura.return_value %30 : !neura.data<i32, i1>
 // CTRL2DATA-NEXT:     %31 = neura.reserve : !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %32 = neura.phi_start %23, %31 : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %33 = neura.reserve : !neura.data<i64, i1>
@@ -185,5 +187,5 @@ module attributes {} {
 // CTRL2DATA-NEXT:     neura.ctrl_mov %47 -> %35 : !neura.data<i64, i1> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     neura.ctrl_mov %50 -> %33 : !neura.data<i64, i1> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     neura.ctrl_mov %52 -> %31 : !neura.data<i64, i1> !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     "neura.return"(%30) : (!neura.data<i32, i1>) -> ()
+// CTRL2DATA-NEXT:     neura.yield
 // CTRL2DATA-NEXT:   }

@@ -30,6 +30,7 @@
 // RUN: --lower-llvm-to-neura \
 // RUN: --canonicalize-cast \
 // RUN: --promote-func-arg-to-const \
+// RUN: --canonicalize-return \
 // RUN: --canonicalize-live-in \
 // RUN: --leverage-predicated-value \
 // RUN: --transform-ctrl-to-data-flow \
@@ -44,6 +45,7 @@
 // RUN: --canonicalize-cast \
 // RUN: --promote-func-arg-to-const \
 // RUN: --fold-constant \
+// RUN: --canonicalize-return \
 // RUN: --canonicalize-live-in \
 // RUN: --leverage-predicated-value \
 // RUN: --transform-ctrl-to-data-flow \
@@ -61,6 +63,7 @@
 // RUN: --canonicalize-cast \
 // RUN: --promote-func-arg-to-const \
 // RUN: --fold-constant \
+// RUN: --canonicalize-return \
 // RUN: --canonicalize-live-in \
 // RUN: --leverage-predicated-value \
 // RUN: --transform-ctrl-to-data-flow \
@@ -122,7 +125,7 @@ module attributes {} {
 // CANONICALIZE-NEXT:     "neura.return"(%16) : (i32) -> ()
 // CANONICALIZE-NEXT:   }
 
-// CTRL2DATA:      func.func @_Z10simpleloopv() -> i32 attributes {accelerator = "neura", dataflow_mode = "predicate", llvm.linkage = #llvm.linkage<external>} {
+// CTRL2DATA:        func.func @_Z10simpleloopv() -> i32 attributes {accelerator = "neura", dataflow_mode = "predicate", llvm.linkage = #llvm.linkage<external>} {
 // CTRL2DATA-NEXT:     %0 = "neura.constant"() <{value = 1 : i64}> : () -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %1 = "neura.grant_once"(%0) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %2 = "neura.constant"() <{value = 128 : i64}> : () -> !neura.data<i64, i1>
@@ -146,6 +149,7 @@ module attributes {} {
 // CTRL2DATA-NEXT:     %20 = neura.grant_predicate %11, %16 : !neura.data<i64, i1>, !neura.data<i1, i1> -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %21 = "neura.not"(%16) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
 // CTRL2DATA-NEXT:     %22 = neura.grant_predicate %13, %21 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     neura.return_value %22 : !neura.data<i32, i1>
 // CTRL2DATA-NEXT:     %23 = "neura.cast"(%17) <{cast_type = "i64_to_i32"}> : (!neura.data<i64, i1>) -> !neura.data<i32, i1>
 // CTRL2DATA-NEXT:     %24 = "neura.add"(%18, %23) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
 // CTRL2DATA-NEXT:     %25 = "neura.add"(%17, %19) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
@@ -153,7 +157,7 @@ module attributes {} {
 // CTRL2DATA-NEXT:     neura.ctrl_mov %24 -> %12 : !neura.data<i32, i1> !neura.data<i32, i1>
 // CTRL2DATA-NEXT:     neura.ctrl_mov %20 -> %10 : !neura.data<i64, i1> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     neura.ctrl_mov %19 -> %8 : !neura.data<i64, i1> !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     "neura.return"(%22) : (!neura.data<i32, i1>) -> ()
+// CTRL2DATA-NEXT:     neura.yield
 // CTRL2DATA-NEXT:   }
 
 
@@ -166,10 +170,11 @@ module attributes {} {
 // FUSE-NEXT:     %4 = "neura.not"(%valid) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
 // FUSE-NEXT:     %5 = neura.grant_predicate %2, %valid : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
 // FUSE-NEXT:     %6 = neura.grant_predicate %2, %4 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
+// FUSE-NEXT:     neura.return_value %6 : !neura.data<i32, i1>
 // FUSE-NEXT:     %7 = "neura.cast"(%nextindex) <{cast_type = "i64_to_i32"}> : (!neura.data<i64, i1>) -> !neura.data<i32, i1>
 // FUSE-NEXT:     %8 = "neura.add"(%5, %7) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
 // FUSE-NEXT:     neura.ctrl_mov %8 -> %1 : !neura.data<i32, i1> !neura.data<i32, i1>
-// FUSE-NEXT:     "neura.return"(%6) : (!neura.data<i32, i1>) -> ()
+// FUSE-NEXT:     neura.yield
 // FUSE-NEXT:   }
 
 

@@ -7,6 +7,7 @@
 // RUN: --lower-llvm-to-neura \
 // RUN: --canonicalize-cast \
 // RUN: --promote-func-arg-to-const \
+// RUN: --canonicalize-return \
 // RUN: --canonicalize-live-in \
 // RUN: --leverage-predicated-value \
 // RUN: --transform-ctrl-to-data-flow \
@@ -22,6 +23,7 @@
 // RUN: --lower-llvm-to-neura \
 // RUN: --canonicalize-cast \
 // RUN: --promote-func-arg-to-const \
+// RUN: --canonicalize-return \
 // RUN: --canonicalize-live-in \
 // RUN: --leverage-predicated-value \
 // RUN: --transform-ctrl-to-data-flow \
@@ -61,11 +63,12 @@ module {
 // CHECK-NEXT:   %11 = "neura.icmp"(%10, %8) <{cmpType = "slt"}> : (i64, i64) -> i1
 // CHECK-NEXT:   neura.ctrl_mov %11 -> %2 : i1 i1
 // CHECK-NEXT:   %12 = neura.false_steer %9, %11 : i64, i1 -> i64
+// CHECK-NEXT:   neura.return_value %12 : i64
 // CHECK-NEXT:   %13 = "neura.add"(%9, %9) : (i64, i64) -> i64
 // CHECK-NEXT:   neura.ctrl_mov %13 -> %0 : i64 i64
 // CHECK-NEXT:   %14 = "neura.add"(%10, %7) : (i64, i64) -> i64
 // CHECK-NEXT:   neura.ctrl_mov %14 -> %1 : i64 i64
-// CHECK-NEXT:   "neura.return"(%12) : (i64) -> ()
+// CHECK-NEXT:   neura.yield
 // CHECK-NEXT: }
 
 // MAPPING:        func.func @simple_add_loop() -> i64 attributes {accelerator = "neura", dataflow_mode = "steering"} {
