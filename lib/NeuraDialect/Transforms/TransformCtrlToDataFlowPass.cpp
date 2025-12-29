@@ -578,9 +578,8 @@ void transformControlFlowToDataFlow(Region &region, ControlFlowInfo &ctrl_info,
     }
   }
 
-  // Adds neura.yield at the end of the entry block as terminator.
-  builder.setInsertionPointToEnd(entry_block);
-  builder.create<neura::YieldOp>(entry_block->getTerminator()->getLoc());
+  llvm::errs() << "[ctrl2data] Converting neura.return operations to "
+                  "return_void/value...\n";
 
   for (neura::ReturnOp return_op : return_ops) {
     builder.setInsertionPoint(return_op);
@@ -588,6 +587,7 @@ void transformControlFlowToDataFlow(Region &region, ControlFlowInfo &ctrl_info,
     if (return_op->hasAttr("return_type") &&
         dyn_cast<StringAttr>(return_op->getAttr("return_type")).getValue() ==
             "void") {
+      llvm::errs() << "[ctrl2data] Converting to neura.return_void.\n";
       Value trigger = return_op->getOperand(0);
       builder.create<neura::ReturnVoidOp>(return_op.getLoc(), trigger);
     } else if (return_op->hasAttr("return_type") &&
@@ -595,9 +595,17 @@ void transformControlFlowToDataFlow(Region &region, ControlFlowInfo &ctrl_info,
                        .getValue() == "value") {
       builder.create<neura::ReturnValueOp>(return_op.getLoc(),
                                            return_op.getValues());
+    } else {
+      assert(false && "Unknown return type attribute in neura.return.");
     }
     return_op.erase();
   }
+
+  llvm::errs()
+      << "[ctrl2data] All neura.return operations converted successfully.\n";
+  // Adds neura.yield at the end of the entry block as terminator.
+  builder.setInsertionPointToEnd(entry_block);
+  builder.create<neura::YieldOp>(builder.getUnknownLoc());
 
   // Sets the "dataflow_mode" attribute to "predicate" for the parent
   // function.

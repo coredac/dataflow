@@ -10,6 +10,7 @@
 // RUN:   --lower-llvm-to-neura \
 // RUN:   --promote-func-arg-to-const \
 // RUN:   --fold-constant \
+// RUN:   --canonicalize-return \
 // RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \
