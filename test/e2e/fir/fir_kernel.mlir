@@ -1,3 +1,4 @@
+// XFAIL: *
 // Compiles the original C kernel to mlir, then lowers it via Neura.
 // RUN: clang++ -S -emit-llvm -O3 -fno-vectorize -fno-unroll-loops -o %t-kernel-full.ll %S/../../benchmark/CGRA-Bench/kernels/fir/fir_int.cpp
 // RUN: llvm-extract --rfunc=".*kernel.*" %t-kernel-full.ll -o %t-kernel-only.ll

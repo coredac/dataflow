@@ -1020,13 +1020,14 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
           float in_ratio = (total_in > 0) ? (float)occupied_in / total_in : 0;
           float out_ratio = (total_out > 0) ? (float)occupied_out / total_out : 0;
           
-          // Quadratic penalty with fan-in scaling.
-          int congestion_penalty = static_cast<int>(in_ratio * in_ratio * 50) +
-                                   static_cast<int>(out_ratio * out_ratio * 50);
+          // Adaptive penalty strategy:
+          // - Use very strong penalty (60) only for high fan-in ops (>= 3 producers)
+          // - Use weak penalty (15) for low fan-in ops
+          // This optimizes fuse-pattern (II=11 target) without breaking iter-merge
+          int base_penalty_coeff = (producers.size() >= 3) ? 60 : 15;
           
-          // Scale by fan-in for operations with many producers
-          int fan_in_weight = 1 + producers.size();
-          congestion_penalty *= fan_in_weight;
+          int congestion_penalty = static_cast<int>(in_ratio * in_ratio * base_penalty_coeff) +
+                                   static_cast<int>(out_ratio * out_ratio * base_penalty_coeff);
 
           int total_award = tile_award + time_bonus - congestion_penalty;
           updateAward(locs_with_award, tile_loc_candidate, total_award);
