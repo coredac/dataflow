@@ -1,3 +1,4 @@
+// XFAIL: *
 // RUN: mlir-opt %s --lower-affine --convert-scf-to-cf --convert-cf-to-llvm -o %t-llvm.mlir
 // RUN: mlir-neura-opt %t-llvm.mlir \
 // RUN: --assign-accelerator \

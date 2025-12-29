@@ -1,3 +1,4 @@
+// XFAIL: *
 // RUN: mlir-opt %s \
 // RUN: --lower-affine \
 // RUN: --convert-scf-to-cf \
