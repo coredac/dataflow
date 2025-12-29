@@ -56,77 +56,102 @@ static void processEmptyReturnVoidBlock(Block *ret_block,
     assert(false && "Entry block with neura.return_void is unreachable.");
   }
 
-  // Adds a block argument for the trigger value.
+  // Seperates predecessor blocks into cond_br and br blocks.
+  SmallVector<Block *> cond_br_preds;
+  SmallVector<Block *> br_preds;
+
+  for (Block *pred_block : predecessor_blocks) {
+    Operation *terminator = pred_block->getTerminator();
+    if (isa<neura::CondBr>(terminator)) {
+      cond_br_preds.push_back(pred_block);
+    } else if (isa<neura::Br>(terminator)) {
+      br_preds.push_back(pred_block);
+    }
+  }
+
+  // Handles br_preds: copies return_void to pred_block, and utilizes a suitable
+  // value to trigger it.
+  for (Block *pred_block : br_preds) {
+    neura::Br br = cast<neura::Br>(pred_block->getTerminator());
+
+    // Finds a suitable trigger value in the predecessor block.
+    Value trigger_value = nullptr;
+
+    // Iterates through operations in reverse order to find the last suitable
+    // value.
+    for (Operation &op : llvm::reverse(*pred_block)) {
+      // Skips the terminator itself.
+      if (&op == br) {
+        continue;
+      }
+
+      // Looks for any suitable value in the predecessor block.
+      if (op.getNumResults() > 0) {
+        trigger_value = op.getResult(0);
+        break;
+      }
+    }
+
+    if (!trigger_value) {
+      assert(false && "No suitable value found in predecessor block.");
+    }
+
+    builder.setInsertionPoint(br);
+    builder.create<neura::ReturnVoidOp>(br.getLoc(), trigger_value);
+    br.erase();
+  }
+
+  // If there are no cond_br predecessors, removes the return_void block.
+  if (cond_br_preds.empty()) {
+    ret_void_op.erase();
+    ret_block->erase();
+    return;
+  }
+
+  // Handles cond_preds: adds a block argument for the trigger value, and
+  // updates each predecessor's terminator to pass the trigger value.
   BlockArgument trigger_arg =
       ret_block->addArgument(builder.getI1Type(), ret_void_op.getLoc());
 
-  // Updates each predecessor's terminator to pass the trigger value.
-  for (Block *pred_block : predecessor_blocks) {
-    Operation *terminator = pred_block->getTerminator();
-    if (auto cond_br = dyn_cast<neura::CondBr>(terminator)) {
-      Value cond = cond_br.getCondition();
-      Value trigger_value = nullptr;
+  // Updates each cond_pred block's terminator to pass the trigger value.
+  for (Block *pred_block : cond_br_preds) {
+    neura::CondBr cond_br = cast<neura::CondBr>(pred_block->getTerminator());
+    Value cond = cond_br.getCondition();
+    Value trigger_value = nullptr;
 
-      bool is_true_branch = (cond_br.getTrueDest() == ret_block);
-      bool is_false_branch = (cond_br.getFalseDest() == ret_block);
+    bool is_true_branch = (cond_br.getTrueDest() == ret_block);
+    bool is_false_branch = (cond_br.getFalseDest() == ret_block);
 
-      if (is_true_branch && !is_false_branch) {
-        // True branck leads to return_void, uses condition directly.
-        trigger_value = cond;
-      } else if (!is_true_branch && is_false_branch) {
-        // False branch leads to return_void, uses negated condition.
-        builder.setInsertionPoint(terminator);
-        Value negated_cond = builder.create<neura::NotOp>(terminator->getLoc(),
-                                                          cond.getType(), cond);
-        trigger_value = negated_cond;
-      } else {
-        assert(false &&
-               "Unsupported case: Both branches lead to neura.return_void.");
+    if (is_true_branch && !is_false_branch) {
+      // True branck leads to return_void, uses condition directly.
+      trigger_value = cond;
+    } else if (!is_true_branch && is_false_branch) {
+      // False branch leads to return_void, uses negated condition.
+      builder.setInsertionPoint(cond_br);
+      Value negated_cond =
+          builder.create<neura::NotOp>(cond_br.getLoc(), cond.getType(), cond);
+      trigger_value = negated_cond;
+    } else {
+      assert(false &&
+             "Unsupported case: Both branches lead to neura.return_void.");
+    }
+
+    if (trigger_value) {
+      SmallVector<Value> true_args(cond_br.getTrueArgs());
+      SmallVector<Value> false_args(cond_br.getFalseArgs());
+
+      if (is_true_branch) {
+        true_args.push_back(trigger_value);
+      }
+      if (is_false_branch) {
+        false_args.push_back(trigger_value);
       }
 
-      if (trigger_value) {
-        SmallVector<Value> true_args(cond_br.getTrueArgs());
-        SmallVector<Value> false_args(cond_br.getFalseArgs());
-
-        if (is_true_branch) {
-          true_args.push_back(trigger_value);
-        }
-        if (is_false_branch) {
-          false_args.push_back(trigger_value);
-        }
-
-        builder.setInsertionPoint(cond_br);
-        builder.create<neura::CondBr>(
-            cond_br.getLoc(), cond_br.getCondition(), true_args, false_args,
-            cond_br.getTrueDest(), cond_br.getFalseDest());
-        cond_br.erase();
-      }
-    } else if (auto br = dyn_cast<neura::Br>(terminator)) {
-      Value trigger_value;
-
-      // Looks for any suitable value in the predecessor block to use as
-      // trigger.
-      for (Operation &op : llvm::reverse(*pred_block)) {
-        if (&op == terminator) {
-          continue;
-        }
-        if (op.getNumResults() > 0) {
-          trigger_value = op.getResult(0);
-          break;
-        }
-      }
-
-      // If no suitable value is found, reports an error.
-      if (!trigger_value) {
-        assert(false && "No suitable value found for trigger.");
-      }
-
-      SmallVector<Value> args(br.getArgs());
-      args.push_back(trigger_value);
-
-      builder.setInsertionPoint(br);
-      builder.create<neura::Br>(br.getLoc(), args, br.getDest());
-      br.erase();
+      builder.setInsertionPoint(cond_br);
+      builder.create<neura::CondBr>(
+          cond_br.getLoc(), cond_br.getCondition(), true_args, false_args,
+          cond_br.getTrueDest(), cond_br.getFalseDest());
+      cond_br.erase();
     }
   }
   // Updates the return_void operation to use the block argument as trigger.

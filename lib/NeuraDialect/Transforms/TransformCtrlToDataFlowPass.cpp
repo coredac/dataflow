@@ -567,15 +567,29 @@ void transformControlFlowToDataFlow(Region &region, ControlFlowInfo &ctrl_info,
     }
   }
 
-  if (return_ops.size() > 1) {
+  SmallVector<neura::ReturnVoidOp> return_void_ops;
+  for (Operation &op : *entry_block) {
+    if (neura::ReturnVoidOp return_void_op =
+            dyn_cast<neura::ReturnVoidOp>(op)) {
+      return_void_ops.push_back(return_void_op);
+    }
+  }
+
+  if (return_ops.size() + return_void_ops.size() > 1) {
     llvm::errs() << "[ctrl2data] Error: Multiple ReturnOps found in the entry "
                     "block after flattening.\n";
     assert(false &&
            "Multiple ReturnOps found in the entry block after flattening.");
-  } else if (return_ops.size() == 1) {
-    neura::ReturnOp last_return = return_ops.back();
-    last_return->moveAfter(&entry_block->back());
-  } else {
+  } else if ((return_ops.size() == 1 && return_void_ops.size() == 0) ||
+             (return_ops.size() == 0 && return_void_ops.size() == 1)) {
+    if (return_void_ops.size() == 1) {
+      neura::ReturnVoidOp last_return_void = return_void_ops.back();
+      last_return_void->moveAfter(&entry_block->back());
+    } else if (return_ops.size() == 1) {
+      neura::ReturnOp last_return = return_ops.back();
+      last_return->moveAfter(&entry_block->back());
+    }
+  } else if (return_ops.size() == 0 && return_void_ops.size() == 0) {
     llvm::errs() << "[ctrl2data] Error: No ReturnOp found in the entry "
                     "block after flattening.\n";
     assert(false && "No ReturnOp found in the entry block after flattening.");
