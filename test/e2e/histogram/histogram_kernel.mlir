@@ -24,6 +24,16 @@
 
 
 // MAPPING:      func.func @_Z6kernelPiS_(%arg0: !llvm.ptr {llvm.nocapture, llvm.noundef, llvm.readonly}
+// MAPPING-SAME: compiled_ii = 5
+// MAPPING-SAME: mapping_mode = "spatial-temporal"
+// MAPPING-SAME: mapping_strategy = "heuristic"
+// MAPPING-SAME: rec_mii = 5
+// MAPPING-SAME: res_mii = 2
+// MAPPING-SAME: x_tiles = 4
+// MAPPING-SAME: y_tiles = 4
+// MAPPING-NEXT:    %0 = "neura.grant_once"() <{constant_value = 0 : i64}> {dfg_id = 0 : i32, mapping_locs = [{id = 11 : i32, index_per_ii = 0 : i32, invalid_iterations = 0 : i32, resource = "tile", time_step = 0 : i32, x = 3 : i32, y = 2 : i32}]} : () -> !neura.data<i64, i1>
+// MAPPING-NEXT:    %1 = neura.reserve {dfg_id = 1 : i32} : !neura.data<i64, i1>
+// MAPPING-NEXT:    %2 = "neura.data_mov"(%0) {dfg_id = 3 : i32, mapping_locs = [{id = 35 : i32, index_per_ii = 0 : i32, invalid_iterations = 0 : i32, resource = "link", time_step = 0 : i32}]} : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
 
 // YAML:      array_config:
 // YAML-NEXT:     columns: 4
