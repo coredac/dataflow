@@ -59,7 +59,7 @@ def Neura_KernelOp : Op<NeuraDialect, "kernel", [RecursiveMemoryEffects, SingleB
 }
 
 // Yield operation for fused_op and kernel regions.
-def Neura_YieldOp : Op<NeuraDialect, "yield", [Terminator, Pure, ReturnLike, HasParent<"FusedOp, KernelOp">]> {
+def Neura_YieldOp : Op<NeuraDialect, "yield", [Terminator, Pure, ReturnLike]> {
   let summary = "Yield values from a neura.kernel or neura.fused_op region.";
   let description = [{
     Returns values from a neura.kernel or neura.fused_op region to the parent operation.
@@ -79,6 +79,8 @@ def Neura_YieldOp : Op<NeuraDialect, "yield", [Terminator, Pure, ReturnLike, Has
   ];
 
   let assemblyFormat = [{($values^ `:` type($values))? attr-dict}];
+
+  let hasVerifier = 1;
 }
 
 
@@ -375,9 +377,9 @@ def Neura_ReturnOp : Op<NeuraDialect, "return", [Terminator]> {
   // let assemblyFormat = "($values^)? `,` attr-dict";
 }
 
-// Defines a return operation for void functions.
-def Neura_ReturnVoidOp : Op<NeuraDialect, "return_void", [Terminator]>{
-  let summary = "Return operation for void functions with execution trigger.";
+// Defines a return operation for void functions in dataflow mode.
+def Neura_ReturnVoidOp : Op<NeuraDialect, "return_void", []>{
+  let summary = "Return operation for void functions in dataflow mode.";
   let description = [{
     Terminates a void function. The trigger operand provides the execution
     condition in dataflow mode - the return executes when the trigger becomes valid.
@@ -386,12 +388,30 @@ def Neura_ReturnVoidOp : Op<NeuraDialect, "return_void", [Terminator]>{
     always executes. After canonicalization, void returns should have triggers.
 
     Example:
-      neura.return_void %trigger : i1       // Triggered return in ctrl mode
       neura.return_void %cond : !neura.data<i1, i1>  // In dataflow mode
+
+    This is NOT a terminator - the block ends with neura.yield instead.
   }];
   let arguments = (ins Optional<AnyType>:$trigger);
   let assemblyFormat = "($trigger^ `:` type($trigger))? attr-dict";
 }
+
+// Defines a return operation for non-void fnctions in dataflow mode.
+def Neura_ReturnValueOp : Op<NeuraDialect, "return_value", []>{
+  let summary = "Return operation for non-void functions in dataflow mode.";
+  let description = [{
+    Represents a return point for non-void functions in dataflow mode.
+    The value operand provides the return value and the trigger operand.
+
+    This is NOT a terminator - the block ends with neura.yield instead.
+
+    Example:
+      neura.return_value %ret_val : !neura.data<i32, i1> // In dataflow mode
+  }];
+  let arguments = (ins Variadic<AnyType>:$values);
+  let assemblyFormat = "($values^ `:` type($values))? attr-dict";
+}
+
 
 // Defines a cast operation for type conversion.
 def Neura_CastOp : Op<NeuraDialect, "cast">{

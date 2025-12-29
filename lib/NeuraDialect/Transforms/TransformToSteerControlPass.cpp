@@ -723,7 +723,7 @@ struct TransformToSteerControlPass
       }
     });
 
-    // 从后向前删除，避免依赖问题
+    // Deletes the collected operations in reverse order.
     for (auto it = to_erase.rbegin(); it != to_erase.rend(); ++it) {
       (*it)->erase();
     }
