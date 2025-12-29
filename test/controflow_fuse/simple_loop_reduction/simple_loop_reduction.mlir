@@ -1,4 +1,3 @@
-// XFAIL: *
 // RUN: mlir-opt %s \
 // RUN: --lower-affine \
 // RUN: --convert-scf-to-cf \
@@ -174,4 +173,4 @@ module attributes {} {
 // FUSE-NEXT:   }
 
 
-// FUSE-MAPPING:        func.func @_Z10simpleloopv() -> i32 attributes {accelerator = "neura", dataflow_mode = "predicate", llvm.linkage = #llvm.linkage<external>, mapping_info = {compiled_ii = 4 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 3 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {
+// FUSE-MAPPING:      func.func @_Z10simpleloopv() -> i32 attributes {accelerator = "neura", dataflow_mode = "predicate", llvm.linkage = #llvm.linkage<external>, mapping_info = {compiled_ii = 3 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 3 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}
