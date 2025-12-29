@@ -4,6 +4,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Dominance.h"
 #include "mlir/Pass/Pass.h"
@@ -17,6 +18,11 @@ using namespace mlir;
 #include "NeuraDialect/NeuraPasses.h.inc"
 
 namespace {
+// Return type attribute values.
+constexpr const char *kReturnTypeAttr = "return_type";
+constexpr const char *kReturnTypeVoid = "void";
+constexpr const char *kReturnTypeValue = "value";
+
 // Checks if a function is a void function (i.e., has no return values).
 static bool isVoidFunction(func::FuncOp func_op) {
   if (func_op.getNumResults() == 0) {
@@ -47,8 +53,25 @@ static void convertEmptyReturnToReturnVoid(Region &region, OpBuilder &builder) {
   }
 }
 
+// Marks empty returns with "is_void" attribute and adds trigger values.
+static void processVoidReturns(Region &region, OpBuilder &builder) {
+  SmallVector<neura::ReturnOp> empty_returns;
+
+  region.walk([&](neura::ReturnOp ret_op) {
+    if (ret_op.getNumOperands() == 0) {
+      empty_returns.push_back(ret_op);
+    } else {
+      ret_op->setAttr(kReturnTypeAttr, builder.getStringAttr(kReturnTypeValue));
+    }
+  });
+
+  for (neura::ReturnOp ret_op : empty_returns) {
+    ret_op->setAttr(kReturnTypeAttr, builder.getStringAttr(kReturnTypeVoid));
+  }
+}
+
 static void processEmptyReturnVoidBlock(Block *ret_block,
-                                        neura::ReturnVoidOp ret_void_op,
+                                        neura::ReturnOp void_ret_op,
                                         OpBuilder &builder) {
   SmallVector<Block *> predecessor_blocks(ret_block->getPredecessors());
   // Entry bolock with return_void is unreachable; no action needed.
@@ -97,13 +120,14 @@ static void processEmptyReturnVoidBlock(Block *ret_block,
     }
 
     builder.setInsertionPoint(br);
-    builder.create<neura::ReturnVoidOp>(br.getLoc(), trigger_value);
+    auto new_ret = builder.create<neura::ReturnOp>(br.getLoc(), trigger_value);
+    new_ret->setAttr(kReturnTypeAttr, builder.getStringAttr(kReturnTypeVoid));
     br.erase();
   }
 
   // If there are no cond_br predecessors, removes the return_void block.
   if (cond_br_preds.empty()) {
-    ret_void_op.erase();
+    void_ret_op.erase();
     ret_block->erase();
     return;
   }
@@ -111,7 +135,7 @@ static void processEmptyReturnVoidBlock(Block *ret_block,
   // Handles cond_preds: adds a block argument for the trigger value, and
   // updates each predecessor's terminator to pass the trigger value.
   BlockArgument trigger_arg =
-      ret_block->addArgument(builder.getI1Type(), ret_void_op.getLoc());
+      ret_block->addArgument(builder.getI1Type(), void_ret_op.getLoc());
 
   // Updates each cond_pred block's terminator to pass the trigger value.
   for (Block *pred_block : cond_br_preds) {
@@ -132,8 +156,7 @@ static void processEmptyReturnVoidBlock(Block *ret_block,
           builder.create<neura::NotOp>(cond_br.getLoc(), cond.getType(), cond);
       trigger_value = negated_cond;
     } else {
-      assert(false &&
-             "Unsupported case: Both branches lead to neura.return_void.");
+      assert(false && "Unsupported case: Both branches lead to neura.return.");
     }
 
     if (trigger_value) {
@@ -155,9 +178,11 @@ static void processEmptyReturnVoidBlock(Block *ret_block,
     }
   }
   // Updates the return_void operation to use the block argument as trigger.
-  builder.setInsertionPoint(ret_void_op);
-  builder.create<neura::ReturnVoidOp>(ret_void_op.getLoc(), trigger_arg);
-  ret_void_op.erase();
+  builder.setInsertionPoint(void_ret_op);
+  auto new_ret =
+      builder.create<neura::ReturnOp>(void_ret_op.getLoc(), trigger_arg);
+  new_ret->setAttr(kReturnTypeAttr, builder.getStringAttr(kReturnTypeVoid));
+  void_ret_op.erase();
 }
 
 struct CanonicalizeReturnPass
@@ -193,19 +218,22 @@ struct CanonicalizeReturnPass
 
     OpBuilder builder(func_op.getContext());
 
-    // Step 1: Converts empty neura.return to neura.return_void.
-    convertEmptyReturnToReturnVoid(region, builder);
+    // Step 1: Marks empty returns with "is_void" attribute.
+    processVoidReturns(region, builder);
 
-    // Step 2: Collects all return_void operations without triggers.
-    SmallVector<neura::ReturnVoidOp> ret_void_ops;
-    region.walk([&](neura::ReturnVoidOp ret_void_op) {
-      if (!ret_void_op.getTrigger()) {
-        ret_void_ops.push_back(ret_void_op);
+    // Step 2: Collects all return operations with "is_void" attribute.
+    SmallVector<neura::ReturnOp> ret_void_ops;
+    region.walk([&](neura::ReturnOp ret_op) {
+      if (ret_op->hasAttr(kReturnTypeAttr)) {
+        if (dyn_cast<StringAttr>(ret_op->getAttr(kReturnTypeAttr)).getValue() ==
+            kReturnTypeVoid) {
+          ret_void_ops.push_back(ret_op);
+        }
       }
     });
 
     // Step 3: Processes each return_void block.
-    for (neura::ReturnVoidOp ret_void_op : ret_void_ops) {
+    for (neura::ReturnOp ret_void_op : ret_void_ops) {
       Block *ret_block = ret_void_op->getBlock();
 
       // Checks if ret_block only contains the return_void operation.
