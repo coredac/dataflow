@@ -1,0 +1,286 @@
+nodes:
+  - id: 0
+    opcode: "CONSTANT"
+    tile_x: 3
+    tile_y: 0
+    time_step: 1
+  - id: 1
+    opcode: "CONSTANT"
+    tile_x: 0
+    tile_y: 0
+    time_step: 0
+  - id: 2
+    opcode: "CONSTANT"
+    tile_x: 1
+    tile_y: 1
+    time_step: 0
+  - id: 3
+    opcode: "CONSTANT"
+    tile_x: 0
+    tile_y: 1
+    time_step: 2
+  - id: 4
+    opcode: "CONSTANT"
+    tile_x: 0
+    tile_y: 3
+    time_step: 2
+  - id: 15
+    opcode: "GRANT_ONCE"
+    tile_x: 3
+    tile_y: 0
+    time_step: 2
+  - id: 16
+    opcode: "GRANT_ONCE"
+    tile_x: 0
+    tile_y: 0
+    time_step: 1
+  - id: 17
+    opcode: "GRANT_ONCE"
+    tile_x: 1
+    tile_y: 1
+    time_step: 1
+  - id: 18
+    opcode: "GRANT_ONCE"
+    tile_x: 0
+    tile_y: 1
+    time_step: 3
+  - id: 19
+    opcode: "GRANT_ONCE"
+    tile_x: 0
+    tile_y: 3
+    time_step: 3
+  - id: 25
+    opcode: "PHI_START"
+    tile_x: 2
+    tile_y: 0
+    time_step: 3
+  - id: 26
+    opcode: "PHI_START"
+    tile_x: 1
+    tile_y: 0
+    time_step: 2
+  - id: 27
+    opcode: "PHI_START"
+    tile_x: 1
+    tile_y: 1
+    time_step: 2
+  - id: 28
+    opcode: "PHI_START"
+    tile_x: 0
+    tile_y: 1
+    time_step: 4
+  - id: 29
+    opcode: "PHI_START"
+    tile_x: 0
+    tile_y: 2
+    time_step: 4
+  - id: 33
+    opcode: "DATA_MOV"
+    tile_x: 2
+    tile_y: 1
+    time_step: 4
+  - id: 35
+    opcode: "DATA_MOV"
+    tile_x: 0
+    tile_y: 0
+    time_step: 6
+  - id: 38
+    opcode: "ADD"
+    tile_x: 1
+    tile_y: 1
+    time_step: 3
+  - id: 39
+    opcode: "FADD"
+    tile_x: 0
+    tile_y: 1
+    time_step: 5
+  - id: 42
+    opcode: "DATA_MOV"
+    tile_x: 1
+    tile_y: 2
+    time_step: 7
+  - id: 44
+    opcode: "ICMP_SLT"
+    tile_x: 2
+    tile_y: 1
+    time_step: 4
+  - id: 49
+    opcode: "DATA_MOV"
+    tile_x: 1
+    tile_y: 2
+    time_step: 6
+  - id: 51
+    opcode: "NOT"
+    tile_x: 3
+    tile_y: 1
+    time_step: 5
+  - id: 52
+    opcode: "GRANT_PREDICATE"
+    tile_x: 2
+    tile_y: 1
+    time_step: 6
+  - id: 53
+    opcode: "GRANT_PREDICATE"
+    tile_x: 2
+    tile_y: 1
+    time_step: 5
+  - id: 54
+    opcode: "GRANT_PREDICATE"
+    tile_x: 0
+    tile_y: 0
+    time_step: 7
+  - id: 55
+    opcode: "GRANT_PREDICATE"
+    tile_x: 1
+    tile_y: 2
+    time_step: 7
+  - id: 56
+    opcode: "GRANT_PREDICATE"
+    tile_x: 2
+    tile_y: 0
+    time_step: 5
+  - id: 63
+    opcode: "GRANT_PREDICATE"
+    tile_x: 1
+    tile_y: 2
+    time_step: 8
+  - id: 65
+    opcode: "RETURN"
+    tile_x: 1
+    tile_y: 2
+    time_step: 9
+  - id: 400001
+    opcode: "DATA_MOV"
+    tile_x: 1
+    tile_y: 0
+    time_step: 4
+  - id: 420001
+    opcode: "DATA_MOV"
+    tile_x: 1
+    tile_y: 1
+    time_step: 6
+  - id: 430001
+    opcode: "DATA_MOV"
+    tile_x: 0
+    tile_y: 2
+    time_step: 6
+  - id: 480001
+    opcode: "DATA_MOV"
+    tile_x: 1
+    tile_y: 1
+    time_step: 5
+  - id: 480002
+    opcode: "DATA_MOV"
+    tile_x: 0
+    tile_y: 1
+    time_step: 6
+  - id: 490001
+    opcode: "DATA_MOV"
+    tile_x: 2
+    tile_y: 2
+    time_step: 5
+  - id: 570001
+    opcode: "DATA_MOV"
+    tile_x: 2
+    tile_y: 1
+    time_step: 6
+  - id: 570002
+    opcode: "DATA_MOV"
+    tile_x: 1
+    tile_y: 1
+    time_step: 7
+edges:
+  - from: 28
+    to: 35
+  - from: 35
+    to: 54
+  - from: 27
+    to: 33
+  - from: 33
+    to: 53
+  - from: 38
+    to: 400001
+  - from: 39
+    to: 430001
+  - from: 44
+    to: 490001
+  - from: 490001
+    to: 49
+  - from: 49
+    to: 55
+  - from: 44
+    to: 480001
+  - from: 480001
+    to: 480002
+  - from: 39
+    to: 420001
+  - from: 420001
+    to: 42
+  - from: 42
+    to: 63
+  - from: 51
+    to: 570001
+  - from: 570001
+    to: 570002
+  - from: 63
+    to: 65
+  - from: 56
+    to: 26
+  - from: 26
+    to: 38
+  - from: 55
+    to: 29
+  - from: 25
+    to: 44
+  - from: 54
+    to: 28
+  - from: 25
+    to: 52
+  - from: 53
+    to: 27
+  - from: 17
+    to: 27
+  - from: 16
+    to: 26
+  - from: 44
+    to: 56
+  - from: 15
+    to: 25
+  - from: 4
+    to: 19
+  - from: 430001
+    to: 55
+  - from: 3
+    to: 18
+  - from: 2
+    to: 17
+  - from: 38
+    to: 44
+  - from: 19
+    to: 29
+  - from: 1
+    to: 16
+  - from: 400001
+    to: 56
+  - from: 18
+    to: 28
+  - from: 0
+    to: 15
+  - from: 27
+    to: 38
+  - from: 28
+    to: 39
+  - from: 29
+    to: 39
+  - from: 44
+    to: 51
+  - from: 44
+    to: 52
+  - from: 44
+    to: 53
+  - from: 480002
+    to: 54
+  - from: 570002
+    to: 63
+  - from: 52
+    to: 25
