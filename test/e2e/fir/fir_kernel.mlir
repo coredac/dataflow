@@ -169,6 +169,9 @@
 // ASM-NEXT:   NOT, [EAST, RED] -> [$1], [WEST, RED] (t=4, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=4)
 
+// RUN: mlir-neura-opt %t-kernel.mlir --view-op-graph 2>&1 | sed -n '/^digraph G {/,/^}$/p' > fir_kernel_original.dot
+// RUN: dot -Tpng fir_kernel_original.dot -o fir_kernel_original.png
+// RUN: dot -Tjson fir_kernel_original.dot -o fir_kernel_original.json
 // RUN: mlir-neura-opt %t-kernel.mlir \
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
