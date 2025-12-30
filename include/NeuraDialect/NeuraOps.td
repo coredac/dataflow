@@ -389,6 +389,8 @@ def Neura_ReturnVoidOp : Op<NeuraDialect, "return_void", []>{
 
     Example:
       neura.return_void %cond : !neura.data<i1, i1>  // In dataflow mode
+      ...
+      neura.yield                       // Function ends here.
 
     This is NOT a terminator - the block ends with neura.yield instead.
   }];
@@ -407,6 +409,8 @@ def Neura_ReturnValueOp : Op<NeuraDialect, "return_value", []>{
 
     Example:
       neura.return_value %ret_val : !neura.data<i32, i1> // In dataflow mode
+      ...
+      neura.yield                       // Function ends here.
   }];
   let arguments = (ins Variadic<AnyType>:$values);
   let assemblyFormat = "($values^ `:` type($values))? attr-dict";
