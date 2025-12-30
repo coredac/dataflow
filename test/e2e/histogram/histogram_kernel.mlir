@@ -147,6 +147,9 @@
 // ASM-NEXT:   MUL, [WEST, RED], [#5] -> [NORTH, RED] (t=4, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=4)
 
+// RUN: mlir-neura-opt %t-kernel.mlir --view-op-graph 2>&1 | sed -n '/^digraph G {/,/^}$/p' > histogram_kernel_original.dot
+// RUN: dot -Tpng histogram_kernel_original.dot -o histogram_kernel_original.png
+// RUN: dot -Tjson histogram_kernel_original.dot -o histogram_kernel_original.json
 // RUN: mlir-neura-opt %t-kernel.mlir \
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \

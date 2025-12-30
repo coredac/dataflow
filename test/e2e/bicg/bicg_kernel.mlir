@@ -291,7 +291,9 @@
 // ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$1] (t=10, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=10)
 
-
+// RUN: mlir-neura-opt %t-kernel.mlir --view-op-graph 2>&1 | sed -n '/^digraph G {/,/^}$/p' > bicg_kernel_original.dot
+// RUN: dot -Tpng bicg_kernel_original.dot -o bicg_kernel_original.png
+// RUN: dot -Tjson bicg_kernel_original.dot -o bicg_kernel_original.json
 // RUN: mlir-neura-opt %t-kernel.mlir \
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
