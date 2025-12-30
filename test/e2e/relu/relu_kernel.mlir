@@ -11,6 +11,9 @@
 // Import the LLVM IR into MLIR (LLVM dialect).
 // RUN: mlir-translate --import-llvm %t-kernel-only.ll -o %t-kernel.mlir
 //
+// RUN: mlir-neura-opt %t-kernel.mlir --view-op-graph 2>&1 | sed -n '/^digraph G {/,/^}$/p' > relu_kernel_original.dot
+// RUN: dot -Tpng relu_kernel_original.dot -o relu_kernel_original.png
+// RUN: dot -Tjson relu_kernel_original.dot -o relu_kernel_original.json
 // RUN: mlir-neura-opt %t-kernel.mlir \
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
