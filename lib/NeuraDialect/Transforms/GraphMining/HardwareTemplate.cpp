@@ -123,12 +123,14 @@ void HardwareTemplate::dfsWithScoring(const std::vector<std::string>& patOps, si
   
   std::vector<std::pair<int, size_t>> candidates;
   for (size_t s = 0; s < slots.size(); ++s) {
+    if (!slotCanHandle(s, op)) continue;  // Skip slots that cannot handle this op
+    
     // Non-empty slots with compatible ops: highest priority (reuses hardware, no cost increase)
-    if (slotCanHandle(s, op) && !slots[s].ops.empty()) {
+    if (!slots[s].ops.empty()) {
       candidates.push_back({100, s});
     }
     // Empty slots: lower priority (needs new hardware)
-    else if (slots[s].ops.empty()) {
+    else {
       candidates.push_back({50, s});
     }
   }
@@ -156,12 +158,21 @@ std::vector<int> HardwareTemplate::dfs(const std::vector<std::string>& patOps,
 }
   
 // Checks if a slot can handle an operation.
+// A slot can only contain ops from the same compatible group.
+// Empty slots can accept any op; non-empty slots can only accept ops compatible with all existing ops.
 bool HardwareTemplate::slotCanHandle(size_t s, const std::string& op) const {
+  // If slot already contains this exact op, it can handle it.
   if (slots[s].ops.count(op)) return true;
+  
+  // If slot is empty, it can accept any op.
+  if (slots[s].ops.empty()) return true;
+  
+  // If slot has existing ops, the new op must be compatible with ALL existing ops.
+  // This ensures the slot only contains ops from the same compatible group.
   for (const auto& existing : slots[s].ops) {
-    if (compatible(existing, op)) return true;
+    if (!compatible(existing, op)) return false;
   }
-  return slots[s].ops.empty();
+  return true;
 }
   
 bool HardwareTemplate::compatible(const std::string& a, const std::string& b) {
@@ -263,6 +274,19 @@ void HardwareTemplate::applyMapping(const HardwarePattern& pat, const std::vecto
   patterns.push_back(pat.id);
   mapping[pat.id] = m;
   for (size_t i = 0; i < m.size(); ++i) {
+    // Verifies the op can be handled by the slot (satisfies compatible group constraint).
+    // If not, this indicates the slot state changed since tryAccommodate was called.
+    // In this case, we skip adding the op (it may already be in the slot from a previous pattern).
+    if (!slotCanHandle(m[i], pat.ops[i])) {
+      // The op may already be in the slot, or the slot state changed.
+      // If it's already there, we're fine; otherwise, this is a logic error.
+      if (!slots[m[i]].ops.count(pat.ops[i])) {
+        llvm::errs() << "Warning: Cannot apply op " << pat.ops[i] 
+                     << " to slot " << m[i] << " (incompatible with existing ops)\n";
+        // Continue anyway - the mapping may still be valid for other ops
+      }
+      continue;
+    }
     slots[m[i]].ops.insert(pat.ops[i]);
   }
 }
@@ -518,6 +542,33 @@ void createHardwareTemplates(const std::vector<HardwarePattern>& patterns, std::
   llvm::errs() << "\n[HardwareMerge] " << templates.size() << " templates\n";
 }
 
+// Generates slot connections for all templates based on pattern mappings.
+// For each pattern, creates connections between consecutive slots in its mapping.
+// Handles bypass cases where slots are skipped (e.g., mapping [0, 2] creates connection 0->2).
+void generateConnections(const std::vector<HardwarePattern>& patterns, std::vector<HardwareTemplate>& templates) {
+  for (auto& tmpl : templates) {
+    tmpl.connections.clear();
+    
+    // For each pattern mapped to this template, generate connections based on its slot mapping.
+    for (const auto& [pid, slotMapping] : tmpl.mapping) {
+      if (slotMapping.size() < 2) continue;  // Need at least 2 slots to form a connection
+      
+      // Creates connections between consecutive slots in the pattern's execution order.
+      // For example, if mapping is [0, 1, 2], creates connections 0->1 and 1->2.
+      // If mapping is [0, 2] (bypassing slot 1), creates connection 0->2.
+      for (size_t i = 0; i < slotMapping.size() - 1; ++i) {
+        int from = slotMapping[i];
+        int to = slotMapping[i + 1];
+        
+        // Only adds connection if from < to (satisfies canRoute constraint).
+        if (from >= 0 && to >= 0 && from < to) {
+          tmpl.connections.insert({from, to});
+        }
+      }
+    }
+  }
+}
+
 void IncreaseHardwareComponent(std::map<std::string, int>* hardware_components) {
   for (const auto& [op, count] : *hardware_components) {
     (*hardware_components)[op]++;
@@ -595,6 +646,15 @@ void writeHardwareConfigJson(const std::string& path, const std::vector<Hardware
       os << "], \"cost\": " << costModel.slotCost(slot.ops) << "}";
     }
     os << "\n        ],\n";
+    
+    os << "        \"connections\": [";
+    bool firstConn = true;
+    for (const auto& conn : tmpl.connections) {
+      if (!firstConn) os << ", ";
+      firstConn = false;
+      os << "[" << conn.first << ", " << conn.second << "]";
+    }
+    os << "],\n";
     
     os << "        \"pattern_configs\": [\n";
     bool first = true;
