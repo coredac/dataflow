@@ -75,6 +75,18 @@ def FuseLoopControl: Pass<"fuse-loop-control", "ModuleOp">{
   let constructor = "neura::createFuseLoopControlPass()";
 }
 
+def CanonicalizeReturn : Pass<"canonicalize-return", "ModuleOp">{
+  let summary = "Adds execution conditions to void return operations";
+  let description = [{
+    This pass processes void functions and adds trigger conditions to their
+    return operations. For void functions, the return operation needs an
+    execution condition to properly trigger in dataflow mode.
+    
+    This pass should run before CanonicalizeLiveIn and TransformCtrlToDataFlow.
+  }];
+  let constructor = "neura::createCanonicalizeReturnPass()";
+}
+
 def CanonicalizeLiveIn : Pass<"canonicalize-live-in", "ModuleOp"> {
   let summary = "Canonicalizes live-in values/operations in each basic block.";
   let description = [{

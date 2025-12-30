@@ -263,24 +263,37 @@ void buildControlFlowInfo(Region &region, ControlFlowInfo &ctrl_info,
     } else if (auto rt = dyn_cast<neura::ReturnOp>(terminator)) {
       llvm::errs() << "[ctrl2data] ReturnOp found: " << *rt << "\n";
     } else {
-      llvm::errs() << "[ctrl2data] Unknown terminator: " << *terminator << "\n";
-      assert(false);
+      assert(false && "Unknown terminator operation in control flow graph.");
     }
   }
 }
 
-Value getPrecessedCondition(Value condition, bool is_not_condition,
+Value getProcessedCondition(Value condition, bool is_not_condition,
                             llvm::MapVector<Value, Value> &condition_cache,
                             OpBuilder &builder) {
   if (!is_not_condition) {
     return condition;
   }
 
+  // First, checks if we already have a cached negated condition.
   auto it = condition_cache.find(condition);
   if (it != condition_cache.end()) {
     return it->second;
   }
 
+  // Second, searches for an existing not operation that uses this condition.
+  // This handles the not operations created by CanonicalizeReturnPass.
+  for (OpOperand &use : condition.getUses()) {
+    if (neura::NotOp not_op = dyn_cast<neura::NotOp>(use.getOwner())) {
+      if (not_op.getOperand() == condition) {
+        Value not_result = not_op.getResult();
+        condition_cache[condition] = not_result;
+        return not_result;
+      }
+    }
+  }
+
+  // Third, creates a new not operation to negate the condition.
   Block *source = condition.getDefiningOp()->getBlock();
   builder.setInsertionPoint(source->getTerminator());
   Value not_condition = builder.create<neura::NotOp>(
@@ -382,7 +395,7 @@ void createReserveAndPhiOps(
 
       Value predicated_val = val;
       if (edge->condition) {
-        Value processed_condition = getPrecessedCondition(
+        Value processed_condition = getProcessedCondition(
             edge->condition, edge->is_not_condition, condition_cache, builder);
         predicated_val = builder.create<neura::GrantPredicateOp>(
             edge->condition.getLoc(), val.getType(), predicated_val,
@@ -410,7 +423,7 @@ void createReserveAndPhiOps(
       Value predicated_val = val;
       if (edge->condition) {
         builder.setInsertionPoint(edge->source->getTerminator());
-        Value processed_condition = getPrecessedCondition(
+        Value processed_condition = getProcessedCondition(
             edge->condition, edge->is_not_condition, condition_cache, builder);
 
         predicated_val = builder.create<neura::GrantPredicateOp>(
@@ -557,29 +570,45 @@ void transformControlFlowToDataFlow(Region &region, ControlFlowInfo &ctrl_info,
     block->erase();
   }
 
-  // Handles return operations in the entry block.
+  // Converts neura.return to return_void or return_value.
   SmallVector<neura::ReturnOp> return_ops;
-  for (Operation &op : *entry_block) {
-    if (neura::ReturnOp return_op = dyn_cast<neura::ReturnOp>(op)) {
+  for (Operation &op : llvm::make_early_inc_range(*entry_block)) {
+    if (auto return_op = dyn_cast<neura::ReturnOp>(op)) {
       return_ops.push_back(return_op);
     }
   }
 
-  if (return_ops.size() > 1) {
-    llvm::errs() << "[ctrl2data] Error: Multiple ReturnOps found in the entry "
-                    "block after flattening.\n";
-    assert(false &&
-           "Multiple ReturnOps found in the entry block after flattening.");
-  } else if (return_ops.size() == 1) {
-    neura::ReturnOp last_return = return_ops.back();
-    last_return->moveAfter(&entry_block->back());
-  } else {
-    llvm::errs() << "[ctrl2data] Error: No ReturnOp found in the entry "
-                    "block after flattening.\n";
-    assert(false && "No ReturnOp found in the entry block after flattening.");
+  llvm::errs() << "[ctrl2data] Converting neura.return operations to "
+                  "return_void/value...\n";
+
+  for (neura::ReturnOp return_op : return_ops) {
+    builder.setInsertionPoint(return_op);
+
+    if (return_op->hasAttr("return_type") &&
+        dyn_cast<StringAttr>(return_op->getAttr("return_type")).getValue() ==
+            "void") {
+      llvm::errs() << "[ctrl2data] Converting to neura.return_void.\n";
+      Value trigger = return_op->getOperand(0);
+      builder.create<neura::ReturnVoidOp>(return_op.getLoc(), trigger);
+    } else if (return_op->hasAttr("return_type") &&
+               dyn_cast<StringAttr>(return_op->getAttr("return_type"))
+                       .getValue() == "value") {
+      builder.create<neura::ReturnValueOp>(return_op.getLoc(),
+                                           return_op.getValues());
+    } else {
+      assert(false && "Unknown return type attribute in neura.return.");
+    }
+    return_op.erase();
   }
 
-  // Sets the "dataflow_mode" attribute to "predicate" for the parent function.
+  llvm::errs()
+      << "[ctrl2data] All neura.return operations converted successfully.\n";
+  // Adds neura.yield at the end of the entry block as terminator.
+  builder.setInsertionPointToEnd(entry_block);
+  builder.create<neura::YieldOp>(builder.getUnknownLoc());
+
+  // Sets the "dataflow_mode" attribute to "predicate" for the parent
+  // function.
   if (auto func = dyn_cast<func::FuncOp>(region.getParentOp())) {
     if (!func->hasAttr("dataflow_mode")) {
       func->setAttr("dataflow_mode",

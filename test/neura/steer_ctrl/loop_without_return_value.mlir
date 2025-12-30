@@ -7,6 +7,7 @@
 // RUN: --lower-llvm-to-neura \
 // RUN: --canonicalize-cast \
 // RUN: --promote-func-arg-to-const \
+// RUN: --canonicalize-return \
 // RUN: --canonicalize-live-in \
 // RUN: --leverage-predicated-value \
 // RUN: --transform-ctrl-to-data-flow \
@@ -47,10 +48,13 @@ module attributes {} {
 // CHECK-NEXT:   %15 = neura.carry %8, %1, %0 : i64, i1, i64 -> i64
 // CHECK-NEXT:   %16 = "neura.icmp"(%15, %14) <{cmpType = "slt"}> : (i64, i64) -> i1
 // CHECK-NEXT:   neura.ctrl_mov %16 -> %1 : i1 i1
-// CHECK-NEXT:   %17 = neura.load_indexed %13[%15 : i64] memref<?xi32> : i32
-// CHECK-NEXT:   %18 = "neura.mul"(%17, %12) : (i32, i32) -> i32
-// CHECK-NEXT:   %19 = "neura.add"(%18, %11) : (i32, i32) -> i32
-// CHECK-NEXT:   neura.store_indexed %19 to %10[%15 : i64] memref<?xi32> : i32
-// CHECK-NEXT:   %20 = "neura.add"(%15, %9) : (i64, i64) -> i64
-// CHECK-NEXT:   neura.ctrl_mov %20 -> %0 : i64 i64
-// CHECK-NEXT:   "neura.return"() : () -> ()
+// CHECK-NEXT:   %17 = "neura.not"(%16) : (i1) -> i1
+// CHECK-NEXT:   %18 = neura.false_steer %17, %16 : i1, i1 -> i1
+// CHECK-NEXT:   neura.return_void %18 : i1
+// CHECK-NEXT:   %19 = neura.load_indexed %13[%15 : i64] memref<?xi32> : i32
+// CHECK-NEXT:   %20 = "neura.mul"(%19, %12) : (i32, i32) -> i32
+// CHECK-NEXT:   %21 = "neura.add"(%20, %11) : (i32, i32) -> i32
+// CHECK-NEXT:   neura.store_indexed %21 to %10[%15 : i64] memref<?xi32> : i32
+// CHECK-NEXT:   %22 = "neura.add"(%15, %9) : (i64, i64) -> i64
+// CHECK-NEXT:   neura.ctrl_mov %22 -> %0 : i64 i64
+// CHECK-NEXT:   neura.yield

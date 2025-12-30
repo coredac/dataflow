@@ -126,7 +126,8 @@ OperationKind getOperationKindFromMlirOp(Operation *op) {
 // Returns true if the operation does not need CGRA tile placement.
 bool is_non_materialized(Operation *op) {
   // Returns true if the operation does not need CGRA tile placement.
-  return mlir::isa<neura::ReserveOp, neura::CtrlMovOp, neura::DataMovOp>(op);
+  return mlir::isa<neura::ReserveOp, neura::CtrlMovOp, neura::DataMovOp,
+                   neura::YieldOp>(op);
 }
 
 } // namespace neura
