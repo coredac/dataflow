@@ -85,6 +85,9 @@ static void processEmptyReturnVoidBlock(Block *ret_block,
     neura::Br br = cast<neura::Br>(pred_block->getTerminator());
 
     // Finds a suitable trigger value in the predecessor block.
+    // In dataflow semantics, even void returns need a value to trigger them.
+    // We use the result of the last operation in the predecessor block as the
+    // trigger signal.
     Value trigger_value = nullptr;
 
     // Iterates through operations in reverse order to find the last suitable
