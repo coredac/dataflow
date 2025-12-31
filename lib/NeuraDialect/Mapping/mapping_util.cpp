@@ -225,7 +225,7 @@ int mlir::neura::calculateResMii(Operation *func_op,
                                  const Architecture &architecture) {
   int num_ops = 0;
 
-  // Count all "compute" operations (non-terminators, non-block ops).
+  // Counts all "compute" operations (non-terminators, non-block ops).
   func_op->walk([&](Operation *op) {
     // Skips non-materialized ops.
     if (isa<func::FuncOp>(op) ||
@@ -397,14 +397,14 @@ std::vector<std::pair<Operation *, int>> mlir::neura::flatten_level_buckets(
   std::vector<std::pair<Operation *, int>> result;
 
   for (int level = 0; level < static_cast<int>(level_buckets.size()); ++level) {
-    // Collect ops with their current index to ensure stable sorting.
+    // Collects ops with their current index to ensure stable sorting.
     std::vector<std::pair<Operation *, int>> ops_with_index;
     for (int i = 0; i < (int)level_buckets[level].size(); ++i) {
       ops_with_index.push_back({level_buckets[level][i], i});
     }
 
-    // Sort by degree (num_operands + num_users) descending.
-    // Use the original index as a tie-breaker for stability.
+    // Sorts by degree (num_operands + num_users) descending.
+    // Uses the original index as a tie-breaker for stability.
     std::sort(ops_with_index.begin(), ops_with_index.end(),
               [](const std::pair<Operation *, int> &a_pair,
                  const std::pair<Operation *, int> &b_pair) {
@@ -442,7 +442,7 @@ mlir::Operation *mlir::neura::getMaterializedBackwardUser(Operation *op) {
          "Expected the user of ctrl_mov target to be a reserve operation");
   auto reserve_op = dyn_cast<neura::ReserveOp>(target.getDefiningOp());
 
-  // Skip ctrl_mov users of reserve; return the first materialized user.
+  // Skips ctrl_mov users of reserve; returns the first materialized user.
   for (Operation *user : reserve_op.getResult().getUsers()) {
     if (isMaterializedReserveUser(user)) {
       return user;
@@ -710,7 +710,7 @@ Operation *mlir::neura::getMaterializedProducer(Value operand) {
   Operation *producer = operand.getDefiningOp();
 
   // ReserveOp is not wrapped by DataMovOp (see InsertDataMovPass).
-  // Return it directly as it represents the loop-carried dependency
+  // Returns it directly as it represents the loop-carried dependency
   // placeholder.
   if (isa<neura::ReserveOp>(producer)) {
     return producer;
@@ -733,7 +733,7 @@ int mlir::neura::getPhysicalHops(const std::vector<Operation *> &producers,
   int hops = 0;
 
   for (Operation *producer : producers) {
-    // Get the last location of the producer.
+    // Gets the last location of the producer.
     auto producer_locs = mapping_state.getAllLocsOfOp(producer);
     assert(!producer_locs.empty() && "No locations found for producer");
 
@@ -752,7 +752,7 @@ bool mlir::neura::canReachLocInTime(const std::vector<Operation *> &producers,
                                     const MappingState &mapping_state) {
 
   for (Operation *producer : producers) {
-    // Get the last location of the producer.
+    // Gets the last location of the producer.
     auto producer_locs = mapping_state.getAllLocsOfOp(producer);
     assert(!producer_locs.empty() && "No locations found for producer");
 
@@ -1009,12 +1009,14 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
           int occupied_out = 0;
 
           for (auto *link : tile->getInLinks()) {
-            if (!mapping_state.isAvailableAcrossTime({link, t}))
+            if (!mapping_state.isAvailableAcrossTime({link, t})) {
               occupied_in++;
+            }
           }
           for (auto *link : tile->getOutLinks()) {
-            if (!mapping_state.isAvailableAcrossTime({link, t}))
+            if (!mapping_state.isAvailableAcrossTime({link, t})) {
               occupied_out++;
+            }
           }
 
           float in_ratio = (total_in > 0) ? (float)occupied_in / total_in : 0;
@@ -1040,7 +1042,7 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
   std::vector<std::pair<MappingLoc, int>> locs_award_vec(
       locs_with_award.begin(), locs_with_award.end());
 
-  // Sorts by award (descending). Use stable sort/tie-breaker logic
+  // Sorts by award (descending). Uses stable sort/tie-breaker logic
   // to minimize noise in mapping results.
   std::sort(
       locs_award_vec.begin(), locs_award_vec.end(),
