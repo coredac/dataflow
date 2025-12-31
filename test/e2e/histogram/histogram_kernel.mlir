@@ -26,6 +26,8 @@
 
 // MAPPING: func.func @_Z6kernelPiS_
 // MAPPING-SAME: accelerator = "neura"
+// MAPPING-SAME: dataflow_mode = "predicate"
+// MAPPING-SAME: mapping_info = {compiled_ii = 5 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 5 : i32, res_mii = 2 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}
 
 // YAML:      array_config:
 // YAML-NEXT:     columns: 4
