@@ -181,4 +181,12 @@ def HardwareMerge : Pass<"hardware-merge", "ModuleOp"> {
   }];
   let constructor = "neura::createHardwareMergePass()";
 }
+
+def InitExecLatency : Pass<"init-exec-latency", "ModuleOp"> {
+  let summary = "Initialize execution latency information";
+  let description = [{
+    This pass initializes execution latency information.
+  }];
+  let constructor = "neura::createInitExecLatencyPass()";
+}
 #endif // NEURA_PASSES_TD
