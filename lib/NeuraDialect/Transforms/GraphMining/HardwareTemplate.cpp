@@ -314,6 +314,7 @@ double HardwareTemplate::computeCost(const OperationCostModel& cm) const {
 }
 
 // Extracts operations from fused op and linearizes them via topological sort.
+// Also stores the topological level and predecessor information for execution planning.
 void extractPatternOps(neura::FusedOp fop, HardwarePattern& pat) {
   Region& body = fop.getBody();
   if (body.empty()) return;
@@ -366,13 +367,31 @@ void extractPatternOps(neura::FusedOp fop, HardwarePattern& pat) {
     }
   }
   
+  // Sort by level to get topological order.
   std::vector<int> order;
   for (int i = 0; i < n; ++i) order.push_back(i);
   std::sort(order.begin(), order.end(), [&](int a, int b) {
     return level[a] < level[b];
   });
   
-  for (int i : order) pat.ops.push_back(opNames[i]);
+  // Build mapping from old index to new index after reordering.
+  std::vector<int> oldToNew(n);
+  for (int newIdx = 0; newIdx < n; ++newIdx) {
+    oldToNew[order[newIdx]] = newIdx;
+  }
+  
+  // Store ops, levels, and predecessors in the new order.
+  for (int i : order) {
+    pat.ops.push_back(opNames[i]);
+    pat.opLevels.push_back(level[i]);
+    
+    // Remap predecessor indices to new order.
+    std::vector<int> remappedPreds;
+    for (int p : preds[i]) {
+      remappedPreds.push_back(oldToNew[p]);
+    }
+    pat.opPreds.push_back(remappedPreds);
+  }
 }
 
 // Extracts all patterns from module.
@@ -386,6 +405,30 @@ void extractPatterns(ModuleOp module, std::vector<HardwarePattern>& patterns, Op
     extractPatternOps(fop, pat);
     pat.cost = costModel.patternCost(pat.ops);
     patterns.push_back(pat);
+  });
+}
+
+// Extracts all standalone operations from module (ops not inside FusedOp).
+// These are basic operations that are not fused into patterns.
+void extractAllStandaloneOps(ModuleOp module, std::set<std::string>& allOps) {
+  module.walk([&](Operation* op) {
+    // Skip FusedOp themselves - their contents are patterns
+    if (isa<neura::FusedOp>(op)) return;
+    
+    // Skip operations inside FusedOp
+    Operation* parent = op->getParentOp();
+    while (parent) {
+      if (isa<neura::FusedOp>(parent)) return;
+      parent = parent->getParentOp();
+    }
+    
+    std::string opName = op->getName().getStringRef().str();
+    // Only collect neura dialect ops
+    if (opName.find("neura.") == 0) {
+      // Skip structural/meta ops that aren't real FUs
+      if (opName == "neura.yield" || opName == "neura.fused_op") return;
+      allOps.insert(opName);
+    }
   });
 }
 
@@ -569,6 +612,217 @@ void generateConnections(const std::vector<HardwarePattern>& patterns, std::vect
   }
 }
 
+// Checks if slot 'from' can reach slot 'to' through existing connections (transitive reachability).
+static bool canReachViaBypass(const std::set<std::pair<int, int>>& connections, int from, int to, int numSlots) {
+  if (from >= to) return false;
+  
+  // BFS to check if there's a path from 'from' to 'to' using existing connections.
+  std::vector<bool> visited(numSlots, false);
+  std::vector<int> queue;
+  queue.push_back(from);
+  visited[from] = true;
+  
+  for (size_t h = 0; h < queue.size(); ++h) {
+    int cur = queue[h];
+    for (const auto& conn : connections) {
+      if (conn.first == cur && !visited[conn.second]) {
+        if (conn.second == to) return true;
+        visited[conn.second] = true;
+        queue.push_back(conn.second);
+      }
+    }
+  }
+  return false;
+}
+
+// Generates optimized slot connections for all templates based on pattern dependencies.
+// Connections are based on actual data dependencies in patterns, not just slot order.
+// Minimizes connections using transitive reachability (bypass support).
+void generateOptimizedConnections(const std::vector<HardwarePattern>& patterns, std::vector<HardwareTemplate>& templates) {
+  // Build pattern lookup map.
+  std::map<int64_t, const HardwarePattern*> patternMap;
+  for (const auto& p : patterns) {
+    patternMap[p.id] = &p;
+  }
+  
+  for (auto& tmpl : templates) {
+    // Collect all required connections from all patterns based on their dependency graphs.
+    std::set<std::pair<int, int>> requiredConnections;
+    
+    for (const auto& [pid, slotMapping] : tmpl.mapping) {
+      auto patIt = patternMap.find(pid);
+      if (patIt == patternMap.end()) continue;
+      const HardwarePattern* pat = patIt->second;
+      
+      if (slotMapping.size() < 2) continue;
+      
+      // If pattern has dependency info, use it.
+      if (!pat->opPreds.empty()) {
+        // Generate connections based on actual dependencies in the pattern.
+        for (size_t opIdx = 0; opIdx < pat->opPreds.size() && opIdx < slotMapping.size(); ++opIdx) {
+          int toSlot = slotMapping[opIdx];
+          
+          for (int predOpIdx : pat->opPreds[opIdx]) {
+            if (predOpIdx >= 0 && predOpIdx < (int)slotMapping.size()) {
+              int fromSlot = slotMapping[predOpIdx];
+              // Only add connection if from < to (valid routing).
+              if (fromSlot >= 0 && toSlot >= 0 && fromSlot < toSlot) {
+                requiredConnections.insert({fromSlot, toSlot});
+              }
+            }
+          }
+        }
+      } else {
+        // Fallback: assume linear dependencies (consecutive ops depend on previous).
+        for (size_t i = 0; i < slotMapping.size() - 1; ++i) {
+          int from = slotMapping[i];
+          int to = slotMapping[i + 1];
+          if (from >= 0 && to >= 0 && from < to) {
+            requiredConnections.insert({from, to});
+          }
+        }
+      }
+    }
+    
+    // Sort connections by distance (shorter first) to prioritize direct connections.
+    std::vector<std::pair<int, int>> sortedConnections(requiredConnections.begin(), requiredConnections.end());
+    std::sort(sortedConnections.begin(), sortedConnections.end(), 
+              [](const auto& a, const auto& b) {
+                return (a.second - a.first) < (b.second - b.first);
+              });
+    
+    // Build optimized connections - add a connection only if it's not already reachable.
+    tmpl.connections.clear();
+    int numSlots = tmpl.slots.size();
+    
+    for (const auto& conn : sortedConnections) {
+      // Check if we can already reach conn.second from conn.first via existing connections.
+      if (!canReachViaBypass(tmpl.connections, conn.first, conn.second, numSlots)) {
+        tmpl.connections.insert(conn);
+      }
+    }
+    
+    llvm::errs() << "  Template " << tmpl.id << ": " << requiredConnections.size() 
+                 << " required connections -> " << tmpl.connections.size() << " optimized\n";
+  }
+}
+
+// Generates execution plans for all patterns on their assigned templates.
+// Uses the pattern's topological levels to determine parallel execution stages.
+// Operations at the same topological level can execute in parallel.
+void generateExecutionPlans(const std::vector<HardwarePattern>& patterns, 
+                            const std::vector<HardwareTemplate>& templates,
+                            std::vector<PatternExecutionPlan>& plans) {
+  // Find the template for each pattern.
+  std::map<int64_t, const HardwareTemplate*> patternToTemplate;
+  
+  for (const auto& t : templates) {
+    for (int64_t pid : t.patterns) {
+      patternToTemplate[pid] = &t;
+    }
+  }
+  
+  for (const auto& pat : patterns) {
+    PatternExecutionPlan plan;
+    plan.patternId = pat.id;
+    plan.patternName = pat.name;
+    
+    auto it = patternToTemplate.find(pat.id);
+    if (it == patternToTemplate.end()) continue;
+    
+    const HardwareTemplate* tmpl = it->second;
+    auto mappingIt = tmpl->mapping.find(pat.id);
+    if (mappingIt == tmpl->mapping.end()) continue;
+    
+    const std::vector<int>& slotMapping = mappingIt->second;
+    
+    // Group operations by their topological level (not slot index).
+    // Operations at the same level can execute in parallel.
+    std::map<int, std::vector<std::pair<int, std::pair<int, std::string>>>> levelToOps;  // level -> [(opIdx, (slot, opName))]
+    
+    for (size_t i = 0; i < pat.ops.size() && i < slotMapping.size(); ++i) {
+      int level = (i < pat.opLevels.size()) ? pat.opLevels[i] : (int)i;
+      int slot = slotMapping[i];
+      levelToOps[level].push_back({(int)i, {slot, pat.ops[i]}});
+    }
+    
+    // Create execution stages based on topological levels.
+    // Operations at the same level are in the same stage (can run in parallel).
+    for (const auto& [level, opsAtLevel] : levelToOps) {
+      ExecutionStage stage;
+      for (const auto& [opIdx, slotAndOp] : opsAtLevel) {
+        stage.slots.push_back(slotAndOp.first);
+        stage.ops.push_back(slotAndOp.second);
+      }
+      plan.stages.push_back(stage);
+    }
+    
+    plans.push_back(plan);
+  }
+}
+
+// Collects supported operations (single + composite) for each template.
+// Single ops: any op that any slot in the template can handle.
+// Composite ops: the patterns that are mapped to this template.
+void collectSupportedOperations(const std::vector<HardwarePattern>& patterns,
+                                const std::vector<HardwareTemplate>& templates,
+                                const std::set<std::string>& allDfgOps,
+                                std::vector<TemplateSupportedOps>& supportedOps) {
+  for (const auto& tmpl : templates) {
+    TemplateSupportedOps ops;
+    ops.templateId = tmpl.id;
+    
+    // Collect all ops that any slot can handle (single ops).
+    std::set<std::string> templateOps;
+    for (const auto& slot : tmpl.slots) {
+      for (const auto& op : slot.ops) {
+        templateOps.insert(op);
+      }
+    }
+    
+    // Check which DFG ops this template can support.
+    // An op is supported if it exists in any slot OR is compatible with any slot's ops.
+    for (const std::string& dfgOp : allDfgOps) {
+      bool canSupport = false;
+      
+      // Check if directly in template.
+      if (templateOps.count(dfgOp)) {
+        canSupport = true;
+      } else {
+        // Check if compatible with any slot.
+        for (const auto& slot : tmpl.slots) {
+          if (!slot.ops.empty()) {
+            bool compatible = true;
+            for (const auto& existingOp : slot.ops) {
+              if (!HardwareTemplate::compatible(existingOp, dfgOp)) {
+                compatible = false;
+                break;
+              }
+            }
+            if (compatible) {
+              canSupport = true;
+              break;
+            }
+          } else {
+            // Empty slot can accept any op.
+            canSupport = true;
+            break;
+          }
+        }
+      }
+      
+      if (canSupport) {
+        ops.singleOps.insert(dfgOp);
+      }
+    }
+    
+    // Composite ops are the patterns mapped to this template.
+    ops.compositeOps = tmpl.patterns;
+    
+    supportedOps.push_back(ops);
+  }
+}
+
 void IncreaseHardwareComponent(std::map<std::string, int>* hardware_components) {
   for (const auto& [op, count] : *hardware_components) {
     (*hardware_components)[op]++;
@@ -595,8 +849,13 @@ std::string escapeJsonString(const std::string& s) {
   return r;
 }
 
-// Writes hardware configuration to JSON file.
-void writeHardwareConfigJson(const std::string& path, const std::vector<HardwarePattern>& patterns, const std::vector<HardwareTemplate>& templates, const OperationCostModel& costModel) {
+// Writes hardware configuration to JSON file (extended version with execution plans and supported ops).
+void writeHardwareConfigJson(const std::string& path, 
+                             const std::vector<HardwarePattern>& patterns, 
+                             const std::vector<HardwareTemplate>& templates, 
+                             const OperationCostModel& costModel,
+                             const std::vector<PatternExecutionPlan>& executionPlans,
+                             const std::vector<TemplateSupportedOps>& supportedOps) {
   std::error_code EC;
   llvm::raw_fd_ostream os(path, EC, llvm::sys::fs::OF_Text);
   if (EC) return;
@@ -605,8 +864,12 @@ void writeHardwareConfigJson(const std::string& path, const std::vector<Hardware
   for (const auto& p : patterns) costNoShare += p.cost;
   double totalCost = calculateTotalCost(templates, costModel);
   
+  // Build pattern name lookup.
+  std::map<int64_t, std::string> patternNames;
+  for (const auto& p : patterns) patternNames[p.id] = p.name;
+  
   os << "{\n  \"hardware_configuration\": {\n";
-  os << "    \"description\": \"Maximally-merged hardware templates\",\n";
+  os << "    \"description\": \"Maximally-merged hardware templates with execution plans\",\n";
   os << "    \"summary\": {\n";
   os << "      \"total_templates\": " << templates.size() << ",\n";
   os << "      \"total_cost\": " << totalCost << ",\n";
@@ -625,12 +888,35 @@ void writeHardwareConfigJson(const std::string& path, const std::vector<Hardware
     os << "        \"cost_per_instance\": " << tmpl.computeCost(costModel) << ",\n";
     os << "        \"total_cost\": " << tmpl.computeCost(costModel) * tmpl.instances << ",\n";
     
-    os << "        \"patterns\": [";
-    for (size_t i = 0; i < tmpl.patterns.size(); ++i) {
-      if (i) os << ", ";
-      os << tmpl.patterns[i];
+    // Supported operations (single + composite).
+    const TemplateSupportedOps* tmplSupportedOps = nullptr;
+    for (const auto& sop : supportedOps) {
+      if (sop.templateId == tmpl.id) {
+        tmplSupportedOps = &sop;
+        break;
+      }
     }
-    os << "],\n";
+    
+    if (tmplSupportedOps) {
+      os << "        \"supported_single_ops\": [";
+      bool first = true;
+      for (const auto& op : tmplSupportedOps->singleOps) {
+        if (!first) os << ", ";
+        first = false;
+        os << "\"" << op << "\"";
+      }
+      os << "],\n";
+      
+      os << "        \"supported_composite_ops\": [\n";
+      for (size_t i = 0; i < tmplSupportedOps->compositeOps.size(); ++i) {
+        if (i) os << ",\n";
+        int64_t pid = tmplSupportedOps->compositeOps[i];
+        auto nameIt = patternNames.find(pid);
+        std::string pname = (nameIt != patternNames.end()) ? nameIt->second : "";
+        os << "          {\"pattern_id\": " << pid << ", \"name\": \"" << escapeJsonString(pname) << "\"}";
+      }
+      os << "\n        ],\n";
+    }
     
     os << "        \"slots\": [\n";
     for (size_t s = 0; s < tmpl.slots.size(); ++s) {
@@ -647,28 +933,62 @@ void writeHardwareConfigJson(const std::string& path, const std::vector<Hardware
     }
     os << "\n        ],\n";
     
-    os << "        \"connections\": [";
+    // Slot connections with bypass info.
+    os << "        \"slot_connections\": {\n";
+    os << "          \"description\": \"Connections between slots. Connections support bypass (data can skip intermediate slots via existing paths).\",\n";
+    os << "          \"connections\": [";
     bool firstConn = true;
     for (const auto& conn : tmpl.connections) {
       if (!firstConn) os << ", ";
       firstConn = false;
-      os << "[" << conn.first << ", " << conn.second << "]";
+      os << "{\"from\": " << conn.first << ", \"to\": " << conn.second << "}";
     }
-    os << "],\n";
+    os << "]\n";
+    os << "        },\n";
     
-    os << "        \"pattern_configs\": [\n";
-    bool first = true;
-    for (const auto& [pid, m] : tmpl.mapping) {
-      if (!first) os << ",\n";
-      first = false;
-      std::string pname;
-      for (const auto& p : patterns) if (p.id == pid) { pname = p.name; break; }
-      os << "          {\"pattern_id\": " << pid << ", \"name\": \"" << escapeJsonString(pname) << "\", \"slots\": [";
+    // Pattern execution plans for this template.
+    os << "        \"pattern_execution_plans\": [\n";
+    bool firstPlan = true;
+    for (const auto& plan : executionPlans) {
+      // Find if this plan belongs to this template.
+      auto mappingIt = tmpl.mapping.find(plan.patternId);
+      if (mappingIt == tmpl.mapping.end()) continue;
+      
+      if (!firstPlan) os << ",\n";
+      firstPlan = false;
+      
+      os << "          {\n";
+      os << "            \"pattern_id\": " << plan.patternId << ",\n";
+      os << "            \"pattern_name\": \"" << escapeJsonString(plan.patternName) << "\",\n";
+      os << "            \"slot_mapping\": [";
+      const auto& m = mappingIt->second;
       for (size_t i = 0; i < m.size(); ++i) {
         if (i) os << ", ";
         os << m[i];
       }
-      os << "]}";
+      os << "],\n";
+      os << "            \"execution_stages\": [\n";
+      for (size_t stageIdx = 0; stageIdx < plan.stages.size(); ++stageIdx) {
+        const auto& stage = plan.stages[stageIdx];
+        if (stageIdx) os << ",\n";
+        os << "              {\n";
+        os << "                \"stage\": " << stageIdx << ",\n";
+        os << "                \"parallel_slots\": [";
+        for (size_t i = 0; i < stage.slots.size(); ++i) {
+          if (i) os << ", ";
+          os << stage.slots[i];
+        }
+        os << "],\n";
+        os << "                \"parallel_ops\": [";
+        for (size_t i = 0; i < stage.ops.size(); ++i) {
+          if (i) os << ", ";
+          os << "\"" << stage.ops[i] << "\"";
+        }
+        os << "]\n";
+        os << "              }";
+      }
+      os << "\n            ]\n";
+      os << "          }";
     }
     os << "\n        ]\n";
     os << "      }";
@@ -718,6 +1038,25 @@ void writeHardwareConfigJson(const std::string& path, const std::vector<Hardware
   os << "  }\n}\n";
   
   llvm::errs() << "[HardwareMerge] Output: " << path << "\n";
+}
+
+// Legacy version for backward compatibility.
+void writeHardwareConfigJson(const std::string& path, const std::vector<HardwarePattern>& patterns, const std::vector<HardwareTemplate>& templates, const OperationCostModel& costModel) {
+  // Generate execution plans and supported ops.
+  std::vector<PatternExecutionPlan> plans;
+  generateExecutionPlans(patterns, templates, plans);
+  
+  std::set<std::string> allDfgOps;
+  for (const auto& p : patterns) {
+    for (const auto& op : p.ops) {
+      allDfgOps.insert(op);
+    }
+  }
+  
+  std::vector<TemplateSupportedOps> supportedOps;
+  collectSupportedOperations(patterns, templates, allDfgOps, supportedOps);
+  
+  writeHardwareConfigJson(path, patterns, templates, costModel, plans, supportedOps);
 }
 
 } // namespace mlir::neura
