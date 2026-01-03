@@ -13,13 +13,15 @@ namespace mlir {
 #define GEN_PASS_DECL
 #include "Conversion/ConversionPasses.h.inc"
 
-// Conversion passes.
+// Neura Conversion Passes.
 std::unique_ptr<mlir::Pass> createLowerArithToNeuraPass();
 std::unique_ptr<mlir::Pass> createLowerLlvmToNeuraPass();
 std::unique_ptr<mlir::Pass> createLowerMemRefToNeuraPass();
 std::unique_ptr<mlir::Pass> createLowerBuiltinToNeuraPass();
 std::unique_ptr<mlir::Pass> createLowerAffineToNeuraPass();
 
+// TaskFlow Conversion Passes.
+std::unique_ptr<mlir::Pass> createConvertLinalgToTaskFlowPass();
 #define GEN_PASS_REGISTRATION
 #include "Conversion/ConversionPasses.h.inc"
 

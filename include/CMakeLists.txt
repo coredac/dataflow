@@ -1,2 +1,3 @@
 add_subdirectory(NeuraDialect)
 add_subdirectory(TaskFlowDialect)
+add_subdirectory(Conversion)

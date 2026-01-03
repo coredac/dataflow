@@ -67,6 +67,13 @@ def TaskFlowReturnOp : TaskFlowOpBase<"return", [Terminator]> {
   let assemblyFormat = [{
     ($results^ `:` type($results))? attr-dict
   }];
+
+  let builders = [
+    // Default builder for empty return.
+    OpBuilder<(ins), [{
+    build($_builder, $_state, ValueRange{});
+    }]>
+  ];
 }
 
 //----------------------------------------------------------------------
@@ -78,7 +85,6 @@ def TaskFlowTaskOp : TaskFlowOpBase<"task", [
     AttrSizedOperandSegments,
     AttrSizedResultSegments,
     SingleBlockImplicitTerminator<"TaskFlowYieldOp">,
-    RegionKindInterface,
     NoMemoryEffect,
 ]>{
   let summary = "Uniform computation and control task operation within a TaskFlow graph";
@@ -128,7 +134,14 @@ def TaskFlowYieldOp : TaskFlowOpBase<"yield", [Terminator, Pure, ReturnLike, Par
 
   let assemblyFormat = [{
     ($results^ `:` type($results))? attr-dict
-  }]; 
+  }];
+
+  let builders = [
+    // Default builder for empty yield.
+    OpBuilder<(ins), [{
+    build($_builder, $_state, ValueRange{});
+    }]>
+  ];
 }
 
 // Defines the control edge operation that carries control packets between tasks in a TaskFlow graph.
