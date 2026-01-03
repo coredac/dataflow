@@ -143,9 +143,6 @@
 // ASM-NEXT: } (idx_per_ii=2)
 // ASM:      PE(1,2):
 // ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [SOUTH, RED] (t=5, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=0)
-// ASM-NEXT: {
 // ASM-NEXT:   ADD, [NORTH, RED], [SOUTH, RED] -> [SOUTH, RED], [$0] (t=6, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=1)
 // ASM-NEXT: {
@@ -155,10 +152,12 @@
 // ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$1] (t=3, inv_iters=0)
 // ASM-NEXT:   RETURN_VALUE, [$0] (t=8, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=3)
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [SOUTH, RED] (t=4, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=4)
 // ASM:      PE(2,2):
 // ASM-NEXT: {
 // ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [EAST, RED] (t=5, inv_iters=1)
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [WEST, RED] (t=5, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=0)
 // ASM-NEXT: {
 // ASM-NEXT:   GEP, [EAST, RED] -> [$0] (t=2, inv_iters=0)
@@ -169,11 +168,36 @@
 // ASM-NEXT: } (idx_per_ii=3)
 // ASM-NEXT: {
 // ASM-NEXT:   NOT, [EAST, RED] -> [$1], [WEST, RED] (t=4, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [WEST, RED] (t=4, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=4)
+// ASM:      PE(3,2):
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_ONCE, [#0] -> [$0] (t=0, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=0)
+// ASM-NEXT: {
+// ASM-NEXT:   PHI_START, [$0], [WEST, RED] -> [NORTH, RED], [WEST, RED], [$0] (t=1, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=1)
+// ASM-NEXT: {
+// ASM-NEXT:   ADD, [$0], [#1] -> [$0], [WEST, RED] (t=2, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=2)
+// ASM-NEXT: {
+// ASM-NEXT:   ICMP_EQ, [$0], [#32] -> [WEST, RED] (t=3, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=3)
 // ASM:      PE(1,3):
 // ASM-NEXT: {
 // ASM-NEXT:   DATA_MOV, [EAST, RED] -> [SOUTH, RED] (t=5, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=0)
+// ASM:      PE(2,3):
+// ASM-NEXT: {
+// ASM-NEXT:   MUL, [SOUTH, RED], [EAST, RED] -> [WEST, RED] (t=4, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=4)
+// ASM:      PE(3,3):
+// ASM-NEXT: {
+// ASM-NEXT:   GEP, [SOUTH, RED] -> [$0] (t=2, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=2)
+// ASM-NEXT: {
+// ASM-NEXT:   LOAD, [$0] -> [WEST, RED] (t=3, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=3)
 
 // RUN: mlir-neura-opt %t-kernel.mlir --view-op-graph 2>&1 | sed -n '/^digraph G {/,/^}$/p' > fir_kernel_original.dot
 // RUN: dot -Tpng fir_kernel_original.dot -o fir_kernel_original.png

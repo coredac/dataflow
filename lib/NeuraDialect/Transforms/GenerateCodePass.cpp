@@ -572,12 +572,15 @@ struct GenerateCodePass
   // Emits router hops for multi-hop paths (from the second hop onwards). CTRL_MOV emits CTRL_MOV hops.
   template<bool IsCtrl>
   void generateIntermediateHops(const SmallVector<LinkStep, 8> &links, const Topology &topo,
-                                int base_mov_id, size_t &hop_counter) {
-    for (size_t i = 1; i < links.size(); ++i) {
+                                int base_mov_id, size_t &hop_counter,
+                                bool starts_with_register = false) {
+    // Hops start from links[1]; when the path begins with a register, timestamp hops with the previous link.
+    size_t begin = 1;
+    for (size_t i = begin; i < links.size(); ++i) {
       int prev_link = links[i - 1].link_id;
       int cur_link  = links[i].link_id;
-      // Uses the outgoing/current link timestep for this hop.
-      int ts        = links[i].ts;
+      // If path starts with register, align hop ts to the previous link (value arrival).
+      int ts        = starts_with_register ? links[i - 1].ts : links[i].ts;
 
       int mid_tile = topo.srcTileOfLink(cur_link);
       StringRef in  = topo.invertDir(topo.dirFromLink(prev_link));
@@ -691,10 +694,13 @@ struct GenerateCodePass
     StringRef producer_direction = directions.first;
     StringRef consumer_direction = directions.second;
 
+    // Detects if the path starts with a register (same-tile register staging).
+    bool starts_with_register = !regs.empty();
+
     // Producer endpoints & intermediate hops.
     setProducerDestination(producer, producer_direction, regs);
     size_t hop_counter = 1;
-    generateIntermediateHops<IsCtrl>(links, topo, mov_dfg_id, hop_counter);
+    generateIntermediateHops<IsCtrl>(links, topo, mov_dfg_id, hop_counter, starts_with_register);
 
     // Gather consumers.
     SmallVector<std::pair<Operation*, Value>, 2> consumers;
@@ -894,6 +900,21 @@ struct GenerateCodePass
     return info;
   }
 
+  // Detects whether mapping_locs starts with a register/reg resource.
+  static bool pathStartsWithRegister(Operation *op) {
+    if (auto arr = op->getAttrOfType<ArrayAttr>("mapping_locs")) {
+      if (!arr.empty()) {
+        if (auto dict = dyn_cast<DictionaryAttr>(arr[0])) {
+          if (auto res = dyn_cast_or_null<StringAttr>(dict.get("resource"))) {
+            return res.getValue() == "register" || res.getValue() == "reg";
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+
   struct DfgNodeInfo {
     std::string opcode;
     int tile_x = -1;
@@ -979,7 +1000,8 @@ struct GenerateCodePass
                        TileLocation producer_loc,
                        const Topology &topology,
                        SmallVector<std::pair<int, int>, 8> &out_tiles,
-                       SmallVector<int, 8> &out_time_steps) const {
+                       SmallVector<int, 8> &out_time_steps,
+                       bool starts_with_register = false) const {
     out_tiles.clear();
     out_time_steps.clear();
     if (link_steps.empty()) return;
@@ -988,7 +1010,8 @@ struct GenerateCodePass
         ? topology.tileIdAt(producer_loc.col_idx, producer_loc.row_idx) : -1;
     int consumer_tile_id = topology.dstTileOfLink(link_steps.back().link_id);
 
-    for (size_t i = 0; i < link_steps.size(); ++i) {
+    size_t begin = starts_with_register ? 1 : 0;
+    for (size_t i = begin; i < link_steps.size(); ++i) {
       int middle_tile_id = topology.srcTileOfLink(link_steps[i].link_id);
       if (middle_tile_id == producer_tile_id || middle_tile_id == consumer_tile_id) continue;
       auto coord = topology.tile_location.lookup(middle_tile_id);
@@ -1046,14 +1069,16 @@ struct GenerateCodePass
       SmallVector<LinkStep, 8> link_steps = collectLinkSteps(operation);
       SmallVector<std::pair<int,int>, 8> hop_tiles;
       SmallVector<int, 8> hop_time_steps;
+      bool starts_with_register = pathStartsWithRegister(operation);
       // Build hop tiles directly from link steps (mirrors router hop emission).
       if (link_steps.size() > 1) {
-        for (size_t i = 1; i < link_steps.size(); ++i) {
+        size_t begin = starts_with_register ? 1 : 1; // hops are from link[1] onward
+        for (size_t i = begin; i < link_steps.size(); ++i) {
           int middle_tile_id = topology.srcTileOfLink(link_steps[i].link_id);
           auto coord = topology.tile_location.lookup(middle_tile_id);
           hop_tiles.push_back(coord);
-          // Aligns hop ts with the incoming link (previous step), so it matches value arrival.
-          int hop_ts = link_steps[i - 1].ts;
+          // Aligns hop ts with the link's own timestep (or previous if starts with register).
+          int hop_ts = starts_with_register ? link_steps[i - 1].ts : link_steps[i].ts;
           hop_time_steps.push_back(hop_ts);
         }
       }
@@ -1072,9 +1097,11 @@ struct GenerateCodePass
           hop_node.opcode = isCtrlMov(operation) ? "CTRL_MOV" : "DATA_MOV";
           hop_node.tile_x = hop_tiles[i].first;
           hop_node.tile_y = hop_tiles[i].second;
-          // Prefers the materialized instruction time if available; fallback to link-based.
+          // Prefers the materialized instruction time if available; fallback to link-based,
+          // but ensure it is not earlier than the computed hop_ts when present.
           if (auto ts = getInstructionTimeById(node_id)) {
-            hop_node.time_step = *ts;
+            int link_ts = (i < hop_time_steps.size()) ? hop_time_steps[i] : *ts;
+            hop_node.time_step = std::max(*ts, link_ts);
           } else {
             hop_node.time_step = (i < hop_time_steps.size()) ? hop_time_steps[i] : -1;
           }
