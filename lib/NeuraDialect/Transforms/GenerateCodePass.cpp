@@ -576,7 +576,7 @@ struct GenerateCodePass
     for (size_t i = 1; i < links.size(); ++i) {
       int prev_link = links[i - 1].link_id;
       int cur_link  = links[i].link_id;
-      // Use the outgoing/current link timestep for this hop.
+      // Uses the outgoing/current link timestep for this hop.
       int ts        = links[i].ts;
 
       int mid_tile = topo.srcTileOfLink(cur_link);
