@@ -1,3 +1,5 @@
+add_subdirectory(Conversion)
+
 add_mlir_dialect(Neura neura)
 
 set(LLVM_TARGET_DEFINITIONS NeuraPasses.td)
