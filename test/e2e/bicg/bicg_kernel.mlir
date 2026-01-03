@@ -213,10 +213,8 @@
 // ASM-NEXT: } (idx_per_ii=1)
 // ASM-NEXT: {
 // ASM-NEXT:   GRANT_ONCE, [arg1] -> [NORTH, RED], [$0] (t=2, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [EAST, RED] (t=2, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=2)
-// ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [EAST, RED] (t=3, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=3)
 // ASM-NEXT: {
 // ASM-NEXT:   GRANT_PREDICATE, [$0], [NORTH, RED] -> [$0], [$1] (t=10, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=10)
@@ -238,14 +236,14 @@
 // ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [EAST, RED] (t=15, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=2)
 // ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [EAST, RED] (t=4, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=4)
+// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [EAST, RED] (t=3, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=3)
 // ASM-NEXT: {
 // ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$1] (t=11, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [EAST, RED] (t=11, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=11)
 // ASM-NEXT: {
 // ASM-NEXT:   NOT, [WEST, RED] -> [$0], [$1] (t=12, inv_iters=0)
-// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [EAST, RED] (t=12, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=12)
 
 // RUN: mlir-neura-opt %t-kernel.mlir --view-op-graph 2>&1 | sed -n '/^digraph G {/,/^}$/p' > bicg_kernel_original.dot

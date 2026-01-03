@@ -229,10 +229,48 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:                   dst_operands:
 // YAML-NEXT:                     - operand: "EAST"
 // YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 1
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "DATA_MOV"
+// YAML-NEXT:                   id: 160001
+// YAML-NEXT:                   time_step: 5
+// YAML-NEXT:                   invalid_iterations: 1
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 2
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "GRANT_ONCE"
+// YAML-NEXT:                   id: 1
+// YAML-NEXT:                   time_step: 2
+// YAML-NEXT:                   invalid_iterations: 0
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "#0.000000"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 3
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "PHI_START"
+// YAML-NEXT:                   id: 8
+// YAML-NEXT:                   time_step: 3
+// YAML-NEXT:                   invalid_iterations: 0
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                 - opcode: "DATA_MOV"
 // YAML-NEXT:                   id: 190001
-// YAML-NEXT:                   time_step: 4
-// YAML-NEXT:                   invalid_iterations: 1
+// YAML-NEXT:                   time_step: 3
+// YAML-NEXT:                   invalid_iterations: 0
 // YAML-NEXT:                   src_operands:
 // YAML-NEXT:                     - operand: "EAST"
 // YAML-NEXT:                       color: "RED"
@@ -245,7 +283,6 @@ func.func @loop_test() -> f32 {
 // ASM:      PE(0,0):
 // ASM-NEXT: {
 // ASM-NEXT:   GRANT_ONCE, [#0] -> [EAST, RED] (t=0, inv_iters=0)
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [NORTH, RED] (t=4, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=0)
 // ASM-NEXT: {
 // ASM-NEXT:   DATA_MOV, [EAST, RED] -> [NORTH, RED] (t=5, inv_iters=1)
@@ -255,6 +292,7 @@ func.func @loop_test() -> f32 {
 // ASM-NEXT: } (idx_per_ii=2)
 // ASM-NEXT: {
 // ASM-NEXT:   PHI_START, [$0], [NORTH, RED] -> [EAST, RED] (t=3, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [NORTH, RED] (t=3, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=3)
 // ASM:      PE(1,0):
 // ASM-NEXT: {

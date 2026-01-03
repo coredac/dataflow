@@ -138,9 +138,6 @@
 // ASM-NEXT: } (idx_per_ii=3)
 // ASM:      PE(1,2):
 // ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [SOUTH, RED] (t=5, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=0)
-// ASM-NEXT: {
 // ASM-NEXT:   VADD, [NORTH, RED], [SOUTH, RED] -> [SOUTH, RED], [$0] (t=6, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=1)
 // ASM-NEXT: {
@@ -151,12 +148,12 @@
 // ASM-NEXT:   VECTOR.REDUCE.ADD, [$0] -> [$0] (t=8, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=3)
 // ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [SOUTH, RED] (t=4, inv_iters=0)
 // ASM-NEXT:   RETURN_VALUE, [$0] (t=9, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=4)
 // ASM:      PE(2,2):
 // ASM-NEXT: {
 // ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [EAST, RED] (t=5, inv_iters=1)
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [WEST, RED] (t=5, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=0)
 // ASM-NEXT: {
 // ASM-NEXT:   GEP, [EAST, RED] -> [$0] (t=2, inv_iters=0)
@@ -167,4 +164,5 @@
 // ASM-NEXT: } (idx_per_ii=3)
 // ASM-NEXT: {
 // ASM-NEXT:   NOT, [EAST, RED] -> [$1], [WEST, RED] (t=4, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [WEST, RED] (t=4, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=4)
