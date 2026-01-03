@@ -72,6 +72,10 @@ struct LinkOverride {
 // This is set by the command line tool when a YAML file is provided.
 std::string getArchitectureSpecFile();
 
+// Function for getting the latency specification file path.
+// This is set by the command line tool when a YAML file is provided.
+std::string getLatencySpecFile();
+
 // Function for getting tile defaults configuration.
 TileDefaults getTileDefaults();
 
