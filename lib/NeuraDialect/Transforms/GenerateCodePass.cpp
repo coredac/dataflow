@@ -576,6 +576,7 @@ struct GenerateCodePass
     for (size_t i = 1; i < links.size(); ++i) {
       int prev_link = links[i - 1].link_id;
       int cur_link  = links[i].link_id;
+      // Use the outgoing/current link timestep for this hop.
       int ts        = links[i].ts;
 
       int mid_tile = topo.srcTileOfLink(cur_link);
@@ -790,6 +791,18 @@ struct GenerateCodePass
     return it->second;
   }
 
+  // Looks up time_step for a materialized instruction by its id.
+  std::optional<int> getInstructionTimeById(int id) const {
+    for (const auto &tile_entry : tile_time_instructions) {
+      for (const auto &ts_entry : tile_entry.second) {
+        for (const Instruction &inst : ts_entry.second) {
+          if (inst.id == id) return inst.time_step;
+        }
+      }
+    }
+    return std::nullopt;
+  }
+
   // Gets instruction ID for a materialized operation.
   int getInstructionId(Operation *op) const {
     auto it = operation_to_instruction_reference.find(op);
@@ -984,6 +997,7 @@ struct GenerateCodePass
         continue; // Skips duplicates.
       }
       out_tiles.push_back(coord);
+      // Uses the hop's own outgoing link timestep.
       out_time_steps.push_back(link_steps[i].ts);
     }
   }
@@ -1038,7 +1052,9 @@ struct GenerateCodePass
           int middle_tile_id = topology.srcTileOfLink(link_steps[i].link_id);
           auto coord = topology.tile_location.lookup(middle_tile_id);
           hop_tiles.push_back(coord);
-          hop_time_steps.push_back(link_steps[i].ts);
+          // Aligns hop ts with the incoming link (previous step), so it matches value arrival.
+          int hop_ts = link_steps[i - 1].ts;
+          hop_time_steps.push_back(hop_ts);
         }
       }
 
@@ -1056,7 +1072,12 @@ struct GenerateCodePass
           hop_node.opcode = isCtrlMov(operation) ? "CTRL_MOV" : "DATA_MOV";
           hop_node.tile_x = hop_tiles[i].first;
           hop_node.tile_y = hop_tiles[i].second;
-          hop_node.time_step = (i < hop_time_steps.size()) ? hop_time_steps[i] : -1;
+          // Prefers the materialized instruction time if available; fallback to link-based.
+          if (auto ts = getInstructionTimeById(node_id)) {
+            hop_node.time_step = *ts;
+          } else {
+            hop_node.time_step = (i < hop_time_steps.size()) ? hop_time_steps[i] : -1;
+          }
           nodes[node_id] = hop_node;
         }
 
