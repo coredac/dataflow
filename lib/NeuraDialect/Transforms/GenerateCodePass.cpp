@@ -923,6 +923,7 @@ struct GenerateCodePass
     func.walk([&](Operation *operation) {
       if (operation == func.getOperation()) return;  // Skips function itself.
       if (isReserve(operation)) return; // Skips reserve nodes entirely (bypass later).
+      if (isa<YieldOp>(operation)) return; // Skip yield; not part of DFG nodes/edges.
 
       int dfg_id = getDfgId(operation);
       if (dfg_id < 0) {
