@@ -1,0 +1,192 @@
+nodes:
+  - id: 0
+    opcode: "GRANT_ONCE"
+    tile_x: 3
+    tile_y: 2
+    time_step: 0
+  - id: 1
+    opcode: "GRANT_ONCE"
+    tile_x: 0
+    tile_y: 2
+    time_step: 3
+  - id: 4
+    opcode: "YIELD"
+    tile_x: -1
+    tile_y: -1
+    time_step: -1
+  - id: 7
+    opcode: "PHI_START"
+    tile_x: 2
+    tile_y: 2
+    time_step: 1
+  - id: 8
+    opcode: "PHI_START"
+    tile_x: 0
+    tile_y: 2
+    time_step: 4
+  - id: 13
+    opcode: "ADD"
+    tile_x: 2
+    tile_y: 2
+    time_step: 2
+  - id: 14
+    opcode: "GEP"
+    tile_x: 3
+    tile_y: 2
+    time_step: 2
+  - id: 15
+    opcode: "GEP"
+    tile_x: 2
+    tile_y: 1
+    time_step: 2
+  - id: 20
+    opcode: "ICMP_EQ"
+    tile_x: 2
+    tile_y: 2
+    time_step: 3
+  - id: 21
+    opcode: "LOAD"
+    tile_x: 3
+    tile_y: 2
+    time_step: 3
+  - id: 22
+    opcode: "LOAD"
+    tile_x: 2
+    tile_y: 1
+    time_step: 3
+  - id: 23
+    opcode: "DATA_MOV"
+    tile_x: 1
+    tile_y: 2
+    time_step: 6
+  - id: 27
+    opcode: "NOT"
+    tile_x: 2
+    tile_y: 2
+    time_step: 4
+  - id: 28
+    opcode: "VMUL"
+    tile_x: 3
+    tile_y: 1
+    time_step: 4
+  - id: 29
+    opcode: "DATA_MOV"
+    tile_x: 0
+    tile_y: 1
+    time_step: 7
+  - id: 32
+    opcode: "GRANT_PREDICATE"
+    tile_x: 2
+    tile_y: 2
+    time_step: 5
+  - id: 33
+    opcode: "VADD"
+    tile_x: 1
+    tile_y: 1
+    time_step: 6
+  - id: 36
+    opcode: "DATA_MOV"
+    tile_x: 0
+    tile_y: 1
+    time_step: 7
+  - id: 37
+    opcode: "GRANT_PREDICATE"
+    tile_x: 1
+    tile_y: 2
+    time_step: 7
+  - id: 38
+    opcode: "GRANT_PREDICATE"
+    tile_x: 0
+    tile_y: 1
+    time_step: 8
+  - id: 41
+    opcode: "VECTOR.REDUCE.ADD"
+    tile_x: 1
+    tile_y: 2
+    time_step: 8
+  - id: 43
+    opcode: "RETURN_VALUE"
+    tile_x: 1
+    tile_y: 1
+    time_step: 9
+  - id: 120001
+    opcode: "DATA_MOV"
+    tile_x: 1
+    tile_y: 2
+    time_step: 5
+  - id: 290001
+    opcode: "DATA_MOV"
+    tile_x: 1
+    tile_y: 2
+    time_step: 5
+  - id: 290002
+    opcode: "DATA_MOV"
+    tile_x: 0
+    tile_y: 2
+    time_step: 6
+  - id: 310001
+    opcode: "DATA_MOV"
+    tile_x: 2
+    tile_y: 1
+    time_step: 5
+edges:
+  - from: 33
+    to: 36
+  - from: 36
+    to: 38
+  - from: 20
+    to: 23
+  - from: 23
+    to: 37
+  - from: 28
+    to: 310001
+  - from: 8
+    to: 120001
+  - from: 27
+    to: 290001
+  - from: 290001
+    to: 290002
+  - from: 290002
+    to: 29
+  - from: 29
+    to: 38
+  - from: 41
+    to: 43
+  - from: 310001
+    to: 33
+  - from: 27
+    to: 32
+  - from: 32
+    to: 7
+  - from: 0
+    to: 7
+  - from: 14
+    to: 21
+  - from: 33
+    to: 37
+  - from: 1
+    to: 8
+  - from: 15
+    to: 22
+  - from: 7
+    to: 13
+  - from: 37
+    to: 41
+  - from: 7
+    to: 14
+  - from: 38
+    to: 8
+  - from: 7
+    to: 15
+  - from: 20
+    to: 27
+  - from: 120001
+    to: 33
+  - from: 21
+    to: 28
+  - from: 13
+    to: 32
+  - from: 13
+    to: 20
+  - from: 22
+    to: 28

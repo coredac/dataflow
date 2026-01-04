@@ -1,0 +1,80 @@
+// ASM: # Compiled II: 5
+// ASM-NEXT: PE(0,1):
+// ASM-NEXT: {
+// ASM-NEXT: DATA_MOV, [EAST, RED] -> [$0] (t=7, inv_iters=1)
+// ASM-NEXT: DATA_MOV, [NORTH, RED] -> [$1] (t=7, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=2)
+// ASM-NEXT: {
+// ASM-NEXT: GRANT_PREDICATE, [$0], [$1] -> [NORTH, RED] (t=8, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=3)
+// ASM-NEXT: PE(1,1):
+// ASM-NEXT: {
+// ASM-NEXT: VADD, [EAST, RED], [NORTH, RED] -> [WEST, RED], [NORTH, RED] (t=6, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=1)
+// ASM-NEXT: {
+// ASM-NEXT: RETURN_VALUE, [NORTH, RED] (t=9, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=4)
+// ASM-NEXT: PE(2,1):
+// ASM-NEXT: {
+// ASM-NEXT: DATA_MOV, [EAST, RED] -> [WEST, RED] (t=5, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=0)
+// ASM-NEXT: {
+// ASM-NEXT: GEP, [NORTH, RED] -> [$0] (t=2, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=2)
+// ASM-NEXT: {
+// ASM-NEXT: LOAD, [$0] -> [EAST, RED] (t=3, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=3)
+// ASM-NEXT: PE(3,1):
+// ASM-NEXT: {
+// ASM-NEXT: VMUL, [NORTH, RED], [WEST, RED] -> [WEST, RED] (t=4, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=4)
+// ASM-NEXT: PE(0,2):
+// ASM-NEXT: {
+// ASM-NEXT: DATA_MOV, [EAST, RED] -> [SOUTH, RED] (t=6, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=1)
+// ASM-NEXT: {
+// ASM-NEXT: GRANT_ONCE, [] -> [$0] (t=3, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=3)
+// ASM-NEXT: {
+// ASM-NEXT: PHI_START, [$0], [SOUTH, RED] -> [EAST, RED] (t=4, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=4)
+// ASM-NEXT: PE(1,2):
+// ASM-NEXT: {
+// ASM-NEXT: DATA_MOV, [WEST, RED] -> [SOUTH, RED] (t=5, inv_iters=1)
+// ASM-NEXT: DATA_MOV, [EAST, RED] -> [WEST, RED] (t=5, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=0)
+// ASM-NEXT: {
+// ASM-NEXT: GRANT_PREDICATE, [SOUTH, RED], [$0] -> [$0] (t=7, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=2)
+// ASM-NEXT: {
+// ASM-NEXT: VECTOR.REDUCE.ADD, [$0] -> [SOUTH, RED] (t=8, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=3)
+// ASM-NEXT: {
+// ASM-NEXT: DATA_MOV, [EAST, RED] -> [$0] (t=4, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=4)
+// ASM-NEXT: PE(2,2):
+// ASM-NEXT: {
+// ASM-NEXT: GRANT_PREDICATE, [$1], [$0] -> [$0] (t=5, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=0)
+// ASM-NEXT: {
+// ASM-NEXT: PHI_START, [EAST, RED], [$0] -> [SOUTH, RED], [EAST, RED], [$0] (t=1, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=1)
+// ASM-NEXT: {
+// ASM-NEXT: ADD, [$0], [#4] -> [$0], [$1] (t=2, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=2)
+// ASM-NEXT: {
+// ASM-NEXT: ICMP_EQ, [$0], [#32] -> [$0], [WEST, RED] (t=3, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=3)
+// ASM-NEXT: {
+// ASM-NEXT: NOT, [$0] -> [$0], [WEST, RED] (t=4, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=4)
+// ASM-NEXT: PE(3,2):
+// ASM-NEXT: {
+// ASM-NEXT: GRANT_ONCE, [#0] -> [WEST, RED] (t=0, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=0)
+// ASM-NEXT: {
+// ASM-NEXT: GEP, [WEST, RED] -> [$0] (t=2, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=2)
+// ASM-NEXT: {
+// ASM-NEXT: LOAD, [$0] -> [SOUTH, RED] (t=3, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=3)

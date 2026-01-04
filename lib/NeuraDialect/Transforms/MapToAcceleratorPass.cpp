@@ -687,6 +687,17 @@ struct MapToAcceleratorPass
         rec_mii = 1; // No recurrence cycles found, set MII to 1.
       }
 
+      // Proactively identifies operations on the critical path (zero slack).
+      // These operations are also considered "critical" to ensure they are
+      // prioritized during the mapping process, addressing feedback to
+      // prioritize operations on the critical path.
+      std::vector<Operation *> topologically_sorted_ops =
+          getTopologicallySortedOps(func);
+      auto critical_path_ops = identifyCriticalPathOps(topologically_sorted_ops);
+      for (Operation *op : critical_path_ops) {
+        critical_ops.insert(op);
+      }
+
       // Always use full constructor with YAML configuration
       Architecture architecture(
           multi_cgra_rows, multi_cgra_columns, multi_cgra_base_topology,
@@ -698,8 +709,6 @@ struct MapToAcceleratorPass
       const int max_ii =
           max_ctrl_mem_items; // Use YAML config (default 20 if not specified)
 
-      std::vector<Operation *> topologically_sorted_ops =
-          getTopologicallySortedOps(func);
       if (topologically_sorted_ops.empty()) {
         llvm::errs()
             << "[MapToAcceleratorPass] No operations to map in function "
@@ -708,7 +717,7 @@ struct MapToAcceleratorPass
       }
 
       // Filter out operations inside fused_op regions
-      // Only map the fused_op itself, not the operations within its region
+      // Only maps the fused_op itself, not the operations within its region
       std::vector<Operation *> filtered_ops;
       int skipped_count = 0;
       for (Operation *op : topologically_sorted_ops) {
@@ -745,7 +754,7 @@ struct MapToAcceleratorPass
         }
       }
       std::vector<std::pair<Operation *, int>> sorted_ops_with_alap_levels =
-          flatten_level_buckets(level_buckets);
+          flatten_level_buckets(level_buckets, critical_ops);
       for (const auto &[op, level] : sorted_ops_with_alap_levels) {
         llvm::outs() << "[MapToAcceleratorPass] ALAP sorted op: " << *op
                      << " (ALAP level: " << level << ")\n";

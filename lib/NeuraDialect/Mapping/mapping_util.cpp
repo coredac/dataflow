@@ -394,7 +394,7 @@ mlir::neura::getOpsInAlapLevels(const std::vector<Operation *> &sorted_ops,
 }
 
 std::vector<std::pair<Operation *, int>> mlir::neura::flatten_level_buckets(
-    const std::vector<std::vector<Operation *>> &level_buckets) {
+    const std::vector<std::vector<Operation *>> &level_buckets, const std::set<Operation *> &critical_ops) {
   std::vector<std::pair<Operation *, int>> result;
 
   for (int level = 0; level < static_cast<int>(level_buckets.size()); ++level) {
@@ -404,13 +404,32 @@ std::vector<std::pair<Operation *, int>> mlir::neura::flatten_level_buckets(
       ops_with_index.push_back({level_buckets[level][i], i});
     }
 
-    // Sorts by degree (num_operands + num_users) descending.
-    // Uses the original index as a tie-breaker for stability.
+    // Sorts by:
+    // 1. Criticality (Critical/Zero-Slack ops first)
+    // 2. Materialization (Materialized/Compute-intensive ops first)
+    // 3. Degree (num_operands + num_users) descending
+    // 4. Original index as a tie-breaker for deterministic stability.
     std::sort(ops_with_index.begin(), ops_with_index.end(),
-              [](const std::pair<Operation *, int> &a_pair,
-                 const std::pair<Operation *, int> &b_pair) {
+              [&](const std::pair<Operation *, int> &a_pair,
+                  const std::pair<Operation *, int> &b_pair) {
                 Operation *a = a_pair.first;
                 Operation *b = b_pair.first;
+
+                // Priority 1: Criticality
+                bool a_critical = (critical_ops.count(a) != 0);
+                bool b_critical = (critical_ops.count(b) != 0);
+                if (a_critical != b_critical)
+                  return a_critical; // Critical ops come first.
+
+                // Priority 2: Materialization (Materialized ops first)
+                // This ensures compute-intensive ops get prioritized over constants/grants
+                // at the same level.
+                bool a_materialized = !is_non_materialized(a);
+                bool b_materialized = !is_non_materialized(b);
+                if (a_materialized != b_materialized)
+                  return a_materialized;
+
+                // Priority 3: Degree
                 int degree_a = a->getNumOperands();
                 int degree_b = b->getNumOperands();
                 for (Value res : a->getResults()) {
@@ -423,7 +442,9 @@ std::vector<std::pair<Operation *, int>> mlir::neura::flatten_level_buckets(
                 }
                 if (degree_a != degree_b)
                   return degree_a > degree_b;
-                return a_pair.second < b_pair.second; // Original index tie-breaker.
+
+                // Priority 4: Original index tie-breaker
+                return a_pair.second < b_pair.second;
               });
 
     for (const auto &p : ops_with_index) {
@@ -432,6 +453,61 @@ std::vector<std::pair<Operation *, int>> mlir::neura::flatten_level_buckets(
   }
 
   return result;
+}
+
+std::set<Operation *> mlir::neura::identifyCriticalPathOps(
+    const std::vector<Operation *> &sorted_ops) {
+  llvm::DenseMap<Operation *, int> asap_level;
+  llvm::DenseMap<Operation *, int> alap_level;
+  int max_level = 0;
+
+  // Calculates ASAP level.
+  for (Operation *op : sorted_ops) {
+    int level = 0;
+    for (Value operand : op->getOperands()) {
+      if (Operation *def = operand.getDefiningOp()) {
+        if (!asap_level.count(def))
+          continue;
+        if (!is_non_materialized(op)) {
+          level = std::max(level, asap_level[def] + 1);
+        } else {
+          level = std::max(level, asap_level[def]);
+        }
+      }
+    }
+    asap_level[op] = level;
+    max_level = std::max(max_level, level);
+  }
+
+  // Calculates ALAP level.
+  for (auto it = sorted_ops.rbegin(); it != sorted_ops.rend(); ++it) {
+    Operation *op = *it;
+    int level = max_level;
+    bool has_materialized_user = false;
+    for (Value result : op->getResults()) {
+      for (Operation *user : result.getUsers()) {
+        if (!alap_level.count(user))
+          continue;
+        if (!is_non_materialized(user)) {
+          level = std::min(level, alap_level[user] - 1);
+          has_materialized_user = true;
+        } else {
+          level = std::min(level, alap_level[user]);
+        }
+      }
+    }
+    alap_level[op] = level;
+  }
+
+  // Identifies operations with zero slack.
+  std::set<Operation *> critical_path_ops;
+  for (Operation *op : sorted_ops) {
+    if (asap_level[op] == alap_level[op]) {
+      critical_path_ops.insert(op);
+    }
+  }
+
+  return critical_path_ops;
 }
 
 mlir::Operation *mlir::neura::getMaterializedBackwardUser(Operation *op) {
