@@ -1470,12 +1470,12 @@ struct GenerateCodePass
     return index_groups;
   }
 
-  void emitYamlForCore(llvm::raw_fd_ostream &yaml_out, const Tile &core) {
-    yaml_out << "    - column: " << core.col_idx << "\n      row: " << core.row_idx
-             << "\n      core_id: \"" << core.core_id << "\"\n      entries:\n";
+  void emitYamlForTile(llvm::raw_fd_ostream &yaml_out, const Tile &tile) {
+    yaml_out << "    - column: " << tile.col_idx << "\n      row: " << tile.row_idx
+             << "\n      core_id: \"" << tile.core_id << "\"\n      entries:\n";
 
     // Groups instructions by index_per_ii.
-    IndexGroups index_groups = groupByIndexPerIi(core.entry.instructions);
+    IndexGroups index_groups = groupByIndexPerIi(tile.entry.instructions);
 
     yaml_out << "        - entry_id: \"entry0\"\n          instructions:\n";
     for (const auto &index_pair : index_groups) {
@@ -1520,7 +1520,7 @@ struct GenerateCodePass
     }
     yaml_out << "\n  cores:\n";
     for (const Tile &core : config.cores) {
-      emitYamlForCore(yaml_out, core);
+      emitYamlForTile(yaml_out, core);
     }
     yaml_out.close();
   }
@@ -1554,11 +1554,11 @@ struct GenerateCodePass
     return result;
   }
 
-  void emitAsmForCore(llvm::raw_fd_ostream &asm_out, const Tile &core) {
-    asm_out << "PE(" << core.col_idx << "," << core.row_idx << "):\n";
+  void emitAsmForTile(llvm::raw_fd_ostream &asm_out, const Tile &tile) {
+    asm_out << "PE(" << tile.col_idx << "," << tile.row_idx << "):\n";
 
     // Groups instructions by index_per_ii.
-    IndexGroups index_groups = groupByIndexPerIi(core.entry.instructions);
+    IndexGroups index_groups = groupByIndexPerIi(tile.entry.instructions);
 
     for (const auto &index_pair : index_groups) {
       int index_per_ii = index_pair.first;
@@ -1598,7 +1598,7 @@ struct GenerateCodePass
     }
 
     for (const Tile &core : config.cores) {
-      emitAsmForCore(asm_out, core);
+      emitAsmForTile(asm_out, core);
     }
     asm_out.close();
   }
