@@ -649,7 +649,7 @@ struct GenerateCodePass
       StringRef in  = topo.invertDir(topo.dirFromLink(prev_link));
       StringRef out = topo.dirFromLink(cur_link);
 
-      uint64_t sig = (uint64_t)mid_tile << 32 ^ (uint64_t)time_step << 16 ^ (uint64_t)cur_link;
+      uint64_t sig = static_cast<uint64_t>(llvm::hash_combine(mid_tile, time_step, cur_link));
       if (hop_signatures.insert(sig).second) {
         int hop_id = base_mov_id >= 0 ? base_mov_id * 10000 + static_cast<int>(hop_counter) : -1;
         ++hop_counter;
@@ -788,7 +788,6 @@ struct GenerateCodePass
     }
     size_t hop_counter = 1;
     generateIntermediateHops<IsCtrl>(basics.links, topo, basics.mov_dfg_id, hop_counter);
-    (void)forwarder;
   }
 
   template<bool IsCtrl>
@@ -1607,7 +1606,7 @@ struct GenerateCodePass
   // CTRL_MOV paths emit CTRL_MOV deposits; DATA_MOV paths emit DATA_MOV deposits.
   void placeDstDeposit(const Topology &topo, int dst_tile_id, int time_step,
                        StringRef incoming_dir, int reg_id, bool asCtrlMov = false, int assigned_id = -1) {
-    uint64_t signature = (uint64_t)dst_tile_id << 32 ^ (uint64_t)time_step << 16 ^ (uint64_t)reg_id;
+    uint64_t signature = static_cast<uint64_t>(llvm::hash_combine(dst_tile_id, time_step, reg_id));
     if (!deposit_signatures.insert(signature).second) return; // already placed.
     auto [tile_x, tile_y] = topo.tile_location.lookup(dst_tile_id);
     Instruction inst(asCtrlMov ? "CTRL_MOV" : "DATA_MOV");
