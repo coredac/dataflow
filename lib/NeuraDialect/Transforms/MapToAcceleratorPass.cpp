@@ -745,6 +745,43 @@ struct MapToAcceleratorPass
       }
       std::vector<std::vector<Operation *>> level_buckets =
           getOpsInAlapLevels(topologically_sorted_ops, critical_ops);
+
+      // Deterministic ALAP bucket sorting:
+      // 1) Critical ops first
+      // 2) Richer degree (operands + total users of all results)
+      // 3) Deterministic tie-break by dfg_id
+      // 4) Fallback to address
+      for (auto &bucket : level_buckets) {
+        std::sort(bucket.begin(), bucket.end(),
+                  [&](Operation *a, Operation *b) {
+                    // 1) Critical ops first
+                    bool aCrit = critical_ops.count(a);
+                    bool bCrit = critical_ops.count(b);
+                    if (aCrit != bCrit) return aCrit > bCrit;
+
+                    // 2) Compute richer degree: operands + total users of all results
+                    auto computeDegree = [](Operation *op) {
+                      int deg = op->getNumOperands();
+                      for (auto res : op->getResults())
+                        deg += std::distance(res.getUsers().begin(),
+                                             res.getUsers().end());
+                      return deg;
+                    };
+                    int degA = computeDegree(a);
+                    int degB = computeDegree(b);
+                    if (degA != degB) return degA > degB;
+
+                    // 3) Deterministic tie-break by dfg_id (descending)
+                    auto attrA = a->getAttrOfType<IntegerAttr>("dfg_id");
+                    auto attrB = b->getAttrOfType<IntegerAttr>("dfg_id");
+                    int idA = attrA ? attrA.getInt() : -1;
+                    int idB = attrB ? attrB.getInt() : -1;
+                    if (idA != idB) return idA > idB;  // Changed to descending
+
+                    // 4) Fallback to address
+                    return a < b;
+                  });
+      }
       for (int level = 0; level < static_cast<int>(level_buckets.size());
            ++level) {
         llvm::outs() << "[MapToAcceleratorPass] ALAP Bucket Level " << level
