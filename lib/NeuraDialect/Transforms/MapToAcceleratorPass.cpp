@@ -74,7 +74,7 @@ static void parseYamlStringSequence(llvm::yaml::Node *node,
 // Utility: Print YAML parse error and return false.
 static bool yamlParseError(const std::string &msg,
                            const std::string &file = "") {
-  llvm::errs() << "[MapToAcceleratorPass] YAML parse error";
+  // llvm::errs() << "[MapToAcceleratorPass] YAML parse error";
   if (!file.empty())
     llvm::errs() << " in: " << file;
   llvm::errs() << ": " << msg << "\n";
@@ -101,7 +101,7 @@ void parseTileDefaults(llvm::yaml::MappingNode *tile_defaults_map,
       parseYamlStringSequence(key_value_pair.getValue(),
                               tile_defaults.function_units);
     } else {
-      llvm::errs() << "[MapToAcceleratorPass] Unknown tile_defaults key: "
+      // llvm::errs() << "[MapToAcceleratorPass] Unknown tile_defaults key: "
                    << key_ref << "\n";
     }
   }
@@ -125,7 +125,7 @@ void parseTileOverrideOperations(llvm::yaml::MappingNode *override_map,
       if (parseYamlScalarInt(key_value_pair.getValue(), temp_value))
         override.num_registers = temp_value;
     } else {
-      llvm::errs() << "[MapToAcceleratorPass] Unknown tile_override key: "
+      // llvm::errs() << "[MapToAcceleratorPass] Unknown tile_override key: "
                    << key_ref << "\n";
     }
   }
@@ -166,7 +166,7 @@ void parseSingleTileOverride(llvm::yaml::MappingNode *override_map,
         override.existence = (value == "true" || value == "True" || value == "1");
       }
     } else {
-      llvm::errs() << "[MapToAcceleratorPass] Unknown tile_override key: "
+      // llvm::errs() << "[MapToAcceleratorPass] Unknown tile_override key: "
                    << key_ref << "\n";
     }
   }
@@ -207,7 +207,7 @@ bool parseLinkDefaults(llvm::yaml::MappingNode *link_defaults_map,
       if (parseYamlScalarInt(key_value_pair.getValue(), temp_value))
         link_defaults.bandwidth = temp_value;
     } else {
-      llvm::errs() << "[MapToAcceleratorPass] Unknown link_defaults key: "
+      // llvm::errs() << "[MapToAcceleratorPass] Unknown link_defaults key: "
                    << key_ref << "\n";
     }
   }
@@ -251,7 +251,7 @@ void parseSingleLinkOverride(llvm::yaml::MappingNode *override_map,
             (value == "true" || value == "True" || value == "1");
       }
     } else {
-      llvm::errs() << "[MapToAcceleratorPass] Unknown link_override key: "
+      // llvm::errs() << "[MapToAcceleratorPass] Unknown link_override key: "
                    << key_ref << "\n";
     }
   }
@@ -401,7 +401,7 @@ bool parseArchitectureYaml(
       if (link_overrides_seq)
         parseLinkOverrides(link_overrides_seq, link_overrides);
     } else {
-      llvm::errs() << "[MapToAcceleratorPass] Unknown YAML root key: "
+      // llvm::errs() << "[MapToAcceleratorPass] Unknown YAML root key: "
                    << key_ref << "\n";
     }
   }
@@ -464,10 +464,10 @@ struct MapToAcceleratorPass
     }
     if (mapping_mode_str == "spatial-only" ||
         mapping_mode_str == "spatial-temporal") {
-      llvm::errs() << "[MapToAcceleratorPass] Using Mapping Mode: "
+      // llvm::errs() << "[MapToAcceleratorPass] Using Mapping Mode: "
                    << mapping_mode_str << "\n";
     } else {
-      llvm::errs() << "[MapToAcceleratorPass] Unsupported mapping mode: "
+      // llvm::errs() << "[MapToAcceleratorPass] Unsupported mapping mode: "
                    << mapping_mode_str << "\n";
       return false;
     }
@@ -507,25 +507,25 @@ struct MapToAcceleratorPass
                 << "max_location_to_try=" << max_loc
                 << ", max_backtrack_depth=" << max_depth << "\n";
           } else {
-            llvm::errs() << "[MapToAcceleratorPass] Illegal customized "
+            // llvm::errs() << "[MapToAcceleratorPass] Illegal customized "
                             "parameters format: "
                          << backtrack_str << "\n";
             return false;
           }
         } else {
-          llvm::errs() << "[MapToAcceleratorPass] Illegal customized "
+          // llvm::errs() << "[MapToAcceleratorPass] Illegal customized "
                           "parameters format: "
                        << backtrack_str << "\n";
           return false;
         }
       } else {
-        llvm::errs() << "[MapToAcceleratorPass] Unsupported backtrack config: "
+        // llvm::errs() << "[MapToAcceleratorPass] Unsupported backtrack config: "
                      << backtrack_str << "\n";
         return false;
       }
       resolved_mapping_strategy = mapping_strategy_str.str();
     } else {
-      llvm::errs() << "[MapToAcceleratorPass] Unsupported mapping strategy: "
+      // llvm::errs() << "[MapToAcceleratorPass] Unsupported mapping strategy: "
                    << mapping_strategy_str << "\n";
       return false;
     }
@@ -544,18 +544,18 @@ struct MapToAcceleratorPass
     for (Operation *op : sorted_ops) {
       op->setAttr("dfg_id",
                   IntegerAttr::get(IntegerType::get(ctx, 32), next_id));
-      llvm::errs() << "[MapToAcceleratorPass] Assigned dfg_id=" << next_id
+      // llvm::errs() << "[MapToAcceleratorPass] Assigned dfg_id=" << next_id
                    << " to " << *op << "\n";
       next_id++;
     }
 
-    llvm::errs() << "[MapToAcceleratorPass] Assigned " << next_id
+    // llvm::errs() << "[MapToAcceleratorPass] Assigned " << next_id
                  << " dfg_id(s) in total\n";
   }
 
   void runOnOperation() override {
     ModuleOp module = getOperation();
-    llvm::errs() << "[MapToAcceleratorPass] Starting mapping pass...\n";
+    // llvm::errs() << "[MapToAcceleratorPass] Starting mapping pass...\n";
     std::unique_ptr<Mapping> mapping_strategy;
     std::string resolved_mapping_mode;
     std::string resolved_mapping_strategy;
@@ -595,7 +595,7 @@ struct MapToAcceleratorPass
       llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> buffer_or_err =
           llvm::MemoryBuffer::getFile(architecture_spec_file);
       if (!buffer_or_err) {
-        llvm::errs() << "[MapToAcceleratorPass] Failed to open architecture "
+        // llvm::errs() << "[MapToAcceleratorPass] Failed to open architecture "
                         "specification file: "
                      << architecture_spec_file << "\n";
         return;
@@ -614,7 +614,7 @@ struct MapToAcceleratorPass
       }
 
       if (parse_failed) {
-        llvm::errs() << "[MapToAcceleratorPass] YAML parse error in: "
+        // llvm::errs() << "[MapToAcceleratorPass] YAML parse error in: "
                      << architecture_spec_file << "\n";
         return;
       }
@@ -628,7 +628,7 @@ struct MapToAcceleratorPass
         return;
       }
     } else {
-      llvm::errs() << "[MapToAcceleratorPass] No architecture specification "
+      // llvm::errs() << "[MapToAcceleratorPass] No architecture specification "
                       "file provided.\n";
     }
     // assert(false);
@@ -653,7 +653,7 @@ struct MapToAcceleratorPass
           signalPassFailure();
           return;
         }
-        llvm::errs() << "[MapToAcceleratorPass] Using spatial-only mapping for "
+        // llvm::errs() << "[MapToAcceleratorPass] Using spatial-only mapping for "
                         "steering mode function: "
                      << func.getName() << "\n";
       }
@@ -725,7 +725,7 @@ struct MapToAcceleratorPass
         // Check if parent is a fused_op by checking operation name
         if (parent_op && parent_op->getName().getStringRef().contains("fused_op")) {
           // Skip operations inside fused_op region
-          llvm::errs() << "[MapToAcceleratorPass] Skipping op inside fused_op: "
+          // llvm::errs() << "[MapToAcceleratorPass] Skipping op inside fused_op: "
                        << *op << "\n";
           skipped_count++;
           continue;
@@ -735,13 +735,13 @@ struct MapToAcceleratorPass
       topologically_sorted_ops = std::move(filtered_ops);
       
       if (skipped_count > 0) {
-        llvm::errs() << "[MapToAcceleratorPass] Filtered out " << skipped_count
-                     << " operations inside fused_op regions\n";
+        // llvm::errs() << "[MapToAcceleratorPass] Filtered out " << skipped_count
+        //              << " operations inside fused_op regions\n";
       }
       
       for (Operation *op : topologically_sorted_ops) {
-        llvm::errs() << "[MapToAcceleratorPass] Topologically sorted op: "
-                     << *op << "\n";
+        // llvm::errs() << "[MapToAcceleratorPass] Topologically sorted op: "
+        //              << *op << "\n";
       }
       std::vector<std::vector<Operation *>> level_buckets =
           getOpsInAlapLevels(topologically_sorted_ops, critical_ops);
@@ -784,17 +784,17 @@ struct MapToAcceleratorPass
       }
       for (int level = 0; level < static_cast<int>(level_buckets.size());
            ++level) {
-        llvm::errs() << "[MapToAcceleratorPass] ALAP Bucket Level " << level
-                     << ": " << level_buckets[level].size() << " ops\n";
+        // llvm::errs() << "[MapToAcceleratorPass] ALAP Bucket Level " << level
+        //              << ": " << level_buckets[level].size() << " ops\n";
         for (Operation *op : level_buckets[level]) {
-          llvm::errs() << "  " << *op << "\n";
+          // llvm::errs() << "  " << *op << "\n";
         }
       }
       std::vector<std::pair<Operation *, int>> sorted_ops_with_alap_levels =
           flatten_level_buckets(level_buckets, critical_ops);
       for (const auto &[op, level] : sorted_ops_with_alap_levels) {
-        llvm::errs() << "[MapToAcceleratorPass] ALAP sorted op: " << *op
-                     << " (ALAP level: " << level << ")\n";
+        // llvm::errs() << "[MapToAcceleratorPass] ALAP sorted op: " << *op
+        //              << " (ALAP level: " << level << ")\n";
       }
       // assert(false);
       for (int ii = possible_min_ii; ii <= max_ii; ++ii) {
