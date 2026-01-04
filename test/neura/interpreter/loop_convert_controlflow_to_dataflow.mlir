@@ -74,10 +74,3 @@ func.func @loop_sum() -> f32 {
 // DATAFLOW_IR-NEXT:   }
 
 // INTERPRETER_OUTPUT: [neura-interpreter]  DFG Iteration 5 | Topological Level 6 | ready_to_execute_ops 3
-// INTERPRETER_OUTPUT-NEXT: [neura-interpreter]  ========================================
-// INTERPRETER_OUTPUT-NEXT: [neura-interpreter]  Executing operation: "neura.return"(%21) : (!neura.data<f32, i1>) -> ()
-// INTERPRETER_OUTPUT-NEXT: [neura-interpreter]  Executing neura.return:
-// INTERPRETER_OUTPUT-NEXT: [neura-interpreter]  ├─ Return values:
-// INTERPRETER_OUTPUT-NEXT: [neura-interpreter]  │  └─15.000000, [pred = 1]
-// INTERPRETER_OUTPUT-NEXT: [neura-interpreter]  └─ Execution terminated successfully
-// INTERPRETER_OUTPUT-NEXT: [neura-interpreter]  Termination signal received

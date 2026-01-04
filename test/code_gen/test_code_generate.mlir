@@ -104,7 +104,6 @@ func.func @loop_test() -> f32 {
 // MAPPING-NEXT: }
 // MAPPING-NEXT: }
 
-<<<<<<< HEAD
 // YAML: array_config:
 // YAML-NEXT:   columns: 4
 // YAML-NEXT:   rows: 4
@@ -113,37 +112,11 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:     - column: 0
 // YAML-NEXT:       row: 0
 // YAML-NEXT:       core_id: "0"
-=======
-// YAML:      array_config:
-// YAML-NEXT:   columns: 4
-// YAML-NEXT:   rows: 4
-// YAML-NEXT:   compiled_ii: 5
-// YAML-NEXT:   cores:
-// YAML-NEXT:     - column: 1
-// YAML-NEXT:       row: 0
-// YAML-NEXT:       core_id: "1"
-// YAML-NEXT:       entries:
-// YAML-NEXT:         - entry_id: "entry0"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - index_per_ii: 3
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "RETURN_VALUE"
-// YAML-NEXT:                   id: 66
-// YAML-NEXT:                   time_step: 8
-// YAML-NEXT:                   invalid_iterations: 1
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "NORTH"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:     - column: 0
-// YAML-NEXT:       row: 1
-// YAML-NEXT:       core_id: "4"
->>>>>>> origin/main
 // YAML-NEXT:       entries:
 // YAML-NEXT:         - entry_id: "entry0"
 // YAML-NEXT:           instructions:
 // YAML-NEXT:             - index_per_ii: 0
 // YAML-NEXT:               operations:
-<<<<<<< HEAD
 // YAML-NEXT:                 - opcode: "CONSTANT"
 // YAML-NEXT:                   id: 1
 // YAML-NEXT:                   time_step: 0
@@ -172,19 +145,10 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:                   invalid_iterations: 1
 // YAML-NEXT:                   src_operands:
 // YAML-NEXT:                     - operand: "NORTH"
-=======
-// YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 37
-// YAML-NEXT:                   time_step: 5
-// YAML-NEXT:                   invalid_iterations: 1
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "EAST"
->>>>>>> origin/main
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                   dst_operands:
 // YAML-NEXT:                     - operand: "$0"
 // YAML-NEXT:                       color: "RED"
-<<<<<<< HEAD
 // YAML-NEXT:             - index_per_ii: 3
 // YAML-NEXT:               operations:
 // YAML-NEXT:                 - opcode: "GRANT_PREDICATE"
@@ -195,28 +159,6 @@ func.func @loop_test() -> f32 {
 // ASM: PE(0,0):
 // ASM-NEXT: {
 // ASM-NEXT:   CONSTANT, [#0] -> [$0] (t=0, inv_iters=0)
-=======
-// YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 50
-// YAML-NEXT:                   time_step: 5
-// YAML-NEXT:                   invalid_iterations: 1
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "EAST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "$3"
-// YAML-NEXT:                       color: "RED"
-
-// ASM:      # Compiled II: 5
-// ASM:      PE(1,0):
-// ASM-NEXT: {
-// ASM-NEXT:   RETURN_VALUE, [NORTH, RED] (t=8, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=3)
-// ASM:      PE(0,1):
-// ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$0] (t=5, inv_iters=1)
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$3] (t=5, inv_iters=1)
->>>>>>> origin/main
 // ASM-NEXT: } (idx_per_ii=0)
 // ASM-NEXT: {
 // ASM-NEXT:   GRANT_ONCE, [$0] -> [EAST, RED] (t=1, inv_iters=0)

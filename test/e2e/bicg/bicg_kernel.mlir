@@ -160,7 +160,6 @@
 // AFTER_CANONICALIZE-NEXT:     "neura.return"() : () -> ()
 // AFTER_CANONICALIZE-NEXT:   }
 
-<<<<<<< HEAD
 // MAPPING: func.func @kernel
 // MAPPING-SAME: accelerator = "neura"
 
@@ -169,17 +168,6 @@
 // YAML-NEXT:     rows: 4
 // YAML-NEXT:     compiled_ii: 10
 // YAML-NEXT:     cores:
-=======
-//MAPPING: func.func @kernel
-//MAPPING-SAME: accelerator = "neura", dataflow_mode = "predicate"
-//MAPPING-SAME: mapping_info = {compiled_ii = 13 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 9 : i32, res_mii = 6 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}
-
-// YAML:      array_config:
-// YAML-NEXT:   columns: 4
-// YAML-NEXT:   rows: 4
-// YAML-NEXT:   compiled_ii: 13
-// YAML-NEXT:   cores:
->>>>>>> origin/main
 // YAML-NEXT:     - column: 0
 // YAML-NEXT:       row: 0
 // YAML-NEXT:       core_id: "0"
@@ -210,7 +198,6 @@
 // YAML-NEXT:                     - operand: "#0"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                   dst_operands:
-<<<<<<< HEAD
 // YAML-NEXT:                     - operand: "$0"
 // YAML-NEXT:                       color: "RED"
 
@@ -232,56 +219,6 @@
 // ASM-NEXT:     DATA_MOV, [WEST, RED] -> [EAST, RED] (t=10, inv_iters=1)
 // ASM-NEXT:     } (idx_per_ii=0)
 
-=======
-// YAML-NEXT:                     - operand: "NORTH"
-// YAML-NEXT:                       color: "RED"
-
-
-// ASM:      # Compiled II: 13
-// ASM:      PE(0,0):
-// ASM-NEXT: {
-// ASM-NEXT:   CONSTANT, [arg0] -> [$0] (t=0, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=0)
-// ASM-NEXT: {
-// ASM-NEXT:   ICMP_SGT, [$0], [#0] -> [NORTH, RED] (t=1, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=1)
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_ONCE, [arg1] -> [NORTH, RED], [$0] (t=2, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=2)
-// ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [EAST, RED] (t=3, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=3)
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [$0], [NORTH, RED] -> [$0], [$1] (t=10, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=10)
-// ASM-NEXT: {
-// ASM-NEXT:   ICMP_SGT, [$0], [#0] -> [EAST, RED], [$0], [NORTH, RED] (t=11, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=11)
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [$1], [$0] -> [EAST, RED] (t=12, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=12)
-// ASM:      PE(1,0):
-// ASM-NEXT: {
-// ASM-NEXT:   ZEXT, [WEST, RED] -> [EAST, RED] (t=13, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=0)
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [NORTH, RED] (t=14, inv_iters=1)
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$0] (t=14, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=1)
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [EAST, RED] (t=15, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=2)
-// ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [EAST, RED] (t=4, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=4)
-// ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$1] (t=11, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=11)
-// ASM-NEXT: {
-// ASM-NEXT:   NOT, [WEST, RED] -> [$0], [$1] (t=12, inv_iters=0)
-// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [EAST, RED] (t=12, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=12)
->>>>>>> origin/main
 
 // RUN: mlir-neura-opt %t-kernel.mlir --view-op-graph 2>&1 | sed -n '/^digraph G {/,/^}$/p' > bicg_kernel_original.dot
 // RUN: dot -Tpng bicg_kernel_original.dot -o bicg_kernel_original.png
