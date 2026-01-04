@@ -664,11 +664,11 @@ struct MapToAcceleratorPass
       RecurrenceCycle *longest = nullptr;
       int rec_mii = 1;
       for (auto &cycle : recurrence_cycles) {
-        llvm::outs() << "[DEBUG] Recurrence cycle (length " << cycle.length
-                     << "):\n";
+        // llvm::outs() << "[DEBUG] Recurrence cycle (length " << cycle.length
+        //              << "):\n";
         for (Operation *op : cycle.operations) {
           critical_ops.insert(op);
-          llvm::outs() << "  " << *op << "\n";
+          // llvm::outs() << "  " << *op << "\n";
         }
         if (!longest || cycle.length > longest->length) {
           longest = &cycle;
