@@ -104,4 +104,4 @@
 // RUN:           --insert-data-mov \
 // RUN:           --map-to-accelerator="mapping-strategy=heuristic backtrack-config=simple" %t-kernel.mlir 2>/dev/null | FileCheck %s --check-prefix=CHECK-ITER-MERGE-PATTERN-MAPPING
 
-// CHECK-ITER-MERGE-PATTERN-MAPPING: mapping_info = {compiled_ii = {{1[0-5] : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = {{[0-9]+}} : i32, res_mii = {{[0-9]+}} : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}
+// CHECK-ITER-MERGE-PATTERN-MAPPING: mapping_info = {compiled_ii = {{1[0-2]}} : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = {{[0-9]+}} : i32, res_mii = {{[0-9]+}} : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}
