@@ -483,14 +483,12 @@ std::set<Operation *> mlir::neura::identifyCriticalPathOps(
   for (auto it = sorted_ops.rbegin(); it != sorted_ops.rend(); ++it) {
     Operation *op = *it;
     int level = max_level;
-    bool has_materialized_user = false;
     for (Value result : op->getResults()) {
       for (Operation *user : result.getUsers()) {
         if (!alap_level.count(user))
           continue;
         if (!is_non_materialized(user)) {
           level = std::min(level, alap_level[user] - 1);
-          has_materialized_user = true;
         } else {
           level = std::min(level, alap_level[user]);
         }
@@ -1119,16 +1117,14 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
   std::vector<std::pair<MappingLoc, int>> locs_award_vec(
       locs_with_award.begin(), locs_with_award.end());
 
-  // Sorts by award (descending). Uses stable sort/tie-breaker logic
-  // to minimize noise in mapping results.
-  std::sort(
+  // Sorts by award (descending). Uses stable sort to maintain insertion order
+  // for locations with equal awards, providing deterministic results without
+  // introducing arbitrary tie-breakers that might degrade quality.
+  std::stable_sort(
       locs_award_vec.begin(), locs_award_vec.end(),
       [](const std::pair<MappingLoc, int> &a,
          const std::pair<MappingLoc, int> &b) {
-        if (a.second != b.second)
-          return a.second > b.second;
-        // Tie-breaker: earlier time step first.
-        return a.first.time_step < b.first.time_step;
+        return a.second > b.second;
       });
   // TODO: Needs to handle tie case and prioritize lower resource utilization,
   // however, compiled II becomes worse after adding this tie-breaker:
