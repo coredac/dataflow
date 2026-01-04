@@ -83,11 +83,26 @@
 // RUN:           --init-pattern %t-kernel.mlir \
 // RUN:           | FileCheck %s --check-prefix=CHECK-INIT-PATTERN
 
+<<<<<<< HEAD
 // CHECK-INIT-PATTERN:         "neura.fused_op"
 // CHECK-INIT-PATTERN-SAME:    pattern_name = "gep->load"
 // CHECK-INIT-PATTERN:         "neura.gep"
 // CHECK-INIT-PATTERN:         "neura.load"
 // CHECK-INIT-PATTERN:         neura.yield
+=======
+// CHECK-INIT-PATTERN:         %21:2 = "neura.fused_op"(%16, %20) <{frequency = 6 : i64, pattern_id = 2 : i64, pattern_name = "gep->load"}> ({
+// CHECK-INIT-PATTERN-NEXT:    ^bb0(%arg5: !neura.data<!llvm.ptr, i1>, %arg6: !neura.data<i64, i1>):
+// CHECK-INIT-PATTERN-NEXT:      %75 = "neura.gep"(%arg5, %arg6) <{operandSegmentSizes = array<i32: 1, 1>}> : (!neura.data<!llvm.ptr, i1>, !neura.data<i64, i1>) -> !neura.data<!llvm.ptr, i1>
+// CHECK-INIT-PATTERN-NEXT:      %76 = "neura.load"(%75) : (!neura.data<!llvm.ptr, i1>) -> !neura.data<i32, i1>
+// CHECK-INIT-PATTERN-NEXT:      neura.yield %75, %76 : !neura.data<!llvm.ptr, i1>, !neura.data<i32, i1>
+// CHECK-INIT-PATTERN-NEXT:    }) : (!neura.data<!llvm.ptr, i1>, !neura.data<i64, i1>) -> (!neura.data<!llvm.ptr, i1>, !neura.data<i32, i1>)
+// CHECK-INIT-PATTERN-NEXT:    %22 = "neura.fused_op"(%18, %20) <{frequency = 6 : i64, pattern_id = 2 : i64, pattern_name = "gep->load"}> ({
+// CHECK-INIT-PATTERN-NEXT:    ^bb0(%arg5: !neura.data<!llvm.ptr, i1>, %arg6: !neura.data<i64, i1>):
+// CHECK-INIT-PATTERN-NEXT:      %75 = "neura.gep"(%arg5, %arg6) <{operandSegmentSizes = array<i32: 1, 1>}> : (!neura.data<!llvm.ptr, i1>, !neura.data<i64, i1>) -> !neura.data<!llvm.ptr, i1>
+// CHECK-INIT-PATTERN-NEXT:      %76 = "neura.load"(%75) : (!neura.data<!llvm.ptr, i1>) -> !neura.data<i32, i1>
+// CHECK-INIT-PATTERN-NEXT:      neura.yield %76 : !neura.data<i32, i1>
+// CHECK-INIT-PATTERN-NEXT:    }) : (!neura.data<!llvm.ptr, i1>, !neura.data<i64, i1>) -> !neura.data<i32, i1>
+>>>>>>> origin/main
 
 // RUN: mlir-neura-opt --architecture-spec=%S/../../arch_spec/architecture.yaml --verify-each=true \
 // RUN:           --assign-accelerator \
