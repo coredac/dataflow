@@ -226,7 +226,7 @@ int mlir::neura::calculateResMii(Operation *func_op,
                                  const Architecture &architecture) {
   int num_ops = 0;
 
-  // Count all "compute" operations (non-terminators, non-block ops).
+  // Counts all "compute" operations (non-terminators, non-block ops).
   func_op->walk([&](Operation *op) {
     // Skips non-materialized ops.
     if (isa<func::FuncOp>(op) ||
@@ -398,8 +398,36 @@ std::vector<std::pair<Operation *, int>> mlir::neura::flatten_level_buckets(
   std::vector<std::pair<Operation *, int>> result;
 
   for (int level = 0; level < static_cast<int>(level_buckets.size()); ++level) {
-    for (Operation *op : level_buckets[level]) {
-      result.emplace_back(op, level);
+    // Collects ops with their current index to ensure stable sorting.
+    std::vector<std::pair<Operation *, int>> ops_with_index;
+    for (int i = 0; i < (int)level_buckets[level].size(); ++i) {
+      ops_with_index.push_back({level_buckets[level][i], i});
+    }
+
+    // Sorts by degree (num_operands + num_users) descending.
+    // Uses the original index as a tie-breaker for stability.
+    std::sort(ops_with_index.begin(), ops_with_index.end(),
+              [](const std::pair<Operation *, int> &a_pair,
+                 const std::pair<Operation *, int> &b_pair) {
+                Operation *a = a_pair.first;
+                Operation *b = b_pair.first;
+                int degree_a = a->getNumOperands();
+                int degree_b = b->getNumOperands();
+                for (Value res : a->getResults()) {
+                  degree_a += std::distance(res.getUsers().begin(),
+                                            res.getUsers().end());
+                }
+                for (Value res : b->getResults()) {
+                  degree_b += std::distance(res.getUsers().begin(),
+                                            res.getUsers().end());
+                }
+                if (degree_a != degree_b)
+                  return degree_a > degree_b;
+                return a_pair.second < b_pair.second; // Original index tie-breaker.
+              });
+
+    for (const auto &p : ops_with_index) {
+      result.emplace_back(p.first, level);
     }
   }
 
@@ -415,7 +443,7 @@ mlir::Operation *mlir::neura::getMaterializedBackwardUser(Operation *op) {
          "Expected the user of ctrl_mov target to be a reserve operation");
   auto reserve_op = dyn_cast<neura::ReserveOp>(target.getDefiningOp());
 
-  // Skip ctrl_mov users of reserve; return the first materialized user.
+  // Skips ctrl_mov users of reserve; returns the first materialized user.
   for (Operation *user : reserve_op.getResult().getUsers()) {
     if (isMaterializedReserveUser(user)) {
       return user;
@@ -683,7 +711,7 @@ Operation *mlir::neura::getMaterializedProducer(Value operand) {
   Operation *producer = operand.getDefiningOp();
 
   // ReserveOp is not wrapped by DataMovOp (see InsertDataMovPass).
-  // Return it directly as it represents the loop-carried dependency
+  // Returns it directly as it represents the loop-carried dependency
   // placeholder.
   if (isa<neura::ReserveOp>(producer)) {
     return producer;
@@ -706,7 +734,7 @@ int mlir::neura::getPhysicalHops(const std::vector<Operation *> &producers,
   int hops = 0;
 
   for (Operation *producer : producers) {
-    // Get the last location of the producer.
+    // Gets the last location of the producer.
     auto producer_locs = mapping_state.getAllLocsOfOp(producer);
     assert(!producer_locs.empty() && "No locations found for producer");
 
@@ -725,7 +753,7 @@ bool mlir::neura::canReachLocInTime(const std::vector<Operation *> &producers,
                                     const MappingState &mapping_state) {
 
   for (Operation *producer : producers) {
-    // Get the last location of the producer.
+    // Gets the last location of the producer.
     auto producer_locs = mapping_state.getAllLocsOfOp(producer);
     assert(!producer_locs.empty() && "No locations found for producer");
 
@@ -972,7 +1000,39 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
         if (meet_producer_constraint && meet_backward_user_constraint) {
           // Earlier time steps get higher scores.
           int time_bonus = latest_end_time_step - t;
-          int total_award = tile_award + time_bonus;
+
+          // === Balanced Link congestion penalty ===
+          // A conservative penalty to guide the mapper away from hotspots
+          // without being too restrictive for small IIs.
+          int total_in = tile->getInLinks().size();
+          int total_out = tile->getOutLinks().size();
+          int occupied_in = 0;
+          int occupied_out = 0;
+
+          for (auto *link : tile->getInLinks()) {
+            if (!mapping_state.isAvailableAcrossTime({link, t})) {
+              occupied_in++;
+            }
+          }
+          for (auto *link : tile->getOutLinks()) {
+            if (!mapping_state.isAvailableAcrossTime({link, t})) {
+              occupied_out++;
+            }
+          }
+
+          float in_ratio = (total_in > 0) ? (float)occupied_in / total_in : 0;
+          float out_ratio = (total_out > 0) ? (float)occupied_out / total_out : 0;
+          
+          // Adaptive penalty strategy:
+          // - Use very strong penalty (60) only for high fan-in ops (>= 3 producers)
+          // - Use weak penalty (15) for low fan-in ops
+          // This optimizes fuse-pattern (II=11 target) without breaking iter-merge
+          int base_penalty_coeff = (producers.size() >= 3) ? 60 : 15;
+          
+          int congestion_penalty = static_cast<int>(in_ratio * in_ratio * base_penalty_coeff) +
+                                   static_cast<int>(out_ratio * out_ratio * base_penalty_coeff);
+
+          int total_award = tile_award + time_bonus - congestion_penalty;
           updateAward(locs_with_award, tile_loc_candidate, total_award);
         }
       }
@@ -983,11 +1043,17 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
   std::vector<std::pair<MappingLoc, int>> locs_award_vec(
       locs_with_award.begin(), locs_with_award.end());
 
-  // Sorts by award (descending).
+  // Sorts by award (descending). Uses stable sort/tie-breaker logic
+  // to minimize noise in mapping results.
   std::sort(
       locs_award_vec.begin(), locs_award_vec.end(),
       [](const std::pair<MappingLoc, int> &a,
-         const std::pair<MappingLoc, int> &b) { return a.second > b.second; });
+         const std::pair<MappingLoc, int> &b) {
+        if (a.second != b.second)
+          return a.second > b.second;
+        // Tie-breaker: earlier time step first.
+        return a.first.time_step < b.first.time_step;
+      });
   // TODO: Needs to handle tie case and prioritize lower resource utilization,
   // however, compiled II becomes worse after adding this tie-breaker:
   // https://github.com/coredac/dataflow/issues/59.
