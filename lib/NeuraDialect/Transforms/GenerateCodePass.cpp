@@ -672,9 +672,8 @@ struct GenerateCodePass
                                                                       const DenseMap<Value, Operation*> &reserve2phi) {
     SmallVector<std::pair<Operation*, Value>, 2> consumers;
     Value reserve = forwarder->getOperand(1);
-    Value source  = forwarder->getOperand(0);
     if (Operation *phi = reserve2phi.lookup(reserve))
-      consumers.push_back({phi, source});
+      consumers.push_back({phi, reserve});
     else
       forwarder->emitWarning("ctrl_mov dest is not consumed by a PHI operand#0; skipping.");
     return consumers;
@@ -700,9 +699,17 @@ struct GenerateCodePass
                       /*asCtrlMov=*/IsCtrl, mov_dfg_id);
 
       TileLocation consumer_placement = operation_placements.lookup(consumer_operation);
-      if (consumer_placement.has_tile && consumer_placement.time_step > deposit_time_step) {
-        setConsumerSourceExact(consumer_operation, value_at_consumer, "$" + std::to_string(register_id));
-        return true;
+      if (consumer_placement.has_tile) {
+        // For CTRL_MOV, the destination register often represents a stateful value (reserve/control)
+        // that must be consumed via a local register even if the consumer's time_step is earlier
+        // (e.g., prologue reads default, later iterations read updated).
+        if constexpr (IsCtrl) {
+          setConsumerSourceExact(consumer_operation, value_at_consumer, "$" + std::to_string(register_id));
+          return true;
+        } else if (consumer_placement.time_step > deposit_time_step) {
+          setConsumerSourceExact(consumer_operation, value_at_consumer, "$" + std::to_string(register_id));
+          return true;
+        }
       }
     } else {
       // Same-tile: must go via register.
