@@ -703,10 +703,9 @@ struct GenerateCodePass
         // For CTRL_MOV, the destination register often represents a stateful value (reserve/control)
         // that must be consumed via a local register even if the consumer's time_step is earlier
         // (e.g., prologue reads default, later iterations read updated).
-        if constexpr (IsCtrl) {
-          setConsumerSourceExact(consumer_operation, value_at_consumer, "$" + std::to_string(register_id));
-          return true;
-        } else if (consumer_placement.time_step > deposit_time_step) {
+        const bool should_rewire_to_register =
+            IsCtrl || (consumer_placement.time_step > deposit_time_step);
+        if (should_rewire_to_register) {
           setConsumerSourceExact(consumer_operation, value_at_consumer, "$" + std::to_string(register_id));
           return true;
         }
