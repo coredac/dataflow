@@ -147,12 +147,12 @@
 // ASM-NEXT: } (idx_per_ii=0)
 // ASM-NEXT: {
 // ASM-NEXT:   ADD, [NORTH, RED], [SOUTH, RED] -> [SOUTH, RED], [$0] (t=6, inv_iters=1)
+// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$1] (t=6, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=1)
 // ASM-NEXT: {
 // ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [$0] (t=7, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=2)
 // ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$1] (t=3, inv_iters=0)
 // ASM-NEXT:   RETURN_VALUE, [$0] (t=8, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=3)
 // ASM:      PE(2,2):

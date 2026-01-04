@@ -87,6 +87,16 @@
 // YAML-NEXT:           instructions:
 // YAML-NEXT:             - index_per_ii: 0
 // YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "DATA_MOV"
+// YAML-NEXT:                   id: 15
+// YAML-NEXT:                   time_step: 5
+// YAML-NEXT:                   invalid_iterations: 1
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$1"
+// YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                 - opcode: "GRANT_PREDICATE"
 // YAML-NEXT:                   id: 18
 // YAML-NEXT:                   time_step: 10
@@ -108,18 +118,6 @@
 // YAML-NEXT:                   src_operands:
 // YAML-NEXT:                     - operand: "$2"
 // YAML-NEXT:                       color: "RED"
-// YAML-NEXT:             - index_per_ii: 3
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 15
-// YAML-NEXT:                   time_step: 3
-// YAML-NEXT:                   invalid_iterations: 0
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "NORTH"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "$1"
-// YAML-NEXT:                       color: "RED"
 // YAML-NEXT:             - index_per_ii: 4
 // YAML-NEXT:               operations:
 // YAML-NEXT:                 - opcode: "DATA_MOV"
@@ -136,14 +134,12 @@
 // ASM:      # Compiled II: 5
 // ASM:      PE(3,1):
 // ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$1] (t=5, inv_iters=1)
 // ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [$2] (t=10, inv_iters=2)
 // ASM-NEXT: } (idx_per_ii=0)
 // ASM-NEXT: {
 // ASM-NEXT:   RETURN_VOID, [$2] (t=11, inv_iters=2)
 // ASM-NEXT: } (idx_per_ii=1)
-// ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$1] (t=3, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=3)
 // ASM-NEXT: {
 // ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$0] (t=4, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=4)
@@ -172,10 +168,11 @@
 // ASM-NEXT:   ADD, [$0], [#1] -> [$0], [WEST, RED] (t=2, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=2)
 // ASM-NEXT: {
-// ASM-NEXT:   ICMP_EQ, [$0], [#20] -> [WEST, RED], [SOUTH, RED] (t=3, inv_iters=0)
+// ASM-NEXT:   ICMP_EQ, [$0], [#20] -> [WEST, RED], [SOUTH, RED], [$0] (t=3, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=3)
 // ASM-NEXT: {
 // ASM-NEXT:   MUL, [WEST, RED], [#5] -> [NORTH, RED] (t=4, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [$0] -> [SOUTH, RED] (t=4, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=4)
 
 // RUN: mlir-neura-opt %t-kernel.mlir --view-op-graph 2>&1 | sed -n '/^digraph G {/,/^}$/p' > histogram_kernel_original.dot
