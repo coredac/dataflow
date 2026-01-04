@@ -18,10 +18,10 @@ bool HeuristicMapping::mapWithBacktrack(
     std::vector<std::pair<Operation *, int>> &sorted_ops_with_levels,
     std::set<Operation *> &critical_ops, const Architecture &architecture,
     MappingState &mapping_state) {
-  llvm::outs() << "---------------------------------------------------------\n";
-  llvm::outs() << "[HeuristicMapping] Starting mapping with "
+  llvm::errs() << "---------------------------------------------------------\n";
+  llvm::errs() << "[HeuristicMapping] Starting mapping with "
                << sorted_ops_with_levels.size() << " operations.\n";
-  llvm::outs() << "Configuration: MAX Backtrack Depth = "
+  llvm::errs() << "Configuration: MAX Backtrack Depth = "
                << this->max_backtrack_depth
                << ", MAX Candidate Locations = " << this->max_location_to_try
                << "\n";
@@ -33,14 +33,14 @@ bool HeuristicMapping::mapWithBacktrack(
     }
   }
 
-  llvm::outs() << "[HeuristicMapping] Filtered "
+  llvm::errs() << "[HeuristicMapping] Filtered "
                << sorted_ops_with_levels.size() - materialized_ops.size()
                << " non-materialized operations, " << materialized_ops.size()
                << " operations require physical mapping." << "\n";
   
-  llvm::outs() << "[HeuristicMapping] Materialized operations list:\n";
+  llvm::errs() << "[HeuristicMapping] Materialized operations list:\n";
   for (size_t i = 0; i < materialized_ops.size(); ++i) {
-    llvm::outs() << i << " " << *materialized_ops[i].first 
+    llvm::errs() << i << " " << *materialized_ops[i].first 
                  << " (level: " << materialized_ops[i].second << ")\n";
   }
 
@@ -67,7 +67,7 @@ bool HeuristicMapping::mapWithBacktrack(
 
     if (current_op_index >= static_cast<int>(materialized_ops.size())) {
       // All operations have been mapped successfully.
-      llvm::outs() << "[HeuristicMapping] Successfully mapped all "
+      llvm::errs() << "[HeuristicMapping] Successfully mapped all "
                    << materialized_ops.size() << " operations.\n";
       return true;
     }
@@ -77,7 +77,7 @@ bool HeuristicMapping::mapWithBacktrack(
                  current_op_index); // Updates the max operation reached.
 
     if (max_op_reached - current_op_index > this->max_backtrack_depth) {
-      llvm::outs() << "[HeuristicMapping] Max backtrack depth exceeded: "
+      llvm::errs() << "[HeuristicMapping] Max backtrack depth exceeded: "
                    << (max_op_reached - current_op_index) << " > "
                    << this->max_backtrack_depth << ".\n";
       return false; // Backtrack failed, max depth exceeded.
@@ -90,7 +90,7 @@ bool HeuristicMapping::mapWithBacktrack(
                                     architecture, mapping_state);
 
     if (candidate_locs.empty()) {
-      llvm::outs() << "[HeuristicMapping] No candidate locations found "
+      llvm::errs() << "[HeuristicMapping] No candidate locations found "
                    << "for operation: " << *current_op << "\n";
       // No candidate locations available, backtrack to the previous operation.
       snapshots.pop_back(); // Restore the previous mapping state.
@@ -98,21 +98,21 @@ bool HeuristicMapping::mapWithBacktrack(
       operation_index_history.pop_back();
 
       if (snapshots.empty()) {
-        llvm::outs() << "[HeuristicMapping] No more snapshots to restore, "
+        llvm::errs() << "[HeuristicMapping] No more snapshots to restore, "
                      << "mapping failed.\n";
         return false; // No more snapshots to restore, mapping failed.
       }
 
       snapshots.back().restore(mapping_state);
       candidate_history.back()++;
-      llvm::outs() << "[HeuristicMapping] Backtracking to operation "
+      llvm::errs() << "[HeuristicMapping] Backtracking to operation "
                    << operation_index_history.back() << "(depth = "
                    << (max_op_reached - operation_index_history.back())
                    << ")\n";
       continue; // Backtrack to the previous operation.
     }
 
-    llvm::outs() << "[HeuristicMapping] Found " << candidate_locs.size()
+    llvm::errs() << "[HeuristicMapping] Found " << candidate_locs.size()
                  << " candidate locations for operation: " << *current_op
                  << "\n";
     // Limits the number of locations to try.
@@ -125,7 +125,7 @@ bool HeuristicMapping::mapWithBacktrack(
 
     if (current_candidate_index >= static_cast<int>(candidate_locs.size())) {
       // Needs to backtrack since all candidate locations have been tried.
-      llvm::outs() << "[HeuristicMapping] All " << candidate_locs.size()
+      llvm::errs() << "[HeuristicMapping] All " << candidate_locs.size()
                    << " locations for " << current_op_index
                    << " tried, backtracking...\n";
 
@@ -136,7 +136,7 @@ bool HeuristicMapping::mapWithBacktrack(
 
       // If no more operation indices to backtrack, mapping failed.
       if (operation_index_history.empty()) {
-        llvm::outs() << "[HeuristicMapping] FAILURE: No more operations "
+        llvm::errs() << "[HeuristicMapping] FAILURE: No more operations "
                         "available for backtracking.\n";
         return false;
       }
@@ -147,7 +147,7 @@ bool HeuristicMapping::mapWithBacktrack(
       // Increments the candidate location index for the previous decision point
       candidate_history.back()++;
 
-      llvm::outs() << "[HeuristicMapping] Backtracking to operation "
+      llvm::errs() << "[HeuristicMapping] Backtracking to operation "
                    << operation_index_history.back() << " (depth = "
                    << (max_op_reached - operation_index_history.back())
                    << ").\n";
@@ -157,7 +157,7 @@ bool HeuristicMapping::mapWithBacktrack(
 
     MappingLoc candidate_loc = candidate_locs[current_candidate_index];
 
-    llvm::outs() << "[HeuristicMapping] Trying candidate "
+    llvm::errs() << "[HeuristicMapping] Trying candidate "
                  << (current_candidate_index + 1) << "/"
                  << candidate_locs.size() << " at "
                  << candidate_loc.resource->getType() << "#"
@@ -169,7 +169,7 @@ bool HeuristicMapping::mapWithBacktrack(
 
     // Attempts to place and route the operation at the candidate location.
     if (placeAndRoute(current_op, candidate_loc, mapping_state)) {
-      llvm::outs() << "[HeuristicMapping] Successfully mapped operation "
+      llvm::errs() << "[HeuristicMapping] Successfully mapped operation "
                    << *current_op << "\n";
 
       // Adds a new decision point for the next operation.
@@ -178,7 +178,7 @@ bool HeuristicMapping::mapWithBacktrack(
       operation_index_history.push_back(current_op_index + 1);
     } else {
       // Mapping failed, restores state and tries the next candidate.
-      llvm::outs() << "[HeuristicMapping] Failed to map operation "
+      llvm::errs() << "[HeuristicMapping] Failed to map operation "
                    << *current_op << " to candidate location "
                    << (current_candidate_index + 1) << "/"
                    << candidate_locs.size() << "\n";

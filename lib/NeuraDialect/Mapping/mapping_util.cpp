@@ -638,7 +638,7 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
     exclusive_deadline_step += state.getII();
   }
 
-  llvm::outs() << "[tryRouteDataMove] Routing from Tile#" << src_tile->getId()
+  llvm::errs() << "[tryRouteDataMove] Routing from Tile#" << src_tile->getId()
                << " @t=" << src_loc.time_step << " to Tile#"
                << dst_tile->getId() << " @t=" << exclusive_deadline_step
                << "\n";
@@ -650,7 +650,7 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
     Register *available_reg = getAvailableRegister(
         state, src_tile, src_loc.time_step, exclusive_deadline_step);
     if (!available_reg) {
-      llvm::outs()
+      llvm::errs()
           << "[tryRouteDataMove] Cannot find available register on Tile#"
           << src_tile->getId() << " for time range: t=" << src_loc.time_step
           << " to t=" << exclusive_deadline_step << "\n";
@@ -662,7 +662,7 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
       path_out.push_back({available_reg, t});
     }
 
-    llvm::outs() << "[tryRouteDataMove] Successfully routed on same tile using "
+    llvm::errs() << "[tryRouteDataMove] Successfully routed on same tile using "
                     "Register #"
                  << available_reg->getId() << "\n";
     return true;
@@ -705,7 +705,7 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
               getAvailableRegister(state, dst_tile, current_state.current_time,
                                    exclusive_deadline_step);
           if (!wait_reg) {
-            llvm::outs() << "[tryRouteDataMove] Cannot find available waiting"
+            llvm::errs() << "[tryRouteDataMove] Cannot find available waiting"
                             "register on destination Tile#"
                          << dst_tile->getId() << "\n";
             continue; // Tries other paths.
@@ -774,7 +774,7 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
   }
 
   // Search failed.
-  llvm::outs() << "[tryRouteDataMove] Cannot find routing path from Tile#"
+  llvm::errs() << "[tryRouteDataMove] Cannot find routing path from Tile#"
                << src_tile->getId() << " @t=" << src_loc.time_step
                << " to Tile#" << dst_tile->getId()
                << " @t=" << exclusive_deadline_step << "\n";

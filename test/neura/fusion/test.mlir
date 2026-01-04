@@ -24,7 +24,7 @@
 // RUN:           --fold-constant \
 // RUN:           --fuse-pattern \
 // RUN:           --insert-data-mov \
-// RUN:           --map-to-accelerator="mapping-strategy=heuristic backtrack-config=simple" %t-kernel.mlir | FileCheck %s --check-prefix=CHECK-MAPPING
+// RUN:           --map-to-accelerator="mapping-strategy=heuristic backtrack-config=customized" %t-kernel.mlir 2>/dev/null | FileCheck %s --check-prefix=CHECK-MAPPING
 
 // CHECK-FUSED: func.func @_Z6kernel
 // CHECK-FUSED-SAME: accelerator = "neura"
@@ -32,7 +32,7 @@
 // CHECK-FUSED:      "neura.mul_add"
 // CHECK-FUSED:      "neura.mul_add"
 
-// CHECK-MAPPING: mapping_info = {compiled_ii = {{1[0-5]}} : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = {{[0-9]+}} : i32, res_mii = {{[0-9]+}} : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}
+// CHECK-MAPPING: mapping_info = {compiled_ii = 13 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = {{[0-9]+}} : i32, res_mii = {{[0-9]+}} : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}
 
 // RUN: mlir-neura-opt --architecture-spec=%S/../../arch_spec/architecture.yaml --verify-each=true \
 // RUN:           --assign-accelerator \
@@ -102,6 +102,6 @@
 // RUN:           --fold-constant \
 // RUN:           --iter-merge-pattern="min-support=3 max-iter=4" \
 // RUN:           --insert-data-mov \
-// RUN:           --map-to-accelerator="mapping-strategy=heuristic backtrack-config=simple" %t-kernel.mlir | FileCheck %s --check-prefix=CHECK-ITER-MERGE-PATTERN-MAPPING
+// RUN:           --map-to-accelerator="mapping-strategy=heuristic backtrack-config=simple" %t-kernel.mlir 2>/dev/null | FileCheck %s --check-prefix=CHECK-ITER-MERGE-PATTERN-MAPPING
 
-// CHECK-ITER-MERGE-PATTERN-MAPPING: mapping_info = {compiled_ii = {{1[0-5]}} : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = {{[0-9]+}} : i32, res_mii = {{[0-9]+}} : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}
+// CHECK-ITER-MERGE-PATTERN-MAPPING: mapping_info = {compiled_ii = {{1[0-5] : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = {{[0-9]+}} : i32, res_mii = {{[0-9]+}} : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}

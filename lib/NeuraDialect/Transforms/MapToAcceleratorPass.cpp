@@ -664,11 +664,11 @@ struct MapToAcceleratorPass
       RecurrenceCycle *longest = nullptr;
       int rec_mii = 1;
       for (auto &cycle : recurrence_cycles) {
-        // llvm::outs() << "[DEBUG] Recurrence cycle (length " << cycle.length
-        //              << "):\n";
+        llvm::errs() << "[DEBUG] Recurrence cycle (length " << cycle.length
+                     << "):\n";
         for (Operation *op : cycle.operations) {
           critical_ops.insert(op);
-          // llvm::outs() << "  " << *op << "\n";
+          llvm::errs() << "  " << *op << "\n";
         }
         if (!longest || cycle.length > longest->length) {
           longest = &cycle;
@@ -676,11 +676,11 @@ struct MapToAcceleratorPass
       }
 
       if (longest) {
-        llvm::outs()
+        llvm::errs()
             << "[MapToAcceleratorPass] Longest recurrence cycle (length "
             << longest->length << "):\n";
         for (Operation *op : longest->operations) {
-          op->print(llvm::outs()), llvm::outs() << "\n";
+          op->print(llvm::errs()), llvm::errs() << "\n";
         }
         rec_mii = longest->length;
       } else if (!longest) {
@@ -725,7 +725,7 @@ struct MapToAcceleratorPass
         // Check if parent is a fused_op by checking operation name
         if (parent_op && parent_op->getName().getStringRef().contains("fused_op")) {
           // Skip operations inside fused_op region
-          llvm::outs() << "[MapToAcceleratorPass] Skipping op inside fused_op: "
+          llvm::errs() << "[MapToAcceleratorPass] Skipping op inside fused_op: "
                        << *op << "\n";
           skipped_count++;
           continue;
@@ -740,7 +740,7 @@ struct MapToAcceleratorPass
       }
       
       for (Operation *op : topologically_sorted_ops) {
-        llvm::outs() << "[MapToAcceleratorPass] Topologically sorted op: "
+        llvm::errs() << "[MapToAcceleratorPass] Topologically sorted op: "
                      << *op << "\n";
       }
       std::vector<std::vector<Operation *>> level_buckets =
@@ -784,16 +784,16 @@ struct MapToAcceleratorPass
       }
       for (int level = 0; level < static_cast<int>(level_buckets.size());
            ++level) {
-        llvm::outs() << "[MapToAcceleratorPass] ALAP Bucket Level " << level
+        llvm::errs() << "[MapToAcceleratorPass] ALAP Bucket Level " << level
                      << ": " << level_buckets[level].size() << " ops\n";
         for (Operation *op : level_buckets[level]) {
-          llvm::outs() << "  " << *op << "\n";
+          llvm::errs() << "  " << *op << "\n";
         }
       }
       std::vector<std::pair<Operation *, int>> sorted_ops_with_alap_levels =
           flatten_level_buckets(level_buckets, critical_ops);
       for (const auto &[op, level] : sorted_ops_with_alap_levels) {
-        llvm::outs() << "[MapToAcceleratorPass] ALAP sorted op: " << *op
+        llvm::errs() << "[MapToAcceleratorPass] ALAP sorted op: " << *op
                      << " (ALAP level: " << level << ")\n";
       }
       // assert(false);
