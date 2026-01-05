@@ -280,7 +280,45 @@ static TaskFlowTaskOp createTaskFromOp(OpBuilder &builder, Operation *op,
 }
 
 //------------------------------------------------------------------------------
-// Step 3: Graph Construction - Creates the taskflow.graph op.
+// Step 3: Channel Insertion - Inserts taskflow.channel ops between tasks.
+//------------------------------------------------------------------------------
+static void insertChannels(OpBuilder &builder, ArrayRef<TaskFlowTaskOp> tasks) {
+  DenseSet<TaskFlowTaskOp> task_set(tasks.begin(), tasks.end());
+
+  for (TaskFlowTaskOp producer_task : tasks) {
+    Location loc = producer_task.getLoc();
+
+    // For each data output of this producer task.
+    for (Value data_out : producer_task.getDataOuts()) {
+      // Collects all consumer tasks that use this output.
+      SmallVector<std::pair<TaskFlowTaskOp, OpOperand *>> consumer_tasks;
+
+      for (OpOperand &use : data_out.getUses()) {
+        Operation *user = use.getOwner();
+        if (auto consumer_task = dyn_cast<TaskFlowTaskOp>(user)) {
+          if (task_set.contains(consumer_task)) {
+            consumer_tasks.push_back({consumer_task, &use});
+          }
+        }
+      }
+
+      // Creates a dedicated channel for each consumer task.
+      builder.setInsertionPointAfter(producer_task);
+
+      for (auto [consumer_task, use] : consumer_tasks) {
+        // Creates a new channel for this specific producer->consumer edge.
+        auto channel_op = builder.create<TaskFlowChannelOp>(
+            loc, data_out.getType(), data_out);
+
+        // Replaces only this specific use with the channel output.
+        use->set(channel_op.getTarget());
+      }
+    }
+  }
+}
+
+//------------------------------------------------------------------------------
+// Step 4: Graph Construction - Creates the taskflow.graph op.
 //------------------------------------------------------------------------------
 static LogicalResult buildTaskflowGraph(
     OpBuilder &builder, func::FuncOp func_op, ArrayRef<Operation *> graph_ops,
@@ -294,11 +332,11 @@ static LogicalResult buildTaskflowGraph(
     result_types.push_back(output.getType());
   }
 
-  // Create graph op.
+  // Creates graph op.
   auto graph_op =
       builder.create<TaskFlowGraphOp>(loc, result_types, graph_inputs);
 
-  // Build graph body.
+  // Builds graph body.
   Block *graph_body = new Block();
   graph_op.getBody().push_back(graph_body);
 
@@ -309,16 +347,22 @@ static LogicalResult buildTaskflowGraph(
     ctx.graph_input_mapping[input] = arg;
   }
 
-  // Convert each operation to a task.
+  // Converts each operation to a task.
   builder.setInsertionPointToStart(graph_body);
+  SmallVector<TaskFlowTaskOp> tasks;
   for (Operation *op : graph_ops) {
     const SmallVector<Value> &external_values = op_external_values.lookup(op);
-    if (!createTaskFromOp(builder, op, ctx, external_values)) {
+    auto task_op = createTaskFromOp(builder, op, ctx, external_values);
+    if (!task_op) {
       return failure();
     }
+    tasks.push_back(task_op);
   }
 
-  // Create graph return.
+  // Inserts channels between tasks.
+  insertChannels(builder, tasks);
+
+  // Creates graph return.
   SmallVector<Value> return_values;
   for (Value output : graph_outputs) {
     Value resolved = ctx.value_mapping[output];
@@ -326,7 +370,7 @@ static LogicalResult buildTaskflowGraph(
   }
   builder.create<TaskFlowReturnOp>(loc, return_values);
 
-  // Replace original outputs with graph results.
+  // Replaces original outputs with graph results.
   for (auto [orig_output, graph_result] :
        llvm::zip(graph_outputs, graph_op.getResults())) {
     orig_output.replaceAllUsesExcept(graph_result, graph_op.getOperation());
@@ -394,7 +438,7 @@ static LogicalResult convertFuncToTaskflow(func::FuncOp func_op) {
   DenseMap<Operation *, SmallVector<Value>> op_external_values =
       collectExternalValuesPerOp(graph_ops, func_op);
 
-  // Step 2: Creates the taskflow.graph op.
+  // Step 2 & 3 & 4: Creates the taskflow.graph op.
   auto result = buildTaskflowGraph(builder, func_op, graph_ops, graph_inputs,
                                    graph_outputs, op_external_values);
   llvm::errs() << "Converted function to TaskFlow graph.\n";
