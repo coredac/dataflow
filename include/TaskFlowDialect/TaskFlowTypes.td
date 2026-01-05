@@ -36,28 +36,4 @@ def TaskFlowPacketType : TaskFlowTypeBase<"Packet", "packet">{
       }]>
   ];
 }
-
-//----------------------------------------------------------------------
-// BufferType - Data buffer type.
-//----------------------------------------------------------------------
-def TaskFlowBufferType : TaskFlowTypeBase<"Buffer", "buffer">{
-  let summary = "Data buffer carraying computationi data";
-
-  let description = [{
-    
-  }];
-
-  let parameters = (ins "::mlir::Type":$elementType);
-
-  let assemblyFormat = [{
-    `<` $elementType `>`
-  }];
-
-  let builders = [
-    TypeBuilderWithInferredContext<(ins "Type":$elementType),
-    [{
-        return $_get(elementType.getContext(), elementType);
-    }]>
-  ];
-}
 #endif //TASKFLOW_TYPES_TD

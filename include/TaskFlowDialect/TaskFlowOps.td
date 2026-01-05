@@ -97,7 +97,7 @@ def TaskFlowTaskOp : TaskFlowOpBase<"task", [
     // Optional control inputs.
     Variadic<TaskFlowPacketType>:$control_ins,
     // Optional data inputs.
-    Variadic<TaskFlowBufferType>:$data_ins,
+    Variadic<AnyType>:$data_ins,
     StrAttr:$task_name,
 
     // Task metadata.
@@ -109,7 +109,7 @@ def TaskFlowTaskOp : TaskFlowOpBase<"task", [
     // Optional control outputs.
     Variadic<TaskFlowPacketType>:$control_outs,
     // Optional data outputs.
-    Variadic<TaskFlowBufferType>:$data_outs
+    Variadic<AnyType>:$data_outs
   );
 
   let regions = (region SizedRegion<1>:$body);
@@ -161,14 +161,14 @@ def TaskFlowDriveOp : TaskFlowOpBase<"drive", [Pure]>{
 }
 
 def TaskFlowChannelOp : TaskFlowOpBase<"channel", [Pure]>{
-  let summary = "Data dependency edge that carries data buffers between tasks in a TaskFlow graph";
+  let summary = "Data dependency edge that carries data dependencies between tasks in a TaskFlow graph";
   let description = [{
   
   }];
 
-  let arguments = (ins TaskFlowBufferType:$source);
+  let arguments = (ins AnyType:$source);
 
-  let results = (outs TaskFlowBufferType:$target);
+  let results = (outs AnyType:$target);
 
   let assemblyFormat = [{
     $source attr-dict `:` type($source) `->` type($target)
