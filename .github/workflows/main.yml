@@ -137,6 +137,9 @@ jobs:
       uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
+    # Installs NumPy 1.x first (compatable with torch-mlir)
+    - name: Install NumPy 1.x
+      run: pip install "numpy<2.0"
     - name: Install PyTorch
       run: |
         wget https://github.com/llvm/torch-mlir/releases/download/snapshot-20231229.1067/torch-2.2.0.dev20231204+cpu-cp311-cp311-linux_x86_64.whl
