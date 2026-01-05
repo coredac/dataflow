@@ -42,6 +42,7 @@ add_subdirectory(tools)
 
 # Tools built by this project or LLVM
 set(MLIR_NEURA_OPT ${CMAKE_BINARY_DIR}/tools/mlir-neura-opt/mlir-neura-opt)
+set(MLIR_TASKFLOW_OPT ${CMAKE_BINARY_DIR}/tools/mlir-taskflow-opt/mlir-taskflow-opt)
 set(NEURA_INTERPRETER ${CMAKE_BINARY_DIR}/tools/neura-interpreter/neura-interpreter)
 set(NEURA_COMPILER ${CMAKE_BINARY_DIR}/tools/neura-compiler/neura-compiler)
 set(FILECHECK ${LLVM_TOOLS_BINARY_DIR}/FileCheck)
