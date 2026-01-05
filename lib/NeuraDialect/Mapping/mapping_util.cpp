@@ -20,6 +20,10 @@ static const int AWARD_BACKWARD_PROXIMITY_SCALE = 1;
 static const int AWARD_BASE_MULTIPLIER = 1;
 static const int AWARD_CRITICAL_BONUS_DIV = 1;
 
+// Congestion penalty coefficients (tunable).
+static const int STRONG_CONGESTION_PENALTY = 60; // used for high fan-in ops (>=3)
+static const int WEAK_CONGESTION_PENALTY = 15;   // used for low fan-in ops
+
 namespace mlir {
 namespace neura {
 OperationKind getOperationKindFromMlirOp(Operation *op) {
@@ -669,7 +673,7 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
       continue;
     }
 
-    // Explores two routing options from current tile:
+    int next_time = current_state.current_time + 1;
 
     // Option 1: Moves to adjacent tile through link.
     for (Link *out_link : current_state.current_tile->getOutLinks()) {
@@ -1038,7 +1042,9 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
           // - Use very strong penalty (60) only for high fan-in ops (>= 3 producers)
           // - Use weak penalty (15) for low fan-in ops
           // This optimizes fuse-pattern (II=11 target) without breaking iter-merge
-          int base_penalty_coeff = (producers.size() >= 3) ? 60 : 15;
+          int base_penalty_coeff = (producers.size() >= 3)
+                                       ? STRONG_CONGESTION_PENALTY
+                                       : WEAK_CONGESTION_PENALTY;
           
           int congestion_penalty = static_cast<int>(in_ratio * in_ratio * base_penalty_coeff) +
                                    static_cast<int>(out_ratio * out_ratio * base_penalty_coeff);
