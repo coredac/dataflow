@@ -147,3 +147,23 @@
 // ASM-NEXT:   RETURN_VOID, [$2] (t=11, inv_iters=2)
 // ASM-NEXT: } (idx_per_ii=1)
 // ASM-NEXT: {
+
+// RUN: mlir-neura-opt %t-kernel.mlir --view-op-graph 2>&1 | sed -n '/^digraph G {/,/^}$/p' > histogram_kernel_original.dot
+// RUN: dot -Tpng histogram_kernel_original.dot -o histogram_kernel_original.png
+// RUN: dot -Tjson histogram_kernel_original.dot -o histogram_kernel_original.json
+// RUN: mlir-neura-opt %t-kernel.mlir \
+// RUN:   --assign-accelerator \
+// RUN:   --lower-llvm-to-neura \
+// RUN:   --promote-func-arg-to-const \
+// RUN:   --fold-constant \
+// RUN:   --canonicalize-return \
+// RUN:   --canonicalize-live-in \
+// RUN:   --leverage-predicated-value \
+// RUN:   --transform-ctrl-to-data-flow \
+// RUN:   --fold-constant \
+// RUN:   --view-op-graph 2>&1 | sed -n '/^digraph G {/,/^}$/p' > histogram_kernel.dot
+// RUN: dot -Tpng histogram_kernel.dot -o histogram_kernel.png
+// RUN: dot -Tjson histogram_kernel.dot -o histogram_kernel.json
+// RUN: FileCheck %s --input-file=histogram_kernel.dot -check-prefix=DOT
+
+// DOT: digraph G {
