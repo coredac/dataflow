@@ -1,8 +1,9 @@
 // RUN: cd %S && python resnet.py
 
 // RUN: mlir-taskflow-opt %S/Output/simple_resnet.mlir \
-// RUN: --convert-linalg-to-taskflow -o %t-resnet-taskflow.mlir \
-// RUN: | FileCheck %s --input-file=%t-resnet-taskflow.mlir
+// RUN: --convert-linalg-to-taskflow -o %t-resnet-taskflow.mlir
+
+// RUN: FileCheck %s --input-file=%t-resnet-taskflow.mlir
 
 // CHECK:      %2 = taskflow.graph(%arg0, %cst_1, %cst_0, %1, %0, %cst) {
 // CHECK-NEXT:   ^bb0(%arg1: tensor<1x64x8x8xf32>, %arg2: f32, %arg3: tensor<64x64x3x3xf32>, %arg4: tensor<1x64x8x8xf32>, %arg5: tensor<1x64x8x8xf32>, %arg6: tensor<64x64x3x3xf32>):
