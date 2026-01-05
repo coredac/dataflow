@@ -1,7 +1,7 @@
 #ifndef TASKFLOW_TD
 #define TASKFLOW_TD
 
-include "TaskFlowDialect.td"
-include "TaskFlowOps.td"
+include "TaskflowDialect.td"
+include "TaskflowOps.td"
 
 #endif // TASKFLOW_TD

@@ -1,5 +1,5 @@
-add_mlir_dialect_library(MLIRTaskFlow
-        TaskFlow.cpp
+add_mlir_dialect_library(MLIRTaskflow
+        Taskflow.cpp
 
         DEPENDS
         MLIRConversionIncGen

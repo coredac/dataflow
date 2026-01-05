@@ -1,27 +1,27 @@
 #ifndef TASKFLOW_OPS_TD
 #define TASKFLOW_OPS_TD
 
-include "TaskFlowDialect/TaskFlowDialect.td"
-include "TaskFlowDialect/TaskFlowTypes.td"
+include "TaskflowDialect/TaskflowDialect.td"
+include "TaskflowDialect/TaskflowTypes.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/RegionKindInterface.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
 //----------------------------------------------------------------------
-// Base Class for all TaskFlow operations.
+// Base Class for all Taskflow operations.
 //----------------------------------------------------------------------
-class TaskFlowOpBase<string mnemonic, list<Trait> traits = []> : Op<TaskFlowDialect, mnemonic, traits>;
+class TaskflowOpBase<string mnemonic, list<Trait> traits = []> : Op<TaskflowDialect, mnemonic, traits>;
 
 //----------------------------------------------------------------------
 // Graph Level Operations.
 //----------------------------------------------------------------------
 
 // Defines the top-level graph operation representing the workload.
-def TaskFlowGraphOp : TaskFlowOpBase<"graph", [
+def TaskflowGraphOp : TaskflowOpBase<"graph", [
     IsolatedFromAbove,
     AutomaticAllocationScope,
-    SingleBlockImplicitTerminator<"TaskFlowReturnOp">
+    SingleBlockImplicitTerminator<"TaskflowReturnOp">
 ]>{
   let summary = "Top-level graph operation representing workload on a scale-out/scale-up spatial architecture.";  
 
@@ -48,11 +48,11 @@ def TaskFlowGraphOp : TaskFlowOpBase<"graph", [
   }];
 }
 
-// Defines the return operation to terminate a TaskFlow graph.
-def TaskFlowReturnOp : TaskFlowOpBase<"return", [Terminator]> {
-  let summary = "Return operation for TaskFlow graph.";
+// Defines the return operation to terminate a Taskflow graph.
+def TaskflowReturnOp : TaskflowOpBase<"return", [Terminator]> {
+  let summary = "Return operation for Taskflow graph.";
   let description = [{
-    This operation terminates a TaskFlow graph.
+    This operation terminates a Taskflow graph.
     This acts as a interaction op between the spatial architecture and the host processor.
 
     Example"
@@ -80,14 +80,14 @@ def TaskFlowReturnOp : TaskFlowOpBase<"return", [Terminator]> {
 // Task Level Operations.
 //----------------------------------------------------------------------
 
-// Defines a uniform computation and control task operation within a TaskFlow graph.
-def TaskFlowTaskOp : TaskFlowOpBase<"task", [
+// Defines a uniform computation and control task operation within a Taskflow graph.
+def TaskflowTaskOp : TaskflowOpBase<"task", [
     AttrSizedOperandSegments,
     AttrSizedResultSegments,
-    SingleBlockImplicitTerminator<"TaskFlowYieldOp">,
+    SingleBlockImplicitTerminator<"TaskflowYieldOp">,
     NoMemoryEffect,
 ]>{
-  let summary = "Uniform computation and control task operation within a TaskFlow graph";
+  let summary = "Uniform computation and control task operation within a Taskflow graph";
 
   let description = [{
   
@@ -95,7 +95,7 @@ def TaskFlowTaskOp : TaskFlowOpBase<"task", [
 
   let arguments = (ins
     // Optional control inputs.
-    Variadic<TaskFlowPacketType>:$control_ins,
+    Variadic<TaskflowPacketType>:$control_ins,
     // Optional data inputs.
     Variadic<AnyType>:$data_ins,
     StrAttr:$task_name,
@@ -107,7 +107,7 @@ def TaskFlowTaskOp : TaskFlowOpBase<"task", [
 
   let results = (outs
     // Optional control outputs.
-    Variadic<TaskFlowPacketType>:$control_outs,
+    Variadic<TaskflowPacketType>:$control_outs,
     // Optional data outputs.
     Variadic<AnyType>:$data_outs
   );
@@ -123,9 +123,9 @@ def TaskFlowTaskOp : TaskFlowOpBase<"task", [
   // }];
 }
 
-// Defines the yield operation to terminate a TaskFlow task.
-def TaskFlowYieldOp : TaskFlowOpBase<"yield", [Terminator, Pure, ReturnLike, ParentOneOf<["TaskFlowTaskOp"]>]>{
-  let summary = "Yield operation for TaskFlow task";
+// Defines the yield operation to terminate a Taskflow task.
+def TaskflowYieldOp : TaskflowOpBase<"yield", [Terminator, Pure, ReturnLike, ParentOneOf<["TaskflowTaskOp"]>]>{
+  let summary = "Yield operation for Taskflow task";
   let description = [{
   
   }];
@@ -144,24 +144,24 @@ def TaskFlowYieldOp : TaskFlowOpBase<"yield", [Terminator, Pure, ReturnLike, Par
   ];
 }
 
-// Defines the control edge operation that carries control packets between tasks in a TaskFlow graph.
-def TaskFlowDriveOp : TaskFlowOpBase<"drive", [Pure]>{
-  let summary = "Control edge that carries control packets between tasks in a TaskFlow graph";
+// Defines the control edge operation that carries control packets between tasks in a Taskflow graph.
+def TaskflowDriveOp : TaskflowOpBase<"drive", [Pure]>{
+  let summary = "Control edge that carries control packets between tasks in a Taskflow graph";
   let description = [{
   
   }];
 
-  let arguments = (ins TaskFlowPacketType:$source);
+  let arguments = (ins TaskflowPacketType:$source);
 
-  let results = (outs TaskFlowPacketType:$target);
+  let results = (outs TaskflowPacketType:$target);
 
   let assemblyFormat = [{
     $source attr-dict `:` type($source) `->` type($target)
   }];
 }
 
-def TaskFlowChannelOp : TaskFlowOpBase<"channel", [Pure]>{
-  let summary = "Data dependency edge that carries data dependencies between tasks in a TaskFlow graph";
+def TaskflowChannelOp : TaskflowOpBase<"channel", [Pure]>{
+  let summary = "Data dependency edge that carries data dependencies between tasks in a Taskflow graph";
   let description = [{
   
   }];

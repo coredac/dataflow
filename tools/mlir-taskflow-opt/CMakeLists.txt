@@ -5,7 +5,7 @@ set(LIBS
         ${dialect_libs}
         ${conversion_libs}
         MLIRConversion
-        MLIRTaskFlow
+        MLIRTaskflow
         MLIRTransforms
         MLIROptLib
         MLIRPass

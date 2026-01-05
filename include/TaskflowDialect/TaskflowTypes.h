@@ -3,6 +3,6 @@
 #include "mlir/IR/Types.h"
 
 #define GET_TYPEDEF_CLASSES
-#include "TaskFlowDialect/TaskFlowTypes.h.inc"
+#include "TaskflowDialect/TaskflowTypes.h.inc"
 
 #endif // TASKFLOW_TYPES_H

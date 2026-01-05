@@ -15,7 +15,7 @@
 #include "llvm/Support/CommandLine.h"
 
 #include "Conversion/ConversionPasses.h"
-#include "TaskFlowDialect/TaskFlowDialect.h"
+#include "TaskflowDialect/TaskflowDialect.h"
 
 int main(int argc, char **argv) {
   // Registers MLIR dialects.
@@ -29,7 +29,7 @@ int main(int argc, char **argv) {
   registry.insert<mlir::LLVM::LLVMDialect>();
   registry.insert<mlir::memref::MemRefDialect>();
   registry.insert<mlir::ml_program::MLProgramDialect>();
-  registry.insert<mlir::taskflow::TaskFlowDialect>();
+  registry.insert<mlir::taskflow::TaskflowDialect>();
   registry.insert<mlir::tensor::TensorDialect>();
   registry.insert<mlir::linalg::LinalgDialect>();
 
@@ -41,5 +41,5 @@ int main(int argc, char **argv) {
 
   // Runs the MLIR optimizer.
   return mlir::asMainReturnCode(
-      mlir::MlirOptMain(argc, argv, "TaskFlow Dialect Optimizer", registry));
+      mlir::MlirOptMain(argc, argv, "Taskflow Dialect Optimizer", registry));
 }

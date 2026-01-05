@@ -1,7 +1,7 @@
 #include "Conversion/ConversionPasses.h"
-#include "TaskFlowDialect/TaskFlowDialect.h"
-#include "TaskFlowDialect/TaskFlowOps.h"
-#include "TaskFlowDialect/TaskFlowTypes.h"
+#include "TaskflowDialect/TaskflowDialect.h"
+#include "TaskflowDialect/TaskflowOps.h"
+#include "TaskflowDialect/TaskflowTypes.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -206,7 +206,7 @@ static Value resolveTaskInput(OpBuilder &builder, Location loc,
 //   - data_ins: input buffers
 //   - data_outs: output buffers
 //   - no control dependencies
-static TaskFlowTaskOp createTaskFromOp(OpBuilder &builder, Operation *op,
+static TaskflowTaskOp createTaskFromOp(OpBuilder &builder, Operation *op,
                                        ConversionContext &ctx,
                                        ArrayRef<Value> external_values) {
   Location loc = op->getLoc();
@@ -241,7 +241,7 @@ static TaskFlowTaskOp createTaskFromOp(OpBuilder &builder, Operation *op,
   }
 
   // Creates the taskflow.task op.
-  auto task_op = builder.create<TaskFlowTaskOp>(
+  auto task_op = builder.create<TaskflowTaskOp>(
       loc,
       /*control_outs=*/TypeRange{},
       /*data_outs=*/data_out_types,
@@ -268,7 +268,7 @@ static TaskFlowTaskOp createTaskFromOp(OpBuilder &builder, Operation *op,
   OpBuilder task_builder(task_body, task_body->begin());
   Operation *cloned_op = task_builder.clone(*op, mapping);
   // Yields the results.
-  task_builder.create<TaskFlowYieldOp>(loc, cloned_op->getResults());
+  task_builder.create<TaskflowYieldOp>(loc, cloned_op->getResults());
 
   // Registers task outputs in context (same types as original results).
   for (auto [orig_result, task_output] :
@@ -282,20 +282,20 @@ static TaskFlowTaskOp createTaskFromOp(OpBuilder &builder, Operation *op,
 //------------------------------------------------------------------------------
 // Step 3: Channel Insertion - Inserts taskflow.channel ops between tasks.
 //------------------------------------------------------------------------------
-static void insertChannels(OpBuilder &builder, ArrayRef<TaskFlowTaskOp> tasks) {
-  DenseSet<TaskFlowTaskOp> task_set(tasks.begin(), tasks.end());
+static void insertChannels(OpBuilder &builder, ArrayRef<TaskflowTaskOp> tasks) {
+  DenseSet<TaskflowTaskOp> task_set(tasks.begin(), tasks.end());
 
-  for (TaskFlowTaskOp producer_task : tasks) {
+  for (TaskflowTaskOp producer_task : tasks) {
     Location loc = producer_task.getLoc();
 
     // For each data output of this producer task.
     for (Value data_out : producer_task.getDataOuts()) {
       // Collects all consumer tasks that use this output.
-      SmallVector<std::pair<TaskFlowTaskOp, OpOperand *>> consumer_tasks;
+      SmallVector<std::pair<TaskflowTaskOp, OpOperand *>> consumer_tasks;
 
       for (OpOperand &use : data_out.getUses()) {
         Operation *user = use.getOwner();
-        if (auto consumer_task = dyn_cast<TaskFlowTaskOp>(user)) {
+        if (auto consumer_task = dyn_cast<TaskflowTaskOp>(user)) {
           if (task_set.contains(consumer_task)) {
             consumer_tasks.push_back({consumer_task, &use});
           }
@@ -307,7 +307,7 @@ static void insertChannels(OpBuilder &builder, ArrayRef<TaskFlowTaskOp> tasks) {
 
       for (auto [consumer_task, use] : consumer_tasks) {
         // Creates a new channel for this specific producer->consumer edge.
-        auto channel_op = builder.create<TaskFlowChannelOp>(
+        auto channel_op = builder.create<TaskflowChannelOp>(
             loc, data_out.getType(), data_out);
 
         // Replaces only this specific use with the channel output.
@@ -334,7 +334,7 @@ static LogicalResult buildTaskflowGraph(
 
   // Creates graph op.
   auto graph_op =
-      builder.create<TaskFlowGraphOp>(loc, result_types, graph_inputs);
+      builder.create<TaskflowGraphOp>(loc, result_types, graph_inputs);
 
   // Builds graph body.
   Block *graph_body = new Block();
@@ -349,7 +349,7 @@ static LogicalResult buildTaskflowGraph(
 
   // Converts each operation to a task.
   builder.setInsertionPointToStart(graph_body);
-  SmallVector<TaskFlowTaskOp> tasks;
+  SmallVector<TaskflowTaskOp> tasks;
   for (Operation *op : graph_ops) {
     const SmallVector<Value> &external_values = op_external_values.lookup(op);
     auto task_op = createTaskFromOp(builder, op, ctx, external_values);
@@ -368,7 +368,7 @@ static LogicalResult buildTaskflowGraph(
     Value resolved = ctx.value_mapping[output];
     return_values.push_back(resolved);
   }
-  builder.create<TaskFlowReturnOp>(loc, return_values);
+  builder.create<TaskflowReturnOp>(loc, return_values);
 
   // Replaces original outputs with graph results.
   for (auto [orig_output, graph_result] :
@@ -449,19 +449,19 @@ static LogicalResult convertFuncToTaskflow(func::FuncOp func_op) {
   return result;
 }
 
-class ConvertLinalgToTaskFlowPass
-    : public PassWrapper<ConvertLinalgToTaskFlowPass, OperationPass<ModuleOp>> {
+class ConvertLinalgToTaskflowPass
+    : public PassWrapper<ConvertLinalgToTaskflowPass, OperationPass<ModuleOp>> {
 public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ConvertLinalgToTaskFlowPass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ConvertLinalgToTaskflowPass)
 
   StringRef getArgument() const final { return "convert-linalg-to-taskflow"; }
 
   StringRef getDescription() const final {
-    return "Convert Linalg operations to TaskFlow operations";
+    return "Convert Linalg operations to Taskflow operations";
   }
 
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<TaskFlowDialect, linalg::LinalgDialect, func::FuncDialect,
+    registry.insert<TaskflowDialect, linalg::LinalgDialect, func::FuncDialect,
                     arith::ArithDialect, tensor::TensorDialect>();
   }
 
@@ -483,5 +483,5 @@ public:
 } // namespace
 
 std::unique_ptr<Pass> mlir::createConvertLinalgToTaskFlowPass() {
-  return std::make_unique<ConvertLinalgToTaskFlowPass>();
+  return std::make_unique<ConvertLinalgToTaskflowPass>();
 }

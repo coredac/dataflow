@@ -1,4 +1,4 @@
-// TaskFlowDialect.td - TableGen description of the dialect.
+// TaskflowDialect.td - TableGen description of the dialect.
 #ifndef TASKFLOW_DIALECT_TD
 #define TASKFLOW_DIALECT_TD
 
@@ -6,8 +6,8 @@ include "mlir/IR/OpBase.td"
 include "mlir/IR/DialectBase.td"
 include "mlir/IR/AttrTypeBase.td"
 
-// Defines the TaskFlow dialect.
-def TaskFlowDialect : Dialect {
+// Defines the Taskflow dialect.
+def TaskflowDialect : Dialect {
   let name = "taskflow";
   let cppNamespace = "::mlir::taskflow";
 
