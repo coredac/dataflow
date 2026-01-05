@@ -394,23 +394,34 @@ mlir::neura::getOpsInAlapLevels(const std::vector<Operation *> &sorted_ops,
 }
 
 std::vector<std::pair<Operation *, int>> mlir::neura::flatten_level_buckets(
-    const std::vector<std::vector<Operation *>> &level_buckets) {
+    const std::vector<std::vector<Operation *>> &level_buckets,
+    const std::set<Operation *> &critical_ops) {
   std::vector<std::pair<Operation *, int>> result;
 
   for (int level = 0; level < static_cast<int>(level_buckets.size()); ++level) {
-    // Collect ops with their current index to ensure stable sorting.
+    // Collects ops with their current index to ensure stable sorting.
     std::vector<std::pair<Operation *, int>> ops_with_index;
     for (int i = 0; i < (int)level_buckets[level].size(); ++i) {
       ops_with_index.push_back({level_buckets[level][i], i});
     }
 
-    // Sort by degree (num_operands + num_users) descending.
-    // Use the original index as a tie-breaker for stability.
+    // Sorts with criticality as PRIMARY criterion within the same ALAP level.
+    // This addresses tancheng's feedback: critical ops should map before
+    // high-degree non-critical ops in the same level.
     std::sort(ops_with_index.begin(), ops_with_index.end(),
-              [](const std::pair<Operation *, int> &a_pair,
-                 const std::pair<Operation *, int> &b_pair) {
+              [&critical_ops](const std::pair<Operation *, int> &a_pair,
+                              const std::pair<Operation *, int> &b_pair) {
                 Operation *a = a_pair.first;
                 Operation *b = b_pair.first;
+                
+                bool a_is_critical = critical_ops.count(a) > 0;
+                bool b_is_critical = critical_ops.count(b) > 0;
+                
+                // Priority 1: Critical ops come first (within same ALAP level).
+                if (a_is_critical != b_is_critical)
+                  return a_is_critical > b_is_critical;
+                
+                // Priority 2: Degree (connectivity) - higher degree first.
                 int degree_a = a->getNumOperands();
                 int degree_b = b->getNumOperands();
                 for (Value res : a->getResults()) {
@@ -423,7 +434,9 @@ std::vector<std::pair<Operation *, int>> mlir::neura::flatten_level_buckets(
                 }
                 if (degree_a != degree_b)
                   return degree_a > degree_b;
-                return a_pair.second < b_pair.second; // Original index tie-breaker.
+                
+                // Priority 3: Original index (stability tie-breaker).
+                return a_pair.second < b_pair.second;
               });
 
     for (const auto &p : ops_with_index) {
