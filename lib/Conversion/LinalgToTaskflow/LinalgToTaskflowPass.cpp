@@ -482,6 +482,6 @@ public:
 };
 } // namespace
 
-std::unique_ptr<Pass> mlir::createConvertLinalgToTaskFlowPass() {
+std::unique_ptr<Pass> mlir::createConvertLinalgToTaskflowPass() {
   return std::make_unique<ConvertLinalgToTaskflowPass>();
 }

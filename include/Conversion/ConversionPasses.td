@@ -47,14 +47,14 @@ def LowerAffineToNeura : Pass<"lower-affine-to-neura", "func::FuncOp">{
 //=========================================================//
 // TaskFlow Conversion Passes.
 //=========================================================//
-def ConvertLinalgToTaskFlow : Pass<"convert-linalg-to-taskflow", "ModuleOp">{
-  let summary = "Convert Linalg operations to TaskFlow dialect";
+def ConvertLinalgToTaskflow : Pass<"convert-linalg-to-taskflow", "ModuleOp">{
+  let summary = "Convert Linalg operations to Taskflow dialect";
   let description = [{
-    Extracts compute-intensive linalg operations and wraps them into a TaskFlow graph for spatial architecture execution.
+    Extracts compute-intensive linalg operations and wraps them into a Taskflow graph for spatial architecture execution.
   }];
-  let constructor = "mlir::createConvertLinalgToTaskFlowPass()";
+  let constructor = "mlir::createConvertLinalgToTaskflowPass()";
   let dependentDialects = [
-    "mlir::taskflow::TaskFlowDialect",
+    "mlir::taskflow::TaskflowDialect",
     "mlir::linalg::LinalgDialect",
     "mlir::func::FuncDialect",
     "mlir::arith::ArithDialect"

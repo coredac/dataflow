@@ -69,6 +69,8 @@ int main(int argc, char **argv) {
   registry.insert<mlir::LLVM::LLVMDialect>();
   registry.insert<mlir::memref::MemRefDialect>();
   registry.insert<mlir::ml_program::MLProgramDialect>();
+  registry.insert<mlir::tensor::TensorDialect>();
+  registry.insert<mlir::linalg::LinalgDialect>();
 
   mlir::neura::registerPasses();
   mlir::registerPasses();

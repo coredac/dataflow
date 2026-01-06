@@ -10,7 +10,6 @@ config.excludes = ['samples', 'benchmark']
 
 # Tool substitutions from CMake
 config.substitutions.append(('mlir-neura-opt', '@MLIR_NEURA_OPT@'))
-config.substitutions.append(('mlir-taskflow-opt', '@MLIR_TASKFLOW_OPT@'))
 config.substitutions.append(('neura-interpreter', '@NEURA_INTERPRETER@'))
 config.substitutions.append(('neura-compiler', '@NEURA_COMPILER@'))
 config.substitutions.append(('FileCheck', '@FILECHECK@'))

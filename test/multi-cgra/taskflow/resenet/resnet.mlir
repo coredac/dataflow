@@ -1,6 +1,6 @@
 // RUN: cd %S && python resnet.py
 
-// RUN: mlir-taskflow-opt %S/Output/simple_resnet.mlir \
+// RUN: mlir-neura-opt %S/Output/simple_resnet.mlir \
 // RUN: --convert-linalg-to-taskflow -o %t-resnet-taskflow.mlir
 
 // RUN: FileCheck %s --input-file=%t-resnet-taskflow.mlir
