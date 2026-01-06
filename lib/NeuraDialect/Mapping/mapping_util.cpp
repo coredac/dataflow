@@ -15,14 +15,14 @@ using namespace mlir;
 using namespace mlir::neura;
 
 // Constants for award calculation.
-static constexpr int kAwardProximityScale = 1;
-static constexpr int kAwardBackwardProximityScale = 1;
-static constexpr int kAwardBaseMultiplier = 1;
-static constexpr int kAwardCriticalBonusDiv = 1;
+constexpr int kAwardProximityScale = 1;
+constexpr int kAwardBackwardProximityScale = 1;
+constexpr int kAwardBaseMultiplier = 1;
+constexpr int kAwardCriticalBonusDiv = 1;
 
 // Congestion penalty coefficients (tunable).
-static constexpr int kStrongCongestionPenalty = 60; // used for high fan-in ops (>=3)
-static constexpr int kWeakCongestionPenalty = 15;   // used for low fan-in ops
+constexpr int kStrongCongestionPenalty = 60; // used for high fan-in ops (>=3)
+constexpr int kWeakCongestionPenalty = 15;   // used for low fan-in ops
 
 namespace mlir {
 namespace neura {
@@ -672,8 +672,6 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
     if (current_state.current_time >= exclusive_deadline_step) {
       continue;
     }
-
-    int next_time = current_state.current_time + 1;
 
     // Option 1: Moves to adjacent tile through link.
     for (Link *out_link : current_state.current_tile->getOutLinks()) {
