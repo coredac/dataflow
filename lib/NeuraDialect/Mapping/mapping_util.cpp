@@ -15,14 +15,14 @@ using namespace mlir;
 using namespace mlir::neura;
 
 // Constants for award calculation.
-static const int AWARD_PROXIMITY_SCALE = 1;
-static const int AWARD_BACKWARD_PROXIMITY_SCALE = 1;
-static const int AWARD_BASE_MULTIPLIER = 1;
-static const int AWARD_CRITICAL_BONUS_DIV = 1;
+static constexpr int kAwardProximityScale = 1;
+static constexpr int kAwardBackwardProximityScale = 1;
+static constexpr int kAwardBaseMultiplier = 1;
+static constexpr int kAwardCriticalBonusDiv = 1;
 
 // Congestion penalty coefficients (tunable).
-static const int STRONG_CONGESTION_PENALTY = 60; // used for high fan-in ops (>=3)
-static const int WEAK_CONGESTION_PENALTY = 15;   // used for low fan-in ops
+static constexpr int kStrongCongestionPenalty = 60; // used for high fan-in ops (>=3)
+static constexpr int kWeakCongestionPenalty = 15;   // used for low fan-in ops
 
 namespace mlir {
 namespace neura {
@@ -968,7 +968,7 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
         (architecture.getPerCgraRows() + architecture.getPerCgraColumns() - 2);
     int max_hops = static_cast<int>(producers.size()) * kMaxDist;
     int proximity_bonus =
-        std::max(0, max_hops - hops_to_producers) * AWARD_PROXIMITY_SCALE;
+        std::max(0, max_hops - hops_to_producers) * kAwardProximityScale;
     tile_award += proximity_bonus;
 
     // Computes proximity bonus to backward users. Closer is better for
@@ -979,7 +979,7 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
         int backward_hops = std::abs(backward_tile->getX() - tile->getX()) +
                             std::abs(backward_tile->getY() - tile->getY());
         tile_award += std::max(0, (kMaxDist - backward_hops) *
-                                      AWARD_BACKWARD_PROXIMITY_SCALE);
+                                      kAwardBackwardProximityScale);
       }
     }
 
@@ -988,11 +988,11 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
       // Keep the original critical bonuses but allow tuning via division.
       tile_award += (mapping_state.getII() +
                      static_cast<int>(tile->getDstTiles().size())) /
-                    std::max(1, AWARD_CRITICAL_BONUS_DIV);
+                    std::max(1, kAwardCriticalBonusDiv);
     }
 
     // Apply base multiplier to amplify or dampen tile-based award.
-    tile_award *= AWARD_BASE_MULTIPLIER;
+    tile_award *= kAwardBaseMultiplier;
 
     // === Time-based award ===
     for (int t = earliest_start_time_step; t < latest_end_time_step; t += 1) {
@@ -1027,12 +1027,14 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
           int occupied_out = 0;
 
           for (auto *link : tile->getInLinks()) {
-            if (!mapping_state.isAvailableAcrossTime({link, t}))
+            if (!mapping_state.isAvailableAcrossTime({link, t})) {
               occupied_in++;
+            }
           }
           for (auto *link : tile->getOutLinks()) {
-            if (!mapping_state.isAvailableAcrossTime({link, t}))
+            if (!mapping_state.isAvailableAcrossTime({link, t})) {
               occupied_out++;
+            }
           }
 
           float in_ratio = (total_in > 0) ? (float)occupied_in / total_in : 0;
@@ -1043,8 +1045,8 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
           // - Use weak penalty (15) for low fan-in ops
           // This optimizes fuse-pattern (II=11 target) without breaking iter-merge
           int base_penalty_coeff = (producers.size() >= 3)
-                                       ? STRONG_CONGESTION_PENALTY
-                                       : WEAK_CONGESTION_PENALTY;
+                                       ? kStrongCongestionPenalty
+                                       : kWeakCongestionPenalty;
           
           int congestion_penalty = static_cast<int>(in_ratio * in_ratio * base_penalty_coeff) +
                                    static_cast<int>(out_ratio * out_ratio * base_penalty_coeff);
