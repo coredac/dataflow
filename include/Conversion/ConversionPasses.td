@@ -6,7 +6,7 @@
 include "mlir/Pass/PassBase.td"
 
 //=========================================================//
-// Conversion passes
+// Neura Conversion Passes.
 //=========================================================//
 def LowerArithToNeura : Pass<"lower-arith-to-neura", "FuncOp">{
   let summary = "Lower arith to Neura dialect";
@@ -42,6 +42,23 @@ def LowerAffineToNeura : Pass<"lower-affine-to-neura", "func::FuncOp">{
   }];
   let constructor = "mlir::createLowerAffineToNeuraPass()";
   let dependentDialects = ["mlir::neura::NeuraDialect", "mlir::affine::AffineDialect"];
+}
+
+//=========================================================//
+// TaskFlow Conversion Passes.
+//=========================================================//
+def ConvertLinalgToTaskflow : Pass<"convert-linalg-to-taskflow", "ModuleOp">{
+  let summary = "Convert Linalg operations to Taskflow dialect";
+  let description = [{
+    Extracts compute-intensive linalg operations and wraps them into a Taskflow graph for spatial architecture execution.
+  }];
+  let constructor = "mlir::createConvertLinalgToTaskflowPass()";
+  let dependentDialects = [
+    "mlir::taskflow::TaskflowDialect",
+    "mlir::linalg::LinalgDialect",
+    "mlir::func::FuncDialect",
+    "mlir::arith::ArithDialect"
+  ];
 }
 
 #endif // CONVERSION_PASSES_TD
