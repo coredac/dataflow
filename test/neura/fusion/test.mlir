@@ -3,6 +3,7 @@
 // RUN: mlir-neura-opt --architecture-spec=%S/../../arch_spec/architecture.yaml --assign-accelerator \
 // RUN:           --lower-llvm-to-neura \
 // RUN:           --promote-func-arg-to-const \
+// RUN:           --canonicalize-return \
 // RUN:           --canonicalize-live-in \
 // RUN:           --leverage-predicated-value \
 // RUN:           --fold-constant \
@@ -16,6 +17,7 @@
 // RUN: mlir-neura-opt --architecture-spec=%S/../../arch_spec/architecture.yaml --assign-accelerator \
 // RUN:           --lower-llvm-to-neura \
 // RUN:           --promote-func-arg-to-const \
+// RUN:           --canonicalize-return \
 // RUN:           --canonicalize-live-in \
 // RUN:           --leverage-predicated-value \
 // RUN:           --fold-constant \
@@ -31,13 +33,14 @@
 // CHECK-FUSED-DAG: %85 = "neura.mul_add"(%82, %83, %84) : (!neura.data<i32, i1>, !neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
 // CHECK-FUSED-DAG: %98 = "neura.mul_add"(%95, %96, %97) : (!neura.data<i32, i1>, !neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
 
-// CHECK-MAPPING: mapping_info = {compiled_ii = 13 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 9 : i32, res_mii = 5 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}
+// CHECK-MAPPING: mapping_info = {compiled_ii = 12 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 9 : i32, res_mii = 5 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}
 
 // RUN: mlir-neura-opt --architecture-spec=%S/../../arch_spec/architecture.yaml --verify-each=true --mlir-print-ir-after-failure \
 // RUN:           --assign-accelerator \
 // RUN:           --lower-llvm-to-neura \
 // RUN:           --promote-func-arg-to-const \
 // RUN:           --canonicalize-cast \
+// RUN:           --canonicalize-return \
 // RUN:           --canonicalize-live-in \
 // RUN:           --leverage-predicated-value \
 // RUN:           --fold-constant \
@@ -73,24 +76,26 @@
 // RUN:           --lower-llvm-to-neura \
 // RUN:           --promote-func-arg-to-const \
 // RUN:           --canonicalize-cast \
+// RUN:           --canonicalize-return \
 // RUN:           --canonicalize-live-in \
 // RUN:           --leverage-predicated-value \
 // RUN:           --fold-constant \
 // RUN:           --transform-ctrl-to-data-flow \
 // RUN:           --fold-constant \
-// RUN:           --init-pattern %t-kernel.mlir | FileCheck %s --check-prefix=CHECK-INIT-PATTERN
+// RUN:           --init-pattern %t-kernel.mlir \
+// RUN:           | FileCheck %s --check-prefix=CHECK-INIT-PATTERN
 
 // CHECK-INIT-PATTERN:         %21:2 = "neura.fused_op"(%16, %20) <{frequency = 6 : i64, pattern_id = 2 : i64, pattern_name = "gep->load"}> ({
 // CHECK-INIT-PATTERN-NEXT:    ^bb0(%arg5: !neura.data<!llvm.ptr, i1>, %arg6: !neura.data<i64, i1>):
-// CHECK-INIT-PATTERN-NEXT:      %74 = "neura.gep"(%arg5, %arg6) <{operandSegmentSizes = array<i32: 1, 1>}> : (!neura.data<!llvm.ptr, i1>, !neura.data<i64, i1>) -> !neura.data<!llvm.ptr, i1>
-// CHECK-INIT-PATTERN-NEXT:      %75 = "neura.load"(%74) : (!neura.data<!llvm.ptr, i1>) -> !neura.data<i32, i1>
-// CHECK-INIT-PATTERN-NEXT:      neura.yield %74, %75 : !neura.data<!llvm.ptr, i1>, !neura.data<i32, i1>
+// CHECK-INIT-PATTERN-NEXT:      %75 = "neura.gep"(%arg5, %arg6) <{operandSegmentSizes = array<i32: 1, 1>}> : (!neura.data<!llvm.ptr, i1>, !neura.data<i64, i1>) -> !neura.data<!llvm.ptr, i1>
+// CHECK-INIT-PATTERN-NEXT:      %76 = "neura.load"(%75) : (!neura.data<!llvm.ptr, i1>) -> !neura.data<i32, i1>
+// CHECK-INIT-PATTERN-NEXT:      neura.yield %75, %76 : !neura.data<!llvm.ptr, i1>, !neura.data<i32, i1>
 // CHECK-INIT-PATTERN-NEXT:    }) : (!neura.data<!llvm.ptr, i1>, !neura.data<i64, i1>) -> (!neura.data<!llvm.ptr, i1>, !neura.data<i32, i1>)
 // CHECK-INIT-PATTERN-NEXT:    %22 = "neura.fused_op"(%18, %20) <{frequency = 6 : i64, pattern_id = 2 : i64, pattern_name = "gep->load"}> ({
 // CHECK-INIT-PATTERN-NEXT:    ^bb0(%arg5: !neura.data<!llvm.ptr, i1>, %arg6: !neura.data<i64, i1>):
-// CHECK-INIT-PATTERN-NEXT:      %74 = "neura.gep"(%arg5, %arg6) <{operandSegmentSizes = array<i32: 1, 1>}> : (!neura.data<!llvm.ptr, i1>, !neura.data<i64, i1>) -> !neura.data<!llvm.ptr, i1>
-// CHECK-INIT-PATTERN-NEXT:      %75 = "neura.load"(%74) : (!neura.data<!llvm.ptr, i1>) -> !neura.data<i32, i1>
-// CHECK-INIT-PATTERN-NEXT:      neura.yield %75 : !neura.data<i32, i1>
+// CHECK-INIT-PATTERN-NEXT:      %75 = "neura.gep"(%arg5, %arg6) <{operandSegmentSizes = array<i32: 1, 1>}> : (!neura.data<!llvm.ptr, i1>, !neura.data<i64, i1>) -> !neura.data<!llvm.ptr, i1>
+// CHECK-INIT-PATTERN-NEXT:      %76 = "neura.load"(%75) : (!neura.data<!llvm.ptr, i1>) -> !neura.data<i32, i1>
+// CHECK-INIT-PATTERN-NEXT:      neura.yield %76 : !neura.data<i32, i1>
 // CHECK-INIT-PATTERN-NEXT:    }) : (!neura.data<!llvm.ptr, i1>, !neura.data<i64, i1>) -> !neura.data<i32, i1>
 
 // RUN: mlir-neura-opt --architecture-spec=%S/../../arch_spec/architecture.yaml --verify-each=true --mlir-print-ir-after-failure \
@@ -98,6 +103,7 @@
 // RUN:           --lower-llvm-to-neura \
 // RUN:           --promote-func-arg-to-const \
 // RUN:           --canonicalize-cast \
+// RUN:           --canonicalize-return \
 // RUN:           --canonicalize-live-in \
 // RUN:           --leverage-predicated-value \
 // RUN:           --fold-constant \

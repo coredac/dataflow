@@ -1,17 +1,18 @@
 // RUN: mlir-neura-opt \
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
+// RUN:   --canonicalize-return \
 // RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \
 // RUN:   --fold-constant \
 // RUN:   %s -o %t_dataflow.mlir 
 
-// RUN: neura-interpreter %t_dataflow.mlir --verbose --dataflow > %t_output.txt
+// RU: neura-interpreter %t_dataflow.mlir --verbose --dataflow > %t_output.txt
 
-// RUN: FileCheck %s --check-prefix=DATAFLOW_IR --input-file=%t_dataflow.mlir
+// RU: FileCheck %s --check-prefix=DATAFLOW_IR --input-file=%t_dataflow.mlir
 
-// RUN: FileCheck %s --check-prefix=INTERPRETER_OUTPUT --input-file=%t_output.txt
+// RU: FileCheck %s --check-prefix=INTERPRETER_OUTPUT --input-file=%t_output.txt
 
 func.func @loop_sum() -> f32 {
   %c0 = "neura.constant"() <{predicate = true, value = 0.000000e+00 : f32}> : () -> f32   // init_i / init_sum
@@ -61,6 +62,7 @@ func.func @loop_sum() -> f32 {
 // DATAFLOW_IR-NEXT:     %19 = neura.grant_predicate %9, %14 : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
 // DATAFLOW_IR-NEXT:     %20 = "neura.not"(%14) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
 // DATAFLOW_IR-NEXT:     %21 = neura.grant_predicate %11, %20 : !neura.data<f32, i1>, !neura.data<i1, i1> -> !neura.data<f32, i1>
+// DATAFLOW_IR-NEXT:     neura.return_value %21 : !neura.data<f32, i1>
 // DATAFLOW_IR-NEXT:     %22 = "neura.fadd"(%16, %17) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
 // DATAFLOW_IR-NEXT:     %23 = "neura.fadd"(%15, %18) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
 // DATAFLOW_IR-NEXT:     neura.ctrl_mov %23 -> %12 : !neura.data<f32, i1> !neura.data<f32, i1>
@@ -68,7 +70,7 @@ func.func @loop_sum() -> f32 {
 // DATAFLOW_IR-NEXT:     neura.ctrl_mov %19 -> %8 : !neura.data<f32, i1> !neura.data<f32, i1>
 // DATAFLOW_IR-NEXT:     neura.ctrl_mov %17 -> %6 : !neura.data<f32, i1> !neura.data<f32, i1>
 // DATAFLOW_IR-NEXT:     neura.ctrl_mov %18 -> %4 : !neura.data<f32, i1> !neura.data<f32, i1>
-// DATAFLOW_IR-NEXT:     "neura.return"(%21) : (!neura.data<f32, i1>) -> ()
+// DATAFLOW_IR-NEXT:     neura.yield
 // DATAFLOW_IR-NEXT:   }
 
 // INTERPRETER_OUTPUT: [neura-interpreter]  DFG Iteration 5 | Topological Level 6 | ready_to_execute_ops 3

@@ -7,6 +7,7 @@
 // RUN: --lower-llvm-to-neura \
 // RUN: --canonicalize-cast \
 // RUN: --promote-func-arg-to-const \
+// RUN: --canonicalize-return \
 // RUN: --canonicalize-live-in \
 // RUN: --leverage-predicated-value \
 // RUN: --transform-ctrl-to-data-flow \
@@ -74,6 +75,7 @@ module attributes {} {
 // CHECK-NEXT:   %28 = "neura.icmp"(%27, %25) <{cmpType = "slt"}> : (i64, i64) -> i1
 // CHECK-NEXT:   neura.ctrl_mov %28 -> %9 : i1 i1
 // CHECK-NEXT:   %29 = neura.false_steer %26, %28 : i32, i1 -> i32
+// CHECK-NEXT:   neura.return_value %29 : i32
 // CHECK-NEXT:   %30 = "neura.icmp"(%26, %24) <{cmpType = "sge"}> : (i32, i32) -> i1
 // CHECK-NEXT:   %31 = neura.true_steer %26, %30 : i32, i1 -> i32
 // CHECK-NEXT:   %32 = neura.true_steer %23, %30 : i32, i1 -> i32
@@ -102,4 +104,4 @@ module attributes {} {
 // CHECK-NEXT:   neura.ctrl_mov %47 -> %7 : i32 i32
 // CHECK-NEXT:   %48 = "neura.add"(%41, %38) : (i64, i64) -> i64
 // CHECK-NEXT:   neura.ctrl_mov %48 -> %8 : i64 i64
-// CHECK-NEXT:   "neura.return"(%29) : (i32) -> ()
+// CHECK-NEXT:   neura.yield
