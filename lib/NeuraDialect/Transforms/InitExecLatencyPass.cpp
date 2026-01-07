@@ -107,6 +107,10 @@ static bool parseLatencyYaml(const std::string &file_path,
 void SetLatency(Operation *op, std::map<std::string, int> &latency_map) {
     // Get operation name and look up latency
     std::string op_name = op->getName().getStringRef().str();
+    if (op_name.compare("neura.fused_op") == 0) {
+      op_name = op->getAttrOfType<StringAttr>("pattern_name").getValue().str();
+    }
+    op_name = op_name.substr(op_name.find_last_of(".") + 1); // remove neura. prefix if exists
     auto it = latency_map.find(op_name);
     if (it != latency_map.end()) {
         op->setAttr("latency", 
