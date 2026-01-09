@@ -82,10 +82,10 @@ def TaskflowReturnOp : TaskflowOpBase<"return", [Terminator]> {
 
 // Defines a uniform computation and control task operation within a Taskflow graph.
 def TaskflowTaskOp : TaskflowOpBase<"task", [
+    IsolatedFromAbove,
     AttrSizedOperandSegments,
     AttrSizedResultSegments,
-    SingleBlockImplicitTerminator<"TaskflowYieldOp">,
-    NoMemoryEffect,
+    SingleBlockImplicitTerminator<"TaskflowYieldOp">
 ]>{
   let summary = "Uniform computation and control task operation within a Taskflow graph";
 
@@ -156,10 +156,11 @@ def TaskflowDriveOp : TaskflowOpBase<"drive", [Pure]>{
   let results = (outs TaskflowPacketType:$target);
 
   let assemblyFormat = [{
-    $source attr-dict `:` type($source) `->` type($target)
+    $source attr-dict `:` qualified(type($source)) `->` qualified(type($target))
   }];
 }
 
+// Defines the data dependency edge operation that carries data dependencies between tasks in a Taskflow graph.
 def TaskflowChannelOp : TaskflowOpBase<"channel", [Pure]>{
   let summary = "Data dependency edge that carries data dependencies between tasks in a Taskflow graph";
   let description = [{
@@ -173,6 +174,32 @@ def TaskflowChannelOp : TaskflowOpBase<"channel", [Pure]>{
   let assemblyFormat = [{
     $source attr-dict `:` type($source) `->` type($target)
   }];
+}
+
+// Defines the emit operatin to emit data and control packets from a task before termination (used in streaming or hierachical control cases).
+def TaskflowEmitOp : TaskflowOpBase<"emit", [Pure]>{
+  let summary = "Emit operation for taskflow.task to emit data and control packets before termination";
+  let description = [{
+    Emits control and data packets from a task before its termination.
+    This is useful in streaming or hierarchical control scenarios where tasks need to send out packets without terminating the entire task.
+    
+    Example:
+      taskflow.task(...) {
+        ...
+        taskflow.emit %control_packet, %data_packet : !taskflow.packet<...>, i32
+        taskflow.yield
+      }
+  }];
+  let arguments = (ins Variadic<AnyType>:$results);
+  let assemblyFormat = [{
+    ($results^ `:` type($results))? attr-dict
+  }];
+  let builders = [
+    // Default builder for empty emit.
+    OpBuilder<(ins), [{
+    build($_builder, $_state, ValueRange{});
+    }]>
+  ];
 }
 
 #endif // TASKFLOW_OPS_TD
