@@ -89,8 +89,7 @@ static void collectExternalValuesForOp(
     // Skips values defined inside graph ops or nested regions.
     Operation *def_op = operand.getDefiningOp();
     if (def_op) {
-      if (!graph_op_set.contains(def_op) &&
-          def_op->getBlock()->getParentOp() == func_op.getOperation()) {
+      if (def_op->getBlock()->getParentOp() == func_op.getOperation()) {
         external_values.insert(operand);
       }
     }
@@ -119,6 +118,10 @@ collectExternalValuesPerOp(ArrayRef<Operation *> graph_ops,
     collectExternalValuesForOp(op, graph_op_set, func_op, external_values);
     op_external_values[op] =
         SmallVector<Value>(external_values.begin(), external_values.end());
+    llvm::errs() << "External values for op " << *op << ":\n";
+    for (Value val : op_external_values[op]) {
+      llvm::errs() << "  " << val << "\n";
+    }
   }
 
   return op_external_values;
@@ -147,9 +150,22 @@ static SmallVector<Value> identifyGraphInputs(ArrayRef<Operation *> graph_ops,
                                               func::FuncOp func_op) {
   llvm::SetVector<Value> input_set;
   llvm::DenseSet<Operation *> graph_op_set(graph_ops.begin(), graph_ops.end());
-
+  DenseMap<Operation *, SmallVector<Value>> external_values_per_op =
+      collectExternalValuesPerOp(graph_ops, func_op);
   for (Operation *op : graph_ops) {
-    collectExternalValuesForOp(op, graph_op_set, func_op, input_set);
+    for (Value external_val : external_values_per_op[op]) {
+      if (external_val.getDefiningOp()) {
+        if (!graph_op_set.contains(external_val.getDefiningOp())) {
+          input_set.insert(external_val);
+        }
+      } else {
+        if (isa<BlockArgument>(external_val) &&
+            external_val.getParentBlock()->getParentOp() ==
+                func_op.getOperation()) {
+          input_set.insert(external_val);
+        }
+      }
+    }
   }
 
   return SmallVector<Value>(input_set.begin(), input_set.end());
