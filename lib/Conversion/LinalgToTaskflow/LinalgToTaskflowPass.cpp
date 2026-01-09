@@ -118,10 +118,6 @@ collectExternalValuesPerOp(ArrayRef<Operation *> graph_ops,
     collectExternalValuesForOp(op, graph_op_set, func_op, external_values);
     op_external_values[op] =
         SmallVector<Value>(external_values.begin(), external_values.end());
-    llvm::errs() << "External values for op " << *op << ":\n";
-    for (Value val : op_external_values[op]) {
-      llvm::errs() << "  " << val << "\n";
-    }
   }
 
   return op_external_values;
@@ -412,23 +408,8 @@ static LogicalResult convertFuncToTaskflow(func::FuncOp func_op) {
     return success();
   }
 
-  llvm::errs() << "Converting function: " << func_op.getName() << "\n";
-  llvm::errs() << "Collected taskflow graph operations:\n";
-  for (Operation *op : graph_ops) {
-    llvm::errs() << "  " << *op << "\n";
-  }
-
   SmallVector<Value> graph_inputs = identifyGraphInputs(graph_ops, func_op);
   SmallVector<Value> graph_outputs = identifyGraphOutputs(graph_ops, func_op);
-
-  llvm::errs() << "Identified graph inputs:\n";
-  for (Value input : graph_inputs) {
-    llvm::errs() << "  " << input << "\n";
-  }
-  llvm::errs() << "Identified graph outputs:\n";
-  for (Value output : graph_outputs) {
-    llvm::errs() << "  " << output << "\n";
-  }
 
   // Finds insertion point: after the last operation that defines a graph input.
   Operation *insertion_point = nullptr;
@@ -457,10 +438,6 @@ static LogicalResult convertFuncToTaskflow(func::FuncOp func_op) {
   // Step 2 & 3 & 4: Creates the taskflow.graph op.
   auto result = buildTaskflowGraph(builder, func_op, graph_ops, graph_inputs,
                                    graph_outputs, op_external_values);
-  llvm::errs() << "Converted function to TaskFlow graph.\n";
-  llvm::errs() << "Resulting function:\n";
-  func_op.print(llvm::errs());
-  llvm::errs() << "\n";
 
   return result;
 }
