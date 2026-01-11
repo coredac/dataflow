@@ -12,7 +12,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "NeuraDialect/NeuraOps.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/IR/Dominance.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/PatternMatch.h"
@@ -426,103 +428,209 @@ struct SiblingFusionPattern : public OpRewritePattern<neura::KernelOp> {
 
 //===----------------------------------------------------------------------===//
 // Elementwise Fusion Pattern
-// Similar to linalg's elementwise fusion - fuses operations that can be
-// computed element-by-element without changing the iteration domain
+// Fuses kernels that contain only elementwise operations (e.g., relu, gelu,
+// add, mul) so they can share loop iteration overhead.
 //===----------------------------------------------------------------------===//
 
-struct ElementwiseFusionPattern : public OpRewritePattern<neura::FusedOp> {
+/// Check if all operations inside a kernel are elementwise (no complex memory
+/// access patterns, no loop-carried dependencies).
+static bool isElementwiseKernel(neura::KernelOp kernel) {
+  if (kernel.getBody().empty())
+    return false;
+
+  Block &body = kernel.getBody().front();
+
+  for (Operation &op : body) {
+    // Yield is always allowed
+    if (isa<neura::YieldOp>(&op))
+      continue;
+
+    // Allow common elementwise arithmetic operations
+    if (isa<arith::AddFOp, arith::SubFOp, arith::MulFOp, arith::DivFOp,
+            arith::AddIOp, arith::SubIOp, arith::MulIOp, arith::DivSIOp,
+            arith::DivUIOp, arith::RemSIOp, arith::RemUIOp,
+            arith::MaximumFOp, arith::MinimumFOp, arith::MaxSIOp,
+            arith::MinSIOp, arith::MaxUIOp, arith::MinUIOp,
+            arith::CmpFOp, arith::CmpIOp, arith::SelectOp,
+            arith::NegFOp, arith::AndIOp, arith::OrIOp, arith::XOrIOp,
+            arith::ShLIOp, arith::ShRSIOp, arith::ShRUIOp,
+            arith::ExtFOp, arith::TruncFOp, arith::ExtSIOp, arith::ExtUIOp,
+            arith::TruncIOp, arith::SIToFPOp, arith::FPToSIOp,
+            arith::UIToFPOp, arith::FPToUIOp, arith::BitcastOp>(&op))
+      continue;
+
+    // Allow math operations (exp, tanh, sqrt, etc. are elementwise)
+    if (op.getDialect()->getNamespace() == "math")
+      continue;
+
+    // Allow constants
+    if (isa<arith::ConstantOp>(&op))
+      continue;
+
+    // If we encounter something else (e.g., memory ops, complex control flow),
+    // it's not a simple elementwise kernel
+    return false;
+  }
+
+  return true;
+}
+
+struct ElementwiseFusionPattern : public OpRewritePattern<neura::KernelOp> {
   using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(neura::FusedOp consumer,
+  LogicalResult matchAndRewrite(neura::KernelOp kernel1,
                                 PatternRewriter &rewriter) const override {
-    // Look for a producer fused_op that feeds into this consumer
-    for (Value input : consumer.getInputs()) {
-      auto producer = input.getDefiningOp<neura::FusedOp>();
-      if (!producer)
-        continue;
+    // Only fuse elementwise kernels
+    if (!isElementwiseKernel(kernel1))
+      return failure();
 
-      // Check single use
-      bool singleUse = true;
-      for (Value result : producer.getOutputs()) {
-        if (!result.hasOneUse()) {
-          singleUse = false;
-          break;
-        }
-      }
-      if (!singleUse)
-        continue;
+    // Find the next elementwise kernel in the same block
+    neura::KernelOp kernel2 = nullptr;
 
-      // Fuse the two fused_ops
-      Location loc = consumer.getLoc();
-
-      // Collect inputs
-      SmallVector<Value> fusedInputs;
-      for (Value inp : producer.getInputs()) {
-        fusedInputs.push_back(inp);
-      }
-      for (Value inp : consumer.getInputs()) {
-        if (inp.getDefiningOp() != producer)
-          fusedInputs.push_back(inp);
-      }
-
-      // Create new fused_op
-      auto newFused = rewriter.create<neura::FusedOp>(
-          loc, consumer.getResultTypes(), fusedInputs,
-          rewriter.getI64IntegerAttr(consumer.getPatternId() * 100 +
-                                     producer.getPatternId()),
-          rewriter.getStringAttr(producer.getPatternName().str() + "->" +
-                                 consumer.getPatternName().str()),
-          rewriter.getI64IntegerAttr(
-              std::min(producer.getFrequency(), consumer.getFrequency())));
-
-      // Build the fused body
-      Block *newBlock = rewriter.createBlock(&newFused.getBody());
-      for (Value inp : fusedInputs) {
-        newBlock->addArgument(inp.getType(), loc);
-      }
-
-      // Clone producer body
-      IRMapping producerMapping;
-      Block &producerBlock = producer.getBody().front();
-      for (auto [idx, arg] : llvm::enumerate(producerBlock.getArguments())) {
-        producerMapping.map(arg, newBlock->getArgument(idx));
-      }
-
-      rewriter.setInsertionPointToStart(newBlock);
-      Value producerResult;
-      for (Operation &op : producerBlock) {
-        if (auto yield = dyn_cast<neura::YieldOp>(&op)) {
-          if (!yield.getOperands().empty())
-            producerResult = producerMapping.lookup(yield.getOperand(0));
+    for (Operation *op = kernel1->getNextNode(); op; op = op->getNextNode()) {
+      if (auto nextKernel = dyn_cast<neura::KernelOp>(op)) {
+        // Check if the next kernel is also elementwise
+        if (!isElementwiseKernel(nextKernel))
           continue;
+
+        // Check basic fusion legality
+        if (!canFuseKernels(kernel1, nextKernel))
+          continue;
+
+        // For elementwise fusion, we don't require producer-consumer or sibling
+        // relationship - we just need compatible iteration domains (same shape)
+        // Here we use a simplified check: same number and types of outputs
+        if (kernel1.getNumResults() == nextKernel.getNumResults()) {
+          bool compatible = true;
+          for (auto [r1, r2] : llvm::zip(kernel1.getResultTypes(),
+                                          nextKernel.getResultTypes())) {
+            if (r1 != r2) {
+              compatible = false;
+              break;
+            }
+          }
+          if (compatible) {
+            kernel2 = nextKernel;
+            break;
+          }
         }
-        rewriter.clone(op, producerMapping);
       }
-
-      // Clone consumer body
-      IRMapping consumerMapping;
-      Block &consumerBlock = consumer.getBody().front();
-      unsigned argIdx = producer.getInputs().size();
-      for (auto [idx, arg] : llvm::enumerate(consumerBlock.getArguments())) {
-        Value origInput = consumer.getInputs()[idx];
-        if (origInput.getDefiningOp() == producer) {
-          consumerMapping.map(arg, producerResult);
-        } else {
-          consumerMapping.map(arg, newBlock->getArgument(argIdx++));
-        }
-      }
-
-      for (Operation &op : consumerBlock) {
-        rewriter.clone(op, consumerMapping);
-      }
-
-      rewriter.replaceOp(consumer, newFused.getOutputs());
-      rewriter.eraseOp(producer);
-
-      return success();
     }
 
-    return failure();
+    if (!kernel2)
+      return failure();
+
+    // Check if there are intervening uses that would prevent fusion
+    if (hasInterveningUses(kernel1, kernel2))
+      return failure();
+
+    // Create the fused elementwise kernel
+    Location loc = kernel1.getLoc();
+
+    // Merge inputs (avoid duplicates)
+    SmallVector<Value> fusedInputs;
+    SmallVector<Type> fusedInputTypes;
+    llvm::SmallDenseMap<Value, unsigned> inputIndexMap;
+
+    // Add kernel1's inputs
+    for (Value input : kernel1.getInputs()) {
+      inputIndexMap[input] = fusedInputs.size();
+      fusedInputs.push_back(input);
+      fusedInputTypes.push_back(input.getType());
+    }
+
+    // Add kernel2's unique inputs
+    for (Value input : kernel2.getInputs()) {
+      if (!inputIndexMap.count(input)) {
+        inputIndexMap[input] = fusedInputs.size();
+        fusedInputs.push_back(input);
+        fusedInputTypes.push_back(input.getType());
+      }
+    }
+
+    // Combine output types
+    SmallVector<Type> fusedOutputTypes;
+    for (Type t : kernel1.getResultTypes()) {
+      fusedOutputTypes.push_back(t);
+    }
+    for (Type t : kernel2.getResultTypes()) {
+      fusedOutputTypes.push_back(t);
+    }
+
+    // Create fused kernel
+    auto fusedKernel = rewriter.create<neura::KernelOp>(
+        loc, fusedOutputTypes, fusedInputs,
+        /*cgra_id=*/kernel1.getCgraIdAttr(),
+        /*kernel_name=*/rewriter.getStringAttr("fused_elementwise"),
+        /*accelerator=*/kernel1.getAcceleratorAttr());
+
+    // Create the fused kernel body
+    Block *fusedBlock = rewriter.createBlock(&fusedKernel.getBody());
+
+    // Add block arguments
+    for (Type t : fusedInputTypes) {
+      fusedBlock->addArgument(t, loc);
+    }
+
+    // Map and clone kernel1's operations
+    IRMapping mapping1;
+    Block &block1 = kernel1.getBody().front();
+    for (auto [idx, oldArg] : llvm::enumerate(block1.getArguments())) {
+      Value originalInput = kernel1.getInputs()[idx];
+      mapping1.map(oldArg, fusedBlock->getArgument(inputIndexMap[originalInput]));
+    }
+
+    rewriter.setInsertionPointToStart(fusedBlock);
+    SmallVector<Value> kernel1Yields;
+    for (Operation &op : block1) {
+      if (auto yieldOp = dyn_cast<neura::YieldOp>(&op)) {
+        for (Value v : yieldOp.getOperands()) {
+          kernel1Yields.push_back(mapping1.lookup(v));
+        }
+        continue;
+      }
+      rewriter.clone(op, mapping1);
+    }
+
+    // Map and clone kernel2's operations
+    IRMapping mapping2;
+    Block &block2 = kernel2.getBody().front();
+    for (auto [idx, oldArg] : llvm::enumerate(block2.getArguments())) {
+      Value originalInput = kernel2.getInputs()[idx];
+      mapping2.map(oldArg, fusedBlock->getArgument(inputIndexMap[originalInput]));
+    }
+
+    SmallVector<Value> kernel2Yields;
+    for (Operation &op : block2) {
+      if (auto yieldOp = dyn_cast<neura::YieldOp>(&op)) {
+        for (Value v : yieldOp.getOperands()) {
+          kernel2Yields.push_back(mapping2.lookup(v));
+        }
+        continue;
+      }
+      rewriter.clone(op, mapping2);
+    }
+
+    // Create combined yield
+    SmallVector<Value> allYields;
+    allYields.append(kernel1Yields);
+    allYields.append(kernel2Yields);
+    rewriter.create<neura::YieldOp>(loc, allYields);
+
+    // Replace both kernels
+    SmallVector<Value> kernel1Results, kernel2Results;
+    for (unsigned i = 0; i < kernel1.getNumResults(); ++i) {
+      kernel1Results.push_back(fusedKernel.getResult(i));
+    }
+    for (unsigned i = 0; i < kernel2.getNumResults(); ++i) {
+      kernel2Results.push_back(
+          fusedKernel.getResult(kernel1.getNumResults() + i));
+    }
+
+    rewriter.replaceOp(kernel1, kernel1Results);
+    rewriter.replaceOp(kernel2, kernel2Results);
+
+    return success();
   }
 };
 
@@ -550,11 +658,11 @@ struct FuseKernelPass
     // Producer-consumer fusion has highest priority as it reduces data movement
     patterns.add<ProducerConsumerFusionPattern>(&getContext(), /*benefit=*/10);
 
-    // Sibling fusion is next
-    patterns.add<SiblingFusionPattern>(&getContext(), /*benefit=*/5);
+    // Elementwise fusion: fuse kernels with only elementwise ops to share loop overhead
+    patterns.add<ElementwiseFusionPattern>(&getContext(), /*benefit=*/7);
 
-    // Elementwise fusion for fused_op
-    patterns.add<ElementwiseFusionPattern>(&getContext(), /*benefit=*/8);
+    // Sibling fusion has lower priority
+    patterns.add<SiblingFusionPattern>(&getContext(), /*benefit=*/5);
 
     FrozenRewritePatternSet frozen(std::move(patterns));
 
