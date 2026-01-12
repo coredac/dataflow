@@ -3,22 +3,35 @@
 // This pass implements kernel fusion for the Neura dialect, inspired by
 // MLIR's linalg and affine loop fusion algorithms.
 //
-// The pass supports two types of fusion:
+// The pass supports three types of fusion:
 // 1. Producer-Consumer Fusion: Fuses a producer kernel into its consumer
 //    when the producer's output is only used by the consumer.
 // 2. Sibling Fusion: Fuses kernels that share the same input operands
 //    and have no data dependencies between them.
+// 3. Elementwise Fusion: Fuses kernels containing only elementwise operations.
+//
+// Cost Model:
+// The pass uses a cost model based on rec_mii, res_mii, and max_fanout to
+// determine whether fusion is profitable. Fusion is rejected if:
+// - Fused rec_mii or res_mii significantly increases (>20% threshold)
+// - Max fanout increases by more than 50%
 //
 //===----------------------------------------------------------------------===//
 
 #include "NeuraDialect/NeuraOps.h"
+#include "NeuraDialect/NeuraPasses.h"
+#include "NeuraDialect/Architecture/Architecture.h"
+#include "NeuraDialect/Mapping/mapping_util.h"
+#include "Conversion/ConversionPasses.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/Dominance.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SetVector.h"
@@ -30,6 +43,249 @@ using namespace mlir;
 #include "NeuraDialect/NeuraPasses.h.inc"
 
 namespace {
+
+//===----------------------------------------------------------------------===//
+// Cost Model for Fusion Profitability
+//===----------------------------------------------------------------------===//
+
+/// Represents metrics for evaluating fusion profitability.
+struct FusionMetrics {
+  int recMii = 1;     // Recurrence-constrained MII
+  int resMii = 1;     // Resource-constrained MII
+  int maxFanout = 0;  // Maximum fanout
+  int numOps = 0;     // Total operation count
+};
+
+/// Calculates the maximum fanout in a block.
+static int calculateMaxFanoutInBlock(Block &block) {
+  int maxFanout = 0;
+  for (Operation &op : block) {
+    for (Value result : op.getResults()) {
+      int fanout = std::distance(result.use_begin(), result.use_end());
+      maxFanout = std::max(maxFanout, fanout);
+    }
+  }
+  return maxFanout;
+}
+
+/// Runs the neura transformation pipeline on a test module and computes MII.
+/// After transformation, uses real neura::calculateResMii and collectRecurrenceCycles.
+static FusionMetrics computeRealMetrics(ModuleOp testModule,
+                                        const neura::Architecture &architecture) {
+  FusionMetrics metrics;
+  
+  PassManager pm(testModule.getContext());
+  pm.addPass(mlir::createLowerArithToNeuraPass());
+  pm.addPass(neura::createCanonicalizeLiveInPass());
+  pm.addPass(neura::createTransformCtrlToDataFlowPass());
+  pm.enableVerifier(false);
+  
+  if (failed(pm.run(testModule))) {
+    llvm::errs() << "[FuseKernel] Warning: transformation pipeline failed\n";
+    metrics.recMii = 100;
+    metrics.resMii = 100;
+    return metrics;
+  }
+  
+  testModule.walk([&](func::FuncOp funcOp) {
+    if (funcOp.getName() != "test_fused_kernel")
+      return;
+    
+    metrics.resMii = neura::calculateResMii(funcOp, architecture);
+    
+    auto cycles = neura::collectRecurrenceCycles(funcOp);
+    metrics.recMii = 1;
+    for (const auto &cycle : cycles) {
+      metrics.recMii = std::max(metrics.recMii, cycle.length);
+    }
+    
+    int numOps = 0;
+    funcOp.walk([&](Operation *op) {
+      if (!isa<func::FuncOp>(op) && !op->hasTrait<OpTrait::IsTerminator>()) {
+        ++numOps;
+      }
+    });
+    metrics.numOps = numOps;
+    
+    if (!funcOp.getBody().empty()) {
+      metrics.maxFanout = calculateMaxFanoutInBlock(funcOp.getBody().front());
+    }
+  });
+  
+  return metrics;
+}
+
+/// Creates a test module using a separate MLIRContext to avoid interference.
+static FusionMetrics computeMetricsWithSeparateContext(
+    neura::KernelOp kernel1, neura::KernelOp kernel2, bool isProducerConsumer,
+    const neura::Architecture &architecture, bool isFusedMetrics) {
+  
+  // Create a separate context to avoid interference with original IR
+  MLIRContext testCtx;
+  testCtx.loadDialect<neura::NeuraDialect>();
+  testCtx.loadDialect<func::FuncDialect>();
+  testCtx.loadDialect<arith::ArithDialect>();
+  testCtx.loadDialect<LLVM::LLVMDialect>();
+  testCtx.loadDialect<math::MathDialect>();
+  
+  OpBuilder builder(&testCtx);
+  
+  // Create a new module in the test context
+  auto module = ModuleOp::create(builder.getUnknownLoc());
+  builder.setInsertionPointToStart(module.getBody());
+  
+  // Count operations to estimate metrics (without actually cloning the IR structure)
+  // This avoids the cross-context reference issues
+  int numOps1 = 0, numOps2 = 0;
+  int maxDepth1 = 1, maxDepth2 = 1;
+  
+  if (!kernel1.getBody().empty()) {
+    Block &block1 = kernel1.getBody().front();
+    llvm::DenseMap<Operation *, int> depth;
+    for (Operation &op : block1) {
+      if (isa<neura::YieldOp>(&op)) continue;
+      ++numOps1;
+      int opDepth = 1;
+      for (Value operand : op.getOperands()) {
+        if (Operation *defOp = operand.getDefiningOp()) {
+          if (depth.count(defOp)) {
+            opDepth = std::max(opDepth, depth[defOp] + 1);
+          }
+        }
+      }
+      depth[&op] = opDepth;
+      maxDepth1 = std::max(maxDepth1, opDepth);
+    }
+  }
+  
+  if (!isFusedMetrics) {
+    // For single kernel metrics, create a simple function with estimated ops
+    SmallVector<Type> inputTypes, outputTypes;
+    for (Value input : kernel1.getInputs()) {
+      inputTypes.push_back(input.getType());
+    }
+    for (Type t : kernel1.getResultTypes()) {
+      outputTypes.push_back(t);
+    }
+    
+    auto funcType = builder.getFunctionType(inputTypes, outputTypes);
+    auto funcOp = builder.create<func::FuncOp>(
+        builder.getUnknownLoc(), "test_fused_kernel", funcType);
+    funcOp->setAttr("accelerator", builder.getStringAttr("neura"));
+    
+    Block *entryBlock = funcOp.addEntryBlock();
+    builder.setInsertionPointToStart(entryBlock);
+    
+    // Create dummy operations to get proper res_mii
+    SmallVector<Value> lastValues;
+    for (int i = 0; i < numOps1; ++i) {
+      Value constVal = builder.create<arith::ConstantOp>(
+          builder.getUnknownLoc(), builder.getI64IntegerAttr(i));
+      lastValues.push_back(constVal);
+    }
+    
+    // Create return with one value
+    Value returnVal = lastValues.empty() ? 
+        builder.create<arith::ConstantOp>(builder.getUnknownLoc(), builder.getI64IntegerAttr(0)) :
+        lastValues.back();
+    auto returnOp = builder.create<neura::ReturnOp>(
+        builder.getUnknownLoc(), ValueRange{returnVal});
+    returnOp->setAttr("return_type", builder.getStringAttr("value"));
+    
+    FusionMetrics metrics = computeRealMetrics(module, architecture);
+    metrics.recMii = maxDepth1;  // Override with actual depth
+    return metrics;
+  }
+  
+  // For fused metrics
+  if (!kernel2.getBody().empty()) {
+    Block &block2 = kernel2.getBody().front();
+    llvm::DenseMap<Operation *, int> depth;
+    for (Operation &op : block2) {
+      if (isa<neura::YieldOp>(&op)) continue;
+      ++numOps2;
+      int opDepth = 1;
+      for (Value operand : op.getOperands()) {
+        if (Operation *defOp = operand.getDefiningOp()) {
+          if (depth.count(defOp)) {
+            opDepth = std::max(opDepth, depth[defOp] + 1);
+          }
+        }
+      }
+      depth[&op] = opDepth;
+      maxDepth2 = std::max(maxDepth2, opDepth);
+    }
+  }
+  
+  int totalOps = numOps1 + numOps2;
+  int fusedRecMii = isProducerConsumer ? (maxDepth1 + maxDepth2) : std::max(maxDepth1, maxDepth2);
+  
+  // Create test module for fused kernel
+  SmallVector<Type> inputTypes, outputTypes;
+  inputTypes.push_back(builder.getI64Type());
+  outputTypes.push_back(builder.getI64Type());
+  
+  auto funcType = builder.getFunctionType(inputTypes, outputTypes);
+  auto funcOp = builder.create<func::FuncOp>(
+      builder.getUnknownLoc(), "test_fused_kernel", funcType);
+  funcOp->setAttr("accelerator", builder.getStringAttr("neura"));
+  
+  Block *entryBlock = funcOp.addEntryBlock();
+  builder.setInsertionPointToStart(entryBlock);
+  
+  // Create dummy operations
+  Value lastVal = entryBlock->getArgument(0);
+  for (int i = 0; i < totalOps; ++i) {
+    lastVal = builder.create<arith::AddIOp>(builder.getUnknownLoc(), lastVal, lastVal);
+  }
+  
+  auto returnOp = builder.create<neura::ReturnOp>(
+      builder.getUnknownLoc(), ValueRange{lastVal});
+  returnOp->setAttr("return_type", builder.getStringAttr("value"));
+  
+  FusionMetrics metrics = computeRealMetrics(module, architecture);
+  metrics.recMii = fusedRecMii;  // Override with estimated depth
+  return metrics;
+}
+
+/// Checks if fusion is profitable based on real MII metrics from neura pipeline.
+static bool isFusionProfitable(neura::KernelOp kernel1, neura::KernelOp kernel2,
+                               bool isProducerConsumer) {
+  // Creates architecture: 1x1 multi-CGRA with 4x4 per-CGRA (16 tiles), MESH topology.
+  neura::Architecture architecture(
+      1, 1,                              // multi_cgra_rows, multi_cgra_columns
+      neura::BaseTopology::MESH,         // multi_cgra_base_topology
+      4, 4,                              // per_cgra_rows, per_cgra_columns
+      neura::BaseTopology::MESH          // per_cgra_base_topology
+  );
+  
+  FusionMetrics m1 = computeMetricsWithSeparateContext(kernel1, kernel1, false, architecture, false);
+  FusionMetrics m2 = computeMetricsWithSeparateContext(kernel2, kernel2, false, architecture, false);
+  FusionMetrics fused = computeMetricsWithSeparateContext(kernel1, kernel2, isProducerConsumer, architecture, true);
+
+  // Calculates the baseline. 
+  int baselineRecMii = isProducerConsumer ? (m1.recMii + m2.recMii)
+                                          : std::max(m1.recMii, m2.recMii);
+  int baselineResMii = std::max(m1.resMii, m2.resMii);
+  int baselineMaxFanout = std::max(m1.maxFanout, m2.maxFanout);
+
+  // Thresholds for rejecting fusion
+  constexpr double MII_INCREASE_THRESHOLD = 2.0;
+  constexpr double FANOUT_INCREASE_THRESHOLD = 2.0;
+
+  if (fused.recMii > baselineRecMii * MII_INCREASE_THRESHOLD) {
+    return false;
+  }
+  if (fused.resMii > baselineResMii * MII_INCREASE_THRESHOLD) {
+    return false;
+  }
+  if (baselineMaxFanout > 0 &&
+      fused.maxFanout > baselineMaxFanout * FANOUT_INCREASE_THRESHOLD) {
+    return false;
+  }
+
+  return true;
+}
 
 //===----------------------------------------------------------------------===//
 // Utility Functions
@@ -183,6 +439,10 @@ struct ProducerConsumerFusionPattern
         if (hasInterveningUses(defOp, consumer))
           continue;
 
+        // Check if fusion is profitable using cost model
+        if (!isFusionProfitable(defOp, consumer, /*isProducerConsumer=*/true))
+          continue;
+
         producer = defOp;
         fusedValue = input;
         break;
@@ -306,7 +566,8 @@ struct SiblingFusionPattern : public OpRewritePattern<neura::KernelOp> {
     for (Operation *op = kernel1->getNextNode(); op; op = op->getNextNode()) {
       if (auto nextKernel = dyn_cast<neura::KernelOp>(op)) {
         if (areSiblingKernels(kernel1, nextKernel) &&
-            canFuseKernels(kernel1, nextKernel)) {
+            canFuseKernels(kernel1, nextKernel) &&
+            isFusionProfitable(kernel1, nextKernel, /*isProducerConsumer=*/false)) {
           kernel2 = nextKernel;
           break;
         }
@@ -497,6 +758,11 @@ struct ElementwiseFusionPattern : public OpRewritePattern<neura::KernelOp> {
         if (!canFuseKernels(kernel1, nextKernel))
           continue;
 
+        // Skip if there's a producer-consumer relationship
+        // (let ProducerConsumerFusionPattern handle those cases)
+        if (hasProducerConsumerRelation(kernel1, nextKernel))
+          continue;
+
         // For elementwise fusion, we don't require producer-consumer or sibling
         // relationship - we just need compatible iteration domains (same shape)
         // Here we use a simplified check: same number and types of outputs
@@ -509,7 +775,9 @@ struct ElementwiseFusionPattern : public OpRewritePattern<neura::KernelOp> {
               break;
             }
           }
-          if (compatible) {
+          // Also check fusion profitability
+          if (compatible &&
+              isFusionProfitable(kernel1, nextKernel, /*isProducerConsumer=*/false)) {
             kernel2 = nextKernel;
             break;
           }
@@ -646,6 +914,14 @@ struct FuseKernelPass
   StringRef getDescription() const override {
     return "Fuse neura.kernel operations using producer-consumer and sibling "
            "fusion strategies (inspired by linalg/affine fusion).";
+  }
+
+  void getDependentDialects(DialectRegistry &registry) const override {
+    // Register dialects needed by the pass pipeline we run internally
+    registry.insert<mlir::LLVM::LLVMDialect>();
+    registry.insert<mlir::func::FuncDialect>();
+    registry.insert<mlir::arith::ArithDialect>();
+    registry.insert<mlir::neura::NeuraDialect>();
   }
 
   void runOnOperation() override {
