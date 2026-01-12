@@ -61,4 +61,30 @@ def ConvertLinalgToTaskflow : Pass<"convert-linalg-to-taskflow", "ModuleOp">{
   ];
 }
 
+def ConvertAffineToTaskflow : Pass<"convert-affine-to-taskflow", "ModuleOp">{
+  let summary = "Convert top-level affine.for operations to Taskflow dialect";
+  let description = [{
+    This pass converts top-level affine.for loops in a function into
+    taskflow.task operations within a taskflow.graph. Each top-level loop
+    becomes a separate task, and data dependencies between tasks are made
+    explicit through taskflow.channel operations.
+    
+    The pass:
+    1. Identifies all top-level affine.for operations
+    2. Analyzes data dependencies (RAW, WAR, WAW) between loops
+    3. Creates a taskflow.graph containing the loops
+    4. Converts each loop to a taskflow.task
+    5. Inserts taskflow.channel operations for data dependencies
+  }];
+
+  let constructor = "mlir::createConvertAffineToTaskflowPass()";
+  let dependentDialects = [
+    "mlir::taskflow::TaskflowDialect",
+    "mlir::affine::AffineDialect",
+    "mlir::func::FuncDialect",
+    "mlir::memref::MemRefDialect",
+    "mlir::arith::ArithDialect"
+  ];
+}
+
 #endif // CONVERSION_PASSES_TD

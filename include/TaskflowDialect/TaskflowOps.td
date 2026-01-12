@@ -7,6 +7,7 @@ include "mlir/IR/OpBase.td"
 include "mlir/IR/RegionKindInterface.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 
 //----------------------------------------------------------------------
 // Base Class for all Taskflow operations.
@@ -80,54 +81,65 @@ def TaskflowReturnOp : TaskflowOpBase<"return", [Terminator]> {
 // Task Level Operations.
 //----------------------------------------------------------------------
 
-// Defines a uniform computation and control task operation within a Taskflow graph.
+// Defines a uniform computation task operation within a Taskflow graph.
 def TaskflowTaskOp : TaskflowOpBase<"task", [
     IsolatedFromAbove,
-    AttrSizedOperandSegments,
-    AttrSizedResultSegments,
+    AutomaticAllocationScope,
     SingleBlockImplicitTerminator<"TaskflowYieldOp">
 ]>{
-  let summary = "Uniform computation and control task operation within a Taskflow graph";
+  let summary = "Computation task operation within a Taskflow graph.";
 
   let description = [{
-  
+    Represents a computational task that takes data inputs and produces
+    data outoputs. Tasks are isolated from their surrounding scope and can only
+    communicate through explicit data dependencies.
+
+    Example:
+      %result = taskflow.task "Task_0" (%arg0, %arg1) {
+      ^bb0(%a0: memref<4xi32>, %a1: i32):
+        affine.for %i = 0 to 4 {
+          %v = affine.load %a0[%i] : memref<4xi32>
+          %sum = arith.addi %v, %a1 : i32
+          affine.store %sum, %a0[%i] : memref<4xi32>
+        }
+        taskflow.yield %a0 : memref<4xi32>
+      } : (memref<4xi32>, i32) -> memref<4xi32>
   }];
 
   let arguments = (ins
-    // Optional control inputs.
-    Variadic<TaskflowPacketType>:$control_ins,
     // Optional data inputs.
-    Variadic<AnyType>:$data_ins,
-    StrAttr:$task_name,
-
-    // Task metadata.
-    OptionalAttr<AffineMapArrayAttr>:$indexing_maps,
-    OptionalAttr<ArrayAttr>:$iterator_types
+    Variadic<AnyType>:$inputs,
+    StrAttr:$task_name
   );
 
   let results = (outs
-    // Optional control outputs.
-    Variadic<TaskflowPacketType>:$control_outs,
     // Optional data outputs.
-    Variadic<AnyType>:$data_outs
+    Variadic<AnyType>:$outputs
   );
 
   let regions = (region SizedRegion<1>:$body);
 
-  // let assemblyFormat = [{
-  //   $task_name
-  //   (`control_ins` `(` $control_ins^ `:` type($control_ins) `)`)?
-  //   (`data_ins` `(` $data_ins^ `:` type($data_ins) `)`)?
-  //   $body attr-dict
-  //   `->` type(results)
-  // }];
+  let assemblyFormat = [{
+    $task_name
+    (`inputs` `(` $inputs^ `:` type($inputs) `)`)?
+    attr-dict-with-keyword
+    $body
+    `->` type($outputs)
+  }];
 }
 
 // Defines the yield operation to terminate a Taskflow task.
 def TaskflowYieldOp : TaskflowOpBase<"yield", [Terminator, Pure, ReturnLike, ParentOneOf<["TaskflowTaskOp"]>]>{
   let summary = "Yield operation for Taskflow task";
   let description = [{
-  
+    Yields values from a task body. The number and types of operands
+    must match the result types of the parent taskflow.task operation.
+    
+    Example:
+      taskflow.task "Task_0" (%arg0, %arg1) {
+        ...
+        taskflow.yield %a0 : memref<4xi32>
+      } : (memref<4xi32>, i32) -> memref<4xi32>
   }];
 
   let arguments = (ins Variadic<AnyType>:$results);
@@ -144,62 +156,31 @@ def TaskflowYieldOp : TaskflowOpBase<"yield", [Terminator, Pure, ReturnLike, Par
   ];
 }
 
-// Defines the control edge operation that carries control packets between tasks in a Taskflow graph.
-def TaskflowDriveOp : TaskflowOpBase<"drive", [Pure]>{
-  let summary = "Control edge that carries control packets between tasks in a Taskflow graph";
-  let description = [{
-  
-  }];
-
-  let arguments = (ins TaskflowPacketType:$source);
-
-  let results = (outs TaskflowPacketType:$target);
-
-  let assemblyFormat = [{
-    $source attr-dict `:` qualified(type($source)) `->` qualified(type($target))
-  }];
-}
-
 // Defines the data dependency edge operation that carries data dependencies between tasks in a Taskflow graph.
-def TaskflowChannelOp : TaskflowOpBase<"channel", [Pure]>{
+def TaskflowChannelOp : TaskflowOpBase<"channel", [Pure, SameOperandsAndResultType]>{
   let summary = "Data dependency edge that carries data dependencies between tasks in a Taskflow graph";
   let description = [{
-  
+    Represents a data dependency edge between tasks in the taskflow graph.
+    A channel connects a producer task's output to a consumer task's input.
+
+    Channels enforce explicit data dependencies and can be used for:
+    - Producer-consumer relationships
+    - Read-after-write (RAW) dependencies
+    - Write-after-read (WAR) dependencies
+    - Write-after-write (WAW) dependencies
+
+    Example:
+      %0 = taskflow.task "producer_task" (...) { ... } : (...) -> memref<4xi32>
+      %1 = taskflow.channel %0 : memref<4xi32>
+      %2 = taskflow.task "consumer_task" (%1, ...) { ... } : (memref<4xi32>, ...) -> ...
   }];
 
   let arguments = (ins AnyType:$source);
-
   let results = (outs AnyType:$target);
 
   let assemblyFormat = [{
     $source attr-dict `:` type($source) `->` type($target)
   }];
-}
-
-// Defines the emit operatin to emit data and control packets from a task before termination (used in streaming or hierachical control cases).
-def TaskflowEmitOp : TaskflowOpBase<"emit", [Pure]>{
-  let summary = "Emit operation for taskflow.task to emit data and control packets before termination";
-  let description = [{
-    Emits control and data packets from a task before its termination.
-    This is useful in streaming or hierarchical control scenarios where tasks need to send out packets without terminating the entire task.
-    
-    Example:
-      taskflow.task(...) {
-        ...
-        taskflow.emit %control_packet, %data_packet : !taskflow.packet<...>, i32
-        taskflow.yield
-      }
-  }];
-  let arguments = (ins Variadic<AnyType>:$results);
-  let assemblyFormat = [{
-    ($results^ `:` type($results))? attr-dict
-  }];
-  let builders = [
-    // Default builder for empty emit.
-    OpBuilder<(ins), [{
-    build($_builder, $_state, ValueRange{});
-    }]>
-  ];
 }
 
 #endif // TASKFLOW_OPS_TD

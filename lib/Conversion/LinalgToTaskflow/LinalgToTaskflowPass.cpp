@@ -255,12 +255,8 @@ static TaskflowTaskOp createTaskFromOp(OpBuilder &builder, Operation *op,
   // Creates the taskflow.task op.
   auto task_op = builder.create<TaskflowTaskOp>(
       loc,
-      /*control_outs=*/TypeRange{},
-      /*data_outs=*/data_out_types,
-      /*control_ins=*/ValueRange{},
-      /*data_ins=*/data_ins, builder.getStringAttr(task_name),
-      /*indexing_maps=*/nullptr,
-      /*iterator_types=*/nullptr);
+      /*outputs=*/data_out_types,
+      /*inputs=*/data_ins, builder.getStringAttr(task_name));
 
   // Builds task body.
   Block *task_body = new Block();
@@ -284,50 +280,51 @@ static TaskflowTaskOp createTaskFromOp(OpBuilder &builder, Operation *op,
 
   // Registers task outputs in context (same types as original results).
   for (auto [orig_result, task_output] :
-       llvm::zip(op->getResults(), task_op.getDataOuts())) {
+       llvm::zip(op->getResults(), task_op.getOutputs())) {
     ctx.value_mapping[orig_result] = task_output;
   }
 
   return task_op;
 }
 
-//------------------------------------------------------------------------------
-// Step 3: Channel Insertion - Inserts taskflow.channel ops between tasks.
-//------------------------------------------------------------------------------
-static void insertChannels(OpBuilder &builder, ArrayRef<TaskflowTaskOp> tasks) {
-  DenseSet<TaskflowTaskOp> task_set(tasks.begin(), tasks.end());
+// //------------------------------------------------------------------------------
+// // Step 3: Channel Insertion - Inserts taskflow.channel ops between tasks.
+// //------------------------------------------------------------------------------
+// static void insertChannels(OpBuilder &builder, ArrayRef<TaskflowTaskOp>
+// tasks) {
+//   DenseSet<TaskflowTaskOp> task_set(tasks.begin(), tasks.end());
 
-  for (TaskflowTaskOp producer_task : tasks) {
-    Location loc = producer_task.getLoc();
+//   for (TaskflowTaskOp producer_task : tasks) {
+//     Location loc = producer_task.getLoc();
 
-    // For each data output of this producer task.
-    for (Value data_out : producer_task.getDataOuts()) {
-      // Collects all consumer tasks that use this output.
-      SmallVector<std::pair<TaskflowTaskOp, OpOperand *>> consumer_tasks;
+//     // For each data output of this producer task.
+//     for (Value data_out : producer_task.getDataOuts()) {
+//       // Collects all consumer tasks that use this output.
+//       SmallVector<std::pair<TaskflowTaskOp, OpOperand *>> consumer_tasks;
 
-      for (OpOperand &use : data_out.getUses()) {
-        Operation *user = use.getOwner();
-        if (auto consumer_task = dyn_cast<TaskflowTaskOp>(user)) {
-          if (task_set.contains(consumer_task)) {
-            consumer_tasks.push_back({consumer_task, &use});
-          }
-        }
-      }
+//       for (OpOperand &use : data_out.getUses()) {
+//         Operation *user = use.getOwner();
+//         if (auto consumer_task = dyn_cast<TaskflowTaskOp>(user)) {
+//           if (task_set.contains(consumer_task)) {
+//             consumer_tasks.push_back({consumer_task, &use});
+//           }
+//         }
+//       }
 
-      // Creates a dedicated channel for each consumer task.
-      builder.setInsertionPointAfter(producer_task);
+//       // Creates a dedicated channel for each consumer task.
+//       builder.setInsertionPointAfter(producer_task);
 
-      for (auto [consumer_task, use] : consumer_tasks) {
-        // Creates a new channel for this specific producer->consumer edge.
-        auto channel_op = builder.create<TaskflowChannelOp>(
-            loc, data_out.getType(), data_out);
+//       for (auto [consumer_task, use] : consumer_tasks) {
+//         // Creates a new channel for this specific producer->consumer edge.
+//         auto channel_op = builder.create<TaskflowChannelOp>(
+//             loc, data_out.getType(), data_out);
 
-        // Replaces only this specific use with the channel output.
-        use->set(channel_op.getTarget());
-      }
-    }
-  }
-}
+//         // Replaces only this specific use with the channel output.
+//         use->set(channel_op.getTarget());
+//       }
+//     }
+//   }
+// }
 
 //------------------------------------------------------------------------------
 // Step 4: Graph Construction - Creates the taskflow.graph op.
@@ -372,7 +369,7 @@ static LogicalResult buildTaskflowGraph(
   }
 
   // Inserts channels between tasks.
-  insertChannels(builder, tasks);
+  // insertChannels(builder, tasks);
 
   // Creates graph return.
   SmallVector<Value> return_values;
