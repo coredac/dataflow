@@ -18,6 +18,7 @@
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraPasses.h"
 #include "TaskflowDialect/TaskflowDialect.h"
+#include "TaskflowDialect/TaskflowPasses.h"
 
 // Global variable to store architecture spec file path
 static std::string architecture_spec_file;
@@ -77,6 +78,7 @@ int main(int argc, char **argv) {
   mlir::neura::registerPasses();
   mlir::registerPasses();
   mlir::registerViewOpGraphPass();
+  mlir::taskflow::registerPasses();
 
   // Register all standard conversion passes
   mlir::registerConversionPasses();

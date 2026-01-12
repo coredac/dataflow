@@ -66,13 +66,16 @@ def TaskflowTaskOp : TaskflowOpBase<"task", [
 
   let regions = (region SizedRegion<1>:$body);
 
-  let assemblyFormat = [{
-    (`memory_inputs` `(` $memory_inputs^ `:` type($memory_inputs) `)`)?
-    (`value_inputs` `(` $value_inputs^ `:` type($value_inputs) `)`)?
-    attr-dict-with-keyword
-    $body
-    `->` `(`type($memory_outputs) type($value_outputs)`)`
-  }];
+  // let hasCustomAssemblyFormat = 1;
+
+  // let assemblyFormat = [{
+  //   (`memory_inputs` `(` $memory_inputs^ `:` type($memory_inputs) `)`)?
+  //   (`value_inputs` `(` $value_inputs^ `:` type($value_inputs) `)`)?
+  //   attr-dict-with-keyword
+  //   $body
+  //   `->` `(` type($memory_outputs) `,` type($value_outputs) `)`
+  // }];
+
 }
 
 // Defines the yield operation to terminate a Taskflow task.
@@ -93,11 +96,13 @@ def TaskflowYieldOp : TaskflowOpBase<"yield", [Terminator, Pure, ReturnLike, Att
     Variadic<AnyMemRef>:$memory_results,
     Variadic<AnyType>:$value_results);
 
-  let assemblyFormat = [{
-    (`memory_outputs` `(` $memory_results^ `:` type($memory_results) `)`)?
-    (`value_outputs` `(` $value_results^ `:` type($value_results) `)`)?
-    attr-dict
-  }];
+  // let assemblyFormat = [{
+  //   (`memory_outputs` `(` $memory_results^ `:` type($memory_results) `)`)?
+  //   (`value_outputs` `(` $value_results^ `:` type($value_results) `)`)?
+  //   attr-dict
+  // }];
+
+  // let hasCustomAssemblyFormat = 1;
 
   let builders = [
     // Default builder for empty yield.
