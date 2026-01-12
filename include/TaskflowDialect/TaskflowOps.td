@@ -134,4 +134,112 @@ def TaskflowChannelOp : TaskflowOpBase<"channel", [Pure, SameOperandsAndResultTy
   }];
 }
 
+//----------------------------------------------------------------------
+// Intra-Task Operations.
+//----------------------------------------------------------------------
+// Counter operation representing loop iteration control within a Taskflow task.
+def TaskflowCounterOp : TaskflowOpBase<"counter", [Pure]>{
+  let summary = "Loop counter operation with hardware counter semantics";
+
+  let description = [{
+    Represents a loop counter that generates iteration indices.
+    The hardware counter produces a predicated index value.
+
+    Counter behavior:
+    - Top-level counter: increments unconditionally each cycle.
+    - Nested counter: increments only when the parent counter is valid.
+
+    Example:
+      // Top-level counter
+      %i = taskflow.counter {
+        lower_bound = 0 : index,
+        upper_bound = 16 : index,
+        step = 1 : index,
+        counter_name = "i"
+      } : index
+      // Nested counter
+      %j = taskflow.counter parent(%i) {
+        lower_bound = 0 : index,
+        upper_bound = 8 : index,
+        step = 1 : index,
+        counter_name = "j"
+      } : index
+  }];
+
+  let arguments = (ins
+    Optional<AnyType>:$parent_index,
+    IndexAttr:$lower_bound,
+    IndexAttr:$upper_bound,
+    IndexAttr:$step
+  );
+
+  let results = (outs AnyType:$counter_index);
+
+  let assemblyFormat = [{
+    (`parent` `(` $parent_index^ `:` type($parent_index) `)`)?
+    attr-dict-with-keyword
+    `:` type($counter_index)
+  }];
+}
+
+def TaskflowHyperblockOp : TaskflowOpBase<"hyperblock",[
+  AutomaticAllocationScope,
+  SingleBlockImplicitTerminator<"TaskflowHyperblockYieldOp">
+]>{
+  let summary = "Hyperblock operation containing loop body computation";
+
+  let description = [{
+    Represents the loop body computation as a hyperblock controlled by taskflow.counter operation.
+    The hyperblock takes the counter indices as input to trigger its execution.
+
+    Example:
+      %result = taskflow.hyperblock indices(%i : index) {
+        ^bb0(%idx: index):
+          // Loop body computation using %idx
+          ...
+          taskflow.hyperblock.yield %output : i32
+      } -> i32
+  }];
+
+  let arguments = (ins
+    Variadic<AnyType>:$indices
+  );
+
+  let results = (outs
+    Variadic<AnyType>:$outputs
+  );
+
+  let regions = (region SizedRegion<1>:$body);
+
+  let assemblyFormat = [{
+    (`indices` `(` $indices^ `:` type($indices) `)`)?
+    attr-dict-with-keyword
+    $body
+    `->` type($outputs)
+  }];
+}
+
+def TaskflowHyperblockYieldOp : TaskflowOpBase<"hyperblock.yield", [
+  Terminator,
+  Pure,
+  ReturnLike,
+  ParentOneOf<["TaskflowHyperblockOp"]>
+]>{
+  let summary = "Yield operation for Taskflow hyperblock";
+
+  let description = [{
+    Terminates the hyperblock body.
+  }];
+
+  let arguments = (ins);
+
+  let assemblyFormat = [{
+    attr-dict
+  }];
+
+  let builders = [
+    OpBuilder<(ins), [{build($_builder, $_state);}]>
+  ];
+}
+
 #endif // TASKFLOW_OPS_TD
