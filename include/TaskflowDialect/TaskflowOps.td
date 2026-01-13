@@ -198,6 +198,8 @@ def TaskflowHyperblockOp : TaskflowOpBase<"hyperblock",[
     Represents the loop body computation as a hyperblock controlled by taskflow.counter operation.
     The hyperblock takes the counter indices as input to trigger its execution.
 
+    If the hyperblock has a return value, it must return the final value produced by the hyperblock (i.e., from the last iteration).
+
     Example:
       %result = taskflow.hyperblock indices(%i : index) {
         ^bb0(%idx: index):
@@ -221,7 +223,7 @@ def TaskflowHyperblockOp : TaskflowOpBase<"hyperblock",[
     (`indices` `(` $indices^ `:` type($indices) `)`)?
     attr-dict-with-keyword
     $body
-    `->` type($outputs)
+    `->` `(` type($outputs) `)`
   }];
 }
 
@@ -237,14 +239,15 @@ def TaskflowHyperblockYieldOp : TaskflowOpBase<"hyperblock.yield", [
     Terminates the hyperblock body.
   }];
 
-  let arguments = (ins);
+  let arguments = (ins Variadic<AnyType>:$outputs);
 
   let assemblyFormat = [{
+    (`outputs` `(` $outputs^ `:` type($outputs) `)`)?
     attr-dict
   }];
 
   let builders = [
-    OpBuilder<(ins), [{build($_builder, $_state);}]>
+    OpBuilder<(ins), [{build($_builder, $_state, ValueRange{});}]>
   ];
 }
 
