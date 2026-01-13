@@ -305,19 +305,6 @@ static TaskflowHyperblockOp createHyperblock(
   // Collects only the indices that are actually used in the hyperblock.
   SmallVector<Value> used_indices =
       collectUsedIndices(info.operations, info.trigger_indices, loop_info_map);
-  llvm::errs() << "Trigger indices for hyperblock:\n";
-  for (Value idx : info.trigger_indices) {
-    llvm::errs() << "  ";
-    idx.print(llvm::errs());
-    llvm::errs() << "\n";
-  }
-
-  llvm::errs() << "Used indices for hyperblock:\n";
-  for (Value idx : used_indices) {
-    llvm::errs() << "  ";
-    idx.print(llvm::errs());
-    llvm::errs() << "\n";
-  }
 
   // Determines output types for the hyperblock based on operations.
   SmallVector<Type> output_types =
@@ -344,16 +331,6 @@ static TaskflowHyperblockOp createHyperblock(
     mapping.map(idx, arg);
   }
 
-  llvm::errs() << "Mapping counter indices to block arguments:\n";
-  for (auto [idx, arg] :
-       llvm::zip(used_indices, hyperblock_body->getArguments())) {
-    llvm::errs() << "  Counter ";
-    idx.print(llvm::errs());
-    llvm::errs() << " -> Block arg ";
-    arg.print(llvm::errs());
-    llvm::errs() << "\n";
-  }
-
   // Creates a mapping from loop counters to loop induction variables.
   DenseMap<Value, Value> counter_to_indvar;
   for (auto [loop_op, loop_info] : loop_info_map) {
@@ -366,25 +343,6 @@ static TaskflowHyperblockOp createHyperblock(
     if (counter_to_indvar.count(idx)) {
       Value indvar = counter_to_indvar[idx];
       mapping.map(indvar, arg);
-    }
-  }
-
-  llvm::errs() << "Mapping induction variables to block arguments:\n";
-  for (auto [idx, arg] :
-       llvm::zip(used_indices, hyperblock_body->getArguments())) {
-    {
-      if (counter_to_indvar.count(idx)) {
-        Value indvar = counter_to_indvar[idx];
-        llvm::errs() << "  Induction var ";
-        indvar.print(llvm::errs());
-        llvm::errs() << " -> Block arg ";
-        arg.print(llvm::errs());
-        llvm::errs() << "\n";
-      } else {
-        llvm::errs() << "  No induction var for counter ";
-        idx.print(llvm::errs());
-        llvm::errs() << "\n";
-      }
     }
   }
 
@@ -403,9 +361,6 @@ static TaskflowHyperblockOp createHyperblock(
       // Creates hyperblock.yield with the mapped operands.
       hyperblock_builder.create<TaskflowHyperblockYieldOp>(loc, yield_operands);
       has_terminator = true;
-
-      llvm::errs() << "Converted affine.yield to hyperblock.yield with "
-                   << yield_operands.size() << " operands\n";
       continue;
     }
 
@@ -417,7 +372,6 @@ static TaskflowHyperblockOp createHyperblock(
   if (!has_terminator) {
     hyperblock_builder.setInsertionPointToEnd(hyperblock_body);
     hyperblock_builder.create<TaskflowHyperblockYieldOp>(loc);
-    llvm::errs() << "Added empty hyperblock.yield (no affine.yield found)\n";
   }
 
   MLIRContext *context = hyperblock_op.getContext();
@@ -431,7 +385,6 @@ static TaskflowHyperblockOp createHyperblock(
                       affine::AffineIfOp>();
   if (failed(
           applyPartialConversion(hyperblock_op, target, std::move(patterns)))) {
-    llvm::errs() << "Failed to convert affine ops inside hyperblock.\n";
     assert(false && "Affine to Standard conversion failed.");
   }
 
@@ -475,21 +428,6 @@ static LogicalResult transformTask(TaskflowTaskOp task_op) {
   // Step 3: Extracts hyperblocks from task.
   SmallVector<HyperblockInfo> hyperblocks_info =
       extractHyperblocksInfo(task_op, loop_info_map);
-  llvm::errs() << "==============================\n";
-  llvm::errs() << "Number of hyperblocks: " << hyperblocks_info.size() << "\n";
-  for (HyperblockInfo &hyperblock : hyperblocks_info) {
-    llvm::errs() << "  Hyperblock op: \n";
-    for (Operation *op : hyperblock.operations) {
-      llvm::errs() << "    ";
-      op->print(llvm::errs());
-      llvm::errs() << "\n";
-    }
-    llvm::errs() << "  Triggered by: ";
-    for (Value index : hyperblock.trigger_indices) {
-      llvm::errs() << index << " ";
-    }
-    llvm::errs() << "\n";
-  }
 
   // Step 4: Creates taskflow.hyperblock operations for each hyperblock.
   builder.setInsertionPoint(first_loop_op);
@@ -502,17 +440,8 @@ static LogicalResult transformTask(TaskflowTaskOp task_op) {
     }
   }
 
-  llvm::errs() << "\nLoop info map for the task: \n";
-  for (auto [loop_op, loop_info] : loop_info_map) {
-    llvm::errs() << "  Loop: ";
-    loop_op.getInductionVar().print(llvm::errs());
-    llvm::errs() << " -> Counter: ";
-    loop_info->counter_index.print(llvm::errs());
-    llvm::errs() << "\n";
-  }
   // Creates hyperblock ops.
   for (const auto &info : hyperblocks_info) {
-    llvm::errs() << "\nCreating hyperblock...\n";
     createHyperblock(builder, loc, info, task_body, loop_info_map);
   }
 
@@ -550,7 +479,6 @@ struct ConstructHyperblockFromTaskPass
 
     // Transforms each task.
     for (TaskflowTaskOp task_op : tasks) {
-      llvm::errs() << "Number of tasks: " << tasks.size() << "\n";
       if (failed(transformTask(task_op))) {
         signalPassFailure();
         return;
