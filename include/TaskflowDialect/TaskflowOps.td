@@ -9,6 +9,7 @@ include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/IR/CommonTypeConstraints.td"
+include "mlir/IR/CommonAttrConstraints.td"
 
 //----------------------------------------------------------------------
 // Base Class for all Taskflow operations.

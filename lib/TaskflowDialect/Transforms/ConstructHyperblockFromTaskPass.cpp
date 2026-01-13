@@ -98,7 +98,34 @@ static SmallVector<LoopInfo> collectLoopInfo(TaskflowTaskOp task_op) {
 // Recursively creates counter chain for each top-level loop.
 static void createCounterChainRecursivly(OpBuilder &builder, Location loc,
                                          LoopInfo *loop_info,
-                                         Value parent_counter) {}
+                                         Value parent_counter) {
+  // Creates counter for this loop.
+  Value counter_index;
+  if (parent_counter) {
+    // Nested counter.
+    auto counter_op = builder.create<TaskflowCounterOp>(
+        loc, builder.getIndexType(), parent_counter,
+        builder.getIndexAttr(loop_info->lower_bound),
+        builder.getIndexAttr(loop_info->upper_bound),
+        builder.getIndexAttr(loop_info->step));
+    counter_index = counter_op.getCounterIndex();
+  } else {
+    // Top-level counter.
+    auto counter_op = builder.create<TaskflowCounterOp>(
+        loc, builder.getIndexType(), /*parent_index=*/nullptr,
+        builder.getIndexAttr(loop_info->lower_bound),
+        builder.getIndexAttr(loop_info->upper_bound),
+        builder.getIndexAttr(loop_info->step));
+    counter_index = counter_op.getCounterIndex();
+  }
+
+  loop_info->counter_index = counter_index;
+
+  // Recursively creates counters for child loops.
+  for (LoopInfo *child : loop_info->child_loops) {
+    createCounterChainRecursivly(builder, loc, child, counter_index);
+  }
+}
 
 // Creates counter chain for all top-level loops.
 static void createCounterChain(OpBuilder &builder, Location loc,
@@ -149,6 +176,9 @@ static LogicalResult transformTask(TaskflowTaskOp task_op) {
   SmallVector<LoopInfo *> top_level_loops_info =
       getTopLevelLoopsInfo(loops_info);
   createCounterChain(builder, loc, top_level_loops_info);
+
+  // Step 3: Extracts hyperblocks from loops.
+
   return success();
 }
 
