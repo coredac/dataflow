@@ -1,7 +1,7 @@
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
-add_mlir_conversion_library(MLIRLinalgToTaskflowPass
-  LinalgToTaskflowPass.cpp
+add_mlir_conversion_library(MLIRAffineToTaskflowPass
+  AffineToTaskflowPass.cpp
 
   DEPENDS
   MLIRConversionIncGen

@@ -5,8 +5,10 @@ set(LIBS
         ${dialect_libs}
         ${conversion_libs}
         MLIRNeuraTransforms
+        MLIRTaskflowTransforms
         MLIRConversion
         MLIRNeura
+        MLIRTaskflow
         MLIRTransforms
         MLIROptLib
         MLIRPass
