@@ -46,8 +46,10 @@ getOpsInAlapLevels(const std::vector<Operation *> &sorted_ops,
                    const std::set<Operation *> &critical_ops);
 
 // Flattens the level buckets into a vector of pairs (operation, level).
+// Within each ALAP level, critical ops are prioritized before non-critical ops.
 std::vector<std::pair<Operation *, int>> flatten_level_buckets(
-    const std::vector<std::vector<Operation *>> &level_buckets);
+    const std::vector<std::vector<Operation *>> &level_buckets,
+    const std::set<Operation *> &critical_ops);
 
 // Gets the physical hops from the producers to the tile, which is used for
 // estimating the award of a location for placement.
@@ -79,6 +81,11 @@ bool tryRouteBackwardMove(Operation *mov_op, MappingLoc src_loc,
 // Gets the ctrl_mov users of an operation, empty vector is returned if no
 // ctrl_mov users found.
 llvm::SmallVector<Operation *> getCtrlMovUsers(Operation *op);
+
+// Identifies operations on the critical path (i.e., operations with zero slack).
+// Returns pair of: (critical_ops_set, asap_level_map)
+std::pair<std::set<Operation *>, llvm::DenseMap<Operation *, int>>
+identifyCriticalPathOps(const std::vector<Operation *> &sorted_ops);
 
 // Maps a materialized operation to the accelerator, and routes the dataflow
 // from the producers to the given op.

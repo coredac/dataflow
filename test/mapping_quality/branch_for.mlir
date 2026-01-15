@@ -195,8 +195,7 @@ func.func @loop_test() -> f32 {
 // MOV-NEXT:     neura.return_value %25 : !neura.data<f32, i1>
 // MOV-NEXT:     neura.yield
 
-// MAPPING:   func.func @loop_test() -> f32 attributes {accelerator = "neura", dataflow_mode = "predicate", mapping_info = {compiled_ii = 4 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 4 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {
-
+// MAPPING:      func.func @loop_test() -> f32 attributes {accelerator = "neura", dataflow_mode = "predicate", mapping_info = {compiled_ii = 4 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 4 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {
 
 // YAML:      array_config:
 // YAML-NEXT:   columns: 4
@@ -221,64 +220,55 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:                   dst_operands:
 // YAML-NEXT:                     - operand: "EAST"
 // YAML-NEXT:                       color: "RED"
+// YAML-NEXT:     - column: 1
+// YAML-NEXT:       row: 0
+// YAML-NEXT:       core_id: "1"
+// YAML-NEXT:       entries:
+// YAML-NEXT:         - entry_id: "entry0"
+// YAML-NEXT:           instructions:
 // YAML-NEXT:             - index_per_ii: 1
 // YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "GRANT_ONCE"
-// YAML-NEXT:                   id: 0
+// YAML-NEXT:                 - opcode: "PHI_START"
+// YAML-NEXT:                   id: 17
 // YAML-NEXT:                   time_step: 1
 // YAML-NEXT:                   invalid_iterations: 0
 // YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "#10"
+// YAML-NEXT:                     - operand: "WEST"
 // YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
 // YAML-NEXT:                     - operand: "EAST"
 // YAML-NEXT:                       color: "RED"
-// YAML-NEXT:             - index_per_ii: 3
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 210001
-// YAML-NEXT:                   time_step: 3
-// YAML-NEXT:                   invalid_iterations: 0
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "EAST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "NORTH"
-// YAML-NEXT:                       color: "RED"
-
 
 // ASM:      # Compiled II: 4
 // ASM:      PE(0,0):
 // ASM-NEXT: {
 // ASM-NEXT:   GRANT_ONCE, [#0] -> [EAST, RED] (t=0, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=0)
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_ONCE, [#10] -> [EAST, RED] (t=1, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=1)
-// ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [NORTH, RED] (t=3, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=3)
 // ASM:      PE(1,0):
 // ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [$0], [NORTH, RED] -> [$0] (t=4, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=0)
-// ASM-NEXT: {
-// ASM-NEXT:   PHI_START, [WEST, RED], [$0] -> [NORTH, RED] (t=1, inv_iters=0)
+// ASM-NEXT:   PHI_START, [WEST, RED], [EAST, RED] -> [NORTH, RED] (t=1, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=1)
 // ASM-NEXT: {
-// ASM-NEXT:   PHI_START, [WEST, RED], [NORTH, RED] -> [NORTH, RED], [WEST, RED] (t=2, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=2)
-// ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$0] (t=3, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [EAST, RED] (t=3, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=3)
 // ASM:      PE(2,0):
 // ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$0] (t=4, inv_iters=1)
+// ASM-NEXT:   GRANT_PREDICATE, [WEST, RED], [NORTH, RED] -> [WEST, RED] (t=4, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=0)
+// ASM:      PE(3,0):
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_ONCE, [#10] -> [NORTH, RED] (t=1, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=1)
+// ASM:      PE(1,1):
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_ONCE, [#1] -> [$0] (t=0, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [NORTH, RED] (t=4, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=0)
 // ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [$0], [NORTH, RED] -> [NORTH, RED] (t=6, inv_iters=1)
+// ASM-NEXT:   PHI_START, [$0], [EAST, RED] -> [$0], [EAST, RED] (t=1, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=1)
+// ASM-NEXT: {
+// ASM-NEXT:   ADD, [SOUTH, RED], [$0] -> [EAST, RED], [SOUTH, RED] (t=2, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=2)
-// ASM:      PE(0,1):
+// ASM:      PE(2,1):
 // ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [SOUTH, RED], [EAST, RED] -> [EAST, RED] (t=4, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=0)
+// ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [WEST, RED] (t=4, inv_iters=1)

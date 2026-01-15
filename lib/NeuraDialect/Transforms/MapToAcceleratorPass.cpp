@@ -745,7 +745,7 @@ struct MapToAcceleratorPass
         }
       }
       std::vector<std::pair<Operation *, int>> sorted_ops_with_alap_levels =
-          flatten_level_buckets(level_buckets);
+          flatten_level_buckets(level_buckets, critical_ops);
       for (const auto &[op, level] : sorted_ops_with_alap_levels) {
         llvm::outs() << "[MapToAcceleratorPass] ALAP sorted op: " << *op
                      << " (ALAP level: " << level << ")\n";

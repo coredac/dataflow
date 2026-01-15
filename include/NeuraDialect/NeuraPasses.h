@@ -15,7 +15,7 @@ namespace neura {
 
 void registerNeuraConversionPassPipeline();
 
-// Passes defined in GraphPasses.td
+// Passes defined in NeuraPasses.td
 #define GEN_PASS_DECL
 #include "NeuraDialect/NeuraPasses.h.inc"
 std::unique_ptr<mlir::Pass> createInsertDataMovPass();
