@@ -88,18 +88,18 @@
 // YAML-NEXT:     entries:
 // YAML-NEXT:       - entry_id: "entry0"
 // YAML-NEXT:         instructions:
-// YAML-NEXT:           - index_per_ii: 3
-// YAML-NEXT:             operations:
-// YAML-NEXT:               - opcode: "DATA_MOV"
-// YAML-NEXT:                 id: 380001
-// YAML-NEXT:                 time_step: 8
-// YAML-NEXT:                 invalid_iterations: 1
-// YAML-NEXT:                 src_operands:
-// YAML-NEXT:                   - operand: "EAST"
-// YAML-NEXT:                     color: "RED"
-// YAML-NEXT:                 dst_operands:
-// YAML-NEXT:                   - operand: "NORTH"
-// YAML-NEXT:                     color: "RED"
+// YAML-DAG:           - index_per_ii: 3
+// YAML-DAG:             operations:
+// YAML-DAG:               - opcode: "DATA_MOV"
+// YAML-DAG:                 id: 380001
+// YAML-DAG:                 time_step: 8
+// YAML-DAG:                 invalid_iterations: 1
+// YAML-DAG:                 src_operands:
+// YAML-DAG:                   - operand: "EAST"
+// YAML-DAG:                     color: "RED"
+// YAML-DAG:                 dst_operands:
+// YAML-DAG:                   - operand: "NORTH"
+// YAML-DAG:                     color: "RED"
 
 // ASM: # Compiled II: 5
 // ASM: PE(3,2):
