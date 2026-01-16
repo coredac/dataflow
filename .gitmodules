@@ -2,3 +2,7 @@
 	path = test/benchmark/CGRA-Bench
 	url = https://github.com/tancheng/CGRA-Bench.git
 	ignore = all
+[submodule "test-benchmark-zeonica-testbench"]
+	path = test/benchmark/Zeonica_Testbench
+	url = https://github.com/sarchlab/Zeonica_Testbench.git
+	ignore = all

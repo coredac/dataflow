@@ -56,3 +56,16 @@ Build LLVM & Neura
  $ /workspace/llvm-project/build/bin/llvm-lit test.mlir -v
 ```
 
+Sync `test/e2e` outputs into Zeonica_Testbench (submodule)
+--------------------------------------------------------
+This repo vendors [`sarchlab/Zeonica_Testbench`](https://github.com/sarchlab/Zeonica_Testbench.git) as a git submodule at `test/benchmark/Zeonica_Testbench`.
+
+After running e2e compilation/tests, you can sync the generated artifacts into the testbench repo:
+```sh
+$ ./tools/sync_e2e_outputs_to_zeonica_testbench.sh
+```
+
+Mapping (per kernel `K`):
+- `test/e2e/K/tmp-generated-dfg.{dot,yaml}` -> `test/benchmark/Zeonica_Testbench/kernel/K/K-dfg.{dot,yaml}`
+- `test/e2e/K/tmp-generated-instructions.{asm,yaml}` -> `test/benchmark/Zeonica_Testbench/kernel/K/K-instructions.{asm,yaml}`
+- full archive: `test/e2e/K/**` -> `test/benchmark/Zeonica_Testbench/kernel/K/dataflow/**`
