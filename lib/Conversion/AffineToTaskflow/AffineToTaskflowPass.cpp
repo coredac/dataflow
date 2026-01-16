@@ -31,21 +31,6 @@ namespace {
 // Helper Functions.
 //------------------------------------------------------------------------------
 
-// Collects all top-level affine.for operations in a function.
-static SmallVector<affine::AffineForOp>
-collectTopLevelLooops(func::FuncOp func_op) {
-  SmallVector<affine::AffineForOp> top_level_loops;
-  for (Block &block : func_op.getBlocks()) {
-    for (Operation &op : block) {
-      if (auto for_op = dyn_cast<affine::AffineForOp>(op)) {
-        top_level_loops.push_back(for_op);
-      }
-    }
-  }
-
-  return top_level_loops;
-}
-
 // Collects memrefs that are loaded (read) within a given operation scope.
 static void collectReadMemrefs(Operation *op, SetVector<Value> &read_memrefs) {
   op->walk([&](Operation *nested_op) {
@@ -102,6 +87,19 @@ static void collectExternalValues(Operation *root_op,
       for (Operation &op : block.getOperations()) {
         collectExternalValues(&op, scope_ops, external_values);
       }
+    }
+  }
+}
+
+// Updates operands of an operation using the value mapping.
+static void
+updateOperationOperands(Operation *op,
+                        const DenseMap<Value, Value> &value_mapping) {
+  for (OpOperand &operand : op->getOpOperands()) {
+    Value original_value = operand.get();
+    auto it = value_mapping.find(original_value);
+    if (it != value_mapping.end()) {
+      operand.set(it->second);
     }
   }
 }
@@ -284,42 +282,45 @@ static TaskflowTaskOp convertLoopToTask(OpBuilder &builder,
 //------------------------------------------------------------------------------
 // Converts a single function to TaskFlow operations.
 static LogicalResult convertFuncToTaskflow(func::FuncOp func_op) {
-  // Collects top-level loops for conversion.
-  SmallVector<affine::AffineForOp> top_level_loops =
-      collectTopLevelLooops(func_op);
-
-  if (top_level_loops.empty()) {
-    // No loops to convert.
-    llvm::errs() << "No top-level affine.for loops found in function '"
-                 << func_op.getName() << "'.\n";
-    return success();
-  }
 
   llvm::errs() << "\n===Converting function: " << func_op.getName() << "===\n";
-  llvm::errs() << "Found " << top_level_loops.size()
-               << " top-level affine.for loops to convert:\n";
-  for (affine::AffineForOp for_op : top_level_loops) {
-    llvm::errs() << for_op.getLoc() << "\n";
-  }
 
   OpBuilder builder(func_op.getContext());
+  SmallVector<affine::AffineForOp> loops_to_erase;
   DenseMap<Value, Value> value_mapping;
+  int task_id_counter = 0;
 
-  // Converts each top-level loop to taskflow.task operation.
-  for (auto [idx, loop] : llvm::enumerate(top_level_loops)) {
-    builder.setInsertionPoint(loop);
-    TaskflowTaskOp task_op =
-        convertLoopToTask(builder, loop, value_mapping, idx);
+  // Processes each block in the function.
+  for (Block &block : func_op.getBlocks()) {
+    // Collects operations to process (to avoid iterator invalidation).
+    SmallVector<Operation *> ops_to_process;
+    for (Operation &op : block) {
+      ops_to_process.push_back(&op);
+    }
 
-    // Replaces uses of loop results with task value outputs.
-    for (auto [loop_result, task_value_output] :
-         llvm::zip(loop.getResults(), task_op.getValueOutputs())) {
-      loop_result.replaceAllUsesWith(task_value_output);
+    // Processes each operation in order (top to bottom).
+    for (Operation *op : ops_to_process) {
+      if (auto for_op = dyn_cast<affine::AffineForOp>(op)) {
+        // Converts affine.for to taskflow.task.
+        OpBuilder builder(for_op);
+        TaskflowTaskOp task_op = convertLoopToTask(
+            builder, for_op, value_mapping, task_id_counter++);
+
+        // Replaces uses of loop results with task value outputs.
+        for (auto [loop_result, task_value_output] :
+             llvm::zip(for_op.getResults(), task_op.getValueOutputs())) {
+          loop_result.replaceAllUsesWith(task_value_output);
+        }
+        loops_to_erase.push_back(for_op);
+      } else {
+        // Updates operands of non-loop operations based on value_mapping.
+        updateOperationOperands(op, value_mapping);
+      }
     }
   }
 
   // Erases the original loops after conversion.
-  for (affine::AffineForOp for_op : top_level_loops) {
+  for (affine::AffineForOp for_op : loops_to_erase) {
     for_op.erase();
   }
 
