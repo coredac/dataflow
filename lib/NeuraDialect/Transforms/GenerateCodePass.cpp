@@ -595,8 +595,8 @@ struct GenerateCodePass
         setUniqueDestination(pi, producer_direction.str());
       else if (!regs.empty())
         setUniqueDestination(pi, "$" + std::to_string(regs.back().regId));
+      }
     }
-  }
 
   // Egress: on source tile at first_link_ts, move [$src_reg] -> [out_dir].
   void placeSrcEgress(const Topology &topology, int src_tile_id, int time_step,
@@ -706,8 +706,8 @@ struct GenerateCodePass
         const bool should_rewire_to_register =
             IsCtrl || (consumer_placement.time_step > deposit_time_step);
         if (should_rewire_to_register) {
-          setConsumerSourceExact(consumer_operation, value_at_consumer, "$" + std::to_string(register_id));
-          return true;
+        setConsumerSourceExact(consumer_operation, value_at_consumer, "$" + std::to_string(register_id));
+        return true;
         }
       }
     } else {
@@ -804,7 +804,7 @@ struct GenerateCodePass
     } else {
       return collectDataMovConsumers(forwarder);
     }
-  }
+    }
 
   template<bool IsCtrl>
   void rewriteMovConsumers(Operation *forwarder,
@@ -1403,18 +1403,18 @@ struct GenerateCodePass
     const std::unordered_set<int> &materialized_ids;
 
     void run() {
-      DfgNodeMap nodes;
-      DfgEdgeList edges;
+    DfgNodeMap nodes;
+    DfgEdgeList edges;
 
-      DenseMap<Value, SmallVector<Operation *, 2>> reserve_to_ctrl_movs;
+    DenseMap<Value, SmallVector<Operation *, 2>> reserve_to_ctrl_movs;
       pass.collectCtrlMovReserves(func, reserve_to_ctrl_movs);
 
       pass.buildSsaNodesAndEdges(func, reserve_to_ctrl_movs, nodes, edges);
 
-      std::vector<std::pair<int,int>> original_edges = edges;
-      edges.clear();
-      llvm::SmallDenseSet<std::pair<int,int>, 32> edges_to_skip;
-      std::vector<HopRewriteInfo> hop_rewrites;
+    std::vector<std::pair<int,int>> original_edges = edges;
+    edges.clear();
+    llvm::SmallDenseSet<std::pair<int,int>, 32> edges_to_skip;
+    std::vector<HopRewriteInfo> hop_rewrites;
 
       pass.collectHopRewrites(func, topology, nodes, original_edges, edges, edges_to_skip, hop_rewrites);
 
@@ -1428,9 +1428,9 @@ struct GenerateCodePass
       pass.emitDotOutput(nodes, edges);
       pass.emitYamlOutput(nodes, edges);
 
-      llvm::outs() << "[generate-code] DFG (SSA-based) emitted: nodes=" << nodes.size()
-                   << ", edges=" << edges.size()
-                   << " -> tmp-generated-dfg.dot, tmp-generated-dfg.yaml\n";
+    llvm::outs() << "[generate-code] DFG (SSA-based) emitted: nodes=" << nodes.size()
+                 << ", edges=" << edges.size()
+                 << " -> tmp-generated-dfg.dot, tmp-generated-dfg.yaml\n";
     }
   };
 
@@ -1478,40 +1478,40 @@ struct GenerateCodePass
   void emitYamlForTile(llvm::raw_fd_ostream &yaml_out, const Tile &tile) {
     yaml_out << "    - column: " << tile.col_idx << "\n      row: " << tile.row_idx
              << "\n      core_id: \"" << tile.core_id << "\"\n      entries:\n";
-
-    // Groups instructions by index_per_ii.
+      
+      // Groups instructions by index_per_ii.
     IndexGroups index_groups = groupByIndexPerIi(tile.entry.instructions);
-
-    yaml_out << "        - entry_id: \"entry0\"\n          instructions:\n";
-    for (const auto &index_pair : index_groups) {
-      int index_per_ii = index_pair.first;
-      auto operations = index_pair.second;
-      std::stable_sort(operations.begin(), operations.end(),
-                       [](const Instruction *a, const Instruction *b) {
-                         return a->time_step < b->time_step;
-                       });
-
-      yaml_out << "            - index_per_ii: " << index_per_ii << "\n              operations:\n";
-      for (const Instruction *inst : operations) {
-        yaml_out << "                - opcode: \"" << inst->opcode << "\"\n";
-        if (inst->id >= 0)
-          yaml_out << "                  id: " << inst->id << "\n";
-        yaml_out << "                  time_step: " << inst->time_step << "\n"
-                 << "                  invalid_iterations: " << inst->invalid_iterations << "\n";
-        // sources.
-        if (!inst->src_operands.empty()) {
-          yaml_out << "                  src_operands:\n";
-          for (const Operand &opnd : inst->src_operands)
-            yaml_out << "                    - operand: \"" << opnd.operand << "\"\n                      color: \"" << opnd.color << "\"\n";
-        }
-        // destinations.
-        if (!inst->dst_operands.empty()) {
-          yaml_out << "                  dst_operands:\n";
-          for (const Operand &opnd : inst->dst_operands)
-            yaml_out << "                    - operand: \"" << opnd.operand << "\"\n                      color: \"" << opnd.color << "\"\n";
+      
+      yaml_out << "        - entry_id: \"entry0\"\n          instructions:\n";
+      for (const auto &index_pair : index_groups) {
+        int index_per_ii = index_pair.first;
+        auto operations = index_pair.second;
+        std::stable_sort(operations.begin(), operations.end(),
+                         [](const Instruction *a, const Instruction *b) {
+                           return a->time_step < b->time_step;
+                         });
+        
+        yaml_out << "            - index_per_ii: " << index_per_ii << "\n              operations:\n";
+        for (const Instruction *inst : operations) {
+          yaml_out << "                - opcode: \"" << inst->opcode << "\"\n";
+          if (inst->id >= 0)
+            yaml_out << "                  id: " << inst->id << "\n";
+          yaml_out << "                  time_step: " << inst->time_step << "\n"
+                   << "                  invalid_iterations: " << inst->invalid_iterations << "\n";
+          // sources.
+          if (!inst->src_operands.empty()) {
+            yaml_out << "                  src_operands:\n";
+            for (const Operand &opnd : inst->src_operands)
+              yaml_out << "                    - operand: \"" << opnd.operand << "\"\n                      color: \"" << opnd.color << "\"\n";
+          }
+          // destinations.
+          if (!inst->dst_operands.empty()) {
+            yaml_out << "                  dst_operands:\n";
+            for (const Operand &opnd : inst->dst_operands)
+              yaml_out << "                    - operand: \"" << opnd.operand << "\"\n                      color: \"" << opnd.color << "\"\n";
+          }
         }
       }
-    }
   }
 
   void writeYAMLOutput(const ArrayConfig &config) {
@@ -1561,36 +1561,36 @@ struct GenerateCodePass
 
   void emitAsmForTile(llvm::raw_fd_ostream &asm_out, const Tile &tile) {
     asm_out << "PE(" << tile.col_idx << "," << tile.row_idx << "):\n";
-
-    // Groups instructions by index_per_ii.
+      
+      // Groups instructions by index_per_ii.
     IndexGroups index_groups = groupByIndexPerIi(tile.entry.instructions);
-
-    for (const auto &index_pair : index_groups) {
-      int index_per_ii = index_pair.first;
-      auto instructions = index_pair.second;
-      std::stable_sort(instructions.begin(), instructions.end(),
-                       [](const Instruction *a, const Instruction *b) {
-                         return a->time_step < b->time_step;
-                       });
-
-      asm_out << "{\n";
-      for (size_t i = 0; i < instructions.size(); ++i) {
-        const Instruction *inst = instructions[i];
-        asm_out << "  " << inst->opcode;
-        for (const Operand &operand : inst->src_operands) asm_out << ", " << formatOperand(operand);
-        if (!inst->dst_operands.empty()) {
-          asm_out << " -> ";
-          for (size_t j = 0; j < inst->dst_operands.size(); ++j) {
-            if (j > 0) asm_out << ", ";
-            asm_out << formatOperand(inst->dst_operands[j]);
+      
+      for (const auto &index_pair : index_groups) {
+        int index_per_ii = index_pair.first;
+        auto instructions = index_pair.second;
+        std::stable_sort(instructions.begin(), instructions.end(),
+                         [](const Instruction *a, const Instruction *b) {
+                           return a->time_step < b->time_step;
+                         });
+        
+        asm_out << "{\n";
+        for (size_t i = 0; i < instructions.size(); ++i) {
+          const Instruction *inst = instructions[i];
+          asm_out << "  " << inst->opcode;
+          for (const Operand &operand : inst->src_operands) asm_out << ", " << formatOperand(operand);
+          if (!inst->dst_operands.empty()) {
+            asm_out << " -> ";
+            for (size_t j = 0; j < inst->dst_operands.size(); ++j) {
+              if (j > 0) asm_out << ", ";
+              asm_out << formatOperand(inst->dst_operands[j]);
+            }
           }
+          asm_out << " (t=" << inst->time_step
+                  << ", inv_iters=" << inst->invalid_iterations << ")\n";
         }
-        asm_out << " (t=" << inst->time_step
-                << ", inv_iters=" << inst->invalid_iterations << ")\n";
+        asm_out << "} (idx_per_ii=" << index_per_ii << ")\n";
       }
-      asm_out << "} (idx_per_ii=" << index_per_ii << ")\n";
-    }
-    asm_out << "\n";
+      asm_out << "\n";
   }
 
   void writeAsmOutput(const ArrayConfig &config) {
