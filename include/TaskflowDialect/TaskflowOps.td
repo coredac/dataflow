@@ -219,12 +219,12 @@ def TaskflowHyperblockOp : TaskflowOpBase<"hyperblock",[
 
   let regions = (region SizedRegion<1>:$body);
 
-  let assemblyFormat = [{
-    (`indices` `(` $indices^ `:` type($indices) `)`)?
-    attr-dict-with-keyword
-    $body
-    `->` `(` type($outputs) `)`
-  }];
+  // let assemblyFormat = [{
+  //   (`indices` `(` $indices^ `:` type($indices) `)`)?
+  //   attr-dict-with-keyword
+  //   $body
+  //   `->` `(` type($outputs) `)`
+  // }];
 }
 
 def TaskflowHyperblockYieldOp : TaskflowOpBase<"hyperblock.yield", [

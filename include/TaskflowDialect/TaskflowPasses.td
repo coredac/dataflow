@@ -16,15 +16,17 @@ def ConstructHyperblockFromTask : Pass<"construct-hyperblock-from-task", "func::
   let constructor = "taskflow::createConstructHyperblockFromTaskPass()";
 }
 
-def FuseHyperblockToPipelinableTask : Pass<"fuse-hyperblock-to-pipelinable-task", "func::FuncOp"> {
-  let summary = "Fuses hyperblocks into pipelinable tasks";
+def CanonicalizeTask: Pass<"canonicalize-task", "func::FuncOp">{
+  let summary = "Canonicalizes tasks by splitting each hyperblock into a separate atomic task";
   let description = [{
-    This pass fuses hyperblock into pipelinable tasks by analyzing data dependencies
-    and segments memory access dependencies into different tasks.
+    This pass splits tasks so that each task contains exactly one hyperblock.
+    This creates atomic task units that can be analyzed and optimized independently.
 
-    Conservative hyperblock fusion: split hyperblocks with memory access dependencies into different tasks,
-    ensure each task has exactly one hyperblock"
+    Input: Task with N hyperblocks
+    Output: N atomic tasks, each containing one hyperblock
+
+    This is a prerequisite pass before fusion optimizations.
   }];
-  let constructor = "taskflow::createFuseHyperblockToPipelinableTaskPass()";
+  let constructor = "taskflow::createCanonicalizeTaskPass()";
 }
 #endif // TASKFLOW_PASSES_TD
