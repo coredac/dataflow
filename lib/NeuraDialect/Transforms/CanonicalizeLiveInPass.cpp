@@ -608,6 +608,11 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region,
             continue;
           }
 
+          if (direct_dominating_live_in_values[&current_block].contains(
+                  live_in)) {
+            continue;
+          }
+
           // If it is defined in the current block, that means it is not a
           // live-in value for the current block. We can skip it.
           if (Operation *def_op = live_in.getDefiningOp()) {
@@ -696,7 +701,7 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region,
             } else if (all_live_ins[pred_block].contains(live_in)) {
               new_operands.push_back(block_value_to_arg[{pred_block, live_in}]);
             } else {
-              assert(false && "Unexpected live-in value");
+              assert(false && "Unexpected live-in value (br operation)");
             }
           }
           OpBuilder builder(br_op);
@@ -720,11 +725,15 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region,
               true_operands.push_back(live_in);
             } else if (block_arg && block_arg.getOwner() == pred_block) {
               true_operands.push_back(block_arg);
+            } else if (direct_dominating_live_in_values[pred_block].contains(
+                           live_in)) {
+              true_operands.push_back(live_in);
             } else if (all_live_ins[pred_block].contains(live_in)) {
               true_operands.push_back(
                   block_value_to_arg[{pred_block, live_in}]);
             } else {
-              assert(false && "Unexpected live-in value");
+              assert(false && "Unexpected live-in value (true branch of "
+                              "cond_br operation)");
             }
           }
         }
@@ -739,11 +748,15 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region,
               false_operands.push_back(live_in);
             } else if (block_arg && block_arg.getOwner() == pred_block) {
               false_operands.push_back(block_arg);
+            } else if (direct_dominating_live_in_values[pred_block].contains(
+                           live_in)) {
+              false_operands.push_back(live_in);
             } else if (all_live_ins[pred_block].contains(live_in)) {
               false_operands.push_back(
                   block_value_to_arg[{pred_block, live_in}]);
             } else {
-              assert(false && "Unexpected live-in value");
+              assert(false && "Unexpected live-in value (false branch of "
+                              "cond_br operation)");
             }
           }
         }
