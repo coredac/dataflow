@@ -243,15 +243,24 @@ private:
       mappedIndices.push_back(mapping.lookupOrDefault(idx));
     }
 
+    SmallVector<Value> mapped_iter_args;
+    for (Value arg : hyperblock.getIterArgs()) {
+      mapped_iter_args.push_back(mapping.lookupOrDefault(arg));
+    }
+
     SmallVector<Type> outputTypes(hyperblock.getOutputs().getTypes());
-    auto newHB = taskBuilder.create<TaskflowHyperblockOp>(loc, outputTypes,
-                                                          mappedIndices);
+    auto newHB = taskBuilder.create<TaskflowHyperblockOp>(
+        loc, outputTypes, mappedIndices, mapped_iter_args);
 
     Block *newBody = new Block();
     newHB.getBody().push_back(newBody);
 
     for (Value idx : mappedIndices) {
       newBody->addArgument(idx.getType(), loc);
+    }
+
+    for (Value arg : mapped_iter_args) {
+      newBody->addArgument(arg.getType(), loc);
     }
 
     Block *oldBody = &hyperblock.getBody().front();
