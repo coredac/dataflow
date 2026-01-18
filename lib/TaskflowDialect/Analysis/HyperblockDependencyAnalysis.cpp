@@ -139,6 +139,7 @@ bool HyperblockDependencyGraph::canFuse(TaskflowHyperblockOp a,
   // Ensures a comes before b for fusion (or they are adjacent).
   if (posA > posB) {
     std::swap(a, b);
+    std::swap(posA, posB);
   }
 
   // Checks if there are any hyperblocks between a and b that depend on a

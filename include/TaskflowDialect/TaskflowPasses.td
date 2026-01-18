@@ -31,7 +31,7 @@ def OptimizeTaskGraph : Pass<"optimize-task-graph", "func::FuncOp"> {
     Option<"enableHyperblockFusion", "enable-hyperblock-fusion", "bool",
            /*default=*/"true", "Enables hyperblock fusion optimization.">,
     Option<"enableTaskFusion", "enable-task-fusion", "bool",
-           /*default=*/"true", "Enables task fusion optimization.">,
+           /*default=*/"false", "Enables task fusion optimization (not yet implemented).">,
     Option<"maxBoundDiffForPeeling", "max-bound-diff", "int",
            /*default=*/"2", "Specifies max loop bound difference for peeling.">
   ];

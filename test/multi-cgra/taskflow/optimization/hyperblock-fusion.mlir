@@ -2,8 +2,8 @@
 // RUN: --construct-hyperblock-from-task --optimize-task-graph \
 // RUN: | FileCheck %s
 
-// Tests hyperblock fusion for adjacent hyperblocks with identical counter structures.
-// Two independent loops with the same bounds should be fused into one hyperblock.
+// Tests hyperblock fusion behavior for adjacent hyperblocks with identical counter structures.
+// Two independent top-level loops with the same bounds become separate tasks, each with its own hyperblock (no cross-task fusion).
 
 module {
   func.func @test_hyperblock_fusion(%A: memref<16xf32>, %B: memref<16xf32>, %scale: f32) {
@@ -25,8 +25,8 @@ module {
   }
 }
 
-// After conversion and optimization, both loops become separate tasks
-// (since they are top-level loops). Each task has one hyperblock.
+// After conversion and optimization, both top-level loops become separate tasks.
+// Cross-task fusion is not performed; each task has one hyperblock.
 
 // CHECK:      module {
 // CHECK-NEXT:   func.func @test_hyperblock_fusion(%arg0: memref<16xf32>, %arg1: memref<16xf32>, %arg2: f32) {

@@ -50,8 +50,11 @@ static ResourceEstimate estimateHyperblockResources(TaskflowHyperblockOp op) {
     estimate.numOperations++;
     if (isa<memref::LoadOp, memref::StoreOp>(innerOp)) {
       estimate.numMemoryOps++;
-    } else if (innerOp->getDialect()->getNamespace() == "arith") {
-      estimate.numArithOps++;
+    } else {
+      Dialect *dialect = innerOp->getDialect();
+      if (dialect && dialect->getNamespace() == "arith") {
+        estimate.numArithOps++;
+      }
     }
   });
   return estimate;
@@ -159,7 +162,9 @@ static LogicalResult fuseHyperblocks(TaskflowHyperblockOp first,
 }
 
 /// Attempts to fuse hyperblocks within a task.
-/// Checks all pairs of hyperblocks and allows fusion
+/// Iteratively checks all ordered pairs of hyperblocks and fuses the first
+/// compatible, safe pair whose counters match (within peeling bounds) and
+/// for which the dependency graph reports that fusion will not introduce cycles.
 static void fuseHyperblocksInTask(TaskflowTaskOp taskOp,
                                    int maxBoundDiffForPeeling) {
   OpBuilder builder(taskOp.getContext());
