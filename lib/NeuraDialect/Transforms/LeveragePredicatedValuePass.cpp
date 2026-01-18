@@ -1,3 +1,4 @@
+#include "Common/AcceleratorAttrs.h"
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraOps.h"
 #include "NeuraDialect/NeuraPasses.h"
@@ -33,8 +34,9 @@ struct LeveragePredicatedValuePass
 
     // Processes each function.
     module.walk([&](FunctionOpInterface func) {
-      auto accel_attr = func->getAttrOfType<StringAttr>("accelerator");
-      if (!accel_attr || accel_attr.getValue() != "neura") {
+      auto accel_attr =
+          func->getAttrOfType<StringAttr>(accel::kAcceleratorAttr);
+      if (!accel_attr || accel_attr.getValue() != accel::kNeuraTarget) {
         return;
       }
       // Converts block argument types to predicated values.
@@ -107,7 +109,7 @@ private:
   // Converts a single operation to use predicated values.
   LogicalResult applyPredicatedDataType(Operation *op) {
     // Skips if not a Neura op.
-    if (op->getDialect()->getNamespace() != "neura") {
+    if (op->getDialect()->getNamespace() != accel::kNeuraTarget) {
       return success();
     }
 

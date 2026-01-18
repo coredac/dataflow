@@ -1,3 +1,4 @@
+#include "Common/AcceleratorAttrs.h"
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraOps.h"
 #include "NeuraDialect/NeuraPasses.h"
@@ -191,7 +192,8 @@ struct CanonicalizeReturnPass
   void runOnOperation() override {
     func::FuncOp func_op = getOperation();
     // Checks for neura accelerator attribute.
-    auto accel_attr = func_op->getAttrOfType<StringAttr>("accelerator");
+    auto accel_attr =
+        func_op->getAttrOfType<StringAttr>(accel::kAcceleratorAttr);
     if (!accel_attr) {
       return;
     }
