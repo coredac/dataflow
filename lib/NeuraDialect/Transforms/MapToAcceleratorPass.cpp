@@ -429,18 +429,18 @@ struct MapToAcceleratorPass
   MapToAcceleratorPass(const MapToAcceleratorPass &pass)
       : PassWrapper<MapToAcceleratorPass, OperationPass<ModuleOp>>(pass) {}
   Option<std::string> mappingStrategy{
-      *this, attr::kMappingStrategy,
+      *this, "mapping-strategy",
       llvm::cl::desc("Mapping strategy to use for mapping operations to the "
                      "accelerator. Options: heuristic (default)."),
       llvm::cl::init(attr::val::kHeuristic.str())};
   Option<std::string> mappingMode{
-      *this, attr::kMappingMode,
+      *this, "mapping-mode",
       llvm::cl::desc(
           "Mapping mode to use for mapping operations to the "
           "accelerator. Options: spatial-only, spatial-temporal (default)."),
       llvm::cl::init(attr::val::kSpatialTemporal.str())};
   Option<std::string> backtrackConfig{
-      *this, attr::kBacktrackConfig,
+      *this, "backtrack-config",
       llvm::cl::desc(
           "Backtrack configuration used for mapping operations to the "
           "accelerator. Options: simple, greedy, exhaustive, "
@@ -448,7 +448,7 @@ struct MapToAcceleratorPass
           "max_loc=5, max_depth=3)"),
       llvm::cl::init(attr::val::kCustomized.str())};
   Option<bool> dumpMappingTable{
-      *this, attr::kDumpMappingTable,
+      *this, "dump-mapping-table",
       llvm::cl::desc(
           "Dump the resource allocation table after mapping (default: true)"),
       llvm::cl::init(true)};
