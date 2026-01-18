@@ -3,7 +3,6 @@
 #include "TaskflowDialect/TaskflowPasses.h"
 
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
-#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -11,15 +10,12 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/IRMapping.h"
-#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Unit.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/LogicalResult.h"
-#include "llvm/Support/raw_ostream.h"
 
 using namespace mlir;
 using namespace mlir::taskflow;
@@ -426,6 +422,7 @@ struct CanonicalizeTaskPass
     unsigned global_task_idx = 0;
 
     for (TaskflowTaskOp original_task : tasks_to_process) {
+      OpBuilder builder(original_task);
       // Collects hyperblocks within the original task.
       SmallVector<TaskflowHyperblockOp> hyperblocks;
       original_task.walk(
@@ -436,6 +433,8 @@ struct CanonicalizeTaskPass
 
       // If there's only one hyperblock, it is already canonical.
       if (hyperblocks.size() == 1) {
+        std::string task_name = "Task_" + std::to_string(global_task_idx++);
+        original_task.setTaskNameAttr(builder.getStringAttr(task_name));
         continue;
       }
 
@@ -471,9 +470,19 @@ struct CanonicalizeTaskPass
 
       DenseMap<Value, Value> source_to_original_output;
 
+      // Maps memref inputs.
       for (auto [input, arg] : llvm::zip(
                orig_mem_inputs,
                orig_body->getArguments().take_front(orig_mem_inputs.size()))) {
+        if (yielded_to_output.count(arg)) {
+          source_to_original_output[input] = yielded_to_output[arg];
+        }
+      }
+
+      // Maps value inputs.
+      for (auto [input, arg] : llvm::zip(
+               orig_val_inputs,
+               orig_body->getArguments().drop_front(orig_mem_inputs.size()))) {
         if (yielded_to_output.count(arg)) {
           source_to_original_output[input] = yielded_to_output[arg];
         }
@@ -486,7 +495,6 @@ struct CanonicalizeTaskPass
       // executing each atomic task.
       DenseMap<Value, Value> memref_to_latest_version;
       DenseMap<Value, Value> value_to_latest_version;
-      OpBuilder builder(original_task);
 
       for (size_t i = 0; i < hyperblocks.size(); ++i) {
         AtomicTaskBuilder task_builder(
