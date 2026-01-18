@@ -22,12 +22,15 @@ using namespace mlir::taskflow;
 
 namespace {
 //----------------------------------------------------------------------
-// Memory and Value Access Info
+// Memory and Value Access Info.
 //----------------------------------------------------------------------
-// This struct analyzes memory accesses within a hyperblock.
+// This struct analyzes accesses information within a hyperblock.
 struct AccessInfo {
+  // Set of read memrefs.
   SetVector<Value> memref_reads;
+  // Set of written memrefs.
   SetVector<Value> memref_writes;
+  // Set of read values.
   SetVector<Value> value_reads;
 
   void analyze(TaskflowHyperblockOp hyperblock, Block *task_body) {
@@ -38,14 +41,14 @@ struct AccessInfo {
 
     hyperblock.walk([&](Operation *op) {
       if (auto load = dyn_cast<memref::LoadOp>(op)) {
-        memref_reads.insert(load.getMemRef());
+        this->memref_reads.insert(load.getMemRef());
       } else if (auto store = dyn_cast<memref::StoreOp>(op)) {
-        memref_writes.insert(store.getMemRef());
+        this->memref_writes.insert(store.getMemRef());
       }
 
       for (Value operand : op->getOperands()) {
         if (task_block_args.contains(operand)) {
-          value_reads.insert(operand);
+          this->value_reads.insert(operand);
         }
       }
     });
@@ -53,18 +56,18 @@ struct AccessInfo {
 
   SetVector<Value> getAllMemRefs() const {
     SetVector<Value> all;
-    all.insert(memref_reads.begin(), memref_reads.end());
-    all.insert(memref_writes.begin(), memref_writes.end());
+    all.insert(this->memref_reads.begin(), this->memref_reads.end());
+    all.insert(this->memref_writes.begin(), this->memref_writes.end());
     return all;
   }
 
-  SetVector<Value> getAllValues() const { return value_reads; }
+  SetVector<Value> getAllValues() const { return this->value_reads; }
 };
 
-//===----------------------------------------------------------------------===//
-// Counter Collector
-//===----------------------------------------------------------------------===//
-
+//----------------------------------------------------------------------
+// Counter Collector.
+//----------------------------------------------------------------------
+// This class is used to collects all counters needed by a hyperblock.
 class CounterCollector {
 public:
   void collect(TaskflowHyperblockOp hyperblock) {
@@ -73,8 +76,10 @@ public:
     }
   }
 
+  // Gets the collected counters sorted by their depth.
   SmallVector<TaskflowCounterOp> getSortedCounters() const {
-    SmallVector<TaskflowCounterOp> result(counters.begin(), counters.end());
+    SmallVector<TaskflowCounterOp> result(this->counters.begin(),
+                                          this->counters.end());
     llvm::sort(result, [this](TaskflowCounterOp a, TaskflowCounterOp b) {
       return getDepth(a) < getDepth(b);
     });
@@ -82,22 +87,25 @@ public:
   }
 
 private:
+  // Collects counters recursively.
   void collectRecursively(Value idx) {
-    auto counter = idx.getDefiningOp<TaskflowCounterOp>();
-    if (!counter)
+    TaskflowCounterOp counter = idx.getDefiningOp<TaskflowCounterOp>();
+    if (!counter) {
       return;
-    counters.insert(counter);
+    }
+    this->counters.insert(counter);
     if (Value parent = counter.getParentIndex()) {
       collectRecursively(parent);
     }
   }
 
+  // Gets the depth of a counter.
   size_t getDepth(TaskflowCounterOp counter) const {
     size_t depth = 0;
     Value parent = counter.getParentIndex();
     while (parent) {
       depth++;
-      if (auto p = parent.getDefiningOp<TaskflowCounterOp>()) {
+      if (TaskflowCounterOp p = parent.getDefiningOp<TaskflowCounterOp>()) {
         parent = p.getParentIndex();
       } else {
         break;
@@ -109,10 +117,18 @@ private:
   SetVector<TaskflowCounterOp> counters;
 };
 
-//===----------------------------------------------------------------------===//
-// Block Argument Resolver
-//===----------------------------------------------------------------------===//
-
+//----------------------------------------------------------------------
+// Block Argument Resolver.
+//----------------------------------------------------------------------
+// This class resolves the input arguments of a task block to their source
+// values.
+// For example:
+// taskflow.task(%buf_input, %val_input) {
+// ^bb0(%arg0: memref<?xi32>, %arg1: i32):   // ← block arguments
+//   // %arg0 corresponds to %buf_input
+//   // %arg1 corresponds to %val_input
+// }
+// resolveToSource(%arg0) -> %buf_input
 class BlockArgResolver {
 public:
   explicit BlockArgResolver(TaskflowTaskOp task) {
@@ -122,38 +138,42 @@ public:
     auto mem_inputs = task.getMemoryInputs();
     auto mem_args = body->getArguments().take_front(mem_inputs.size());
     for (auto [input, arg] : llvm::zip(mem_inputs, mem_args)) {
-      blockArgToSource[arg] = input;
-      sourceToBlockArg[input] = arg;
+      this->block_arg_to_source[arg] = input;
+      this->source_to_block_arg[input] = arg;
     }
 
     // Resolves value inputs.
     auto val_inputs = task.getValueInputs();
     auto val_args = body->getArguments().drop_front(mem_inputs.size());
     for (auto [input, arg] : llvm::zip(val_inputs, val_args)) {
-      blockArgToSource[arg] = input;
-      sourceToBlockArg[input] = arg;
+      this->block_arg_to_source[arg] = input;
+      this->source_to_block_arg[input] = arg;
     }
   }
 
+  // Gets the source value for a given block argument.
   Value resolveToSource(Value val) const {
-    auto it = blockArgToSource.find(val);
-    return it != blockArgToSource.end() ? it->second : val;
+    auto it = this->block_arg_to_source.find(val);
+    return it != this->block_arg_to_source.end() ? it->second : val;
   }
 
+  // Gets the block argument for a given source value.
   Value getBlockArg(Value source) const {
-    auto it = sourceToBlockArg.find(source);
-    return it != sourceToBlockArg.end() ? it->second : Value();
+    auto it = this->source_to_block_arg.find(source);
+    return it != this->source_to_block_arg.end() ? it->second : Value();
   }
 
 private:
-  DenseMap<Value, Value> blockArgToSource;
-  DenseMap<Value, Value> sourceToBlockArg;
+  // Maps block argument to its source value.
+  DenseMap<Value, Value> block_arg_to_source;
+  // Maps source value to its block argument.
+  DenseMap<Value, Value> source_to_block_arg;
 };
 
 //----------------------------------------------------------------------
 // Atomic Task Builder.
 //----------------------------------------------------------------------
-
+// This class builds an atomic task from a hyperblock.
 class AtomicTaskBuilder {
 public:
   AtomicTaskBuilder(OpBuilder &builder, Location loc, unsigned global_task_idx,
@@ -165,8 +185,8 @@ public:
 
   TaskflowTaskOp build(TaskflowHyperblockOp hyperblock,
                        TaskflowTaskOp original_task) {
-    AccessInfo mem_info;
-    mem_info.analyze(hyperblock, &original_task.getBody().front());
+    AccessInfo access_info;
+    access_info.analyze(hyperblock, &original_task.getBody().front());
 
     BlockArgResolver resolver(original_task);
 
@@ -174,13 +194,13 @@ public:
     SmallVector<Value> memref_inputs;
     DenseMap<Value, unsigned> source_to_memref_input_idx;
 
-    for (Value memref : mem_info.getAllMemRefs()) {
+    for (Value memref : access_info.getAllMemRefs()) {
       Value source = resolver.resolveToSource(memref);
-      Value inputVal = getLatestMemrefVersion(source);
+      Value input_memref = getLatestMemrefVersion(source);
 
       if (!source_to_memref_input_idx.count(source)) {
         source_to_memref_input_idx[source] = memref_inputs.size();
-        memref_inputs.push_back(inputVal);
+        memref_inputs.push_back(input_memref);
       }
     }
 
@@ -188,21 +208,22 @@ public:
     SmallVector<Value> value_inputs;
     DenseMap<Value, unsigned> source_to_value_input_idx;
 
-    for (Value val : mem_info.getAllValues()) {
+    for (Value val : access_info.getAllValues()) {
       Value source = resolver.resolveToSource(val);
-      Value inputVal = getLatestValueVersion(source);
+      Value input_val = getLatestValueVersion(source);
 
       if (!source_to_value_input_idx.count(source)) {
         source_to_value_input_idx[source] = value_inputs.size();
-        value_inputs.push_back(inputVal);
+        value_inputs.push_back(input_val);
       }
     }
 
     // Determines memref outputs.
     SmallVector<Type> memref_output_types;
+    // The source memrefs of the written memrefs.
     SmallVector<Value> written_memref_sources;
 
-    for (Value memref : mem_info.memref_writes) {
+    for (Value memref : access_info.memref_writes) {
       Value source = resolver.resolveToSource(memref);
       memref_output_types.push_back(source.getType());
       written_memref_sources.push_back(source);
@@ -220,23 +241,23 @@ public:
       }
     }
 
-    // Creates task.
-    std::string taskName = "Task_" + std::to_string(global_task_idx);
-    auto newTask = builder.create<TaskflowTaskOp>(
-        loc, memref_output_types, value_output_types, memref_inputs,
-        value_inputs, builder.getStringAttr(taskName));
+    // Creates a new task.
+    std::string task_name = "Task_" + std::to_string(this->global_task_idx);
+    auto new_task = builder.create<TaskflowTaskOp>(
+        this->loc, memref_output_types, value_output_types, memref_inputs,
+        value_inputs, builder.getStringAttr(task_name));
 
-    // Creates task body.
-    Block *taskBody = new Block();
-    newTask.getBody().push_back(taskBody);
+    // Creates the task body.
+    Block *task_body = new Block();
+    new_task.getBody().push_back(task_body);
 
     // Adds memref input arguments.
     for (Value input : memref_inputs) {
-      taskBody->addArgument(input.getType(), loc);
+      task_body->addArgument(input.getType(), this->loc);
     }
     // Adds value input arguments.
     for (Value input : value_inputs) {
-      taskBody->addArgument(input.getType(), loc);
+      task_body->addArgument(input.getType(), this->loc);
     }
 
     // Builds value mapping.
@@ -244,33 +265,33 @@ public:
 
     // Maps memref inputs.
     for (auto [source, idx] : source_to_memref_input_idx) {
-      BlockArgument newArg = taskBody->getArgument(idx);
-      mapping.map(source, newArg);
+      BlockArgument new_arg = task_body->getArgument(idx);
+      mapping.map(source, new_arg);
 
-      if (Value origArg = resolver.getBlockArg(source)) {
-        mapping.map(origArg, newArg);
+      if (Value orig_arg = resolver.getBlockArg(source)) {
+        mapping.map(orig_arg, new_arg);
       }
     }
 
     // Maps value inputs.
     size_t value_arg_offset = memref_inputs.size();
     for (auto [source, idx] : source_to_value_input_idx) {
-      BlockArgument newArg = taskBody->getArgument(value_arg_offset + idx);
-      mapping.map(source, newArg);
+      BlockArgument new_arg = task_body->getArgument(value_arg_offset + idx);
+      mapping.map(source, new_arg);
 
-      if (Value origArg = resolver.getBlockArg(source)) {
-        mapping.map(origArg, newArg);
+      if (Value orig_arg = resolver.getBlockArg(source)) {
+        mapping.map(orig_arg, new_arg);
       }
     }
 
     // Clones counters and hyperblock.
-    OpBuilder taskBuilder(taskBody, taskBody->begin());
-    cloneCounters(taskBuilder, hyperblock, mapping);
-    cloneHyperblock(taskBuilder, hyperblock, mapping);
+    OpBuilder task_builder(task_body, task_body->begin());
+    cloneCounters(task_builder, hyperblock, mapping);
+    cloneHyperblock(task_builder, hyperblock, mapping);
 
     // Creates yield.
     SmallVector<Value> memref_yield_operands;
-    for (Value memref : mem_info.memref_writes) {
+    for (Value memref : access_info.memref_writes) {
       memref_yield_operands.push_back(mapping.lookupOrDefault(memref));
     }
 
@@ -280,7 +301,7 @@ public:
     if (!hyperblock.getOutputs().empty()) {
       // Finds the cloned hyperblock op.
       TaskflowHyperblockOp cloned_hb = nullptr;
-      for (Operation &op : taskBody->getOperations()) {
+      for (Operation &op : task_body->getOperations()) {
         if (auto hb = dyn_cast<TaskflowHyperblockOp>(op)) {
           cloned_hb = hb;
           break;
@@ -293,24 +314,24 @@ public:
       }
     }
 
-    taskBuilder.setInsertionPointToEnd(taskBody);
-    taskBuilder.create<TaskflowYieldOp>(loc, memref_yield_operands,
-                                        value_yield_operands);
+    task_builder.setInsertionPointToEnd(task_body);
+    task_builder.create<TaskflowYieldOp>(this->loc, memref_yield_operands,
+                                         value_yield_operands);
 
     // Updates latest versions.
-    auto memref_outputs = newTask.getMemoryOutputs();
+    auto memref_outputs = new_task.getMemoryOutputs();
     for (auto [source, output] :
          llvm::zip(written_memref_sources, memref_outputs)) {
       this->memref_to_latest_version[source] = output;
     }
 
-    auto value_outputs = newTask.getValueOutputs();
+    auto value_outputs = new_task.getValueOutputs();
     for (auto [source, output] :
          llvm::zip(yielded_value_sources, value_outputs)) {
       this->value_to_latest_version[source] = output;
     }
 
-    return newTask;
+    return new_task;
   }
 
 private:
@@ -324,21 +345,21 @@ private:
     return it != this->value_to_latest_version.end() ? it->second : source;
   }
 
-  void cloneCounters(OpBuilder &taskBuilder, TaskflowHyperblockOp hyperblock,
+  void cloneCounters(OpBuilder &task_builder, TaskflowHyperblockOp hyperblock,
                      IRMapping &mapping) {
     CounterCollector collector;
     collector.collect(hyperblock);
 
     for (TaskflowCounterOp counter : collector.getSortedCounters()) {
-      taskBuilder.clone(*counter.getOperation(), mapping);
+      task_builder.clone(*counter.getOperation(), mapping);
     }
   }
 
-  void cloneHyperblock(OpBuilder &taskBuilder, TaskflowHyperblockOp hyperblock,
+  void cloneHyperblock(OpBuilder &task_builder, TaskflowHyperblockOp hyperblock,
                        IRMapping &mapping) {
-    SmallVector<Value> mappedIndices;
+    SmallVector<Value> mapped_indices;
     for (Value idx : hyperblock.getIndices()) {
-      mappedIndices.push_back(mapping.lookupOrDefault(idx));
+      mapped_indices.push_back(mapping.lookupOrDefault(idx));
     }
 
     SmallVector<Value> mapped_iter_args;
@@ -346,41 +367,41 @@ private:
       mapped_iter_args.push_back(mapping.lookupOrDefault(arg));
     }
 
-    SmallVector<Type> outputTypes(hyperblock.getOutputs().getTypes());
-    auto newHB = taskBuilder.create<TaskflowHyperblockOp>(
-        loc, outputTypes, mappedIndices, mapped_iter_args);
+    SmallVector<Type> output_types(hyperblock.getOutputs().getTypes());
+    auto newHB = task_builder.create<TaskflowHyperblockOp>(
+        this->loc, output_types, mapped_indices, mapped_iter_args);
 
-    Block *newBody = new Block();
-    newHB.getBody().push_back(newBody);
+    Block *new_body = new Block();
+    newHB.getBody().push_back(new_body);
 
-    for (Value idx : mappedIndices) {
-      newBody->addArgument(idx.getType(), loc);
+    for (Value idx : mapped_indices) {
+      new_body->addArgument(idx.getType(), this->loc);
     }
 
     for (Value arg : mapped_iter_args) {
-      newBody->addArgument(arg.getType(), loc);
+      new_body->addArgument(arg.getType(), this->loc);
     }
 
-    Block *oldBody = &hyperblock.getBody().front();
-    for (auto [oldArg, newArg] :
-         llvm::zip(oldBody->getArguments(), newBody->getArguments())) {
-      mapping.map(oldArg, newArg);
+    Block *old_body = &hyperblock.getBody().front();
+    for (auto [old_arg, new_arg] :
+         llvm::zip(old_body->getArguments(), new_body->getArguments())) {
+      mapping.map(old_arg, new_arg);
     }
 
-    OpBuilder hbBuilder(newBody, newBody->begin());
-    for (Operation &op : oldBody->without_terminator()) {
-      hbBuilder.clone(op, mapping);
+    OpBuilder hb_builder(new_body, new_body->begin());
+    for (Operation &op : old_body->without_terminator()) {
+      hb_builder.clone(op, mapping);
     }
 
     if (auto yield =
-            dyn_cast<TaskflowHyperblockYieldOp>(oldBody->getTerminator())) {
-      SmallVector<Value> yieldOps;
+            dyn_cast<TaskflowHyperblockYieldOp>(old_body->getTerminator())) {
+      SmallVector<Value> yield_ops;
       for (Value v : yield.getOutputs()) {
-        yieldOps.push_back(mapping.lookupOrDefault(v));
+        yield_ops.push_back(mapping.lookupOrDefault(v));
       }
-      hbBuilder.create<TaskflowHyperblockYieldOp>(loc, yieldOps);
+      hb_builder.create<TaskflowHyperblockYieldOp>(this->loc, yield_ops);
     } else {
-      hbBuilder.create<TaskflowHyperblockYieldOp>(loc, ValueRange{});
+      hb_builder.create<TaskflowHyperblockYieldOp>(this->loc, ValueRange{});
     }
   }
 
@@ -442,8 +463,7 @@ struct CanonicalizeTaskPass
       // Step 1: Builds mapping from original task's memory outputs to their
       //         corresponding source memrefs (the original inputs).
       //----------------------------------------------------------------
-
-      // Get the yield operation to find which memrefs are yielded.
+      // Gets the yield operation to find which memrefs are yielded.
       auto yield_op = cast<TaskflowYieldOp>(
           original_task.getBody().front().getTerminator());
       auto original_mem_outputs = original_task.getMemoryOutputs();
@@ -507,7 +527,6 @@ struct CanonicalizeTaskPass
       // Step 3: Replaces uses of original task outputs with the latest
       // versions.
       //----------------------------------------------------------------
-
       for (auto [source, original_output] : source_to_original_output) {
         Value latest = nullptr;
         if (memref_to_latest_version.count(source)) {
@@ -521,10 +540,9 @@ struct CanonicalizeTaskPass
         }
       }
 
-      //===----------------------------------------------------------------===//
+      //----------------------------------------------------------------
       // Step 4: Erase the original task.
-      //===----------------------------------------------------------------===//
-
+      //----------------------------------------------------------------
       original_task.erase();
     }
   }
