@@ -1,3 +1,4 @@
+#include "Common/AcceleratorAttrs.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Operation.h"
@@ -23,6 +24,7 @@
 
 #include "NeuraDialect/Architecture/Architecture.h"
 #include "NeuraDialect/NeuraOps.h"
+#include "NeuraDialect/NeuraAttributes.h"
 
 using namespace mlir;
 using namespace neura;
@@ -410,16 +412,16 @@ struct GenerateCodePass
 
   std::pair<int, int> getArrayDimensions(func::FuncOp function) {
     int columns = 4, rows = 4; // default 4x4 CGRA.
-    if (auto mapping_info = function->getAttrOfType<DictionaryAttr>("mapping_info")) {
-      if (auto x_tiles = dyn_cast_or_null<IntegerAttr>(mapping_info.get("x_tiles"))) columns = x_tiles.getInt();
-      if (auto y_tiles = dyn_cast_or_null<IntegerAttr>(mapping_info.get("y_tiles"))) rows   = y_tiles.getInt();
+    if (auto mapping_info = function->getAttrOfType<DictionaryAttr>(attr::kMappingInfo)) {
+      if (auto x_tiles = dyn_cast_or_null<IntegerAttr>(mapping_info.get(attr::kXTiles))) columns = x_tiles.getInt();
+      if (auto y_tiles = dyn_cast_or_null<IntegerAttr>(mapping_info.get(attr::kYTiles))) rows   = y_tiles.getInt();
     }
     return {columns, rows};
   }
 
   int getCompiledII(func::FuncOp function) {
-    if (auto mapping_info = function->getAttrOfType<DictionaryAttr>("mapping_info")) {
-      if (auto compiled_ii = dyn_cast_or_null<IntegerAttr>(mapping_info.get("compiled_ii"))) {
+    if (auto mapping_info = function->getAttrOfType<DictionaryAttr>(attr::kMappingInfo)) {
+      if (auto compiled_ii = dyn_cast_or_null<IntegerAttr>(mapping_info.get(attr::kCompiledII))) {
         return compiled_ii.getInt();
       }
     }
@@ -933,7 +935,7 @@ struct GenerateCodePass
 
   // Helper to extract dfg_id from operation.
   static int getDfgId(Operation *op) {
-    if (auto id_attr = op->getAttrOfType<IntegerAttr>("dfg_id")) {
+    if (auto id_attr = op->getAttrOfType<IntegerAttr>(attr::kDfgId)) {
       return id_attr.getInt();
     }
     return -1;
@@ -1664,8 +1666,8 @@ struct GenerateCodePass
     ModuleOp module = getOperation();
 
     for (auto func : module.getOps<func::FuncOp>()) {
-      auto accel = func->getAttrOfType<StringAttr>("accelerator");
-      if (!accel || accel.getValue() != "neura") continue;
+      auto accel = func->getAttrOfType<StringAttr>(accel::kAcceleratorAttr);
+      if (!accel || accel.getValue() != accel::kNeuraTarget) continue;
 
       auto [columns, rows] = getArrayDimensions(func);
       Topology topo = getTopologyFromArchitecture(columns, rows);

@@ -1,3 +1,4 @@
+#include "Common/AcceleratorAttrs.h"
 #include "NeuraDialect/NeuraOps.h"
 #include "NeuraDialect/NeuraTypes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -437,8 +438,9 @@ struct FuseLoopControlFlowPattern : public OpRewritePattern<func::FuncOp> {
 
   LogicalResult matchAndRewrite(func::FuncOp func_op,
                                 PatternRewriter &rewriter) const override {
-    auto accel_attr = func_op->getAttrOfType<StringAttr>("accelerator");
-    if (!accel_attr || accel_attr.getValue() != "neura") {
+    auto accel_attr =
+        func_op->getAttrOfType<StringAttr>(accel::kAcceleratorAttr);
+    if (!accel_attr || accel_attr.getValue() != accel::kNeuraTarget) {
       return failure();
     }
     // Saves all the identified loops.

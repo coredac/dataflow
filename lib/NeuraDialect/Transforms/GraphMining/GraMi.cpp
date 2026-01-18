@@ -1,3 +1,5 @@
+#include "Common/AcceleratorAttrs.h"
+#include "NeuraDialect/NeuraAttributes.h"
 #include "NeuraDialect/Transforms/GraphMining/GraMi.h"
 #include "NeuraDialect/Mapping/mapping_util.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -204,13 +206,13 @@ std::vector<PatternWithSelectedInstances> GraMi::mineFrequentSubgraphs() {
   auto derive_label = [](mlir::Operation* op, const std::string& fallback_label) -> std::string {
     if (!op) return fallback_label;
     auto name = op->getName().getStringRef();
-    if (name.ends_with("fused_op") || name.contains("neura.fused_op")) {
+    if (name.ends_with(attr::val::kOpFused) || name.contains(attr::val::kNeuraFusedOp)) {
       if (auto attr = op->getAttr("pattern_name")) {
         if (auto str_attr = mlir::dyn_cast<mlir::StringAttr>(attr)) {
           return std::string("fused_op:") + str_attr.getValue().str();
         }
       }
-      return std::string("fused_op");
+      return std::string(attr::val::kOpFused);
     }
     return fallback_label;
   };
