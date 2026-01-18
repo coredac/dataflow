@@ -7,6 +7,7 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/IRMapping.h"
@@ -24,30 +25,44 @@ using namespace mlir;
 using namespace mlir::taskflow;
 
 namespace {
-//===----------------------------------------------------------------------===//
-// Memory Access Info
-//===----------------------------------------------------------------------===//
+//----------------------------------------------------------------------
+// Memory and Value Access Info
+//----------------------------------------------------------------------
+// This struct analyzes memory accesses within a hyperblock.
+struct AccessInfo {
+  SetVector<Value> memref_reads;
+  SetVector<Value> memref_writes;
+  SetVector<Value> value_reads;
 
-struct MemoryAccessInfo {
-  SetVector<Value> reads;
-  SetVector<Value> writes;
+  void analyze(TaskflowHyperblockOp hyperblock, Block *task_body) {
+    DenseSet<Value> task_block_args;
+    for (Value arg : task_body->getArguments()) {
+      task_block_args.insert(arg);
+    }
 
-  void analyze(TaskflowHyperblockOp hyperblock) {
     hyperblock.walk([&](Operation *op) {
       if (auto load = dyn_cast<memref::LoadOp>(op)) {
-        reads.insert(load.getMemRef());
+        memref_reads.insert(load.getMemRef());
       } else if (auto store = dyn_cast<memref::StoreOp>(op)) {
-        writes.insert(store.getMemRef());
+        memref_writes.insert(store.getMemRef());
+      }
+
+      for (Value operand : op->getOperands()) {
+        if (task_block_args.contains(operand)) {
+          value_reads.insert(operand);
+        }
       }
     });
   }
 
   SetVector<Value> getAllMemRefs() const {
     SetVector<Value> all;
-    all.insert(reads.begin(), reads.end());
-    all.insert(writes.begin(), writes.end());
+    all.insert(memref_reads.begin(), memref_reads.end());
+    all.insert(memref_writes.begin(), memref_writes.end());
     return all;
   }
+
+  SetVector<Value> getAllValues() const { return value_reads; }
 };
 
 //===----------------------------------------------------------------------===//
@@ -106,10 +121,19 @@ class BlockArgResolver {
 public:
   explicit BlockArgResolver(TaskflowTaskOp task) {
     Block *body = &task.getBody().front();
-    auto inputs = task.getMemoryInputs();
-    auto args = body->getArguments();
 
-    for (auto [input, arg] : llvm::zip(inputs, args)) {
+    // Resolves memory inputs.
+    auto mem_inputs = task.getMemoryInputs();
+    auto mem_args = body->getArguments().take_front(mem_inputs.size());
+    for (auto [input, arg] : llvm::zip(mem_inputs, mem_args)) {
+      blockArgToSource[arg] = input;
+      sourceToBlockArg[input] = arg;
+    }
+
+    // Resolves value inputs.
+    auto val_inputs = task.getValueInputs();
+    auto val_args = body->getArguments().drop_front(mem_inputs.size());
+    for (auto [input, arg] : llvm::zip(val_inputs, val_args)) {
       blockArgToSource[arg] = input;
       sourceToBlockArg[input] = arg;
     }
@@ -130,66 +154,100 @@ private:
   DenseMap<Value, Value> sourceToBlockArg;
 };
 
-//===----------------------------------------------------------------------===//
-// Atomic Task Builder
-//===----------------------------------------------------------------------===//
+//----------------------------------------------------------------------
+// Atomic Task Builder.
+//----------------------------------------------------------------------
 
 class AtomicTaskBuilder {
 public:
   AtomicTaskBuilder(OpBuilder &builder, Location loc, unsigned global_task_idx,
-                    DenseMap<Value, Value> &memref_to_latest_version)
+                    DenseMap<Value, Value> &memref_to_latest_version,
+                    DenseMap<Value, Value> &value_to_latest_version)
       : builder(builder), loc(loc), global_task_idx(global_task_idx),
-        memref_to_latest_version(memref_to_latest_version) {}
+        memref_to_latest_version(memref_to_latest_version),
+        value_to_latest_version(value_to_latest_version) {}
 
   TaskflowTaskOp build(TaskflowHyperblockOp hyperblock,
-                       TaskflowTaskOp originalTask) {
-    MemoryAccessInfo memInfo;
-    memInfo.analyze(hyperblock);
+                       TaskflowTaskOp original_task) {
+    AccessInfo mem_info;
+    mem_info.analyze(hyperblock, &original_task.getBody().front());
 
-    BlockArgResolver resolver(originalTask);
+    BlockArgResolver resolver(original_task);
 
-    // Determine task inputs
-    SmallVector<Value> taskInputs;
-    DenseMap<Value, unsigned> sourceToInputIdx;
+    // Determines memref inputs.
+    SmallVector<Value> memref_inputs;
+    DenseMap<Value, unsigned> source_to_memref_input_idx;
 
-    for (Value memref : memInfo.getAllMemRefs()) {
+    for (Value memref : mem_info.getAllMemRefs()) {
       Value source = resolver.resolveToSource(memref);
-      Value inputVal = getLatestVersion(source);
+      Value inputVal = getLatestMemrefVersion(source);
 
-      if (!sourceToInputIdx.count(source)) {
-        sourceToInputIdx[source] = taskInputs.size();
-        taskInputs.push_back(inputVal);
+      if (!source_to_memref_input_idx.count(source)) {
+        source_to_memref_input_idx[source] = memref_inputs.size();
+        memref_inputs.push_back(inputVal);
       }
     }
 
-    // Determine task outputs
-    SmallVector<Type> outputTypes;
-    SmallVector<Value> writtenSources;
+    // Determines value inputs.
+    SmallVector<Value> value_inputs;
+    DenseMap<Value, unsigned> source_to_value_input_idx;
 
-    for (Value memref : memInfo.writes) {
-      Value source = resolver.resolveToSource(memref);
-      outputTypes.push_back(source.getType());
-      writtenSources.push_back(source);
+    for (Value val : mem_info.getAllValues()) {
+      Value source = resolver.resolveToSource(val);
+      Value inputVal = getLatestValueVersion(source);
+
+      if (!source_to_value_input_idx.count(source)) {
+        source_to_value_input_idx[source] = value_inputs.size();
+        value_inputs.push_back(inputVal);
+      }
     }
 
-    // Create task
+    // Determines memref outputs.
+    SmallVector<Type> memref_output_types;
+    SmallVector<Value> written_memref_sources;
+
+    for (Value memref : mem_info.memref_writes) {
+      Value source = resolver.resolveToSource(memref);
+      memref_output_types.push_back(source.getType());
+      written_memref_sources.push_back(source);
+    }
+
+    // Determines value outputs.
+    SmallVector<Type> value_output_types;
+    SmallVector<Value> yielded_value_sources;
+
+    if (!hyperblock.getOutputs().empty()) {
+      for (Value output : hyperblock.getOutputs()) {
+        value_output_types.push_back(output.getType());
+        // For value outputs, they are source themselves.
+        yielded_value_sources.push_back(output);
+      }
+    }
+
+    // Creates task.
     std::string taskName = "Task_" + std::to_string(global_task_idx);
     auto newTask = builder.create<TaskflowTaskOp>(
-        loc, outputTypes, TypeRange{}, taskInputs, ValueRange{},
-        builder.getStringAttr(taskName));
+        loc, memref_output_types, value_output_types, memref_inputs,
+        value_inputs, builder.getStringAttr(taskName));
 
-    // Create task body
+    // Creates task body.
     Block *taskBody = new Block();
     newTask.getBody().push_back(taskBody);
 
-    for (Value input : taskInputs) {
+    // Adds memref input arguments.
+    for (Value input : memref_inputs) {
+      taskBody->addArgument(input.getType(), loc);
+    }
+    // Adds value input arguments.
+    for (Value input : value_inputs) {
       taskBody->addArgument(input.getType(), loc);
     }
 
-    // Build value mapping
+    // Builds value mapping.
     IRMapping mapping;
 
-    for (auto [source, idx] : sourceToInputIdx) {
+    // Maps memref inputs.
+    for (auto [source, idx] : source_to_memref_input_idx) {
       BlockArgument newArg = taskBody->getArgument(idx);
       mapping.map(source, newArg);
 
@@ -198,32 +256,76 @@ public:
       }
     }
 
-    // Clone counters and hyperblock
+    // Maps value inputs.
+    size_t value_arg_offset = memref_inputs.size();
+    for (auto [source, idx] : source_to_value_input_idx) {
+      BlockArgument newArg = taskBody->getArgument(value_arg_offset + idx);
+      mapping.map(source, newArg);
+
+      if (Value origArg = resolver.getBlockArg(source)) {
+        mapping.map(origArg, newArg);
+      }
+    }
+
+    // Clones counters and hyperblock.
     OpBuilder taskBuilder(taskBody, taskBody->begin());
     cloneCounters(taskBuilder, hyperblock, mapping);
     cloneHyperblock(taskBuilder, hyperblock, mapping);
 
-    // Create yield
-    SmallVector<Value> yieldOperands;
-    for (Value memref : memInfo.writes) {
-      yieldOperands.push_back(mapping.lookupOrDefault(memref));
+    // Creates yield.
+    SmallVector<Value> memref_yield_operands;
+    for (Value memref : mem_info.memref_writes) {
+      memref_yield_operands.push_back(mapping.lookupOrDefault(memref));
     }
-    taskBuilder.setInsertionPointToEnd(taskBody);
-    taskBuilder.create<TaskflowYieldOp>(loc, yieldOperands, ValueRange{});
 
-    // Update latest versions
-    auto outputs = newTask.getMemoryOutputs();
-    for (auto [source, output] : llvm::zip(writtenSources, outputs)) {
-      memref_to_latest_version[source] = output;
+    SmallVector<Value> value_yield_operands;
+    // If this hyperblock has value outputs, we need to yield them from the
+    // mapped hyperblock.
+    if (!hyperblock.getOutputs().empty()) {
+      // Finds the cloned hyperblock op.
+      TaskflowHyperblockOp cloned_hb = nullptr;
+      for (Operation &op : taskBody->getOperations()) {
+        if (auto hb = dyn_cast<TaskflowHyperblockOp>(op)) {
+          cloned_hb = hb;
+          break;
+        }
+        if (cloned_hb) {
+          for (Value output : cloned_hb.getOutputs()) {
+            value_yield_operands.push_back(output);
+          }
+        }
+      }
+    }
+
+    taskBuilder.setInsertionPointToEnd(taskBody);
+    taskBuilder.create<TaskflowYieldOp>(loc, memref_yield_operands,
+                                        value_yield_operands);
+
+    // Updates latest versions.
+    auto memref_outputs = newTask.getMemoryOutputs();
+    for (auto [source, output] :
+         llvm::zip(written_memref_sources, memref_outputs)) {
+      this->memref_to_latest_version[source] = output;
+    }
+
+    auto value_outputs = newTask.getValueOutputs();
+    for (auto [source, output] :
+         llvm::zip(yielded_value_sources, value_outputs)) {
+      this->value_to_latest_version[source] = output;
     }
 
     return newTask;
   }
 
 private:
-  Value getLatestVersion(Value source) {
-    auto it = memref_to_latest_version.find(source);
-    return it != memref_to_latest_version.end() ? it->second : source;
+  Value getLatestMemrefVersion(Value source) {
+    auto it = this->memref_to_latest_version.find(source);
+    return it != this->memref_to_latest_version.end() ? it->second : source;
+  }
+
+  Value getLatestValueVersion(Value source) {
+    auto it = this->value_to_latest_version.find(source);
+    return it != this->value_to_latest_version.end() ? it->second : source;
   }
 
   void cloneCounters(OpBuilder &taskBuilder, TaskflowHyperblockOp hyperblock,
@@ -290,11 +392,12 @@ private:
   Location loc;
   unsigned global_task_idx;
   DenseMap<Value, Value> &memref_to_latest_version;
+  DenseMap<Value, Value> &value_to_latest_version;
 };
 
-//===----------------------------------------------------------------------===//
-// Pass Implementation
-//===----------------------------------------------------------------------===//
+//----------------------------------------------------------------------
+// Pass Implementation.
+//----------------------------------------------------------------------
 
 struct CanonicalizeTaskPass
     : public PassWrapper<CanonicalizeTaskPass, OperationPass<func::FuncOp>> {
@@ -308,8 +411,9 @@ struct CanonicalizeTaskPass
   }
 
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<taskflow::TaskflowDialect, arith::ArithDialect,
-                    memref::MemRefDialect, func::FuncDialect>();
+    registry
+        .insert<taskflow::TaskflowDialect, arith::ArithDialect,
+                memref::MemRefDialect, func::FuncDialect, scf::SCFDialect>();
   }
 
   void runOnOperation() override {
@@ -322,6 +426,7 @@ struct CanonicalizeTaskPass
     unsigned global_task_idx = 0;
 
     for (TaskflowTaskOp original_task : tasks_to_process) {
+      // Collects hyperblocks within the original task.
       SmallVector<TaskflowHyperblockOp> hyperblocks;
       original_task.walk(
           [&](TaskflowHyperblockOp hb) { hyperblocks.push_back(hb); });
@@ -329,62 +434,81 @@ struct CanonicalizeTaskPass
       assert(!hyperblocks.empty() &&
              "Expected at least one hyperblock in the task");
 
+      // If there's only one hyperblock, it is already canonical.
       if (hyperblocks.size() == 1) {
         continue;
       }
 
-      //===----------------------------------------------------------------===//
-      // Step 1: Build mapping from original task's memory outputs to their
+      //----------------------------------------------------------------
+      // Step 1: Builds mapping from original task's memory outputs to their
       //         corresponding source memrefs (the original inputs).
-      //===----------------------------------------------------------------===//
+      //----------------------------------------------------------------
 
-      // Get the yield operation to find which memrefs are yielded
+      // Get the yield operation to find which memrefs are yielded.
       auto yield_op = cast<TaskflowYieldOp>(
           original_task.getBody().front().getTerminator());
-      auto original_outputs = original_task.getMemoryOutputs();
+      auto original_mem_outputs = original_task.getMemoryOutputs();
+      auto original_val_outputs = original_task.getValueOutputs();
       auto yielded_memrefs = yield_op.getMemoryResults();
+      auto yielded_values = yield_op.getValueResults();
 
-      // Map: yielded block argument -> original task output
+      // Map: yielded -> original task output.
       DenseMap<Value, Value> yielded_to_output;
       for (auto [yielded, output] :
-           llvm::zip(yielded_memrefs, original_outputs)) {
+           llvm::zip(yielded_memrefs, original_mem_outputs)) {
+        yielded_to_output[yielded] = output;
+      }
+      for (auto [yielded, output] :
+           llvm::zip(yielded_values, original_val_outputs)) {
         yielded_to_output[yielded] = output;
       }
 
-      // Map: original input memref -> original task output (if it's yielded)
-      // This tells us which original outputs correspond to which input memrefs
+      // Map: original input memref -> original task output (if it's yielded).
+      // This tells us which original outputs correspond to which input memrefs.
       Block *orig_body = &original_task.getBody().front();
       auto orig_mem_inputs = original_task.getMemoryInputs();
+      auto orig_val_inputs = original_task.getValueInputs();
+
       DenseMap<Value, Value> source_to_original_output;
 
-      for (auto [input, arg] :
-           llvm::zip(orig_mem_inputs, orig_body->getArguments())) {
+      for (auto [input, arg] : llvm::zip(
+               orig_mem_inputs,
+               orig_body->getArguments().take_front(orig_mem_inputs.size()))) {
         if (yielded_to_output.count(arg)) {
           source_to_original_output[input] = yielded_to_output[arg];
         }
       }
 
-      //===----------------------------------------------------------------===//
-      // Step 2: Create atomic tasks for each hyperblock.
-      //===----------------------------------------------------------------===//
-
+      //----------------------------------------------------------------
+      // Step 2: Creates atomic tasks for each hyperblock.
+      //----------------------------------------------------------------
+      // Records the mapping from source memref to the latest version after
+      // executing each atomic task.
       DenseMap<Value, Value> memref_to_latest_version;
+      DenseMap<Value, Value> value_to_latest_version;
       OpBuilder builder(original_task);
 
       for (size_t i = 0; i < hyperblocks.size(); ++i) {
-        AtomicTaskBuilder task_builder(builder, original_task.getLoc(),
-                                       global_task_idx++,
-                                       memref_to_latest_version);
+        AtomicTaskBuilder task_builder(
+            builder, original_task.getLoc(), global_task_idx++,
+            memref_to_latest_version, value_to_latest_version);
         task_builder.build(hyperblocks[i], original_task);
       }
 
-      //===----------------------------------------------------------------===//
-      // Step 3: Replace uses of original task outputs with the latest versions.
-      //===----------------------------------------------------------------===//
+      //----------------------------------------------------------------
+      // Step 3: Replaces uses of original task outputs with the latest
+      // versions.
+      //----------------------------------------------------------------
 
       for (auto [source, original_output] : source_to_original_output) {
+        Value latest = nullptr;
         if (memref_to_latest_version.count(source)) {
-          Value latest = memref_to_latest_version[source];
+          latest = memref_to_latest_version[source];
+        } else if (value_to_latest_version.count(source)) {
+          latest = value_to_latest_version[source];
+        }
+
+        if (latest) {
           original_output.replaceAllUsesWith(latest);
         }
       }
