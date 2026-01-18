@@ -2,6 +2,7 @@ get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 
 add_mlir_library(MLIRTaskflowTransforms
     ConstructHyperblockFromTaskPass.cpp
+    OptimizeTaskGraphPass.cpp
 
     DEPENDS
     MLIRTaskflowTransformsIncGen
@@ -12,6 +13,7 @@ add_mlir_library(MLIRTaskflowTransforms
     MLIRSupport
     MLIRTransforms
     MLIRTaskflow
+    MLIRTaskflowAnalysis
     ${dialect_libs}
     LLVMSupport
 )
