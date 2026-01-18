@@ -595,8 +595,8 @@ struct GenerateCodePass
         setUniqueDestination(pi, producer_direction.str());
       else if (!regs.empty())
         setUniqueDestination(pi, "$" + std::to_string(regs.back().regId));
+      }
     }
-  }
 
   // Egress: on source tile at first_link_ts, move [$src_reg] -> [out_dir].
   void placeSrcEgress(const Topology &topology, int src_tile_id, int time_step,
@@ -706,7 +706,8 @@ struct GenerateCodePass
         const bool should_rewire_to_register =
             IsCtrl || (consumer_placement.time_step > deposit_time_step);
         if (should_rewire_to_register) {
-          setConsumerSourceExact(consumer_operation, value_at_consumer, "$" + std::to_string(register_id));
+          setConsumerSourceExact(consumer_operation, value_at_consumer,
+                                 "$" + std::to_string(register_id));
           return true;
         }
       }
@@ -804,7 +805,7 @@ struct GenerateCodePass
     } else {
       return collectDataMovConsumers(forwarder);
     }
-  }
+    }
 
   template<bool IsCtrl>
   void rewriteMovConsumers(Operation *forwarder,
@@ -1491,7 +1492,8 @@ struct GenerateCodePass
                          return a->time_step < b->time_step;
                        });
 
-      yaml_out << "            - index_per_ii: " << index_per_ii << "\n              operations:\n";
+      yaml_out << "            - index_per_ii: " << index_per_ii
+               << "\n              operations:\n";
       for (const Instruction *inst : operations) {
         yaml_out << "                - opcode: \"" << inst->opcode << "\"\n";
         if (inst->id >= 0)
@@ -1502,13 +1504,15 @@ struct GenerateCodePass
         if (!inst->src_operands.empty()) {
           yaml_out << "                  src_operands:\n";
           for (const Operand &opnd : inst->src_operands)
-            yaml_out << "                    - operand: \"" << opnd.operand << "\"\n                      color: \"" << opnd.color << "\"\n";
+            yaml_out << "                    - operand: \"" << opnd.operand
+                     << "\"\n                      color: \"" << opnd.color << "\"\n";
         }
         // destinations.
         if (!inst->dst_operands.empty()) {
           yaml_out << "                  dst_operands:\n";
           for (const Operand &opnd : inst->dst_operands)
-            yaml_out << "                    - operand: \"" << opnd.operand << "\"\n                      color: \"" << opnd.color << "\"\n";
+            yaml_out << "                    - operand: \"" << opnd.operand
+                     << "\"\n                      color: \"" << opnd.color << "\"\n";
         }
       }
     }
@@ -1577,7 +1581,8 @@ struct GenerateCodePass
       for (size_t i = 0; i < instructions.size(); ++i) {
         const Instruction *inst = instructions[i];
         asm_out << "  " << inst->opcode;
-        for (const Operand &operand : inst->src_operands) asm_out << ", " << formatOperand(operand);
+        for (const Operand &operand : inst->src_operands)
+          asm_out << ", " << formatOperand(operand);
         if (!inst->dst_operands.empty()) {
           asm_out << " -> ";
           for (size_t j = 0; j < inst->dst_operands.size(); ++j) {
