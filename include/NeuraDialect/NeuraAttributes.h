@@ -8,8 +8,14 @@ namespace neura {
 namespace attr {
 
 // Attribute Keys
+
+// Specifies the dataflow representation mode, as opposed to control-flow.
 constexpr llvm::StringLiteral kDataflowMode = "dataflow_mode";
+
+// Specifies the mapping strategy mode, can be either 'spatial-only' or
+// 'spatial-temporal'.
 constexpr llvm::StringLiteral kMappingMode = "mapping_mode";
+
 constexpr llvm::StringLiteral kMappingStrategy = "mapping_strategy";
 constexpr llvm::StringLiteral kBacktrackConfig = "backtrack_config";
 constexpr llvm::StringLiteral kDumpMappingTable = "dump_mapping_table";
