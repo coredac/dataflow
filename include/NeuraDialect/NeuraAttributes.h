@@ -29,6 +29,12 @@ constexpr llvm::StringLiteral kCompiledII = "compiled_ii";
 constexpr llvm::StringLiteral kRecMII = "rec_mii";
 constexpr llvm::StringLiteral kResMII = "res_mii";
 
+// Values & Constants Keys
+constexpr llvm::StringLiteral kValue = "value";
+constexpr llvm::StringLiteral kConstantValue = "constant_value";
+constexpr llvm::StringLiteral kRhsValue = "rhs_value";
+constexpr llvm::StringLiteral kLhsValue = "lhs_value";
+
 // Attribute Values & Constants
 namespace val {
 // Strategy & Mode

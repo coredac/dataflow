@@ -206,7 +206,7 @@ static std::string extractConstantLiteralFromAttr(Attribute attr) {
 // Literals for CONSTANT operations, e.g. "#10" / "#0" / "#3.0".
 static std::string getConstantLiteral(Operation *op) {
   if (isConstant(op)) {
-    if (auto value_attr = op->getAttr("value")) {
+    if (auto value_attr = op->getAttr(attr::kValue)) {
       std::string result = extractConstantLiteralFromAttr(value_attr);
       if (!result.empty()) return result;
     }
@@ -214,13 +214,13 @@ static std::string getConstantLiteral(Operation *op) {
   }
   
   // Checks for constant_value attribute in non-CONSTANT operations.
-  if (auto constant_value_attr = op->getAttr("constant_value")) {
+  if (auto constant_value_attr = op->getAttr(attr::kConstantValue)) {
     std::string result = extractConstantLiteralFromAttr(constant_value_attr);
     if (!result.empty()) return result;
   }
   
   // Checks for rhs_value attribute (for binary operations with constant RHS).
-  if (auto rhs_value_attr = op->getAttr("rhs_value")) {
+  if (auto rhs_value_attr = op->getAttr(attr::kRhsValue)) {
     std::string result = extractConstantLiteralFromAttr(rhs_value_attr);
     if (!result.empty()) return result;
   }
@@ -512,7 +512,7 @@ struct GenerateCodePass
 
       if (isConstant(op)) {
         inst.src_operands.emplace_back(getConstantLiteral(op), "RED");
-      } else if (op->getAttr("constant_value")) {
+      } else if (op->getAttr(attr::kConstantValue)) {
         // Checks if operation has constant_value attribute (for non-CONSTANT operations).
         inst.src_operands.emplace_back(getConstantLiteral(op), "RED");
       } else {
@@ -526,7 +526,7 @@ struct GenerateCodePass
         }
         
         // Handles cases where binary operations have the RHS constant stored as an attribute.
-        if (auto rhs_value_attr = op->getAttr("rhs_value")) {
+        if (auto rhs_value_attr = op->getAttr(attr::kRhsValue)) {
           std::string rhs_literal = extractConstantLiteralFromAttr(rhs_value_attr);
           if (!rhs_literal.empty()) {
             inst.src_operands.emplace_back(rhs_literal, "RED");

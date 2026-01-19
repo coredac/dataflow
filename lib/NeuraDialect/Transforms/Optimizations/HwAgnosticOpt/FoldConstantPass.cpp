@@ -1,5 +1,6 @@
 #include "NeuraDialect/NeuraOps.h"
 #include "NeuraDialect/NeuraTypes.h"
+#include "NeuraDialect/NeuraAttributes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -46,7 +47,7 @@ bool isOriginConstantOp(Value value) {
 Attribute getOriginConstantValue(Value value) {
   neura::ConstantOp constant_op =
       dyn_cast<neura::ConstantOp>(value.getDefiningOp());
-  return constant_op->getAttr("value");
+  return constant_op->getAttr(neura::attr::kValue);
 }
 
 void addConstantAttribute(Operation *op, StringRef attr_name,
@@ -118,9 +119,9 @@ std::string getAttributeNameForOperandIndex(size_t index,
   if (total_operands == 2) {
     // Binary operation: use lhs_value/rhs_value.
     if (index == 0) {
-      return "lhs_value";
+      return neura::attr::kLhsValue.str();
     } else {
-      return "rhs_value";
+      return neura::attr::kRhsValue.str();
     }
   } else {
     // Multi-operand operation: use operand_N_value.
@@ -315,7 +316,7 @@ struct FuseGEPConstantPattern : public GenericFuseConstantPattern<neura::GEP> {
   std::string getAttributeName(size_t operand_idx,
                                size_t total_operands) const override {
     if (operand_idx == 0) {
-      return "lhs_value";
+      return neura::attr::kLhsValue.str();
     } else {
       return "operand_" + std::to_string(operand_idx) + "_value";
     }
@@ -433,7 +434,7 @@ struct FuseStoreIndexedConstantPattern
   LogicalResult matchAndRewrite(neura::StoreIndexedOp op,
                                 PatternRewriter &rewriter) const override {
     // Checks if already folded.
-    if (op->hasAttr("lhs_value") || op->hasAttr("rhs_value")) {
+    if (op->hasAttr(neura::attr::kLhsValue) || op->hasAttr(neura::attr::kRhsValue)) {
       return failure();
     }
 
@@ -500,10 +501,10 @@ struct FuseStoreIndexedConstantPattern
 
     // Adds folded constant attributes.
     if (value_is_const) {
-      state.addAttribute("lhs_value", getOriginConstantValue(value));
+      state.addAttribute(neura::attr::kLhsValue, getOriginConstantValue(value));
     }
     if (base_is_const) {
-      state.addAttribute("rhs_value", getOriginConstantValue(base));
+      state.addAttribute(neura::attr::kRhsValue, getOriginConstantValue(base));
     }
 
     // Sets operandSegmentSizes: num_value, num_base, num_indices.
@@ -552,7 +553,7 @@ struct FuseConstantAndGrantPattern
                 dyn_cast<neura::GrantOnceOp>(user)) {
           auto new_grant_once_op = rewriter.create<neura::GrantOnceOp>(
               grant_once_op.getLoc(), grant_once_op.getResult().getType(),
-              /*value=*/nullptr, constant_op->getAttr("value"));
+              /*value=*/nullptr, constant_op->getAttr(neura::attr::kValue));
           // Replaces the original constant operation with the new one.
           rewriter.replaceOp(grant_once_op, new_grant_once_op);
           made_change = true;
@@ -560,7 +561,7 @@ struct FuseConstantAndGrantPattern
                        dyn_cast<neura::GrantAlwaysOp>(user)) {
           auto new_grant_always_op = rewriter.create<neura::GrantAlwaysOp>(
               grant_always_op.getLoc(), grant_always_op.getResult().getType(),
-              /*value=*/nullptr, constant_op->getAttr("value"));
+              /*value=*/nullptr, constant_op->getAttr(neura::attr::kValue));
           // Replaces the original constant operation with the new one.
           rewriter.replaceOp(grant_always_op, new_grant_always_op);
           made_change = true;
