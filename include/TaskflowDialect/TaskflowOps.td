@@ -190,6 +190,7 @@ def TaskflowCounterOp : TaskflowOpBase<"counter", [Pure]>{
 
 def TaskflowHyperblockOp : TaskflowOpBase<"hyperblock",[
   AutomaticAllocationScope,
+  AttrSizedOperandSegments,
   SingleBlockImplicitTerminator<"TaskflowHyperblockYieldOp">
 ]>{
   let summary = "Hyperblock operation containing loop body computation";
@@ -201,16 +202,17 @@ def TaskflowHyperblockOp : TaskflowOpBase<"hyperblock",[
     If the hyperblock has a return value, it must return the final value produced by the hyperblock (i.e., from the last iteration).
 
     Example:
-      %result = taskflow.hyperblock indices(%i : index) {
-        ^bb0(%idx: index):
-          // Loop body computation using %idx
+      %result = taskflow.hyperblock indices(%i : index), iter_args(%init_val : i32) {
+        ^bb0(%idx: index, %arg: i32):
+          // Loop body computation using %idx and %arg
           ...
           taskflow.hyperblock.yield %output : i32
       } -> i32
   }];
 
   let arguments = (ins
-    Variadic<AnyType>:$indices
+    Variadic<AnyType>:$indices,
+    Variadic<AnyType>:$iter_args
   );
 
   let results = (outs
@@ -219,12 +221,12 @@ def TaskflowHyperblockOp : TaskflowOpBase<"hyperblock",[
 
   let regions = (region SizedRegion<1>:$body);
 
-  let assemblyFormat = [{
-    (`indices` `(` $indices^ `:` type($indices) `)`)?
-    attr-dict-with-keyword
-    $body
-    `->` `(` type($outputs) `)`
-  }];
+  // let assemblyFormat = [{
+  //   (`indices` `(` $indices^ `:` type($indices) `)`)?
+  //   attr-dict-with-keyword
+  //   $body
+  //   `->` `(` type($outputs) `)`
+  // }];
 }
 
 def TaskflowHyperblockYieldOp : TaskflowOpBase<"hyperblock.yield", [

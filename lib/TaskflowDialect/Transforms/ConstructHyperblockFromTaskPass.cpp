@@ -6,11 +6,14 @@
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cassert>
@@ -30,11 +33,11 @@ struct LoopInfo {
   int upper_bound;
   int step;
 
-  // For nested loops
+  // For nested loops.
   LoopInfo *parent_loop_info = nullptr;
   SmallVector<LoopInfo *> child_loops;
 
-  // Generated counter index
+  // Generated counter index.
   Value counter_index;
 };
 
@@ -50,7 +53,7 @@ struct HyperblockInfo {
   // operations before any loops).
   SmallVector<Value> trigger_indices;
 
-  // Whther this hyperblock is nested within loops.
+  // Whether this hyperblock is nested within loops.
   bool is_loop_body = false;
 
   // The corresponding loop.
@@ -175,27 +178,22 @@ getTopLevelLoopsInfo(SmallVector<LoopInfo> &loops_info) {
 // Hyperblock Creation
 //----------------------------------------------------------------------------
 // Recursively extracts hyperblocks from a region.
+// Key insight: Operations in a loop body that are used by nested loops should
+// be inlined into the nested loop's hyperblock.
 static void extractHyperblocksInfoFromRegion(
     Region &region,
     const DenseMap<affine::AffineForOp, LoopInfo *> &loop_info_map,
     SmallVector<Value> parent_indices,
-    SmallVector<HyperblockInfo> &hyperblocks_info) {
+    SmallVector<HyperblockInfo> &hyperblocks_info,
+    affine::AffineForOp enclosing_loop = nullptr,
+    SmallVector<Operation *> inherited_ops = {}) {
   Block &block = region.front();
   SmallVector<Operation *> current_block_ops;
 
+  current_block_ops.append(inherited_ops.begin(), inherited_ops.end());
+
   for (Operation &op : block.getOperations()) {
     if (auto for_op = dyn_cast<affine::AffineForOp>(&op)) {
-      // Before processing the loop, emits any accumulated operations as a
-      // hyperblock.
-      if (!current_block_ops.empty()) {
-        HyperblockInfo info;
-        info.operations = current_block_ops;
-        info.trigger_indices = parent_indices;
-        info.is_loop_body = !parent_indices.empty();
-        hyperblocks_info.push_back(info);
-        current_block_ops.clear();
-      }
-
       // Gets the loop info.
       LoopInfo *loop_info = loop_info_map.lookup(for_op);
       assert(loop_info && "Loop not found in loop_info_map");
@@ -205,12 +203,51 @@ static void extractHyperblocksInfoFromRegion(
       SmallVector<Value> loop_indices = parent_indices;
       loop_indices.push_back(loop_info->counter_index);
 
+      // Analyzes which of the current_ops are used by this loop.
+      DenseSet<Value> values_used_in_loop;
+      for_op.walk([&](Operation *nested_op) {
+        for (Value operand : nested_op->getOperands()) {
+          values_used_in_loop.insert(operand);
+        }
+      });
+
+      SmallVector<Operation *> ops_for_nested_loop;
+      SmallVector<Operation *> ops_not_used;
+      bool used_by_loop = false;
+      for (Operation *current_op : current_block_ops) {
+        for (Value result : current_op->getResults()) {
+          if (values_used_in_loop.contains(result)) {
+            used_by_loop = true;
+            break;
+          }
+        }
+      }
+      if (used_by_loop) {
+        ops_for_nested_loop.append(current_block_ops.begin(),
+                                   current_block_ops.end());
+      } else {
+        ops_not_used.append(current_block_ops.begin(), current_block_ops.end());
+      }
+
+      // Before processing the loop, emits any accumulated operations as a
+      // hyperblock.
+      if (!ops_not_used.empty()) {
+        HyperblockInfo info;
+        info.operations = ops_not_used;
+        info.trigger_indices = parent_indices;
+        info.is_loop_body = !parent_indices.empty();
+        info.loop_op = enclosing_loop;
+        hyperblocks_info.push_back(info);
+      }
+
       // Recursively extracts hyperblocks from the loop body.
       extractHyperblocksInfoFromRegion(for_op.getRegion(), loop_info_map,
-                                       loop_indices, hyperblocks_info);
+                                       loop_indices, hyperblocks_info, for_op,
+                                       ops_for_nested_loop);
+      current_block_ops.clear();
     } else if (isa<TaskflowYieldOp, TaskflowCounterOp>(&op) ||
                (isa<affine::AffineYieldOp>(&op) && op.getOperands().empty())) {
-      // Skips TaskflowYieldOp and TaskflowCounterOp.
+      // Skips TaskflowYieldOp, TaskflowCounterOp, and empty affine.yield.
       continue;
     } else {
       // Regular operation, accumulates it.
@@ -224,6 +261,7 @@ static void extractHyperblocksInfoFromRegion(
     info.operations = current_block_ops;
     info.trigger_indices = parent_indices;
     info.is_loop_body = !parent_indices.empty();
+    info.loop_op = enclosing_loop;
     hyperblocks_info.push_back(info);
     current_block_ops.clear();
   }
@@ -299,8 +337,7 @@ determineHyperblockOutputTypes(const SmallVector<Operation *> &operations) {
 
 // Creates a taskflow.hyperblock operation from HyperblockInfo.
 static TaskflowHyperblockOp createHyperblock(
-    OpBuilder &builder, Location loc, const HyperblockInfo &info,
-    Block *task_body,
+    OpBuilder &builder, Location loc, HyperblockInfo &info, Block *task_body,
     const DenseMap<affine::AffineForOp, LoopInfo *> &loop_info_map) {
   // Collects only the indices that are actually used in the hyperblock.
   SmallVector<Value> used_indices =
@@ -310,15 +347,39 @@ static TaskflowHyperblockOp createHyperblock(
   SmallVector<Type> output_types =
       determineHyperblockOutputTypes(info.operations);
 
+  // Checks if there is a reduction in the hyperblock (with iter_args).
+  SmallVector<Value> iter_args_init_values;
+  bool is_reduction = false;
+  if (info.loop_op && info.loop_op.getNumIterOperands() > 0) {
+    is_reduction = true;
+    for (Value init : info.loop_op.getInits()) {
+      iter_args_init_values.push_back(init);
+    }
+  }
   // Creates the hyperblock operation.
-  TaskflowHyperblockOp hyperblock_op =
-      builder.create<TaskflowHyperblockOp>(loc, output_types, used_indices);
+  TaskflowHyperblockOp hyperblock_op;
+  if (is_reduction) {
+    hyperblock_op = builder.create<TaskflowHyperblockOp>(
+        loc, output_types, used_indices, iter_args_init_values);
+  } else {
+    hyperblock_op = builder.create<TaskflowHyperblockOp>(
+        loc, output_types, used_indices, /*iter_args=*/ValueRange{});
+  }
+
   Block *hyperblock_body = new Block();
   hyperblock_op.getBody().push_back(hyperblock_body);
 
   // Adds block arguments for the used indices.
   for (Value idx : used_indices) {
     hyperblock_body->addArgument(idx.getType(), loc);
+  }
+
+  SmallVector<Value> iter_args_block_args;
+  if (is_reduction) {
+    for (Value init : iter_args_init_values) {
+      BlockArgument arg = hyperblock_body->addArgument(init.getType(), loc);
+      iter_args_block_args.push_back(arg);
+    }
   }
 
   // Clone operations into the hyperblock body.
@@ -343,6 +404,17 @@ static TaskflowHyperblockOp createHyperblock(
     if (counter_to_indvar.count(idx)) {
       Value indvar = counter_to_indvar[idx];
       mapping.map(indvar, arg);
+    }
+  }
+
+  // If this hyperblock comes from a loop with iter_args, maps them.
+  if (is_reduction) {
+    Block &loop_body = info.loop_op.getRegion().front();
+    auto loop_iter_args = loop_body.getArguments().drop_front(1);
+
+    for (auto [loop_iter_arg, hb_iter_arg] :
+         llvm::zip(loop_iter_args, iter_args_block_args)) {
+      mapping.map(loop_iter_arg, hb_iter_arg);
     }
   }
 
@@ -376,11 +448,11 @@ static TaskflowHyperblockOp createHyperblock(
 
   MLIRContext *context = hyperblock_op.getContext();
   RewritePatternSet patterns(context);
-
   populateAffineToStdConversionPatterns(patterns);
   ConversionTarget target(*context);
   target.addLegalDialect<arith::ArithDialect, memref::MemRefDialect,
-                         func::FuncDialect, taskflow::TaskflowDialect>();
+                         func::FuncDialect, taskflow::TaskflowDialect,
+                         scf::SCFDialect>();
   target.addIllegalOp<affine::AffineLoadOp, affine::AffineStoreOp,
                       affine::AffineIfOp>();
   if (failed(
@@ -432,17 +504,32 @@ static LogicalResult transformTask(TaskflowTaskOp task_op) {
   // Step 4: Creates taskflow.hyperblock operations for each hyperblock.
   builder.setInsertionPoint(first_loop_op);
 
-  // Collects all operations to erase.
-  SmallVector<Operation *> ops_to_erase;
-  for (Operation &op : llvm::make_early_inc_range(task_body->getOperations())) {
-    if (!isa<TaskflowYieldOp, TaskflowCounterOp>(&op)) {
-      ops_to_erase.push_back(&op);
+  // Creates hyperblock ops.
+  for (auto &info : hyperblocks_info) {
+    TaskflowHyperblockOp hyperblock_op =
+        createHyperblock(builder, loc, info, task_body, loop_info_map);
+
+    // If this hyperblock has outputs and belongs to a loop with iter_args,
+    // replace the loop results with the hyperblock outputs.
+    if (info.loop_op && info.loop_op.getNumResults() > 0 &&
+        (hyperblock_op.getNumResults() == info.loop_op.getNumResults())) {
+      auto loop_results = info.loop_op.getResults();
+      auto hyperblock_results = hyperblock_op.getOutputs();
+
+      for (auto [loop_result, hb_result] :
+           llvm::zip(loop_results, hyperblock_results)) {
+        loop_result.replaceAllUsesWith(hb_result);
+      }
     }
   }
 
-  // Creates hyperblock ops.
-  for (const auto &info : hyperblocks_info) {
-    createHyperblock(builder, loc, info, task_body, loop_info_map);
+  // Step 6: Collects and erases original loop operations.
+  // Collects all operations to erase.
+  SmallVector<Operation *> ops_to_erase;
+  for (Operation &op : llvm::make_early_inc_range(task_body->getOperations())) {
+    if (!isa<TaskflowYieldOp, TaskflowCounterOp, TaskflowHyperblockOp>(&op)) {
+      ops_to_erase.push_back(&op);
+    }
   }
 
   // Erases original operations.
@@ -467,8 +554,9 @@ struct ConstructHyperblockFromTaskPass
   }
 
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<mlir::taskflow::TaskflowDialect, affine::AffineDialect,
-                    func::FuncDialect, memref::MemRefDialect>();
+    registry
+        .insert<mlir::taskflow::TaskflowDialect, affine::AffineDialect,
+                func::FuncDialect, memref::MemRefDialect, scf::SCFDialect>();
   }
 
   void runOnOperation() override {
