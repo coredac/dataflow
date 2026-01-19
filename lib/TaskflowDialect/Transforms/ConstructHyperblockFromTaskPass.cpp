@@ -203,7 +203,7 @@ static void extractHyperblocksInfoFromRegion(
       SmallVector<Value> loop_indices = parent_indices;
       loop_indices.push_back(loop_info->counter_index);
 
-      // 分析哪些 current_ops 被这个循环使用
+      // Analyzes which of the current_ops are used by this loop.
       DenseSet<Value> values_used_in_loop;
       for_op.walk([&](Operation *nested_op) {
         for (Value operand : nested_op->getOperands()) {
