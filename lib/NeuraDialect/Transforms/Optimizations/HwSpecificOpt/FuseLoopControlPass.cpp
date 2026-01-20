@@ -1,5 +1,7 @@
+#include "Common/AcceleratorAttrs.h"
 #include "NeuraDialect/NeuraOps.h"
 #include "NeuraDialect/NeuraTypes.h"
+#include "NeuraDialect/NeuraAttributes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Operation.h"
@@ -106,8 +108,8 @@ private:
 // Finds the constant attribute for a value.
 Attribute findConstantAttribute(Operation *op) {
   // Checks if the operation has a constant attribute.
-  if (op && op->hasAttr("rhs_value")) {
-    return op->getAttr("rhs_value");
+  if (op && op->hasAttr(neura::attr::kRhsValue)) {
+    return op->getAttr(neura::attr::kRhsValue);
   }
 
   // If the value is already a constant, return it.
@@ -117,8 +119,8 @@ Attribute findConstantAttribute(Operation *op) {
 
   // Handles grant operations and adds them to the removal list.
   if (auto grant_once_op = dyn_cast<neura::GrantOnceOp>(op)) {
-    if (grant_once_op->hasAttr("constant_value")) {
-      return grant_once_op->getAttr("constant_value");
+    if (grant_once_op->hasAttr(neura::attr::kConstantValue)) {
+      return grant_once_op->getAttr(neura::attr::kConstantValue);
     }
   }
 
@@ -437,8 +439,9 @@ struct FuseLoopControlFlowPattern : public OpRewritePattern<func::FuncOp> {
 
   LogicalResult matchAndRewrite(func::FuncOp func_op,
                                 PatternRewriter &rewriter) const override {
-    auto accel_attr = func_op->getAttrOfType<StringAttr>("accelerator");
-    if (!accel_attr || accel_attr.getValue() != "neura") {
+    auto accel_attr =
+        func_op->getAttrOfType<StringAttr>(accel::kAcceleratorAttr);
+    if (!accel_attr || accel_attr.getValue() != accel::kNeuraTarget) {
       return failure();
     }
     // Saves all the identified loops.

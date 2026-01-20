@@ -1,3 +1,4 @@
+#include "Common/AcceleratorAttrs.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Operation.h"
@@ -23,6 +24,7 @@
 
 #include "NeuraDialect/Architecture/Architecture.h"
 #include "NeuraDialect/NeuraOps.h"
+#include "NeuraDialect/NeuraAttributes.h"
 
 using namespace mlir;
 using namespace neura;
@@ -204,7 +206,7 @@ static std::string extractConstantLiteralFromAttr(Attribute attr) {
 // Literals for CONSTANT operations, e.g. "#10" / "#0" / "#3.0".
 static std::string getConstantLiteral(Operation *op) {
   if (isConstant(op)) {
-    if (auto value_attr = op->getAttr("value")) {
+    if (auto value_attr = op->getAttr(attr::kValue)) {
       std::string result = extractConstantLiteralFromAttr(value_attr);
       if (!result.empty()) return result;
     }
@@ -212,13 +214,13 @@ static std::string getConstantLiteral(Operation *op) {
   }
   
   // Checks for constant_value attribute in non-CONSTANT operations.
-  if (auto constant_value_attr = op->getAttr("constant_value")) {
+  if (auto constant_value_attr = op->getAttr(attr::kConstantValue)) {
     std::string result = extractConstantLiteralFromAttr(constant_value_attr);
     if (!result.empty()) return result;
   }
   
   // Checks for rhs_value attribute (for binary operations with constant RHS).
-  if (auto rhs_value_attr = op->getAttr("rhs_value")) {
+  if (auto rhs_value_attr = op->getAttr(attr::kRhsValue)) {
     std::string result = extractConstantLiteralFromAttr(rhs_value_attr);
     if (!result.empty()) return result;
   }
@@ -410,16 +412,16 @@ struct GenerateCodePass
 
   std::pair<int, int> getArrayDimensions(func::FuncOp function) {
     int columns = 4, rows = 4; // default 4x4 CGRA.
-    if (auto mapping_info = function->getAttrOfType<DictionaryAttr>("mapping_info")) {
-      if (auto x_tiles = dyn_cast_or_null<IntegerAttr>(mapping_info.get("x_tiles"))) columns = x_tiles.getInt();
-      if (auto y_tiles = dyn_cast_or_null<IntegerAttr>(mapping_info.get("y_tiles"))) rows   = y_tiles.getInt();
+    if (auto mapping_info = function->getAttrOfType<DictionaryAttr>(attr::kMappingInfo)) {
+      if (auto x_tiles = dyn_cast_or_null<IntegerAttr>(mapping_info.get(attr::kXTiles))) columns = x_tiles.getInt();
+      if (auto y_tiles = dyn_cast_or_null<IntegerAttr>(mapping_info.get(attr::kYTiles))) rows   = y_tiles.getInt();
     }
     return {columns, rows};
   }
 
   int getCompiledII(func::FuncOp function) {
-    if (auto mapping_info = function->getAttrOfType<DictionaryAttr>("mapping_info")) {
-      if (auto compiled_ii = dyn_cast_or_null<IntegerAttr>(mapping_info.get("compiled_ii"))) {
+    if (auto mapping_info = function->getAttrOfType<DictionaryAttr>(attr::kMappingInfo)) {
+      if (auto compiled_ii = dyn_cast_or_null<IntegerAttr>(mapping_info.get(attr::kCompiledII))) {
         return compiled_ii.getInt();
       }
     }
@@ -510,7 +512,7 @@ struct GenerateCodePass
 
       if (isConstant(op)) {
         inst.src_operands.emplace_back(getConstantLiteral(op), "RED");
-      } else if (op->getAttr("constant_value")) {
+      } else if (op->getAttr(attr::kConstantValue)) {
         // Checks if operation has constant_value attribute (for non-CONSTANT operations).
         inst.src_operands.emplace_back(getConstantLiteral(op), "RED");
       } else {
@@ -524,7 +526,7 @@ struct GenerateCodePass
         }
         
         // Handles cases where binary operations have the RHS constant stored as an attribute.
-        if (auto rhs_value_attr = op->getAttr("rhs_value")) {
+        if (auto rhs_value_attr = op->getAttr(attr::kRhsValue)) {
           std::string rhs_literal = extractConstantLiteralFromAttr(rhs_value_attr);
           if (!rhs_literal.empty()) {
             inst.src_operands.emplace_back(rhs_literal, "RED");
@@ -934,7 +936,7 @@ struct GenerateCodePass
 
   // Helper to extract dfg_id from operation.
   static int getDfgId(Operation *op) {
-    if (auto id_attr = op->getAttrOfType<IntegerAttr>("dfg_id")) {
+    if (auto id_attr = op->getAttrOfType<IntegerAttr>(attr::kDfgId)) {
       return id_attr.getInt();
     }
     return -1;
@@ -1669,8 +1671,8 @@ struct GenerateCodePass
     ModuleOp module = getOperation();
 
     for (auto func : module.getOps<func::FuncOp>()) {
-      auto accel = func->getAttrOfType<StringAttr>("accelerator");
-      if (!accel || accel.getValue() != "neura") continue;
+      auto accel = func->getAttrOfType<StringAttr>(accel::kAcceleratorAttr);
+      if (!accel || accel.getValue() != accel::kNeuraTarget) continue;
 
       auto [columns, rows] = getArrayDimensions(func);
       Topology topo = getTopologyFromArchitecture(columns, rows);

@@ -1,3 +1,5 @@
+#include "Common/AcceleratorAttrs.h"
+#include "NeuraDialect/NeuraAttributes.h"
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraOps.h"
 #include "NeuraDialect/NeuraPasses.h"
@@ -610,20 +612,23 @@ void transformControlFlowToDataFlow(Region &region, ControlFlowInfo &ctrl_info,
   // Sets the "dataflow_mode" attribute to "predicate" for the parent
   // function.
   if (auto func = dyn_cast<func::FuncOp>(region.getParentOp())) {
-    if (!func->hasAttr("dataflow_mode")) {
-      func->setAttr("dataflow_mode",
-                    StringAttr::get(func.getContext(), "predicate"));
+    if (!func->hasAttr(neura::attr::kDataflowMode)) {
+      func->setAttr(
+          neura::attr::kDataflowMode,
+          StringAttr::get(func.getContext(), neura::attr::val::kModePredicate));
       llvm::errs()
           << "[ctrl2data] Set dataflow mode to predicate for function: "
           << func.getName() << "\n";
     } else {
-      llvm::errs()
-          << "[ctrl2data] Function " << func.getName()
-          << " already has dataflow_mode set to "
-          << func->getAttrOfType<StringAttr>("dataflow_mode").getValue()
-          << "\n";
-      func->setAttr("dataflow_mode",
-                    StringAttr::get(func.getContext(), "predicate"));
+      llvm::errs() << "[ctrl2data] Function " << func.getName()
+                   << " already has dataflow_mode set to "
+                   << func->getAttrOfType<StringAttr>(
+                              neura::attr::kDataflowMode)
+                          .getValue()
+                   << "\n";
+      func->setAttr(
+          neura::attr::kDataflowMode,
+          StringAttr::get(func.getContext(), neura::attr::val::kModePredicate));
     }
   } else {
     assert(false &&
@@ -711,8 +716,9 @@ struct TransformCtrlToDataFlowPass
       OpBuilder builder(op->getContext());
 
       if (auto func = dyn_cast<func::FuncOp>(op)) {
-        auto accel_attr = func->getAttrOfType<StringAttr>("accelerator");
-        if (!accel_attr || accel_attr.getValue() != "neura") {
+        auto accel_attr =
+            func->getAttrOfType<StringAttr>(accel::kAcceleratorAttr);
+        if (!accel_attr || accel_attr.getValue() != accel::kNeuraTarget) {
           return;
         }
         region = &func.getBody();
