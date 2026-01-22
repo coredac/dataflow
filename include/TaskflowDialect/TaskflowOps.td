@@ -151,24 +151,25 @@ def TaskflowCounterOp : TaskflowOpBase<"counter", [Pure]>{
     Represents a loop counter that generates iteration indices.
     The hardware counter produces a predicated index value.
 
-    Counter behavior:
-    - Top-level counter: increments unconditionally each cycle.
-    - Nested counter: increments only when the parent counter is valid.
+    Counter classification:
+    - "root": Top-level counter with no parent (drives entire loop nest)
+    - "relay": Intermediate counter with both parent and child counters
+    - "leaf": Innermost counter with no child counters (maps to CGRA tile array)
 
     Example:
-      // Top-level counter
+      // Root counter
       %i = taskflow.counter {
         lower_bound = 0 : index,
         upper_bound = 16 : index,
         step = 1 : index,
-        counter_name = "i"
+        counter_type = "root"
       } : index
-      // Nested counter
+      // Leaf counter
       %j = taskflow.counter parent(%i) {
         lower_bound = 0 : index,
         upper_bound = 8 : index,
         step = 1 : index,
-        counter_name = "j"
+        counter_type = "leaf"
       } : index
   }];
 
@@ -176,7 +177,8 @@ def TaskflowCounterOp : TaskflowOpBase<"counter", [Pure]>{
     Optional<AnyType>:$parent_index,
     IndexAttr:$lower_bound,
     IndexAttr:$upper_bound,
-    IndexAttr:$step
+    IndexAttr:$step,
+    OptionalAttr<StrAttr>:$counter_type
   );
 
   let results = (outs AnyType:$counter_index);
