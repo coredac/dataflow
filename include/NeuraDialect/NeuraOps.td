@@ -53,11 +53,11 @@ def Neura_KernelOp : Op<NeuraDialect, "kernel", [
 
   let results = (outs Variadic<AnyType>:$outputs);
 
-  let regions = (region SizedRegion<1>:$body);
+  let regions = (region AnyRegion:$body);
 
   let assemblyFormat = [{
-    (`ins` `(` $inputs^ `:` type($inputs) `)` )?
-    (`ins` `(` $iter_args_init^ `:` type($iter_args_init) `)` )?
+    (`inputs` `(` $inputs^ `:` type($inputs) `)` )?
+    (`iter_args_init` `(` $iter_args_init^ `:` type($iter_args_init) `)` )?
     attr-dict-with-keyword
     $body
     (`:` type($outputs)^)?
@@ -790,15 +790,23 @@ def Neura_CounterOp : Op<NeuraDialect, "counter", [Pure]>{
     - current index: the current loop index value.
 
     Example:
-      %current_idx = neura.counter () <{
-           start_value = 0 : i64, 
-           end_value = 100 : i64, 
-           step_value = 1 : i64
-         }> : -> !neura.data<i64, i1>
+      %idx = neura.counter {
+        lower_bound = 0 : index,
+        upper_bound = 32 : index,
+        step = 1 : index,
+        counter_type = "leaf"
+      } : index
   }];
   let arguments = (ins
-    
+    IndexAttr:$lower_bound,
+    IndexAttr:$upper_bound,
+    IndexAttr:$step,
+    StrAttr:$counter_type,
+    I32Attr:$counter_id
   );
+
+  let results = (outs AnyType:$current_index);
+  let assemblyFormat = "attr-dict `:` type($current_index)";
 }
 
 // ----------------------------------------------------

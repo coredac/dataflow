@@ -144,7 +144,7 @@ def TaskflowChannelOp : TaskflowOpBase<"channel", [Pure, SameOperandsAndResultTy
 // Intra-Task Operations.
 //----------------------------------------------------------------------
 // Counter operation representing loop iteration control within a Taskflow task.
-def TaskflowCounterOp : TaskflowOpBase<"counter", [Pure]>{
+def TaskflowCounterOp : TaskflowOpBase<"counter", []>{
   let summary = "Loop counter operation with hardware counter semantics";
 
   let description = [{
@@ -178,7 +178,8 @@ def TaskflowCounterOp : TaskflowOpBase<"counter", [Pure]>{
     IndexAttr:$lower_bound,
     IndexAttr:$upper_bound,
     IndexAttr:$step,
-    OptionalAttr<StrAttr>:$counter_type
+    OptionalAttr<StrAttr>:$counter_type,
+    OptionalAttr<I32Attr>:$counter_id
   );
 
   let results = (outs AnyType:$counter_index);

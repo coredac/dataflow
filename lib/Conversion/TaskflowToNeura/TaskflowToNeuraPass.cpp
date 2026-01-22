@@ -10,9 +10,12 @@
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace mlir;
 using namespace mlir::taskflow;
@@ -56,7 +59,10 @@ struct HyperblockToKernelPattern
 
     // Gets hyperblock operands.
     SmallVector<Value> indices(hyperblock_op.getIndices());
+    DenseSet<Value> indices_set(indices.begin(), indices.end());
     SmallVector<Value> iter_args_init(hyperblock_op.getIterArgs());
+    DenseSet<Value> iter_args_init_set(iter_args_init.begin(),
+                                       iter_args_init.end());
     size_t num_indices = indices.size();
     size_t num_iter_args_init = iter_args_init.size();
 
@@ -69,12 +75,27 @@ struct HyperblockToKernelPattern
       for (Value operand : op->getOperands()) {
         if (auto blockArg = dyn_cast<BlockArgument>(operand)) {
           if (blockArg.getOwner() == &task_block) {
+            if (iter_args_init_set.contains(operand) ||
+                indices_set.contains(operand)) {
+              // Skips iter args and indices.
+              continue;
+            }
             if (live_in_set.insert(operand).second) {
               live_in_values.push_back(operand);
             }
+          } else {
+            assert(blockArg.getOwner() == &hb_block &&
+                   "Unexpected block argument from other block");
           }
+        } else if (operand.getDefiningOp()) {
+          Operation *def_op = operand.getDefiningOp();
+          llvm::errs() << "[taskflow2neura] Operand from op: "
+                       << *(operand.getDefiningOp()) << "\n";
+          assert(((isa<TaskflowCounterOp>(def_op) &&
+                   def_op->getParentOp() == task_op) ||
+                  (hyperblock_op->isProperAncestor(def_op))) &&
+                 "Unexpected non-block-arg operand in hyperblock");
         }
-        assert(!operand.getDefiningOp() && "Unexpected non-block-arg operand");
       }
     });
 
@@ -89,9 +110,8 @@ struct HyperblockToKernelPattern
     // Creates neura.kernel.
     neura::KernelOp kernelOp = rewriter.create<neura::KernelOp>(
         loc, resultTypes, kernel_inputs, iter_args_init,
-        /*cgra_id=*/rewriter.getI32IntegerAttr(0),
-        /*kernel_name=*/rewriter.getStringAttr("kernel"),
-        /*accelerator=*/rewriter.getStringAttr("neura"));
+        /*Optional cgra_id*/ nullptr, /*Optional kernel_name*/ nullptr,
+        /*Optional accelerator*/ nullptr);
 
     // Creates the entry block for kernel.
     Region &kernel_region = kernelOp.getBody();
@@ -160,6 +180,102 @@ struct HyperblockToKernelPattern
   }
 };
 
+struct InternalizeCounterPattern : public OpRewritePattern<neura::KernelOp> {
+  using OpRewritePattern<neura::KernelOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(neura::KernelOp kernel_op,
+                                PatternRewriter &rewriter) const override {
+    SmallVector<Value> inputs(kernel_op.getInputs());
+    SmallVector<Value> iter_args_init(kernel_op.getIterArgsInit());
+
+    // Finds counter inputs: inputs defined by taskflow.counter ops.
+    SmallVector<std::pair<size_t, TaskflowCounterOp>> counter_inputs;
+
+    for (size_t i = 0; i < inputs.size(); i++) {
+      if (TaskflowCounterOp counter_op =
+              inputs[i].getDefiningOp<TaskflowCounterOp>()) {
+        counter_inputs.push_back({i, counter_op});
+      }
+    }
+
+    // If there is no counter inputs, nothing to do.
+    if (counter_inputs.empty()) {
+      return failure();
+    }
+
+    Location loc = kernel_op.getLoc();
+    Block &old_block = kernel_op.getBody().front();
+
+    // Builds new inputs (excluding counter inputs).
+    DenseSet<size_t> counter_idx_set;
+    for (auto &[idx, _] : counter_inputs) {
+      counter_idx_set.insert(idx);
+    }
+    SmallVector<Value> new_inputs;
+    for (size_t i = 0; i < inputs.size(); i++) {
+      if (!counter_idx_set.contains(i)) {
+        new_inputs.push_back(inputs[i]);
+      }
+    }
+
+    // Creates new kernel with updated inputs.
+    SmallVector<Type> result_types(kernel_op.getResultTypes());
+    neura::KernelOp new_kernel_op = rewriter.create<neura::KernelOp>(
+        loc, result_types, new_inputs, iter_args_init,
+        /*cgra_id=*/kernel_op.getCgraIdAttr(),
+        /*kernel_name=*/kernel_op.getKernelNameAttr(),
+        /*accelerator=*/kernel_op.getAcceleratorAttr());
+
+    // Creates the entry block for new kernel.
+    Region &new_region = new_kernel_op.getBody();
+    Block *new_block = rewriter.createBlock(&new_region);
+
+    IRMapping mapping;
+    // Maps non-counter input block arguments.
+    for (size_t i = 0; i < inputs.size(); i++) {
+      BlockArgument old_arg = old_block.getArgument(i);
+      if (!counter_idx_set.contains(i)) {
+        BlockArgument new_arg = new_block->addArgument(old_arg.getType(), loc);
+        mapping.map(old_arg, new_arg);
+      }
+    }
+
+    // Maps iter_args block arguments.
+    size_t num_inputs = inputs.size();
+    for (size_t i = 0; i < iter_args_init.size(); i++) {
+      BlockArgument old_arg = old_block.getArgument(num_inputs + i);
+      BlockArgument new_arg = new_block->addArgument(old_arg.getType(), loc);
+      mapping.map(old_arg, new_arg);
+    }
+
+    // Inserts neura.counter ops at the start of the new block.
+    rewriter.setInsertionPointToStart(new_block);
+    for (auto &[old_idx, source_counter] : counter_inputs) {
+      BlockArgument old_counter_arg = old_block.getArgument(old_idx);
+
+      // Creates neura.counter op.
+      neura::CounterOp new_counter_op = rewriter.create<neura::CounterOp>(
+          source_counter.getLoc(), old_counter_arg.getType(),
+          source_counter.getLowerBoundAttr(),
+          source_counter.getUpperBoundAttr(), source_counter.getStepAttr(),
+          source_counter.getCounterTypeAttr(),
+          source_counter.getCounterIdAttr());
+      mapping.map(old_counter_arg, new_counter_op.getCurrentIndex());
+    }
+
+    // Clones rest of the body.
+    rewriter.setInsertionPointToEnd(new_block);
+    for (Operation &op : old_block.getOperations()) {
+      rewriter.clone(op, mapping);
+    }
+
+    // Replaces old kernel with new kernel.
+    rewriter.replaceOp(kernel_op, new_kernel_op.getResults());
+
+    return success();
+  }
+};
+
 struct ConvertTaskflowToNeuraPass
     : public PassWrapper<ConvertTaskflowToNeuraPass, OperationPass<ModuleOp>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ConvertTaskflowToNeuraPass)
@@ -178,12 +294,25 @@ struct ConvertTaskflowToNeuraPass
     MLIRContext *ctx = &getContext();
 
     // Phase 1: Converts hyperblocks to kernels.
-    RewritePatternSet patterns(ctx);
-    patterns.add<HyperblockToKernelPattern>(ctx);
+    {
+      RewritePatternSet patterns(ctx);
+      patterns.add<HyperblockToKernelPattern>(ctx);
 
-    if (failed(applyPatternsGreedily(module, std::move(patterns)))) {
-      signalPassFailure();
-      return;
+      if (failed(applyPatternsGreedily(module, std::move(patterns)))) {
+        signalPassFailure();
+        return;
+      }
+    }
+
+    // Phase 2: Internalizes counters into kernels.
+    {
+      RewritePatternSet patterns(ctx);
+      patterns.add<InternalizeCounterPattern>(ctx);
+
+      if (failed(applyPatternsGreedily(module, std::move(patterns)))) {
+        signalPassFailure();
+        return;
+      }
     }
   }
 };

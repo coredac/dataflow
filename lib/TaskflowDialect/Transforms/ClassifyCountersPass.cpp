@@ -44,6 +44,8 @@ void classifyCountersInTask(TaskflowTaskOp task_op) {
     }
   }
 
+  int global_counter_id = 0;
+
   // Classifies each counter.
   OpBuilder builder(task_op.getContext());
   for (TaskflowCounterOp counter_op : counters) {
@@ -67,6 +69,8 @@ void classifyCountersInTask(TaskflowTaskOp task_op) {
 
     // Sets the counter type attribute.
     counter_op.setCounterTypeAttr(builder.getStringAttr(counter_type));
+    // Sets the counter id attribute.
+    counter_op.setCounterIdAttr(builder.getI32IntegerAttr(global_counter_id++));
   }
 }
 
