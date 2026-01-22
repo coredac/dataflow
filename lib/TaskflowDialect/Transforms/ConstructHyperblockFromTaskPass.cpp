@@ -433,7 +433,8 @@ static TaskflowHyperblockOp createHyperblock(
       }
 
       // Creates hyperblock.yield with the mapped operands.
-      hyperblock_builder.create<TaskflowHyperblockYieldOp>(loc, yield_operands);
+      hyperblock_builder.create<TaskflowHyperblockYieldOp>(loc, yield_operands,
+                                                           yield_operands);
       has_terminator = true;
       continue;
     }
