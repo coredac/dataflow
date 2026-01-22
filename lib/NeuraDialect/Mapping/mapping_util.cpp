@@ -15,10 +15,14 @@ using namespace mlir;
 using namespace mlir::neura;
 
 // Constants for award calculation.
-static const int AWARD_PROXIMITY_SCALE = 1;
-static const int AWARD_BACKWARD_PROXIMITY_SCALE = 1;
-static const int AWARD_BASE_MULTIPLIER = 1;
-static const int AWARD_CRITICAL_BONUS_DIV = 1;
+constexpr int kAwardProximityScale = 1;
+constexpr int kAwardBackwardProximityScale = 1;
+constexpr int kAwardBaseMultiplier = 1;
+constexpr int kAwardCriticalBonusDiv = 1;
+
+// Congestion penalty coefficients (tunable).
+constexpr int kStrongCongestionPenalty = 60; // used for high fan-in ops (>=3)
+constexpr int kWeakCongestionPenalty = 15;   // used for low fan-in ops
 
 namespace mlir {
 namespace neura {
@@ -126,7 +130,8 @@ OperationKind getOperationKindFromMlirOp(Operation *op) {
 // Returns true if the operation does not need CGRA tile placement.
 bool is_non_materialized(Operation *op) {
   // Returns true if the operation does not need CGRA tile placement.
-  return mlir::isa<neura::ReserveOp, neura::CtrlMovOp, neura::DataMovOp>(op);
+  return mlir::isa<neura::ReserveOp, neura::CtrlMovOp, neura::DataMovOp,
+                   neura::YieldOp>(op);
 }
 
 } // namespace neura
@@ -393,12 +398,53 @@ mlir::neura::getOpsInAlapLevels(const std::vector<Operation *> &sorted_ops,
 }
 
 std::vector<std::pair<Operation *, int>> mlir::neura::flatten_level_buckets(
-    const std::vector<std::vector<Operation *>> &level_buckets) {
+    const std::vector<std::vector<Operation *>> &level_buckets,
+    const std::set<Operation *> &critical_ops) {
   std::vector<std::pair<Operation *, int>> result;
 
   for (int level = 0; level < static_cast<int>(level_buckets.size()); ++level) {
-    for (Operation *op : level_buckets[level]) {
-      result.emplace_back(op, level);
+    // Collects ops with their current index to ensure stable sorting.
+    std::vector<std::pair<Operation *, int>> ops_with_index;
+    for (int i = 0; i < (int)level_buckets[level].size(); ++i) {
+      ops_with_index.push_back({level_buckets[level][i], i});
+    }
+
+    // Sorts with criticality as PRIMARY criterion within the same ALAP level.
+    // This addresses tancheng's feedback: critical ops should map before
+    // high-degree non-critical ops in the same level.
+    std::sort(ops_with_index.begin(), ops_with_index.end(),
+              [&critical_ops](const std::pair<Operation *, int> &a_pair,
+                              const std::pair<Operation *, int> &b_pair) {
+                Operation *a = a_pair.first;
+                Operation *b = b_pair.first;
+                
+                bool a_is_critical = critical_ops.count(a) > 0;
+                bool b_is_critical = critical_ops.count(b) > 0;
+                
+                // Priority 1: Critical ops come first (within same ALAP level).
+                if (a_is_critical != b_is_critical)
+                  return a_is_critical > b_is_critical;
+                
+                // Priority 2: Degree (connectivity) - higher degree first.
+                int degree_a = a->getNumOperands();
+                int degree_b = b->getNumOperands();
+                for (Value res : a->getResults()) {
+                  degree_a += std::distance(res.getUsers().begin(),
+                                            res.getUsers().end());
+                }
+                for (Value res : b->getResults()) {
+                  degree_b += std::distance(res.getUsers().begin(),
+                                            res.getUsers().end());
+                }
+                if (degree_a != degree_b)
+                  return degree_a > degree_b;
+                
+                // Priority 3: Original index (stability tie-breaker).
+                return a_pair.second < b_pair.second;
+              });
+
+    for (const auto &p : ops_with_index) {
+      result.emplace_back(p.first, level);
     }
   }
 
@@ -626,8 +672,6 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
     if (current_state.current_time >= exclusive_deadline_step) {
       continue;
     }
-
-    // Explores two routing options from current tile:
 
     // Option 1: Moves to adjacent tile through link.
     for (Link *out_link : current_state.current_tile->getOutLinks()) {
@@ -922,7 +966,7 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
         (architecture.getPerCgraRows() + architecture.getPerCgraColumns() - 2);
     int max_hops = static_cast<int>(producers.size()) * kMaxDist;
     int proximity_bonus =
-        std::max(0, max_hops - hops_to_producers) * AWARD_PROXIMITY_SCALE;
+        std::max(0, max_hops - hops_to_producers) * kAwardProximityScale;
     tile_award += proximity_bonus;
 
     // Computes proximity bonus to backward users. Closer is better for
@@ -933,7 +977,7 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
         int backward_hops = std::abs(backward_tile->getX() - tile->getX()) +
                             std::abs(backward_tile->getY() - tile->getY());
         tile_award += std::max(0, (kMaxDist - backward_hops) *
-                                      AWARD_BACKWARD_PROXIMITY_SCALE);
+                                      kAwardBackwardProximityScale);
       }
     }
 
@@ -942,11 +986,11 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
       // Keep the original critical bonuses but allow tuning via division.
       tile_award += (mapping_state.getII() +
                      static_cast<int>(tile->getDstTiles().size())) /
-                    std::max(1, AWARD_CRITICAL_BONUS_DIV);
+                    std::max(1, kAwardCriticalBonusDiv);
     }
 
     // Apply base multiplier to amplify or dampen tile-based award.
-    tile_award *= AWARD_BASE_MULTIPLIER;
+    tile_award *= kAwardBaseMultiplier;
 
     // === Time-based award ===
     for (int t = earliest_start_time_step; t < latest_end_time_step; t += 1) {
@@ -971,7 +1015,41 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
         if (meet_producer_constraint && meet_backward_user_constraint) {
           // Earlier time steps get higher scores.
           int time_bonus = latest_end_time_step - t;
-          int total_award = tile_award + time_bonus;
+
+          // === Balanced Link congestion penalty ===
+          // A conservative penalty to guide the mapper away from hotspots
+          // without being too restrictive for small IIs.
+          int total_in = tile->getInLinks().size();
+          int total_out = tile->getOutLinks().size();
+          int occupied_in = 0;
+          int occupied_out = 0;
+
+          for (auto *link : tile->getInLinks()) {
+            if (!mapping_state.isAvailableAcrossTime({link, t})) {
+              occupied_in++;
+            }
+          }
+          for (auto *link : tile->getOutLinks()) {
+            if (!mapping_state.isAvailableAcrossTime({link, t})) {
+              occupied_out++;
+            }
+          }
+
+          float in_ratio = (total_in > 0) ? (float)occupied_in / total_in : 0;
+          float out_ratio = (total_out > 0) ? (float)occupied_out / total_out : 0;
+          
+          // Adaptive penalty strategy:
+          // - Use very strong penalty (60) only for high fan-in ops (>= 3 producers)
+          // - Use weak penalty (15) for low fan-in ops
+          // This optimizes fuse-pattern (II=11 target) without breaking iter-merge
+          int base_penalty_coeff = (producers.size() >= 3)
+                                       ? kStrongCongestionPenalty
+                                       : kWeakCongestionPenalty;
+          
+          int congestion_penalty = static_cast<int>(in_ratio * in_ratio * base_penalty_coeff) +
+                                   static_cast<int>(out_ratio * out_ratio * base_penalty_coeff);
+
+          int total_award = tile_award + time_bonus - congestion_penalty;
           updateAward(locs_with_award, tile_loc_candidate, total_award);
         }
       }
@@ -982,11 +1060,17 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
   std::vector<std::pair<MappingLoc, int>> locs_award_vec(
       locs_with_award.begin(), locs_with_award.end());
 
-  // Sorts by award (descending).
+  // Sorts by award (descending). Use stable sort/tie-breaker logic
+  // to minimize noise in mapping results.
   std::sort(
       locs_award_vec.begin(), locs_award_vec.end(),
       [](const std::pair<MappingLoc, int> &a,
-         const std::pair<MappingLoc, int> &b) { return a.second > b.second; });
+         const std::pair<MappingLoc, int> &b) {
+        if (a.second != b.second)
+          return a.second > b.second;
+        // Tie-breaker: earlier time step first.
+        return a.first.time_step < b.first.time_step;
+      });
   // TODO: Needs to handle tie case and prioritize lower resource utilization,
   // however, compiled II becomes worse after adding this tie-breaker:
   // https://github.com/coredac/dataflow/issues/59.

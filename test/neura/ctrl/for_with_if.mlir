@@ -19,6 +19,7 @@
 // RUN: --lower-llvm-to-neura \
 // RUN: --canonicalize-cast \
 // RUN: --promote-func-arg-to-const \
+// RUN: --canonicalize-return \
 // RUN: --canonicalize-live-in \
 // RUN: --leverage-predicated-value \
 // RUN: --transform-ctrl-to-data-flow \
@@ -138,6 +139,7 @@ module attributes {} {
 // CTRL2DATA-NEXT:     %45 = neura.grant_predicate %31, %36 : !neura.data<i64, i1>, !neura.data<i1, i1> -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %46 = "neura.not"(%36) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
 // CTRL2DATA-NEXT:     %47 = neura.grant_predicate %33, %46 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
+// CTRL2DATA-NEXT:     neura.return_value %47 : !neura.data<i32, i1>
 // CTRL2DATA-NEXT:     %48 = "neura.icmp"(%37, %38) <{cmpType = "sge"}> : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i1, i1>
 // CTRL2DATA-NEXT:     %49 = neura.grant_predicate %37, %48 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
 // CTRL2DATA-NEXT:     %50 = neura.grant_predicate %39, %48 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
@@ -182,5 +184,5 @@ module attributes {} {
 // CTRL2DATA-NEXT:     neura.ctrl_mov %74 -> %22 : !neura.data<i32, i1> !neura.data<i32, i1>
 // CTRL2DATA-NEXT:     neura.ctrl_mov %73 -> %20 : !neura.data<i32, i1> !neura.data<i32, i1>
 // CTRL2DATA-NEXT:     neura.ctrl_mov %72 -> %18 : !neura.data<i64, i1> !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     "neura.return"(%47) : (!neura.data<i32, i1>) -> ()
+// CTRL2DATA-NEXT:     neura.yield
 // CTRL2DATA-NEXT:   }

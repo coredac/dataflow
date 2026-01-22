@@ -2,11 +2,13 @@
 #include <fstream>
 #include <memory>
 
+#include "Common/AcceleratorAttrs.h"
 #include "NeuraDialect/Architecture/Architecture.h"
 #include "NeuraDialect/Architecture/ArchitectureSpec.h"
 #include "NeuraDialect/Mapping/HeuristicMapping/HeuristicMapping.h"
 #include "NeuraDialect/Mapping/MappingState.h"
 #include "NeuraDialect/Mapping/mapping_util.h"
+#include "NeuraDialect/NeuraAttributes.h"
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraOps.h"
 #include "NeuraDialect/NeuraPasses.h"
@@ -163,7 +165,8 @@ void parseSingleTileOverride(llvm::yaml::MappingNode *override_map,
     } else if (key_ref == kExistence) {
       std::string value;
       if (parseYamlScalarString(key_value_pair.getValue(), value)) {
-        override.existence = (value == "true" || value == "True" || value == "1");
+        override.existence =
+            (value == "true" || value == "True" || value == "1");
       }
     } else {
       llvm::errs() << "[MapToAcceleratorPass] Unknown tile_override key: "
@@ -429,13 +432,13 @@ struct MapToAcceleratorPass
       *this, "mapping-strategy",
       llvm::cl::desc("Mapping strategy to use for mapping operations to the "
                      "accelerator. Options: heuristic (default)."),
-      llvm::cl::init("heuristic")};
+      llvm::cl::init(attr::val::kHeuristic.str())};
   Option<std::string> mappingMode{
       *this, "mapping-mode",
       llvm::cl::desc(
           "Mapping mode to use for mapping operations to the "
           "accelerator. Options: spatial-only, spatial-temporal (default)."),
-      llvm::cl::init("spatial-temporal")};
+      llvm::cl::init(attr::val::kSpatialTemporal.str())};
   Option<std::string> backtrackConfig{
       *this, "backtrack-config",
       llvm::cl::desc(
@@ -443,7 +446,7 @@ struct MapToAcceleratorPass
           "accelerator. Options: simple, greedy, exhaustive, "
           "customized=max_loc,max_depth (default "
           "max_loc=5, max_depth=3)"),
-      llvm::cl::init("customized")};
+      llvm::cl::init(attr::val::kCustomized.str())};
   Option<bool> dumpMappingTable{
       *this, "dump-mapping-table",
       llvm::cl::desc(
@@ -460,10 +463,10 @@ struct MapToAcceleratorPass
                                 bool &is_spatial_only) {
     StringRef mapping_mode_str = mapping_mode_opt;
     if (mapping_mode_str.empty()) {
-      mapping_mode_str = "spatial-temporal";
+      mapping_mode_str = attr::val::kSpatialTemporal;
     }
-    if (mapping_mode_str == "spatial-only" ||
-        mapping_mode_str == "spatial-temporal") {
+    if (mapping_mode_str == attr::val::kSpatialOnly ||
+        mapping_mode_str == attr::val::kSpatialTemporal) {
       llvm::errs() << "[MapToAcceleratorPass] Using Mapping Mode: "
                    << mapping_mode_str << "\n";
     } else {
@@ -472,24 +475,25 @@ struct MapToAcceleratorPass
       return false;
     }
     resolved_mapping_mode = mapping_mode_str.str();
-    is_spatial_only = (mapping_mode_str == "spatial-only");
+    is_spatial_only = (mapping_mode_str == attr::val::kSpatialOnly);
 
     StringRef mapping_strategy_str = mapping_strategy_opt;
     if (mapping_strategy_str.empty()) {
-      mapping_strategy_str = "heuristic";
+      mapping_strategy_str = attr::val::kHeuristic;
     }
     StringRef backtrack_str = backtrack_config_opt;
-    if (mapping_strategy_str.empty() || mapping_strategy_str == "heuristic") {
+    if (mapping_strategy_str.empty() ||
+        mapping_strategy_str == attr::val::kHeuristic) {
       if (backtrack_str.empty()) {
-        backtrack_str = "heuristic";
+        backtrack_str = attr::val::kHeuristic;
       }
-      if (backtrack_str == "simple") {
+      if (backtrack_str == attr::val::kSimple) {
         mapping_strategy = std::make_unique<HeuristicMapping>(1, 1);
-      } else if (backtrack_str == "greedy") {
+      } else if (backtrack_str == attr::val::kGreedy) {
         mapping_strategy = std::make_unique<HeuristicMapping>(INT_MAX, 1);
-      } else if (backtrack_str == "exhaustive") {
+      } else if (backtrack_str == attr::val::kExhaustive) {
         mapping_strategy = std::make_unique<HeuristicMapping>(INT_MAX, INT_MAX);
-      } else if (backtrack_str == "customized") {
+      } else if (backtrack_str == attr::val::kCustomized) {
         mapping_strategy = std::make_unique<HeuristicMapping>(5, 3);
       } else if (backtrack_str.starts_with("customized=")) {
         StringRef params = backtrack_str.substr(strlen("customized="));
@@ -542,7 +546,7 @@ struct MapToAcceleratorPass
 
     // Assigns ID to each operation in topological order.
     for (Operation *op : sorted_ops) {
-      op->setAttr("dfg_id",
+      op->setAttr(attr::kDfgId,
                   IntegerAttr::get(IntegerType::get(ctx, 32), next_id));
       llvm::errs() << "[MapToAcceleratorPass] Assigned dfg_id=" << next_id
                    << " to " << *op << "\n";
@@ -634,16 +638,18 @@ struct MapToAcceleratorPass
     // assert(false);
     module.walk([&](func::FuncOp func) {
       // Skips functions not targeting the neura accelerator.
-      auto accel_attr = func->getAttrOfType<StringAttr>("accelerator");
-      if (!accel_attr || accel_attr.getValue() != "neura") {
+      auto accel_attr =
+          func->getAttrOfType<StringAttr>(accel::kAcceleratorAttr);
+      if (!accel_attr || accel_attr.getValue() != accel::kNeuraTarget) {
         return;
       }
 
       // Checks the dataflow IR mode.
       auto dataflow_mode_attr =
-          func->getAttrOfType<StringAttr>("dataflow_mode");
+          func->getAttrOfType<StringAttr>(attr::kDataflowMode);
       bool is_steering_mode =
-          (dataflow_mode_attr && dataflow_mode_attr.getValue() == "steering");
+          (dataflow_mode_attr &&
+           dataflow_mode_attr.getValue() == attr::val::kModeSteering);
 
       // If steering mode, enforce spatial-only mapping.
       if (is_steering_mode) {
@@ -714,7 +720,8 @@ struct MapToAcceleratorPass
       for (Operation *op : topologically_sorted_ops) {
         Operation *parent_op = op->getParentOp();
         // Check if parent is a fused_op by checking operation name
-        if (parent_op && parent_op->getName().getStringRef().contains("fused_op")) {
+        if (parent_op &&
+            parent_op->getName().getStringRef().contains(attr::val::kOpFused)) {
           // Skip operations inside fused_op region
           llvm::outs() << "[MapToAcceleratorPass] Skipping op inside fused_op: "
                        << *op << "\n";
@@ -724,12 +731,12 @@ struct MapToAcceleratorPass
         filtered_ops.push_back(op);
       }
       topologically_sorted_ops = std::move(filtered_ops);
-      
+
       if (skipped_count > 0) {
         llvm::errs() << "[MapToAcceleratorPass] Filtered out " << skipped_count
                      << " operations inside fused_op regions\n";
       }
-      
+
       for (Operation *op : topologically_sorted_ops) {
         llvm::outs() << "[MapToAcceleratorPass] Topologically sorted op: "
                      << *op << "\n";
@@ -745,7 +752,7 @@ struct MapToAcceleratorPass
         }
       }
       std::vector<std::pair<Operation *, int>> sorted_ops_with_alap_levels =
-          flatten_level_buckets(level_buckets);
+          flatten_level_buckets(level_buckets, critical_ops);
       for (const auto &[op, level] : sorted_ops_with_alap_levels) {
         llvm::outs() << "[MapToAcceleratorPass] ALAP sorted op: " << *op
                      << " (ALAP level: " << level << ")\n";
@@ -773,31 +780,31 @@ struct MapToAcceleratorPass
           auto ctx = func.getContext();
           SmallVector<NamedAttribute, 8> mapping_attrs;
           mapping_attrs.push_back(NamedAttribute(
-              StringAttr::get(ctx, "x_tiles"),
+              StringAttr::get(ctx, attr::kXTiles),
               IntegerAttr::get(IntegerType::get(ctx, 32),
                                architecture.getPerCgraColumns())));
           mapping_attrs.push_back(
-              NamedAttribute(StringAttr::get(ctx, "y_tiles"),
+              NamedAttribute(StringAttr::get(ctx, attr::kYTiles),
                              IntegerAttr::get(IntegerType::get(ctx, 32),
                                               architecture.getPerCgraRows())));
           mapping_attrs.push_back(
-              NamedAttribute(StringAttr::get(ctx, "mapping_strategy"),
+              NamedAttribute(StringAttr::get(ctx, attr::kMappingStrategy),
                              StringAttr::get(ctx, resolved_mapping_strategy)));
           mapping_attrs.push_back(
-              NamedAttribute(StringAttr::get(ctx, "mapping_mode"),
+              NamedAttribute(StringAttr::get(ctx, attr::kMappingMode),
                              StringAttr::get(ctx, resolved_mapping_mode)));
           mapping_attrs.push_back(
-              NamedAttribute(StringAttr::get(ctx, "compiled_ii"),
+              NamedAttribute(StringAttr::get(ctx, attr::kCompiledII),
                              IntegerAttr::get(IntegerType::get(ctx, 32), ii)));
           mapping_attrs.push_back(NamedAttribute(
-              StringAttr::get(ctx, "rec_mii"),
+              StringAttr::get(ctx, attr::kRecMII),
               IntegerAttr::get(IntegerType::get(ctx, 32), rec_mii)));
           mapping_attrs.push_back(NamedAttribute(
-              StringAttr::get(ctx, "res_mii"),
+              StringAttr::get(ctx, attr::kResMII),
               IntegerAttr::get(IntegerType::get(ctx, 32), res_mii)));
           DictionaryAttr mapping_info = DictionaryAttr::get(ctx, mapping_attrs);
 
-          func->setAttr("mapping_info", mapping_info);
+          func->setAttr(attr::kMappingInfo, mapping_info);
           break;
         }
         llvm::errs() << "[DEBUG] mapping failed for II = " << ii << "\n";

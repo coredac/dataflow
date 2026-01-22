@@ -3,6 +3,7 @@
 
 #include "NeuraDialect/Mapping/Mapping.h"
 #include "NeuraDialect/Mapping/MappingState.h"
+#include "NeuraDialect/NeuraAttributes.h"
 #include <climits>
 #include <set>
 
@@ -21,14 +22,14 @@ public:
 
   std::string getName() const override {
     if (max_location_to_try == 1 && max_backtrack_depth == 1) {
-      return "simple";
+      return attr::val::kSimple.str();
     } else if (max_location_to_try == INT_MAX && max_backtrack_depth == 1) {
-      return "greedy";
+      return attr::val::kGreedy.str();
     } else if (max_location_to_try == INT_MAX &&
                max_backtrack_depth == INT_MAX) {
-      return "exhaustive";
+      return attr::val::kExhaustive.str();
     } else {
-      return "customized";
+      return attr::val::kCustomized.str();
     }
   }
 
