@@ -18,6 +18,25 @@ using namespace mlir;
 using namespace mlir::taskflow;
 
 namespace {
+// Pattern to convert taskflow.hyperblock to neura.kernel.
+//
+// Hyperblock structure:
+//   %result = taskflow.hyperblock(%idx, %iter_init) {
+//   ^bb0(%idx_arg: index, %iter_arg: T):
+//     ... body ...
+//     taskflow.hyperblock.yield outputs(%next_iter : T)
+//   } : (index, T) -> T
+//
+// Kernel structure:
+//   %result = neura.kernel ins(%idx, %live_in...) iter_args(%iter_init) {
+//   ^bb0(%idx_arg: index, %live_in_args..., %iter_arg: T):
+//     ... body ...
+//     neura.yield iter_args(%next_iter) results(%next_iter)
+//   } -> T
+//
+// Block argument order must match:
+//   Hyperblock: [indices..., iter_args...]
+//   Kernel:     [inputs (indices + live_ins)..., iter_args...]
 struct HyperblockToKernelPattern
     : public OpRewritePattern<TaskflowHyperblockOp> {
   using OpRewritePattern<TaskflowHyperblockOp>::OpRewritePattern;
@@ -26,109 +45,115 @@ struct HyperblockToKernelPattern
                                 PatternRewriter &rewriter) const override {
     Location loc = hyperblock_op.getLoc();
 
-    // Find the parent task to get access to task's block arguments.
-    auto taskOp = hyperblock_op->getParentOfType<TaskflowTaskOp>();
-    if (!taskOp)
+    // Finds the parent task to access task's block arguments.
+    TaskflowTaskOp task_op = hyperblock_op->getParentOfType<TaskflowTaskOp>();
+    if (!task_op) {
       return failure();
+    }
 
-    // Collect live-in values: values used in hyperblock but defined outside.
-    // These are the task's block arguments that the hyperblock body uses.
-    llvm::DenseSet<Value> liveInSet;
-    SmallVector<Value> liveInValues;
+    Block &hb_block = hyperblock_op.getBody().front();
+    Block &task_block = task_op.getBody().front();
 
-    Block &hbBlock = hyperblock_op.getBody().front();
-    Block &taskBlock = taskOp.getBody().front();
+    // Gets hyperblock operands.
+    SmallVector<Value> indices(hyperblock_op.getIndices());
+    SmallVector<Value> iter_args_init(hyperblock_op.getIterArgs());
+    size_t num_indices = indices.size();
+    size_t num_iter_args_init = iter_args_init.size();
 
-    // Walk hyperblock body to find uses of task block arguments.
+    // Collects live-in values of the hyperblock: task block arguments used in
+    // the hyperblock body.
+    llvm::DenseSet<Value> live_in_set;
+    SmallVector<Value> live_in_values;
+
     hyperblock_op.walk([&](Operation *op) {
       for (Value operand : op->getOperands()) {
-        // Check if operand is a task block argument.
         if (auto blockArg = dyn_cast<BlockArgument>(operand)) {
-          if (blockArg.getOwner() == &taskBlock) {
-            if (liveInSet.insert(operand).second) {
-              liveInValues.push_back(operand);
+          if (blockArg.getOwner() == &task_block) {
+            if (live_in_set.insert(operand).second) {
+              live_in_values.push_back(operand);
             }
           }
         }
+        assert(!operand.getDefiningOp() && "Unexpected non-block-arg operand");
       }
     });
 
-    // Collect iter_args initial values.
-    SmallVector<Value> iterArgsInit(hyperblock_op.getIterArgs().begin(),
-                                    hyperblock_op.getIterArgs().end());
+    // Builds the neura.kernel inputs: [indices..., live_ins...].
+    SmallVector<Value> kernel_inputs;
+    kernel_inputs.append(indices);
+    kernel_inputs.append(live_in_values);
 
-    // Determine result types.
-    SmallVector<Type> resultTypes(hyperblock_op.getResultTypes().begin(),
-                                  hyperblock_op.getResultTypes().end());
+    // Result types from hyperblock.
+    SmallVector<Type> resultTypes(hyperblock_op.getResultTypes());
 
-    // Collect input types.
-    SmallVector<Type> inputTypes;
-    for (Value v : liveInValues) {
-      inputTypes.push_back(v.getType());
-    }
-
-    SmallVector<Type> iterArgsTypes;
-    for (Value v : iterArgsInit) {
-      iterArgsTypes.push_back(v.getType());
-    }
-
-    // Create neura.kernel.
-    auto kernelOp = rewriter.create<neura::KernelOp>(
-        loc, resultTypes, liveInValues, iterArgsInit,
+    // Creates neura.kernel.
+    neura::KernelOp kernelOp = rewriter.create<neura::KernelOp>(
+        loc, resultTypes, kernel_inputs, iter_args_init,
         /*cgra_id=*/rewriter.getI32IntegerAttr(0),
         /*kernel_name=*/rewriter.getStringAttr("kernel"),
         /*accelerator=*/rewriter.getStringAttr("neura"));
 
-    // Create entry block for kernel.
-    Region &kernelRegion = kernelOp.getBody();
-    Block *entryBlock = rewriter.createBlock(&kernelRegion);
+    // Creates the entry block for kernel.
+    Region &kernel_region = kernelOp.getBody();
+    Block *entry_block = rewriter.createBlock(&kernel_region);
 
     IRMapping mapping;
 
-    // Add block arguments for live-in values (inputs).
-    for (auto [idx, liveIn] : llvm::enumerate(liveInValues)) {
-      BlockArgument arg = entryBlock->addArgument(liveIn.getType(), loc);
-      mapping.map(liveIn, arg);
+    // Kernel block argument layout: [inputs..., iter_args...]
+    // Where inputs = [indices..., live_ins...]
+    //
+    // Hyperblock block argument layout: [indices..., iter_args...]
+
+    // 1. Adds block arguments for indices and map to hyperblock's index args.
+    for (size_t i = 0; i < num_indices; ++i) {
+      BlockArgument kernel_indices_arg =
+          entry_block->addArgument(indices[i].getType(), loc);
+      BlockArgument hb_arg = hb_block.getArgument(i);
+      mapping.map(hb_arg, kernel_indices_arg);
     }
 
-    // Add block arguments for iter_args.
-    size_t numIndices = hyperblock_op.getIndices().size();
-    for (auto [idx, iterArg] : llvm::enumerate(iterArgsInit)) {
-      BlockArgument arg = entryBlock->addArgument(iterArg.getType(), loc);
-      // Map hyperblock's iter_arg block argument to kernel's block argument.
-      mapping.map(hbBlock.getArgument(numIndices + idx), arg);
+    // 2. Adds block arguments for live-in values and map to task block args.
+    for (Value live_in : live_in_values) {
+      BlockArgument kernel_live_in_arg =
+          entry_block->addArgument(live_in.getType(), loc);
+      mapping.map(live_in, kernel_live_in_arg);
     }
 
-    // Map hyperblock's index arguments - these will be replaced by counter
-    // later. For now, create placeholder block arguments.
-    for (size_t i = 0; i < numIndices; ++i) {
-      BlockArgument hbArg = hbBlock.getArgument(i);
-      BlockArgument arg = entryBlock->addArgument(hbArg.getType(), loc);
-      mapping.map(hbArg, arg);
+    // 3. Adds block arguments for iter_args and map to hyperblock's iter_args.
+    for (size_t i = 0; i < num_iter_args_init; ++i) {
+      BlockArgument kernel_iter_arg =
+          entry_block->addArgument(iter_args_init[i].getType(), loc);
+      BlockArgument hb_arg = hb_block.getArgument(num_indices + i);
+      mapping.map(hb_arg, kernel_iter_arg);
     }
 
-    // Clone hyperblock body into kernel.
-    rewriter.setInsertionPointToEnd(entryBlock);
-    for (Operation &op : hbBlock.without_terminator()) {
+    // Clones hyperblock body into kernel.
+    rewriter.setInsertionPointToEnd(entry_block);
+    for (Operation &op : hb_block.without_terminator()) {
       rewriter.clone(op, mapping);
     }
 
-    // Convert hyperblock.yield to neura.yield.
-    auto yieldOp = cast<TaskflowHyperblockYieldOp>(hbBlock.getTerminator());
-    SmallVector<Value> iterArgsNext;
+    // Converts hyperblock.yield to neura.yield.
+    TaskflowHyperblockYieldOp hb_yield_op =
+        cast<TaskflowHyperblockYieldOp>(hb_block.getTerminator());
+
+    SmallVector<Value> iter_args_next;
     SmallVector<Value> results;
 
-    for (Value out : yieldOp.getOutputs()) {
+    // Maps yield outputs.
+    for (Value out : hb_yield_op.getResults()) {
       Value mapped = mapping.lookupOrDefault(out);
-      // For kernels with iter_args, output goes to both iter_args_next and
-      // results.
-      iterArgsNext.push_back(mapped);
       results.push_back(mapped);
     }
 
-    rewriter.create<neura::YieldOp>(loc, iterArgsNext, results);
+    for (Value iter_arg : hb_yield_op.getIterArgsNext()) {
+      Value mapped = mapping.lookupOrDefault(iter_arg);
+      iter_args_next.push_back(mapped);
+    }
 
-    // Replace hyperblock results with kernel results.
+    rewriter.create<neura::YieldOp>(loc, iter_args_next, results);
+
+    // Replaces hyperblock with kernel.
     rewriter.replaceOp(hyperblock_op, kernelOp.getResults());
 
     return success();

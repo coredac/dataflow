@@ -395,13 +395,18 @@ private:
 
     if (auto yield =
             dyn_cast<TaskflowHyperblockYieldOp>(old_body->getTerminator())) {
-      SmallVector<Value> yield_ops;
-      for (Value v : yield.getOutputs()) {
-        yield_ops.push_back(mapping.lookupOrDefault(v));
+      SmallVector<Value> yield_results;
+      SmallVector<Value> yield_iter_args_next;
+      for (Value v : yield.getResults()) {
+        yield_results.push_back(mapping.lookupOrDefault(v));
       }
-      hb_builder.create<TaskflowHyperblockYieldOp>(this->loc, yield_ops);
+      for (Value v : yield.getIterArgsNext()) {
+        yield_iter_args_next.push_back(mapping.lookupOrDefault(v));
+      }
+      hb_builder.create<TaskflowHyperblockYieldOp>(this->loc, yield_results,
+                                                   yield_iter_args_next);
     } else {
-      hb_builder.create<TaskflowHyperblockYieldOp>(this->loc, ValueRange{});
+      hb_builder.create<TaskflowHyperblockYieldOp>(this->loc);
     }
   }
 

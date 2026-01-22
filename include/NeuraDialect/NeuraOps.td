@@ -87,8 +87,8 @@ def Neura_YieldOp : Op<NeuraDialect, "yield", [Terminator, Pure, ReturnLike, Att
   ];
 
   let assemblyFormat = [{
-  ($iter_args_next^ `:` type($iter_args_next))?
-  ($results^ `:` type($results))? attr-dict}];
+  (`iter_args_next` `(` $iter_args_next^ `:` type($iter_args_next) `)` )?
+  (`results` `(` $results^ `:` type($results) `)` )? attr-dict}];
 
   let hasVerifier = 1;
 }
@@ -780,26 +780,26 @@ def Neura_LoopControlOp : Op<NeuraDialect, "loop_control">{
   //   " `(``parent_valid` `=` $parentValid `,` `start` `=` $start `,` `end` `=` $end `,` `step` `=` $step`)` attr-dict `:` type($parentValid) `,` type($start) `,` type($end) `,` type($step) `->` type($nextindex) `,` type($valid)";
 }
 
-// def Neura_CounterOp : Op<NeuraDialect, "counter", [Pure]>{
-//   let summary = "Hardware loop counter for CGRA execution.";
-//   let description = [{
-//     Represents a hardware loop counter unit that generates loop indices.
-//     This maps directly to a counter FU on the CGRA.
+def Neura_CounterOp : Op<NeuraDialect, "counter", [Pure]>{
+  let summary = "Hardware loop counter for CGRA execution.";
+  let description = [{
+    Represents a hardware loop counter unit that generates loop indices.
+    This maps directly to a counter FU on the CGRA.
 
-//     The counter produces:
-//     - current index: the current loop index value.
+    The counter produces:
+    - current index: the current loop index value.
 
-//     Example:
-//       %current_idx = neura.counter () <{
-//            start_value = 0 : i64, 
-//            end_value = 100 : i64, 
-//            step_value = 1 : i64
-//          }> : -> !neura.data<i64, i1>
-//   }];
-//   let arguments = (ins
+    Example:
+      %current_idx = neura.counter () <{
+           start_value = 0 : i64, 
+           end_value = 100 : i64, 
+           step_value = 1 : i64
+         }> : -> !neura.data<i64, i1>
+  }];
+  let arguments = (ins
     
-//   );
-// }
+  );
+}
 
 // ----------------------------------------------------
 // Defines operations for steering-control based DFG execution.
