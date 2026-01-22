@@ -1,11 +1,34 @@
 #include "NeuraDialect/NeuraOps.h"
 #include "NeuraDialect/NeuraDialect.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/OpImplementation.h"
 #include "llvm/Support/LogicalResult.h"
 
 using namespace mlir;
 using namespace mlir::neura;
+
+LogicalResult YieldOp::verify() {
+  Operation *parent_op = (*this)->getParentOp();
+
+  if (!parent_op) {
+    return emitOpError("must have a parent operation.");
+  }
+
+  // Allows yield in FusedOp and KernelOp
+  if (isa<FusedOp>(parent_op) || isa<KernelOp>(parent_op)) {
+    return success();
+  }
+
+  // Allows yield in func.func (for dataflow mode)
+  if (isa<func::FuncOp>(parent_op)) {
+    return success();
+  }
+
+  return emitOpError("expects parent op to be one of 'neura.fused_op', "
+                     "'neura.kernel', or 'func.func'");
+}
 
 LogicalResult PhiStartOp::verify() {
   // Checks if this phi_start is inside a fused_op.

@@ -1,3 +1,4 @@
+#include "Common/AcceleratorAttrs.h"
 #include "NeuraDialect/NeuraOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -113,14 +114,16 @@ struct CanonicalizeCastPass
     module_op.walk([&](Operation *op) {
       Region *region = nullptr;
       if (auto func_op = dyn_cast<func::FuncOp>(op)) {
-        auto accel_attr = func_op->getAttrOfType<StringAttr>("accelerator");
-        if (!accel_attr || accel_attr.getValue() != "neura") {
+        auto accel_attr =
+            func_op->getAttrOfType<StringAttr>(accel::kAcceleratorAttr);
+        if (!accel_attr || accel_attr.getValue() != accel::kNeuraTarget) {
           return;
         }
         region = &func_op.getBody();
       } else if (auto llvm_func = dyn_cast<LLVM::LLVMFuncOp>(op)) {
-        auto accel_attr = llvm_func->getAttrOfType<StringAttr>("accelerator");
-        if (!accel_attr || accel_attr.getValue() != "neura") {
+        auto accel_attr =
+            llvm_func->getAttrOfType<StringAttr>(accel::kAcceleratorAttr);
+        if (!accel_attr || accel_attr.getValue() != accel::kNeuraTarget) {
           return;
         }
         region = &llvm_func.getBody();

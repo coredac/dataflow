@@ -13,23 +13,25 @@
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
 // RUN:   --promote-func-arg-to-const \
+// RUN:   --canonicalize-return \
 // RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \
 // RUN:  | FileCheck %s --check-prefix=CTRL2DATA
 
-// RUN: mlir-neura-opt %t-relu.mlir\
+// RUN: mlir-neura-opt %t-relu.mlir \
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
 // RUN:   --promote-func-arg-to-const \
 // RUN:   --fold-constant \
+// RUN:   --canonicalize-return \
 // RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \
 // RUN:   --fold-constant \
 // RUN:   --insert-data-mov \
 // RUN:   --map-to-accelerator="mapping-strategy=heuristic backtrack-config=customized" \
-// RUN:  | FileCheck %s --check-prefix=MAPPING
+// RUN:   | FileCheck %s --check-prefix=MAPPING
 
 // CHECK:      func.func @_Z6kernelPiS_
 // CHECK-SAME: accelerator = "neura"
@@ -127,8 +129,10 @@
 // CTRL2DATA-NEXT:     neura.ctrl_mov %55 -> %14 : !neura.data<i64, i1> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %56 = neura.grant_predicate %46, %50 : !neura.data<i64, i1>, !neura.data<i1, i1> -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     neura.ctrl_mov %56 -> %12 : !neura.data<i64, i1> !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     "neura.return"() : () -> ()
+// CTRL2DATA-NEXT:     %57 = neura.grant_predicate %49, %49 : !neura.data<i1, i1>, !neura.data<i1, i1> -> !neura.data<i1, i1>
+// CTRL2DATA-NEXT:     neura.return_void %57 : !neura.data<i1, i1>
+// CTRL2DATA-NEXT:     neura.yield
 // CTRL2DATA-NEXT:   }
 
 
-// MAPPING: func.func @_Z6kernelPiS_(%arg0: !llvm.ptr {llvm.nocapture, llvm.noundef, llvm.readonly}, %arg1: !llvm.ptr {llvm.nocapture, llvm.noundef}) -> !llvm.void attributes {CConv = #llvm.cconv<ccc>, accelerator = "neura", dataflow_mode = "predicate", linkage = #llvm.linkage<external>, mapping_info = {compiled_ii = 5 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 5 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}, memory_effects = #llvm.memory_effects<other = none, argMem = readwrite, inaccessibleMem = none>, no_unwind, passthrough = ["mustprogress", "nofree", "norecurse", "nosync", ["uwtable", "2"], ["min-legal-vector-width", "0"], ["no-trapping-math", "true"], ["stack-protector-buffer-size", "8"], ["target-cpu", "x86-64"]], target_cpu = "x86-64", target_features = #llvm.target_features<["+cmov", "+cx8", "+fxsr", "+mmx", "+sse", "+sse2", "+x87"]>, tune_cpu = "generic", unnamed_addr = 1 : i64, visibility_ = 0 : i64} {
+// MAPPING: func.func @_Z6kernelPiS_(%arg0: !llvm.ptr {llvm.nocapture, llvm.noundef, llvm.readonly}, %arg1: !llvm.ptr {llvm.nocapture, llvm.noundef}) -> !llvm.void attributes {CConv = #llvm.cconv<ccc>, accelerator = "neura", dataflow_mode = "predicate", linkage = #llvm.linkage<external>, mapping_info = {compiled_ii = 5 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 5 : i32, res_mii = 2 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}, memory_effects = #llvm.memory_effects<other = none, argMem = readwrite, inaccessibleMem = none>, no_unwind, passthrough = ["mustprogress", "nofree", "norecurse", "nosync", ["uwtable", "2"], ["min-legal-vector-width", "0"], ["no-trapping-math", "true"], ["stack-protector-buffer-size", "8"], ["target-cpu", "x86-64"]], target_cpu = "x86-64", target_features = #llvm.target_features<["+cmov", "+cx8", "+fxsr", "+mmx", "+sse", "+sse2", "+x87"]>, tune_cpu = "generic", unnamed_addr = 1 : i64, visibility_ = 0 : i64} {

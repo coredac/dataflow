@@ -10,6 +10,7 @@ add_mlir_library(
     LeveragePredicatedValuePass.cpp
     MapToAcceleratorPass.cpp
     GenerateCodePass.cpp
+    CanonicalizeReturnPass.cpp
     CanonicalizeLiveInPass.cpp
     CanonicalizeCastPass.cpp
     PromoteFuncArgToConstPass.cpp

@@ -2,6 +2,7 @@
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
 // RUN:   --promote-func-arg-to-const \
+// RUN:   --canonicalize-return \
 // RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
 // RUN:   | FileCheck %s
@@ -10,6 +11,7 @@
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
 // RUN:   --promote-func-arg-to-const \
+// RUN:   --canonicalize-return \
 // RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \
@@ -59,7 +61,7 @@ func.func @complex_test(%in: i64) -> f32 {
 // CHECK-NEXT:     %17 = "neura.fmul"(%15, %16) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
 // CHECK-NEXT:     neura.br %17 : !neura.data<f32, i1> to ^bb4
 // CHECK-NEXT:   ^bb4(%18: !neura.data<f32, i1>):  // 2 preds: ^bb1, ^bb3
-// CHECK-NEXT:     "neura.return"(%18) : (!neura.data<f32, i1>) -> ()
+// CHECK-NEXT:     "neura.return"(%18) {return_type = "value"} : (!neura.data<f32, i1>) -> ()
 // CHECK-NEXT:   }
 
 // CTRL2DATA:      func.func @complex_test(%arg0: i64) -> f32 attributes {accelerator = "neura", dataflow_mode = "predicate"} {
@@ -99,5 +101,6 @@ func.func @complex_test(%in: i64) -> f32 {
 // CTRL2DATA-NEXT:     neura.ctrl_mov %26 -> %18 : !neura.data<f32, i1> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:     %31 = "neura.fmul"(%12, %13) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
 // CTRL2DATA-NEXT:     %32 = "neura.phi"(%29, %31) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
-// CTRL2DATA-NEXT:     "neura.return"(%32) : (!neura.data<f32, i1>) -> ()
+// CTRL2DATA-NEXT:     neura.return_value %32 : !neura.data<f32, i1>
+// CTRL2DATA-NEXT:     neura.yield
 // CTRL2DATA-NEXT:   }

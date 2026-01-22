@@ -6,4 +6,4 @@ include "NeuraOps.td"
 include "NeuraPasses.td"
 include "NeuraTypes.td"
 
-#endif // GRAPH_TD
+#endif // NEURA_TD
