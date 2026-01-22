@@ -235,6 +235,7 @@ def TaskflowHyperblockYieldOp : TaskflowOpBase<"hyperblock.yield", [
   Terminator,
   Pure,
   ReturnLike,
+  AttrSizedOperandSegments,
   ParentOneOf<["TaskflowHyperblockOp"]>
 ]>{
   let summary = "Yield operation for Taskflow hyperblock";
@@ -243,15 +244,18 @@ def TaskflowHyperblockYieldOp : TaskflowOpBase<"hyperblock.yield", [
     Terminates the hyperblock body.
   }];
 
-  let arguments = (ins Variadic<AnyType>:$outputs);
+  let arguments = (ins
+    Variadic<AnyType>:$iter_args_next,
+    Variadic<AnyType>:$results);
 
   let assemblyFormat = [{
-    (`outputs` `(` $outputs^ `:` type($outputs) `)`)?
+    (`iter_args_next` `(` $iter_args_next^ `:` type($iter_args_next) `)`)?
+    (`results` `(` $results^ `:` type($results) `)`)?
     attr-dict
   }];
 
   let builders = [
-    OpBuilder<(ins), [{build($_builder, $_state, ValueRange{});}]>
+    OpBuilder<(ins), [{build($_builder, $_state, ValueRange{}, ValueRange{});}]>
   ];
 }
 
