@@ -13,7 +13,6 @@
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraPasses.h"
 #include "NeuraDialect/Architecture/ArchitectureSpec.h"
-#include "TaskflowDialect/TaskflowDialect.h"
 
 // Global variable to store architecture spec file path
 static std::string architecture_spec_file;

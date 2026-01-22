@@ -22,6 +22,8 @@ void mlir::neura::registerNeuraConversionPassPipeline() {
         pm.addPass(mlir::neura::createAssignAcceleratorPass());
 
         pm.addPass(mlir::createLowerLlvmToNeuraPass());
+        pm.addPass(mlir::createLowerArithToNeuraPass());
+
         pm.addPass(mlir::neura::createPromoteFuncArgToConstPass());
         pm.addPass(mlir::neura::createFoldConstantPass());
         pm.addPass(mlir::neura::createCanonicalizeReturnPass());
