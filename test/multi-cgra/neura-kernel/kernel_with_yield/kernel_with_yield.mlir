@@ -1,7 +1,8 @@
 // Wraps the innermost loop within neura.kernel operation.
 // RUN: mlir-neura-opt %s \
-// RUN:  --wrap-loop-in-kernel \
-// RUN:  | FileCheck %s
+// RUN: --wrap-loop-in-kernel \
+// RUN: -o %t-wrapped.mlir
+// RUN: FileCheck %s --input-file=%t-wrapped.mlir
 
 module attributes {} {
   func.func @_Z27perfect_nested_reduction_2dPA128_i(%arg0: memref<?x128xi32>) -> i32 attributes {llvm.linkage = #llvm.linkage<external>} {
