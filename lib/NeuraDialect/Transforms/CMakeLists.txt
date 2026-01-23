@@ -13,7 +13,7 @@ add_mlir_library(
     CanonicalizeReturnPass.cpp
     CanonicalizeLiveInPass.cpp
     CanonicalizeCastPass.cpp
-    PromoteFuncArgToConstPass.cpp
+    PromoteInputArgToConstPass.cpp
     IterMergePatternPass.cpp
     TransformToSteerControlPass.cpp
     RemovePredicatedTypePass.cpp
