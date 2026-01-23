@@ -40,31 +40,31 @@ struct HardwareMergePass
   void runOnOperation() override {
     std::vector<HardwarePattern> patterns;
     std::vector<HardwareTemplate> templates;
-    OperationCostModel costModel;
+    OperationCostModel cost_model;
     
-    extractPatterns(getOperation(), patterns, costModel);
+    extract_patterns(getOperation(), patterns, cost_model);
     
-    std::set<std::string> allStandaloneOps;
-    extractAllStandaloneOps(getOperation(), allStandaloneOps);
+    std::set<std::string> all_standalone_ops;
+    extract_all_standalone_ops(getOperation(), all_standalone_ops);
     
-    createHardwareTemplates(patterns, templates, costModel);
+    create_hardware_templates(patterns, templates, cost_model);
     
-    generateOptimizedConnections(patterns, templates);
+    generate_optimized_connections(patterns, templates);
     
-    std::vector<PatternExecutionPlan> executionPlans;
-    generateExecutionPlans(patterns, templates, executionPlans);
+    std::vector<PatternExecutionPlan> execution_plans;
+    generate_execution_plans(patterns, templates, execution_plans);
     
-    std::set<std::string> allDfgOps = allStandaloneOps;
+    std::set<std::string> all_dfg_ops = all_standalone_ops;
     for (const auto& p : patterns) {
       for (const auto& op : p.ops) {
-        allDfgOps.insert(op);
+        all_dfg_ops.insert(op);
       }
     }
     
-    std::vector<TemplateSupportedOps> supportedOps;
-    collectSupportedOperations(patterns, templates, allDfgOps, supportedOps);
+    std::vector<TemplateSupportedOps> supported_ops;
+    collect_supported_operations(patterns, templates, all_dfg_ops, supported_ops);
     
-    writeHardwareConfigJson(outputFile.getValue(), patterns, templates, costModel, executionPlans, supportedOps);
+    write_hardware_config_json(outputFile.getValue(), patterns, templates, cost_model, execution_plans, supported_ops);
   }
 };
 
