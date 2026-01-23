@@ -3,7 +3,7 @@
 
 // RUN: mlir-neura-opt --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
-// RUN:   --promote-func-arg-to-const \
+// RUN:   --promote-input-arg-to-const \
 // RUN:   --canonicalize-return \
 // RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
@@ -14,7 +14,7 @@
 
 // RUN: mlir-neura-opt --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
-// RUN:   --promote-func-arg-to-const \
+// RUN:   --promote-input-arg-to-const \
 // RUN:   --canonicalize-return \
 // RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \

@@ -7,7 +7,7 @@
 // RUN: mlir-neura-opt %s \
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
-// RUN:   --promote-func-arg-to-const \
+// RUN:   --promote-input-arg-to-const \
 // RUN:   --fold-constant \
 // RUN:   --canonicalize-live-in \
 // RUN:   | FileCheck %s -check-prefix=CANONICALIZE
@@ -15,7 +15,7 @@
 // RUN: mlir-neura-opt %s \
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
-// RUN:   --promote-func-arg-to-const \
+// RUN:   --promote-input-arg-to-const \
 // RUN:   --fold-constant \
 // RUN:   --canonicalize-return \
 // RUN:   --canonicalize-live-in \
@@ -26,7 +26,7 @@
 // RUN: mlir-neura-opt %s \
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
-// RUN:   --promote-func-arg-to-const \
+// RUN:   --promote-input-arg-to-const \
 // RUN:   --fold-constant \
 // RUN:   --canonicalize-return \
 // RUN:   --canonicalize-live-in \
@@ -38,7 +38,7 @@
 // RUN: mlir-neura-opt %s \
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
-// RUN:   --promote-func-arg-to-const \
+// RUN:   --promote-input-arg-to-const \
 // RUN:   --fold-constant \
 // RUN:   --canonicalize-return \
 // RUN:   --canonicalize-live-in \
@@ -51,7 +51,7 @@
 // RUN: mlir-neura-opt %s \
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
-// RUN:   --promote-func-arg-to-const \
+// RUN:   --promote-input-arg-to-const \
 // RUN:   --fold-constant \
 // RUN:   --canonicalize-return \
 // RUN:   --canonicalize-live-in \
@@ -66,7 +66,7 @@
 // RUN: mlir-neura-opt %s \
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
-// RUN:   --promote-func-arg-to-const \
+// RUN:   --promote-input-arg-to-const \
 // RUN:   --fold-constant \
 // RUN:   --canonicalize-return \
 // RUN:   --canonicalize-live-in \

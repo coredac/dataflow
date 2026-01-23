@@ -97,12 +97,12 @@ def CanonicalizeLiveIn : Pass<"canonicalize-live-in", "ModuleOp"> {
   let constructor = "neura::createCanonicalizeLiveInPass()";
 }
 
-def PromoteFuncArgToConst : Pass<"promote-func-arg-to-const", "ModuleOp"> {
-  let summary = "Promotes function arguments to neura constant operations";
+def PromoteInputArgToConst : Pass<"promote-input-arg-to-const", "ModuleOp"> {
+  let summary = "Promotes input arguments of functions or neura.kernels to neura constant operations";
   let description = [{
-    This pass promotes function arguments to neura constant operations.
+    This pass promotes input arguments of functions or neura.kernels to neura constant operations.
   }];
-  let constructor = "neura::createPromoteFuncArgToConstPass()";
+  let constructor = "neura::createPromoteInputArgToConstPass()";
 }
 
 def CanonicalizeCast : Pass<"canonicalize-cast", "ModuleOp"> {

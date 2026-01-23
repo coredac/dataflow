@@ -4,6 +4,7 @@
 #include "NeuraDialect/NeuraPasses.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Region.h"
@@ -15,7 +16,7 @@
 
 using namespace mlir;
 
-#define GEN_PASS_DEF_PROMOTEFUNCARGTOCONST
+#define GEN_PASS_DEF_PROMOTEINPUTARGTOCONST
 #include "NeuraDialect/NeuraPasses.h.inc"
 
 namespace {
@@ -43,13 +44,58 @@ LogicalResult promoteFunctionArgsToConstants(Region &region) {
   return success();
 }
 
-struct PromoteFuncArgToConstPass
-    : public PassWrapper<PromoteFuncArgToConstPass, OperationPass<ModuleOp>> {
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PromoteFuncArgToConstPass)
+LogicalResult promoteKernelArgsToConstants(neura::KernelOp kernel_op) {
+  Region &kernel_region = kernel_op.getBody();
+  if (kernel_region.empty()) {
+    return success();
+  }
 
-  StringRef getArgument() const override { return "promote-func-arg-to-const"; }
+  Block &entry_block = kernel_region.front();
+  OpBuilder builder(&entry_block, entry_block.begin());
+
+  // Gets the number of inputs and iter_args from kernel operands.
+  size_t num_inputs = kernel_op.getInputs().size();
+  size_t num_iter_args = kernel_op.getIterArgsInit().size();
+
+  // Verifies block arguments layout: [inputs..., iter_args...]
+  SmallVector<BlockArgument> args(entry_block.getArguments().begin(),
+                                  entry_block.getArguments().end());
+
+  assert(args.size() == num_inputs + num_iter_args &&
+         "Kernel block arguments size mismatch");
+
+  // Only promotes input arguments (not iter_args).
+  // Block arguments layout: [input0, input1, ..., iter_arg0, iter_arg1, ...]
+  for (size_t i = 0; i < num_inputs; ++i) {
+    BlockArgument input_arg = args[i];
+
+    // Creates a constant for this input.
+    std::string const_name = "%input" + std::to_string(i);
+    auto const_op = builder.create<neura::ConstantOp>(
+        input_arg.getLoc(), input_arg.getType(),
+        builder.getStringAttr(const_name));
+
+    // Replaces all uses of this input argument with the constant.
+    input_arg.replaceAllUsesWith(const_op.getResult());
+  }
+
+  // Note: iter_args (args[num_inputs] to args[num_inputs + num_iter_args - 1])
+  // are NOT promoted here. They will be handled in transform-ctrl-to-data-flow
+  // pass.
+
+  return success();
+}
+
+struct PromoteInputArgToConstPass
+    : public PassWrapper<PromoteInputArgToConstPass, OperationPass<ModuleOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PromoteInputArgToConstPass)
+
+  StringRef getArgument() const override {
+    return "promote-input-arg-to-const";
+  }
   StringRef getDescription() const override {
-    return "Promotes function arguments to constants.";
+    return "Promotes input arguments of functions or neura.kernels to neura "
+           "constant operations.";
   }
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mlir::neura::NeuraDialect>();
@@ -88,12 +134,25 @@ struct PromoteFuncArgToConstPass
         return;
       }
     });
+
+    // Processes neura.kernel input arguments.
+    module_op.walk([&](neura::KernelOp kernel_op) {
+      auto accel_attr =
+          kernel_op->getAttrOfType<StringAttr>(accel::kAcceleratorAttr);
+      if (!accel_attr || accel_attr.getValue() != accel::kNeuraTarget) {
+        return;
+      }
+      if (failed(promoteKernelArgsToConstants(kernel_op))) {
+        signalPassFailure();
+        return;
+      }
+    });
   }
 };
 } // namespace
 
 namespace mlir::neura {
-std::unique_ptr<Pass> createPromoteFuncArgToConstPass() {
-  return std::make_unique<PromoteFuncArgToConstPass>();
+std::unique_ptr<Pass> createPromoteInputArgToConstPass() {
+  return std::make_unique<PromoteInputArgToConstPass>();
 }
 } // namespace mlir::neura
