@@ -83,22 +83,42 @@ struct LowerMemRefToNeuraPass
     registry.insert<mlir::neura::NeuraDialect>();
   }
 
-  void runOnOperation() override {
-    ModuleOp module_op = getOperation();
-    MLIRContext *context = &getContext();
-    RewritePatternSet patterns(&getContext());
-
+  RewritePatternSet populateMemRefToNeuraPatterns(MLIRContext *context) {
+    RewritePatternSet patterns(context);
     patterns.add<MemRefLoadLowering>(context);
     patterns.add<MemRefStoreLowering>(context);
     patterns.add<MemRefAllocaToNeuraAlloca>(context);
+    return patterns;
+  }
+
+  void runOnOperation() override {
+    ModuleOp module_op = getOperation();
+    MLIRContext *context = &getContext();
 
     module_op.walk([&](func::FuncOp func_op) {
       if (func_op->hasAttr(mlir::accel::kAcceleratorAttr)) {
         auto target =
             func_op->getAttrOfType<StringAttr>(mlir::accel::kAcceleratorAttr);
         if (target && target.getValue() == mlir::accel::kNeuraTarget) {
+          RewritePatternSet patterns = populateMemRefToNeuraPatterns(context);
           if (failed(applyPatternsGreedily(func_op, std::move(patterns)))) {
             return signalPassFailure();
+          }
+        }
+      }
+    });
+
+    module_op.walk([&](neura::KernelOp kernel_op) {
+      if (kernel_op->hasAttr(mlir::accel::kAcceleratorAttr)) {
+        auto accel_target =
+            kernel_op->getAttrOfType<StringAttr>(mlir::accel::kAcceleratorAttr);
+        if (accel_target &&
+            accel_target.getValue() == mlir::accel::kNeuraTarget) {
+          Region &kernel_region = kernel_op.getBody();
+          RewritePatternSet patterns = populateMemRefToNeuraPatterns(context);
+          if (failed(
+                  applyPatternsGreedily(kernel_region, std::move(patterns)))) {
+            signalPassFailure();
           }
         }
       }
