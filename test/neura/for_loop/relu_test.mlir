@@ -5,14 +5,14 @@
 // RUN: mlir-neura-opt %t-relu.mlir\
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
-// RUN:   --promote-func-arg-to-const \
+// RUN:   --promote-input-arg-to-const \
 // RUN:   --canonicalize-live-in \
 // RUN:  | FileCheck %s
 
 // RUN: mlir-neura-opt %t-relu.mlir\
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
-// RUN:   --promote-func-arg-to-const \
+// RUN:   --promote-input-arg-to-const \
 // RUN:   --canonicalize-return \
 // RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
@@ -22,7 +22,7 @@
 // RUN: mlir-neura-opt %t-relu.mlir \
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
-// RUN:   --promote-func-arg-to-const \
+// RUN:   --promote-input-arg-to-const \
 // RUN:   --fold-constant \
 // RUN:   --canonicalize-return \
 // RUN:   --canonicalize-live-in \
