@@ -7,6 +7,7 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace mlir;
@@ -39,50 +40,80 @@ struct LeveragePredicatedValuePass
       if (!accel_attr || accel_attr.getValue() != accel::kNeuraTarget) {
         return;
       }
-      // Converts block argument types to predicated values.
-      func.walk([&](Block *block) {
-        // skips the entry (first) block of the function.
-        if (block == &block->getParent()->front()) {
-          return;
-        }
+      if (failed(processRegion(func.getFunctionBody()))) {
+        llvm::errs() << "Failed to process function: " << func.getName()
+                     << "\n";
+        signalPassFailure();
+        return;
+      }
+    });
 
-        for (BlockArgument arg : block->getArguments()) {
-          Type orig_type = arg.getType();
+    // Processes each neura.kernel operation.
+    module.walk([&](neura::KernelOp kernel_op) {
+      auto accel_attr =
+          kernel_op->getAttrOfType<StringAttr>(accel::kAcceleratorAttr);
+      if (!accel_attr || accel_attr.getValue() != accel::kNeuraTarget) {
+        return;
+      }
 
-          // Avoid double-wrapping if already predicated
-          if (llvm::isa<neura::PredicatedValue>(orig_type)) {
-            continue;
-          }
-
-          auto predicated_type = neura::PredicatedValue::get(
-              func.getContext(), orig_type,
-              IntegerType::get(func.getContext(), 1));
-          arg.setType(predicated_type);
-        }
-      });
-
-      // Gets operations in topological order (operands before users).
-      SmallVector<Operation *> orderedOps;
-      getOperationsInTopologicalOrder(func, orderedOps);
-
-      // Processes each operation in order.
-      for (Operation *op : orderedOps) {
-        if (failed(applyPredicatedDataType(op))) {
-          llvm::errs() << "Failed to convert op to predicated form: " << *op
-                       << "\n";
-          signalPassFailure();
-          return;
-        }
+      if (failed(processRegion(kernel_op.getBody()))) {
+        llvm::errs() << "Failed to process neura.kernel operation: "
+                     << *kernel_op << "\n";
+        signalPassFailure();
+        return;
       }
     });
   }
 
 private:
+  // Processes a region (function body or kernel body).
+  LogicalResult processRegion(Region &region) {
+    if (region.empty()) {
+      return success();
+    }
+
+    for (Block &block : region) {
+      // Skips the entry (first) block of the function.
+      if (&block == &region.front()) {
+        continue;
+      }
+
+      for (BlockArgument arg : block.getArguments()) {
+        Type orig_type = arg.getType();
+
+        // Avoids double-wrapping if already predicated.
+        if (llvm::isa<neura::PredicatedValue>(orig_type)) {
+          continue;
+        }
+
+        auto predicated_type = neura::PredicatedValue::get(
+            region.getContext(), orig_type,
+            IntegerType::get(region.getContext(), 1));
+        arg.setType(predicated_type);
+      }
+    }
+
+    // Gets operations in topological order (operands before users).
+    SmallVector<Operation *> ordered_ops;
+    getOperationsInTopologicalOrder(region, ordered_ops);
+
+    // Processes each operation in order.
+    for (Operation *op : ordered_ops) {
+      if (failed(applyPredicatedDataType(op))) {
+        llvm::errs() << "Failed to convert op to predicated form: " << *op
+                     << "\n";
+        return failure();
+      }
+    }
+
+    return success();
+  }
+
   // Gets operations in topological order.
-  void getOperationsInTopologicalOrder(FunctionOpInterface func,
+  void getOperationsInTopologicalOrder(Region &region,
                                        SmallVector<Operation *> &ordered) {
     DenseSet<Operation *> visited;
-    func.walk<WalkOrder::PreOrder>([&](Operation *op) {
+    region.walk<WalkOrder::PreOrder>([&](Operation *op) {
       // Uses standard DFS to build topological order.
       if (visited.contains(op)) {
         return;
