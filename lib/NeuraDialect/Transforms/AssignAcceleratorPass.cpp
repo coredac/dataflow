@@ -1,4 +1,5 @@
 #include "Common/AcceleratorAttrs.h"
+#include "NeuraDialect/NeuraOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/Builders.h"
@@ -30,6 +31,12 @@ struct AssignAcceleratorPass
             !func->hasAttr(mlir::accel::kAcceleratorAttr)) {
           func->setAttr(mlir::accel::kAcceleratorAttr,
                         builder.getStringAttr(mlir::accel::kNeuraTarget));
+        }
+      } else if (neura::KernelOp kernel_op = dyn_cast<neura::KernelOp>(op)) {
+        // Handles neura.kernel ops as well.
+        if (!kernel_op->hasAttr(mlir::accel::kAcceleratorAttr)) {
+          kernel_op->setAttr(mlir::accel::kAcceleratorAttr,
+                             builder.getStringAttr(mlir::accel::kNeuraTarget));
         }
       }
     });
