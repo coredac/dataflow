@@ -127,6 +127,8 @@ static void processYields(neura::KernelOp kernel_op, OpBuilder &builder) {
     convertYieldsToReturns(kernel_op, builder);
 
     // No marks the returns we converted.
+    Region &kernel_region = kernel_op.getBody();
+    processReturns(kernel_region, builder);
   }
 }
 
@@ -248,6 +250,38 @@ static void processEmptyReturnVoidBlock(Block *ret_block,
   void_ret_op.erase();
 }
 
+// Processes void returns in kernel (same logic as function).
+static void processVoidReturnsInKernel(neura::KernelOp kernel_op,
+                                       OpBuilder &builder) {
+  Region &kernel_region = kernel_op.getBody();
+
+  // Collects all return operations with "void" attribute.
+  SmallVector<neura::ReturnOp> ret_void_ops;
+  kernel_region.walk([&](neura::ReturnOp ret_op) {
+    if (ret_op->hasAttr(kReturnTypeAttr)) {
+      if (dyn_cast<StringAttr>(ret_op->getAttr(kReturnTypeAttr)).getValue() ==
+          kReturnTypeVoid) {
+        ret_void_ops.push_back(ret_op);
+      }
+    }
+  });
+
+  llvm::errs() << "[canonicalize]   Found " << ret_void_ops.size()
+               << " void returns in kernel\n";
+
+  // Processes each return_void block.
+  for (neura::ReturnOp ret_void_op : ret_void_ops) {
+    Block *ret_block = ret_void_op->getBlock();
+    bool is_empty_block = (ret_block->getOperations().size() == 1);
+
+    if (is_empty_block) {
+      processEmptyReturnVoidBlock(ret_block, ret_void_op, builder);
+    } else {
+      assert(false && "Unsupported case: return block is not empty.");
+    }
+  }
+}
+
 struct CanonicalizeReturnPass
     : public PassWrapper<CanonicalizeReturnPass, OperationPass<ModuleOp>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(CanonicalizeReturnPass)
@@ -331,6 +365,13 @@ struct CanonicalizeReturnPass
 
       // Step 1: Processes yields.
       processYields(kernel_op, builder);
+
+      // Step 2: If yields are converted to returns, processes void returns.
+      bool has_counter = kernelHasCounter(kernel_op);
+      if (!has_counter) {
+        llvm::errs() << "[canonicalize] Processing void returns in kernel\n";
+        processVoidReturnsInKernel(kernel_op, builder);
+      }
     });
   }
 };

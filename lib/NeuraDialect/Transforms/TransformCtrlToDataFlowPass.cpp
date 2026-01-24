@@ -718,7 +718,7 @@ void createReserveAndPhiOps(
 // Transforms control flow into data flow.
 void transformControlFlowToDataFlow(Region &region, ControlFlowInfo &ctrl_info,
                                     DominanceInfo &dom_info, OpBuilder &builder,
-                                    bool is_kernel = false) {
+                                    bool has_task_counter = false) {
 
   // Asserts that all live-out values are dominated by block arguments.
   assertLiveOutValuesDominatedByBlockArgs(region);
@@ -809,7 +809,7 @@ void transformControlFlowToDataFlow(Region &region, ControlFlowInfo &ctrl_info,
     block->erase();
   }
 
-  if (is_kernel) {
+  if (has_task_counter) {
     return;
   }
 
@@ -851,29 +851,24 @@ void transformControlFlowToDataFlow(Region &region, ControlFlowInfo &ctrl_info,
   builder.create<neura::YieldOp>(builder.getUnknownLoc());
 
   // Sets the "dataflow_mode" attribute to "predicate" for the parent
-  // function.
-  if (auto func = dyn_cast<func::FuncOp>(region.getParentOp())) {
-    if (!func->hasAttr(neura::attr::kDataflowMode)) {
-      func->setAttr(
-          neura::attr::kDataflowMode,
-          StringAttr::get(func.getContext(), neura::attr::val::kModePredicate));
-      llvm::errs()
-          << "[ctrl2data] Set dataflow mode to predicate for function: "
-          << func.getName() << "\n";
-    } else {
-      llvm::errs() << "[ctrl2data] Function " << func.getName()
-                   << " already has dataflow_mode set to "
-                   << func->getAttrOfType<StringAttr>(
-                              neura::attr::kDataflowMode)
-                          .getValue()
-                   << "\n";
-      func->setAttr(
-          neura::attr::kDataflowMode,
-          StringAttr::get(func.getContext(), neura::attr::val::kModePredicate));
-    }
+  // function/kernel.
+  Operation *parent_op = region.getParentOp();
+  llvm::errs() << "[ctrl2data] Parent operation: " << *parent_op << "\n";
+  if (auto func = dyn_cast<func::FuncOp>(parent_op)) {
+    func->setAttr(
+        neura::attr::kDataflowMode,
+        StringAttr::get(func.getContext(), neura::attr::val::kModePredicate));
+    llvm::errs() << "[ctrl2data] Set dataflow mode to predicate for function: "
+                 << func.getName() << "\n";
+  } else if (auto kernel = dyn_cast<neura::KernelOp>(parent_op)) {
+    // Parent is a kernel.
+    kernel->setAttr(
+        neura::attr::kDataflowMode,
+        StringAttr::get(kernel.getContext(), neura::attr::val::kModePredicate));
+    llvm::errs() << "[ctrl2data] Set dataflow mode to predicate for kernel.\n";
   } else {
-    assert(false &&
-           "[ctrl2data] Warning: Parent operation is not a func::FuncOp.\n");
+    assert(false && "[ctrl2data] Warning: Parent operation is neither a "
+                    "func::FuncOp nor a neura::KernelOp.\n");
   }
 }
 
@@ -982,8 +977,8 @@ struct TransformCtrlToDataFlowPass
     // Case 2: outer task has counter, with return value
     //     - Skips grant predicate in entry block
     //     - Outer counter (root counter) gates the return
-    //     - Inserts extract_predicate from outer counter (root counter) to gate
-    //     return values
+    //     - Inserts extract_predicate from outer counter (root counter) to
+    //     gate return values
     // Case 3: outer task has no counter, with/without return value
     //     - Normal grant predicate in entry block
     //     - Normal transfrom-ctrl-to-data-flow process
@@ -1009,6 +1004,43 @@ struct TransformCtrlToDataFlowPass
 
       llvm::errs() << "[ctrl2data] Task has counter: "
                    << (has_task_counter ? "YES" : "NO") << "\n\n";
+      if (!has_task_counter) {
+        llvm::errs() << "[ctrl2data] === Kernel WITHOUT counter ===\n";
+        llvm::errs() << "[ctrl2data] Using standard function lowering flow\n\n";
+
+        // Step 1: Grant predicates in entry block
+        llvm::errs() << "[ctrl2data] STEP 1: Grant predicates\n";
+        GrantPredicateInEntryBlock(entry_block, builder, false);
+
+        // Step 2: Assert live-out values
+        llvm::errs() << "[ctrl2data] STEP 2: Assert live-out values\n";
+        assertLiveOutValuesDominatedByBlockArgs(kernel_region);
+
+        // Step 3: Build control flow info
+        llvm::errs() << "[ctrl2data] STEP 3: Build control flow info\n";
+        ControlFlowInfo ctrl_info;
+        buildControlFlowInfo(kernel_region, ctrl_info, dom_info);
+
+        // Step 4: Transform control flow to data flow
+        llvm::errs() << "[ctrl2data] STEP 4: Transform control flow\n";
+        transformControlFlowToDataFlow(kernel_region, ctrl_info, dom_info,
+                                       builder,
+                                       false); // ✅ false = use function logic
+
+        // Step 5: Convert phi to phi_start
+        llvm::errs() << "[ctrl2data] STEP 5: Convert phi to phi_start\n";
+        convertPhiToPhiStart(kernel_region, builder);
+
+        llvm::errs() << "[ctrl2data] ✅ Kernel WITHOUT counter complete\n";
+        llvm::errs()
+            << "[ctrl2data] ========================================\n\n";
+
+        // Set dataflow mode attribute
+        kernel_op->setAttr(neura::attr::kDataflowMode,
+                           StringAttr::get(kernel_op.getContext(),
+                                           neura::attr::val::kModePredicate));
+        return;
+      }
 
       SmallVector<Value> iter_arg_final_values;
 
