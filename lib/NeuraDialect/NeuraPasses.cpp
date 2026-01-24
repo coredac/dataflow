@@ -21,9 +21,11 @@ void mlir::neura::registerNeuraConversionPassPipeline() {
       [](OpPassManager &pm) {
         pm.addPass(mlir::neura::createAssignAcceleratorPass());
 
-        pm.addPass(mlir::createLowerLlvmToNeuraPass());
-        pm.addPass(mlir::createLowerArithToNeuraPass());
         pm.addPass(mlir::createLowerAffineToNeuraPass());
+        pm.addPass(mlir::createLowerArithToNeuraPass());
+        pm.addPass(mlir::createLowerMemRefToNeuraPass());
+        pm.addPass(mlir::createLowerBuiltinToNeuraPass());
+        pm.addPass(mlir::createLowerLlvmToNeuraPass());
 
         pm.addPass(mlir::neura::createPromoteFuncArgToConstPass());
         pm.addPass(mlir::neura::createFoldConstantPass());
@@ -31,6 +33,7 @@ void mlir::neura::registerNeuraConversionPassPipeline() {
         pm.addPass(mlir::neura::createCanonicalizeLiveInPass());
         pm.addPass(mlir::neura::createLeveragePredicatedValuePass());
         pm.addPass(mlir::neura::createTransformCtrlToDataFlowPass());
+
         pm.addPass(mlir::neura::createFoldConstantPass());
         pm.addPass(mlir::neura::createInsertDataMovPass());
 
