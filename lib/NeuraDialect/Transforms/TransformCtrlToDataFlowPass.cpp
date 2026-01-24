@@ -24,9 +24,67 @@ using namespace mlir;
 #define GEN_PASS_DEF_TRANSFORMCTRLTODATAFLOW
 #include "NeuraDialect/NeuraPasses.h.inc"
 
+// Attribute name to mark iter_arg init constants.
+constexpr const char *kIterArgInitAttr = "is_iter_arg_init";
+
+//---------------------------------------------------------------------------
+// Checks if task has counter (root counter).
+//---------------------------------------------------------------------------
+bool taskHasCounter(neura::KernelOp kernel_op) {
+  if (!kernel_op) {
+    return false;
+  }
+
+  bool found_counter = false;
+  kernel_op.walk([&](neura::CounterOp counter_op) {
+    if (counter_op) {
+      found_counter = true;
+      return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
+  });
+
+  return found_counter;
+}
+
+//---------------------------------------------------------------------------
+// Finds root counter in the neura.kernel operation.
+//---------------------------------------------------------------------------
+neura::CounterOp findRootCounterInKernel(neura::KernelOp kernel_op) {
+  if (!kernel_op) {
+    return nullptr;
+  }
+
+  neura::CounterOp root_counter = nullptr;
+  neura::CounterOp leaf_counter = nullptr;
+
+  // Walks throught kernel body to find counter.
+  kernel_op.walk([&](neura::CounterOp counter_op) {
+    StringRef counter_type = counter_op.getCounterType();
+
+    if (counter_type == "root") {
+      root_counter = counter_op;
+    } else if (counter_type == "leaf") {
+      leaf_counter = counter_op;
+    }
+  });
+
+  if (root_counter) {
+    return root_counter;
+  } else if (leaf_counter) {
+    return leaf_counter;
+  }
+
+  return nullptr;
+}
+
 // Inserts `grant_once` for every predicated value defined in the entry block
 // that is used outside of the block (i.e., a live-out).
-void GrantPredicateInEntryBlock(Block *entry_block, OpBuilder &builder) {
+void GrantPredicateInEntryBlock(Block *entry_block, OpBuilder &builder,
+                                bool has_task_counter = false) {
+  if (has_task_counter) {
+    return;
+  }
   SmallVector<Value> live_out_arg_values;
   SmallVector<Value> live_out_non_arg_values;
 
@@ -84,6 +142,183 @@ void GrantPredicateInEntryBlock(Block *entry_block, OpBuilder &builder) {
       }
     }
   }
+}
+
+//---------------------------------------------------------------------------
+// Iter_args handling (always grant_once for now).
+//---------------------------------------------------------------------------
+void handleKernelIterArgs(neura::KernelOp kernel_op, Block *entry_block,
+                          OpBuilder &builder,
+                          SmallVector<Value> &iter_arg_final_values) {
+  llvm::errs() << "[iter_args] Handling kernel iter_args...\n";
+
+  SmallVector<neura::ConstantOp> iter_arg_init_ops;
+  for (Operation &op : kernel_op.getOps()) {
+    if (auto const_op = dyn_cast<neura::ConstantOp>(op)) {
+      if (const_op->hasAttr(kIterArgInitAttr) &&
+          const_op->getAttrOfType<BoolAttr>(kIterArgInitAttr).getValue()) {
+        iter_arg_init_ops.push_back(const_op);
+      }
+    }
+  }
+
+  if (iter_arg_init_ops.empty()) {
+    llvm::errs() << "[iter_args]   No iter_args\n";
+    return;
+  }
+
+  neura::YieldOp yield_op = nullptr;
+  for (Operation &op : kernel_op.getOps()) {
+    if (auto yld = dyn_cast<neura::YieldOp>(op)) {
+      yield_op = yld;
+      break;
+    }
+  }
+
+  if (!yield_op || yield_op.getIterArgsNext().empty()) {
+    llvm::errs() << "[iter_args]   No iter_args_next in yield\n";
+    return;
+  }
+
+  for (size_t i = 0; i < iter_arg_init_ops.size(); ++i) {
+    neura::ConstantOp init_const = iter_arg_init_ops[i];
+    Value feedback_value = yield_op.getIterArgsNext()[i];
+
+    llvm::errs() << "[iter_args]   Processing iter_arg " << i << "\n";
+
+    // Grants once the init.
+    builder.setInsertionPointAfter(init_const);
+    neura::GrantOnceOp granted_init = builder.create<neura::GrantOnceOp>(
+        init_const.getLoc(), init_const.getType(), init_const.getResult());
+
+    // Creates reserve for feedback value.
+    builder.setInsertionPointAfter(granted_init);
+    neura::ReserveOp reserve_op = builder.create<neura::ReserveOp>(
+        init_const.getLoc(), init_const.getType());
+
+    // Creates phi for init and feedback.
+    builder.setInsertionPointAfter(reserve_op);
+    neura::PhiOp phi = builder.create<neura::PhiOp>(
+        init_const.getLoc(), init_const.getType(),
+        ValueRange{granted_init.getResult(), reserve_op.getResult()});
+
+    // Replaces uses.
+    init_const.getResult().replaceUsesWithIf(
+        phi.getResult(), [&](OpOperand &use) {
+          Operation *user = use.getOwner();
+          return user != granted_init && !isa<neura::CtrlMovOp>(user);
+        });
+
+    // Creates ctrl_mov.
+    builder.setInsertionPoint(yield_op);
+    builder.create<neura::CtrlMovOp>(yield_op.getLoc(), feedback_value,
+                                     reserve_op.getResult());
+
+    iter_arg_final_values.push_back(feedback_value);
+    llvm::errs() << "[iter_args]     Created iter_arg with grant_once\n";
+  }
+
+  llvm::errs() << "[iter_args] Iter_args complete\n\n";
+}
+
+//---------------------------------------------------------------------------
+// Handles kernel yield with counter-based gating.
+//---------------------------------------------------------------------------
+void handleKernelYieldTermination(
+    neura::KernelOp kernel_op, Block *entry_block, OpBuilder &builder,
+    bool has_task_counter, const SmallVector<Value> &iter_arg_final_values) {
+  llvm::errs() << "[yield] ========================================\n";
+  llvm::errs() << "[yield] Handling Yield Termination\n";
+  llvm::errs() << "[yield] ========================================\n";
+
+  neura::YieldOp yield_op = nullptr;
+  for (Operation &op : kernel_op.getOps()) {
+    if (auto yld = dyn_cast<neura::YieldOp>(op)) {
+      yield_op = yld;
+      break;
+    }
+  }
+
+  if (!yield_op) {
+    llvm::errs() << "[yield] No yield operation found\n";
+    return;
+  }
+
+  builder.setInsertionPoint(yield_op);
+
+  if (!yield_op->hasAttr("yield_type")) {
+    llvm::errs() << "[yield] No yield_type attribute\n";
+    yield_op.erase();
+    return;
+  }
+
+  StringRef yield_type =
+      yield_op->getAttrOfType<StringAttr>("yield_type").getValue();
+
+  //--------------------------------------------------------------------------
+  // Case 1: VALUE yield
+  //--------------------------------------------------------------------------
+  if (yield_type == "value") {
+    llvm::errs() << "[yield] Processing VALUE yield\n";
+
+    if (has_task_counter) {
+      llvm::errs()
+          << "[yield]   Has counter → Gate with NOT(counter predicate)\n";
+
+      // Finds counter in kernel that defines the predicate.
+      neura::CounterOp counter_op = findRootCounterInKernel(kernel_op);
+
+      assert(counter_op &&
+             "Kernel has outer task counter but no neura::CounterOp found.");
+
+      // Extracts predicate and negates it.
+      Value counter_value = counter_op.getCurrentIndex();
+
+      auto pred_type = builder.getType<neura::PredicatedValue>(
+          builder.getI1Type(), builder.getI1Type());
+
+      auto extract_pred = builder.create<neura::ExtractPredicateOp>(
+          counter_op.getLoc(), pred_type, counter_value);
+
+      Value counter_pred = extract_pred.getPredicate();
+
+      // When the counter predicate is false, we want to trigger the return.
+      auto not_op = builder.create<neura::NotOp>(
+          counter_op.getLoc(), counter_pred.getType(), counter_pred);
+
+      Value return_gate = not_op.getResult();
+
+      llvm::errs() << "[yield]     Extracted counter predicate\n";
+      llvm::errs() << "[yield]     Created NOT gate for return\n";
+
+      // Gates all results with NOT (counter predicate).
+      SmallVector<Value> gated_results;
+      for (Value result : yield_op.getResults()) {
+        auto gated = builder.create<neura::GrantPredicateOp>(
+            yield_op.getLoc(), result.getType(), result, return_gate);
+        gated_results.push_back(gated.getResult());
+
+        llvm::errs() << "[yield]     Gated result with NOT(counter_pred)\n";
+      }
+
+      auto return_val = builder.create<neura::ReturnValueOp>(yield_op.getLoc(),
+                                                             gated_results);
+      llvm::errs() << "[yield]   Created return_value with counter gating\n";
+      builder.setInsertionPointAfter(return_val);
+      builder.create<neura::YieldOp>(builder.getUnknownLoc());
+
+    } else {
+      llvm::errs() << "[yield]   No counter, handled as normal case.\n";
+    }
+    yield_op.erase();
+  }
+  //--------------------------------------------------------------------------
+  // Case 2: VOID yield
+  //--------------------------------------------------------------------------
+  else if (yield_type == "void") {
+    llvm::errs() << "[yield] Processing VOID yield\n";
+  }
+  llvm::errs() << "[yield] ========================================\n\n";
 }
 
 // Control flow struct.
@@ -264,6 +499,8 @@ void buildControlFlowInfo(Region &region, ControlFlowInfo &ctrl_info,
 
     } else if (auto rt = dyn_cast<neura::ReturnOp>(terminator)) {
       llvm::errs() << "[ctrl2data] ReturnOp found: " << *rt << "\n";
+    } else if (auto yield = dyn_cast<neura::YieldOp>(terminator)) {
+      llvm::errs() << "[ctrl2data] YieldOp found: " << *yield << "\n";
     } else {
       assert(false && "Unknown terminator operation in control flow graph.");
     }
@@ -480,8 +717,8 @@ void createReserveAndPhiOps(
 
 // Transforms control flow into data flow.
 void transformControlFlowToDataFlow(Region &region, ControlFlowInfo &ctrl_info,
-                                    DominanceInfo &dom_info,
-                                    OpBuilder &builder) {
+                                    DominanceInfo &dom_info, OpBuilder &builder,
+                                    bool is_kernel = false) {
 
   // Asserts that all live-out values are dominated by block arguments.
   assertLiveOutValuesDominatedByBlockArgs(region);
@@ -570,6 +807,10 @@ void transformControlFlowToDataFlow(Region &region, ControlFlowInfo &ctrl_info,
   // Erases now-empty blocks.
   for (Block *block : blocks_to_flatten) {
     block->erase();
+  }
+
+  if (is_kernel) {
+    return;
   }
 
   // Converts neura.return to return_void or return_value.
@@ -710,30 +951,103 @@ struct TransformCtrlToDataFlowPass
 
   void runOnOperation() override {
     ModuleOp module = getOperation();
-    module.walk([&](Operation *op) {
-      Region *region = nullptr;
-      DominanceInfo domInfo;
-      OpBuilder builder(op->getContext());
 
-      if (auto func = dyn_cast<func::FuncOp>(op)) {
-        auto accel_attr =
-            func->getAttrOfType<StringAttr>(accel::kAcceleratorAttr);
-        if (!accel_attr || accel_attr.getValue() != accel::kNeuraTarget) {
-          return;
-        }
-        region = &func.getBody();
-        domInfo = DominanceInfo(func);
-        GrantPredicateInEntryBlock(&region->front(), builder);
-        assertLiveOutValuesDominatedByBlockArgs(*region);
-      } else {
+    // Step 1: Processes each function with neura target in the module.
+    module.walk([&](func::FuncOp func_op) {
+      auto accel_attr =
+          func_op->getAttrOfType<StringAttr>(accel::kAcceleratorAttr);
+      if (!accel_attr || accel_attr.getValue() != accel::kNeuraTarget) {
         return;
       }
-      ControlFlowInfo ctrlInfo;
-      buildControlFlowInfo(*region, ctrlInfo, domInfo);
-      transformControlFlowToDataFlow(*region, ctrlInfo, domInfo, builder);
+
+      Region &region = func_op.getBody();
+      DominanceInfo dom_info(func_op);
+      OpBuilder builder(func_op.getContext());
+      GrantPredicateInEntryBlock(&region.front(), builder);
+      assertLiveOutValuesDominatedByBlockArgs(region);
+
+      ControlFlowInfo ctrl_info;
+      buildControlFlowInfo(region, ctrl_info, dom_info);
+      transformControlFlowToDataFlow(region, ctrl_info, dom_info, builder);
 
       // Converts phi operations to phi_start operations.
-      convertPhiToPhiStart(*region, builder);
+      convertPhiToPhiStart(region, builder);
+    });
+
+    // Step 2: Processes neura.kernel operation.
+    // For neura.kernel operations, we need to handle three cases:
+    // Case 1: outer task has counter, no return value
+    //     - Skips grant predicate in entry block
+    //     - Outer counter (root counter) gates the return
+    // Case 2: outer task has counter, with return value
+    //     - Skips grant predicate in entry block
+    //     - Outer counter (root counter) gates the return
+    //     - Inserts extract_predicate from outer counter (root counter) to gate
+    //     return values
+    // Case 3: outer task has no counter, with/without return value
+    //     - Normal grant predicate in entry block
+    //     - Normal transfrom-ctrl-to-data-flow process
+    module.walk([&](neura::KernelOp kernel_op) {
+      auto accel_attr =
+          kernel_op->getAttrOfType<StringAttr>(accel::kAcceleratorAttr);
+      if (!accel_attr || accel_attr.getValue() != accel::kNeuraTarget) {
+        return;
+      }
+
+      llvm::errs()
+          << "\n[ctrl2data] ========================================\n";
+      llvm::errs() << "[ctrl2data] Processing KERNEL\n";
+      llvm::errs() << "[ctrl2data] ========================================\n";
+
+      Region &kernel_region = kernel_op.getBody();
+      Block *entry_block = &kernel_region.front();
+      OpBuilder builder(kernel_op.getContext());
+      DominanceInfo dom_info(kernel_op);
+
+      // STEP 0: Checks if the kernel has root counter.
+      bool has_task_counter = taskHasCounter(kernel_op);
+
+      llvm::errs() << "[ctrl2data] Task has counter: "
+                   << (has_task_counter ? "YES" : "NO") << "\n\n";
+
+      SmallVector<Value> iter_arg_final_values;
+
+      // STEP 1: Handles iter_args of the neura.kernel.
+      llvm::errs() << "[ctrl2data] === STEP 1: Handle iter_args ===\n";
+      handleKernelIterArgs(kernel_op, entry_block, builder,
+                           iter_arg_final_values);
+
+      // STEP 2: Grants predicates (only if NO task counter).
+      llvm::errs() << "[ctrl2data] === STEP 2: Grant predicates ===\n";
+      GrantPredicateInEntryBlock(entry_block, builder, has_task_counter);
+
+      // STEP 3: Transforms control flow (if multi-block).
+      if (kernel_region.getBlocks().size() > 1) {
+        llvm::errs() << "[ctrl2data] === STEP 3: Transform control flow ===\n";
+        assertLiveOutValuesDominatedByBlockArgs(kernel_region);
+        ControlFlowInfo ctrl_info;
+        buildControlFlowInfo(kernel_region, ctrl_info, dom_info);
+        transformControlFlowToDataFlow(kernel_region, ctrl_info, dom_info,
+                                       builder, true);
+      } else {
+        llvm::errs() << "[ctrl2data] === STEP 3: Single block (skip) ===\n";
+      }
+      convertPhiToPhiStart(kernel_region, builder);
+
+      // STEP 4: Handles yield termination in neura.kernel.
+      llvm::errs() << "[ctrl2data] === STEP 4: Handle yield ===\n";
+      handleKernelYieldTermination(kernel_op, entry_block, builder,
+                                   has_task_counter, iter_arg_final_values);
+
+      kernel_op->setAttr(neura::attr::kDataflowMode,
+                         StringAttr::get(kernel_op.getContext(),
+                                         neura::attr::val::kModePredicate));
+
+      llvm::errs() << "[ctrl2data] ========================================\n";
+      llvm::errs() << "[ctrl2data] ✅ KERNEL Complete\n";
+      llvm::errs()
+          << "[ctrl2data] ========================================\n\n";
+      llvm::errs() << "transformed kernel op:\n" << kernel_op << "\n";
     });
   }
 };

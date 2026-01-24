@@ -21,7 +21,8 @@
 // RUN:   --canonicalize-live-in \
 // RUN:   --leverage-predicated-value \
 // RUN:   --transform-ctrl-to-data-flow \
-// RUN:   | FileCheck %s -check-prefix=CTRL2DATA
+// RUN:   -o %t-transformed.mlir
+// RU:   | FileCheck %s -check-prefix=CTRL2DATA
 
 // RUN: mlir-neura-opt %s \
 // RUN:   --assign-accelerator \

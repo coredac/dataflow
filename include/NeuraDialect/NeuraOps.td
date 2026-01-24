@@ -780,6 +780,7 @@ def Neura_LoopControlOp : Op<NeuraDialect, "loop_control">{
   //   " `(``parent_valid` `=` $parentValid `,` `start` `=` $start `,` `end` `=` $end `,` `step` `=` $step`)` attr-dict `:` type($parentValid) `,` type($start) `,` type($end) `,` type($step) `->` type($nextindex) `,` type($valid)";
 }
 
+// Defines an operation for hardware loop counters.
 def Neura_CounterOp : Op<NeuraDialect, "counter", [Pure]>{
   let summary = "Hardware loop counter for CGRA execution.";
   let description = [{
@@ -807,6 +808,26 @@ def Neura_CounterOp : Op<NeuraDialect, "counter", [Pure]>{
 
   let results = (outs AnyType:$current_index);
   let assemblyFormat = "attr-dict `:` type($current_index)";
+}
+
+// Defines an operation to extract the predicate bit from a predicated value.
+def Neura_ExtractPredicateOp : Op<NeuraDialect, "extract_predicate">{
+  let summary = "Extracts the predicate bit from a predicated value.";
+  let description = [{
+    Extracts the predicate bit from a predicated value,
+    producing a boolean predicated value: !neura.predicated<i1, i1>.
+
+    Example:
+      %counter = neura.counter {bound = 16} : !neura.predicated<index, i1>
+      %is_valid = neura.extract_predicate %counter : !neura.predicated<index, i1> -> !neura.predicated<i1, i1>
+      
+      // Use for gating final results:
+      %gated = neura.grant_predicate %result, %is_valid
+  }];
+
+  let arguments = (ins AnyType:$input);
+  let results = (outs AnyType:$predicate);
+  let assemblyFormat = "$input attr-dict `:` type($input) `->` type($predicate)";
 }
 
 // ----------------------------------------------------

@@ -39,6 +39,16 @@ static bool isVoidFunction(func::FuncOp func_op) {
   return false;
 }
 
+// Checks if kernel has any counter.
+static bool kernelHasCounter(neura::KernelOp kernel_op) {
+  bool has_counter = false;
+  kernel_op.walk([&](neura::CounterOp counter_op) {
+    has_counter = true;
+    return WalkResult::interrupt();
+  });
+  return has_counter;
+}
+
 // Marks empty returns with "is_void" attribute and adds trigger values.
 static void processReturns(Region &region, OpBuilder &builder) {
   SmallVector<neura::ReturnOp> empty_returns;
@@ -59,195 +69,65 @@ static void processReturns(Region &region, OpBuilder &builder) {
   }
 }
 
-// Processes neura.yield operations in kernel regions.
-static void processYields(neura::KernelOp kernel_op, OpBuilder &builder) {
-  SmallVector<neura::YieldOp> empty_yields;
+// Converts yields to returns (for kernels without counters).
+static void convertYieldsToReturns(neura::KernelOp kernel_op,
+                                   OpBuilder &builder) {
+  SmallVector<neura::YieldOp> yields_to_convert;
 
-  kernel_op.walk([&](neura::YieldOp yield_op) {
-    llvm::errs() << "[canonicalize] Processing neura.yield operation...\n";
-    llvm::errs() << yield_op << "\n";
+  // Collects all yields in kernel.
+  kernel_op.walk(
+      [&](neura::YieldOp yield_op) { yields_to_convert.push_back(yield_op); });
 
-    // Case 1: yield has results - mark as value type.
+  for (neura::YieldOp yield_op : yields_to_convert) {
+    llvm::errs() << "[canonicalize]   Converting yield to return: " << yield_op
+                 << "\n";
+
+    builder.setInsertionPoint(yield_op);
+
     if (yield_op.getResults().size() > 0) {
-      llvm::errs() << "[canonicalize] Marking neura.yield with value...\n";
-      yield_op->setAttr(kYieldTypeAttr,
-                        builder.getStringAttr(kReturnTypeValue));
-      return;
-    }
-
-    // Case 2 & 3: yield has no results.
-    empty_yields.push_back(yield_op);
-  });
-
-  // Processes empty yields.
-  for (neura::YieldOp yield_op : empty_yields) {
-    llvm::errs() << "[canonicalize] Processing empty neura.yield...\n";
-
-    // Searches for counters in the kernel.
-    neura::CounterOp root_counter = nullptr;
-    neura::CounterOp any_counter = nullptr;
-
-    kernel_op.walk([&](neura::CounterOp counter_op) {
-      any_counter = counter_op;
-
-      if (counter_op.getCounterTypeAttr() &&
-          counter_op.getCounterTypeAttr().getValue() == "root") {
-        root_counter = counter_op;
-      }
-    });
-
-    // Case 2: Has counter - uses counter as trigger.
-    if (root_counter || any_counter) {
-      Value trigger_value = root_counter ? root_counter.getCurrentIndex()
-                                         : any_counter.getCurrentIndex();
-
-      llvm::errs() << "[canonicalize] Using "
-                   << (root_counter ? "root" : "leaf")
-                   << " counter as trigger.\n";
-
-      // Creates new yield with trigger value as result.
-      builder.setInsertionPoint(yield_op);
-
-      SmallVector<Value> iter_args_next(yield_op.getIterArgsNext());
-      SmallVector<Value> results = {trigger_value};
-
-      auto new_yield = builder.create<neura::YieldOp>(yield_op.getLoc(),
-                                                      iter_args_next, results);
-      new_yield->setAttr(kYieldTypeAttr,
-                         builder.getStringAttr(kReturnTypeVoid));
-
-      yield_op.erase();
+      // Yield with results → return with values
+      llvm::errs() << "[canonicalize]     Yield has results\n";
+      builder.create<neura::ReturnOp>(yield_op.getLoc(), yield_op.getResults());
     } else {
-      // Case 3: No counter - mark for void processing (similar to return).
-      llvm::errs()
-          << "[canonicalize] No counter found, marking as void yield\n";
-      yield_op->setAttr(kYieldTypeAttr, builder.getStringAttr(kReturnTypeVoid));
+      // Yield without results → return without operands (empty return)
+      llvm::errs() << "[canonicalize]     Yield is void\n";
+      builder.create<neura::ReturnOp>(yield_op.getLoc(), ValueRange{});
     }
+
+    yield_op.erase();
   }
 }
 
-// Processes empty yield void blocks (similar to processEmptyReturnVoidBlock).
-static void processEmptyYieldVoidBlock(Block *yield_block,
-                                       neura::YieldOp void_yield_op,
-                                       OpBuilder &builder) {
-  SmallVector<Block *> predecessor_blocks(yield_block->getPredecessors());
+// Processes neura.yield operations in kernel regions.
+static void processYields(neura::KernelOp kernel_op, OpBuilder &builder) {
+  // Checks if kernel has counter.
+  bool has_counter = kernelHasCounter(kernel_op);
 
-  // Entry block with yield_void is unreachable; no action needed.
-  if (predecessor_blocks.empty()) {
+  if (has_counter) {
+    // Case 1: kernel has counter -> keep yields, just marks them.
+    kernel_op.walk([&](neura::YieldOp yield_op) {
+      llvm::errs() << "[canonicalize] Processing neura.yield operation...\n";
+      llvm::errs() << yield_op << "\n";
+
+      // yield has results - mark as value type.
+      if (yield_op.getResults().size() > 0) {
+        llvm::errs() << "[canonicalize] Marking neura.yield with value...\n";
+        yield_op->setAttr(kYieldTypeAttr,
+                          builder.getStringAttr(kReturnTypeValue));
+        return;
+      }
+
+      // yield has NO results, marks as "void" type.
+      yield_op->setAttr(kYieldTypeAttr, builder.getStringAttr(kReturnTypeVoid));
+    });
+  } else {
+    // Case 2: kernel has NO counter -> converts yields to direct returns.
     llvm::errs()
-        << "[canonicalize] Entry block with void yield is unreachable\n";
-    return;
+        << "[canonicalize]    No counter -> converting yields to returns\n";
+    convertYieldsToReturns(kernel_op, builder);
+
+    // No marks the returns we converted.
   }
-
-  // Separates predecessor blocks into cond_br and br blocks.
-  SmallVector<Block *> cond_br_preds;
-  SmallVector<Block *> br_preds;
-
-  for (Block *pred_block : predecessor_blocks) {
-    Operation *terminator = pred_block->getTerminator();
-    if (isa<neura::CondBr>(terminator)) {
-      cond_br_preds.push_back(pred_block);
-    } else if (isa<neura::Br>(terminator)) {
-      br_preds.push_back(pred_block);
-    }
-  }
-
-  // Handles br_preds: copy yield_void to pred_block with a trigger value.
-  for (Block *pred_block : br_preds) {
-    neura::Br br = cast<neura::Br>(pred_block->getTerminator());
-
-    // Finds a suitable trigger value in the predecessor block.
-    Value trigger_value = nullptr;
-
-    for (Operation &op : llvm::reverse(*pred_block)) {
-      if (&op == br) {
-        continue;
-      }
-
-      if (op.getNumResults() > 0) {
-        trigger_value = op.getResult(0);
-        break;
-      }
-    }
-
-    if (!trigger_value) {
-      llvm::errs() << "[canonicalize] Error: No suitable value found in "
-                      "predecessor block\n";
-      return;
-    }
-
-    builder.setInsertionPoint(br);
-
-    SmallVector<Value> iter_args_next(void_yield_op.getIterArgsNext());
-    SmallVector<Value> results = {trigger_value};
-
-    auto new_yield =
-        builder.create<neura::YieldOp>(br.getLoc(), iter_args_next, results);
-    new_yield->setAttr(kYieldTypeAttr, builder.getStringAttr(kReturnTypeVoid));
-    br.erase();
-  }
-
-  // If there are no cond_br predecessors, remove the yield_void block.
-  if (cond_br_preds.empty()) {
-    void_yield_op.erase();
-    yield_block->erase();
-    return;
-  }
-
-  // Handles cond_preds: add a block argument for the trigger value.
-  BlockArgument trigger_arg =
-      yield_block->addArgument(builder.getI1Type(), void_yield_op.getLoc());
-
-  // Updates each cond_pred block's terminator to pass the trigger value.
-  for (Block *pred_block : cond_br_preds) {
-    neura::CondBr cond_br = cast<neura::CondBr>(pred_block->getTerminator());
-    Value cond = cond_br.getCondition();
-    Value trigger_value = nullptr;
-
-    bool is_true_branch = (cond_br.getTrueDest() == yield_block);
-    bool is_false_branch = (cond_br.getFalseDest() == yield_block);
-
-    if (is_true_branch && !is_false_branch) {
-      trigger_value = cond;
-    } else if (!is_true_branch && is_false_branch) {
-      builder.setInsertionPoint(cond_br);
-      Value negated_cond =
-          builder.create<neura::NotOp>(cond_br.getLoc(), cond.getType(), cond);
-      trigger_value = negated_cond;
-    } else {
-      llvm::errs() << "[canonicalize] Error: Both branches lead to yield\n";
-      return;
-    }
-
-    if (trigger_value) {
-      SmallVector<Value> true_args(cond_br.getTrueArgs());
-      SmallVector<Value> false_args(cond_br.getFalseArgs());
-
-      if (is_true_branch) {
-        true_args.push_back(trigger_value);
-      }
-      if (is_false_branch) {
-        false_args.push_back(trigger_value);
-      }
-
-      builder.setInsertionPoint(cond_br);
-      builder.create<neura::CondBr>(
-          cond_br.getLoc(), cond_br.getCondition(), true_args, false_args,
-          cond_br.getTrueDest(), cond_br.getFalseDest());
-      cond_br.erase();
-    }
-  }
-
-  // Updates the yield_void operation to use the block argument as trigger.
-  builder.setInsertionPoint(void_yield_op);
-
-  SmallVector<Value> iter_args_next(void_yield_op.getIterArgsNext());
-  SmallVector<Value> results = {trigger_arg};
-
-  auto new_yield = builder.create<neura::YieldOp>(void_yield_op.getLoc(),
-                                                  iter_args_next, results);
-  new_yield->setAttr(kYieldTypeAttr, builder.getStringAttr(kReturnTypeVoid));
-  void_yield_op.erase();
 }
 
 static void processEmptyReturnVoidBlock(Block *ret_block,
@@ -439,6 +319,9 @@ struct CanonicalizeReturnPass
     });
 
     // Processes all neura.kernel operations.
+    // There are two cases to handle:
+    // 1) kernel with counters - the return process is triggered by the counter.
+    // 2) kernel without counters - same logic as function return.
     module_op.walk([&](neura::KernelOp kernel_op) {
       auto accel_attr =
           kernel_op->getAttrOfType<StringAttr>(accel::kAcceleratorAttr);
@@ -446,32 +329,8 @@ struct CanonicalizeReturnPass
         return;
       }
 
-      // Step 1: Processes yields (handles cases 1 & 2)
+      // Step 1: Processes yields.
       processYields(kernel_op, builder);
-
-      // Step 2: Collects void yields without trigger values (case 3).
-      SmallVector<neura::YieldOp> yield_void_ops;
-      kernel_op.walk([&](neura::YieldOp yield_op) {
-        if (yield_op->hasAttr(kYieldTypeAttr)) {
-          if (dyn_cast<StringAttr>(yield_op->getAttr(kYieldTypeAttr))
-                      .getValue() == kReturnTypeVoid &&
-              yield_op.getResults().size() == 0) {
-            yield_void_ops.push_back(yield_op);
-          }
-        }
-      });
-
-      // Step 3: Processes each yield_void block (case 3)
-      for (neura::YieldOp yield_void_op : yield_void_ops) {
-        Block *yield_block = yield_void_op->getBlock();
-        bool is_empty_block = (yield_block->getOperations().size() == 1);
-
-        if (is_empty_block) {
-          processEmptyYieldVoidBlock(yield_block, yield_void_op, builder);
-        } else {
-          assert(false && "Unsupported case: yield block is not empty.");
-        }
-      }
     });
   }
 };
