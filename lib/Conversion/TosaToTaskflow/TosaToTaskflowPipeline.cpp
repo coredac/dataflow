@@ -28,6 +28,12 @@ using namespace mlir;
 
 namespace {
 void buildTosaToAffinePipeline(OpPassManager &pm) {
+  // 0. TOSA Optimizations
+  // These passes must run on func::FuncOp
+  pm.addNestedPass<func::FuncOp>(tosa::createTosaInferShapesPass());
+  pm.addNestedPass<func::FuncOp>(tosa::createTosaMakeBroadcastablePass());
+  pm.addNestedPass<func::FuncOp>(tosa::createTosaLayerwiseConstantFoldPass());
+
   // 1. TOSA to Linalg/Arith/Tensor
   pm.addNestedPass<func::FuncOp>(tosa::createTosaToLinalgNamed());
   pm.addNestedPass<func::FuncOp>(tosa::createTosaToLinalg());
