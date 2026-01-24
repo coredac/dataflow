@@ -2,6 +2,8 @@ import subprocess
 import os
 import sys
 
+# RUN: %python %s
+
 # Define the TOSA input with embedded FileCheck comments
 tosa_mlir = """// RUN: mlir-neura-opt %s --pass-pipeline='builtin.module(func.func(tosa-infer-shapes,tosa-make-broadcastable,tosa-to-linalg-named,tosa-to-linalg,tosa-to-arith,tosa-to-tensor,linalg-elementwise-fusion),one-shot-bufferize{bufferize-function-boundaries=1},func.func(convert-linalg-to-affine-loops,convert-affine-to-taskflow))' | FileCheck %s
 
@@ -44,36 +46,32 @@ def run_test():
     )
     
     try:
-        # Assuming run from 'build' dir usually, but let's be robust
-        cwd = os.getcwd()
-        if not cwd.endswith("build"):
-             # If running from root, try to use build tools
-             if os.path.exists("build/tools/mlir-neura-opt/mlir-neura-opt"):
-                 build_dir = "build"
-             else:
-                 # Fallback/Guess
-                 build_dir = "." 
-        else:
-             build_dir = "."
-
-        # Override for this specific environment structure mentioned in previous steps
-        # The user's cwd seems to be project root. Tools are in ./build/tools/... or similar.
-        # But previous successful runs used cwd=build_dir.
-        # Let's hardcode the expectation that we run this script from project root,
-        # and we invoke tools in 'build'.
+        # Robustly locate build directory relative to this script
+        # Script is in <root>/test/e2e/tosa_e2e.py
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(os.path.dirname(script_dir))
+        build_dir = os.path.join(project_root, "build")
         
-        build_dir = os.path.join(os.getcwd(), "build")
+        neura_opt = os.path.join(build_dir, "tools/mlir-neura-opt/mlir-neura-opt")
+        filecheck = "/home/x/shiran/llvm-project/build/bin/FileCheck" # Hardcoded env path as per previous usage
         
-        # Command must reference the temp file properly.
-        # Since we write test_file in CWD (root), and switch to build_dir, check path.
-        test_file_path = os.path.join(os.getcwd(), test_file)
+        # Check if tools exist
+        if not os.path.exists(neura_opt):
+            # Fallback if running in a different environment
+            neura_opt = "mlir-neura-opt" # Try PATH
+            
+        test_file_path = os.path.join(script_dir, test_file)
         
-        cmd = f"./tools/mlir-neura-opt/mlir-neura-opt --pass-pipeline={pipeline} {test_file_path} | {filecheck} {test_file_path}"
+        # Write test file to script dir
+        with open(test_file_path, "w") as f:
+            f.write(tosa_mlir)
+            
+        cmd = f"{neura_opt} --pass-pipeline={pipeline} {test_file_path} | {filecheck} {test_file_path}"
         
-        print(f"Executing in {build_dir}:")
-        print(cmd)
+        # print(f"Executing: {cmd}")
         
-        result = subprocess.run(cmd, shell=True, cwd=build_dir, capture_output=True, text=True)
+        # Run without changing CWD, using absolute paths
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
         
         if result.returncode != 0:
             print("Test FAILED")
@@ -82,11 +80,10 @@ def run_test():
             sys.exit(1)
         else:
             print("Test PASSED")
-            # print(result.stdout) # FileCheck output is usually empty on success (silent) or confusing.
             
     finally:
-        if os.path.exists(test_file):
-            os.remove(test_file)
+        if 'test_file_path' in locals() and os.path.exists(test_file_path):
+            os.remove(test_file_path)
 
 if __name__ == "__main__":
     run_test()
