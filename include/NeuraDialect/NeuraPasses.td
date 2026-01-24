@@ -166,7 +166,6 @@ def InitPattern : Pass<"init-pattern", "ModuleOp"> {
   }];
   let constructor = "neura::createInitPatternPass()";
 }
-
 def WrapLoopInKernelPass : Pass<"wrap-loop-in-kernel", "func::FuncOp">{
   let summary = "Wrap loops in neura.kernel operations";
   let description = [{
