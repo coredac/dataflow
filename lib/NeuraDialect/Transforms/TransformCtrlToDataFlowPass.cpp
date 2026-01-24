@@ -215,6 +215,8 @@ void handleKernelIterArgs(neura::KernelOp kernel_op, Block *entry_block,
                                      reserve_op.getResult());
 
     iter_arg_final_values.push_back(feedback_value);
+
+    init_const->removeAttr(kIterArgInitAttr);
     llvm::errs() << "[iter_args]     Created iter_arg with grant_once\n";
   }
 
