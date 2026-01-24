@@ -75,6 +75,7 @@
 // RUN: --leverage-predicated-value \
 // RUN: --transform-ctrl-to-data-flow \
 // RUN: --fold-constant \
+// RUN: --insert-data-mov \
 // RUN: --map-to-accelerator="mapping-strategy=heuristic" \
 // RUN: --architecture-spec=%S/../../../arch_spec/architecture.yaml \
 // RUN: -o %t.mapped.mlir
@@ -184,15 +185,19 @@ module attributes {} {
 // DATAFLOW-NEXT:       %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 32 : index} : index
 // DATAFLOW-NEXT:       %1 = neura.kernel inputs(%arg3, %arg4 : memref<?xi32>, memref<?xi32>) iter_args_init(%arg5 : i32) attributes {accelerator = "neura", dataflow_mode = "predicate"} {
 // DATAFLOW-NEXT:       ^bb0(%arg6: memref<?xi32>, %arg7: memref<?xi32>, %arg8: i32):
-// DATAFLOW-NEXT:         %2 = neura.counter {counter_id = 0 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 32 : index} : !neura.data<index, i1>
-// DATAFLOW-NEXT:         %3 = neura.load_indexed [%2 : !neura.data<index, i1>]  {lhs_value = "%input0"} : !neura.data<i32, i1>
-// DATAFLOW-NEXT:         %4 = neura.load_indexed [%2 : !neura.data<index, i1>]  {lhs_value = "%input1"} : !neura.data<i32, i1>
-// DATAFLOW-NEXT:         %5 = "neura.mul"(%3, %4) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
-// DATAFLOW-NEXT:         %6 = "neura.add"(%5) {lhs_value = "%iter_arg_init0"} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
-// DATAFLOW-NEXT:         %7 = neura.extract_predicate %2 : !neura.data<index, i1> -> !neura.data<i1, i1>
-// DATAFLOW-NEXT:         %8 = "neura.not"(%7) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
-// DATAFLOW-NEXT:         %9 = neura.grant_predicate %6, %8 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
-// DATAFLOW-NEXT:         neura.return_value %9 : !neura.data<i32, i1>
+// DATAFLOW-NEXT:         %2 = "neura.grant_once"() <{constant_value = "%iter_arg_init0"}> : () -> !neura.data<i32, i1>
+// DATAFLOW-NEXT:         %3 = neura.reserve : !neura.data<i32, i1>
+// DATAFLOW-NEXT:         %4 = neura.phi_start %2, %3 : !neura.data<i32, i1>, !neura.data<i32, i1> -> !neura.data<i32, i1>
+// DATAFLOW-NEXT:         %5 = neura.counter {counter_id = 0 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 32 : index} : !neura.data<index, i1>
+// DATAFLOW-NEXT:         %6 = neura.load_indexed [%5 : !neura.data<index, i1>]  {lhs_value = "%input0"} : !neura.data<i32, i1>
+// DATAFLOW-NEXT:         %7 = neura.load_indexed [%5 : !neura.data<index, i1>]  {lhs_value = "%input1"} : !neura.data<i32, i1>
+// DATAFLOW-NEXT:         %8 = "neura.mul"(%6, %7) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
+// DATAFLOW-NEXT:         %9 = "neura.add"(%4, %8) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
+// DATAFLOW-NEXT:         neura.ctrl_mov %9 -> %3 : !neura.data<i32, i1> !neura.data<i32, i1>
+// DATAFLOW-NEXT:         %10 = neura.extract_predicate %5 : !neura.data<index, i1> -> !neura.data<i1, i1>
+// DATAFLOW-NEXT:         %11 = "neura.not"(%10) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
+// DATAFLOW-NEXT:         %12 = neura.grant_predicate %9, %11 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
+// DATAFLOW-NEXT:         neura.return_value %12 : !neura.data<i32, i1>
 // DATAFLOW-NEXT:         neura.yield
 // DATAFLOW-NEXT:       } : i32
 // DATAFLOW-NEXT:       "taskflow.yield"(%1) <{operandSegmentSizes = array<i32: 0, 1>}> : (i32) -> ()
@@ -200,3 +205,44 @@ module attributes {} {
 // DATAFLOW-NEXT:     return %value_outputs : i32
 // DATAFLOW-NEXT:   }
 // DATAFLOW-NEXT: }
+
+// MAPPED:      module {
+// MAPPED-NEXT:   func.func @_Z6kernelPiS_S_(%arg0: memref<?xi32>, %arg1: memref<?xi32>, %arg2: memref<?xi32>) -> i32 attributes {llvm.linkage = #llvm.linkage<external>} {
+// MAPPED-NEXT:     %c0_i32 = arith.constant 0 : i32
+// MAPPED-NEXT:     %value_outputs = "taskflow.task"(%arg0, %arg2, %c0_i32) <{operandSegmentSizes = array<i32: 2, 1>, resultSegmentSizes = array<i32: 0, 1>, task_name = "Task_0"}> ({
+// MAPPED-NEXT:     ^bb0(%arg3: memref<?xi32>, %arg4: memref<?xi32>, %arg5: i32):
+// MAPPED-NEXT:       %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 32 : index} : index
+// MAPPED-NEXT:       %1 = neura.kernel inputs(%arg3, %arg4 : memref<?xi32>, memref<?xi32>) iter_args_init(%arg5 : i32) attributes {accelerator = "neura", dataflow_mode = "predicate", mapping_info = {compiled_ii = 2 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 2 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {
+// MAPPED-NEXT:       ^bb0(%arg6: memref<?xi32>, %arg7: memref<?xi32>, %arg8: i32):
+// MAPPED-NEXT:         %2 = "neura.grant_once"() <{constant_value = "%iter_arg_init0"}> {dfg_id = 0 : i32, mapping_locs = [{id = 13 : i32, index_per_ii = 1 : i32, invalid_iterations = 0 : i32, resource = "tile", time_step = 1 : i32, x = 1 : i32, y = 3 : i32}]} : () -> !neura.data<i32, i1>
+// MAPPED-NEXT:         %3 = neura.reserve {dfg_id = 1 : i32} : !neura.data<i32, i1>
+// MAPPED-NEXT:         %4 = "neura.data_mov"(%2) {dfg_id = 4 : i32, mapping_locs = [{id = 42 : i32, index_per_ii = 1 : i32, invalid_iterations = 0 : i32, resource = "link", time_step = 1 : i32}, {id = 288 : i32, index_per_ii = 0 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 2 : i32}]} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
+// MAPPED-NEXT:         %5 = neura.phi_start %4, %3 {dfg_id = 8 : i32, mapping_locs = [{id = 9 : i32, index_per_ii = 1 : i32, invalid_iterations = 1 : i32, resource = "tile", time_step = 3 : i32, x = 1 : i32, y = 2 : i32}]} : !neura.data<i32, i1>, !neura.data<i32, i1> -> !neura.data<i32, i1>
+// MAPPED-NEXT:         %6 = neura.counter {counter_id = 0 : i32, counter_type = "leaf", dfg_id = 2 : i32, lower_bound = 0 : index, mapping_locs = [{id = 5 : i32, index_per_ii = 0 : i32, invalid_iterations = 0 : i32, resource = "tile", time_step = 0 : i32, x = 1 : i32, y = 1 : i32}], step = 1 : index, upper_bound = 32 : index} : !neura.data<index, i1>
+// MAPPED-NEXT:         %7 = "neura.data_mov"(%6) {dfg_id = 5 : i32, mapping_locs = [{id = 160 : i32, index_per_ii = 0 : i32, invalid_iterations = 0 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 0 : i32}]} : (!neura.data<index, i1>) -> !neura.data<index, i1>
+// MAPPED-NEXT:         %8 = neura.load_indexed [%7 : !neura.data<index, i1>]  {dfg_id = 9 : i32, lhs_value = "%input0", mapping_locs = [{id = 5 : i32, index_per_ii = 1 : i32, invalid_iterations = 0 : i32, resource = "tile", time_step = 1 : i32, x = 1 : i32, y = 1 : i32}]} : !neura.data<i32, i1>
+// MAPPED-NEXT:         %9 = "neura.data_mov"(%6) {dfg_id = 6 : i32, mapping_locs = [{id = 15 : i32, index_per_ii = 0 : i32, invalid_iterations = 0 : i32, resource = "link", time_step = 0 : i32}]} : (!neura.data<index, i1>) -> !neura.data<index, i1>
+// MAPPED-NEXT:         %10 = neura.load_indexed [%9 : !neura.data<index, i1>]  {dfg_id = 10 : i32, lhs_value = "%input1", mapping_locs = [{id = 1 : i32, index_per_ii = 1 : i32, invalid_iterations = 0 : i32, resource = "tile", time_step = 1 : i32, x = 1 : i32, y = 0 : i32}]} : !neura.data<i32, i1>
+// MAPPED-NEXT:         %11 = "neura.data_mov"(%8) {dfg_id = 13 : i32, mapping_locs = [{id = 15 : i32, index_per_ii = 1 : i32, invalid_iterations = 0 : i32, resource = "link", time_step = 1 : i32}]} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
+// MAPPED-NEXT:         %12 = "neura.data_mov"(%10) {dfg_id = 14 : i32, mapping_locs = [{id = 32 : i32, index_per_ii = 1 : i32, invalid_iterations = 0 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 1 : i32}]} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
+// MAPPED-NEXT:         %13 = "neura.mul"(%11, %12) {dfg_id = 16 : i32, mapping_locs = [{id = 1 : i32, index_per_ii = 0 : i32, invalid_iterations = 1 : i32, resource = "tile", time_step = 2 : i32, x = 1 : i32, y = 0 : i32}]} : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
+// MAPPED-NEXT:         %14 = "neura.data_mov"(%5) {dfg_id = 12 : i32, mapping_locs = [{id = 288 : i32, index_per_ii = 1 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 3 : i32}]} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
+// MAPPED-NEXT:         %15 = "neura.data_mov"(%13) {dfg_id = 18 : i32, mapping_locs = [{id = 4 : i32, index_per_ii = 0 : i32, invalid_iterations = 1 : i32, resource = "link", time_step = 2 : i32}, {id = 16 : i32, index_per_ii = 1 : i32, invalid_iterations = 1 : i32, resource = "link", time_step = 3 : i32}]} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
+// MAPPED-NEXT:         %16 = "neura.add"(%14, %15) {dfg_id = 20 : i32, mapping_locs = [{id = 9 : i32, index_per_ii = 0 : i32, invalid_iterations = 2 : i32, resource = "tile", time_step = 4 : i32, x = 1 : i32, y = 2 : i32}]} : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
+// MAPPED-NEXT:         neura.ctrl_mov %16 -> %3 {dfg_id = 21 : i32, mapping_locs = [{id = 289 : i32, index_per_ii = 0 : i32, invalid_iterations = 2 : i32, per_tile_register_id = 1 : i32, resource = "register", time_step = 4 : i32}]} : !neura.data<i32, i1> !neura.data<i32, i1>
+// MAPPED-NEXT:         %17 = "neura.data_mov"(%6) {dfg_id = 7 : i32, mapping_locs = [{id = 13 : i32, index_per_ii = 0 : i32, invalid_iterations = 0 : i32, resource = "link", time_step = 0 : i32}, {id = 128 : i32, index_per_ii = 1 : i32, invalid_iterations = 0 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 1 : i32}]} : (!neura.data<index, i1>) -> !neura.data<index, i1>
+// MAPPED-NEXT:         %18 = neura.extract_predicate %17 {dfg_id = 11 : i32, mapping_locs = [{id = 4 : i32, index_per_ii = 0 : i32, invalid_iterations = 1 : i32, resource = "tile", time_step = 2 : i32, x = 0 : i32, y = 1 : i32}]} : !neura.data<index, i1> -> !neura.data<i1, i1>
+// MAPPED-NEXT:         %19 = "neura.data_mov"(%18) {dfg_id = 15 : i32, mapping_locs = [{id = 128 : i32, index_per_ii = 0 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 2 : i32}]} : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
+// MAPPED-NEXT:         %20 = "neura.not"(%19) {dfg_id = 17 : i32, mapping_locs = [{id = 4 : i32, index_per_ii = 1 : i32, invalid_iterations = 1 : i32, resource = "tile", time_step = 3 : i32, x = 0 : i32, y = 1 : i32}]} : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
+// MAPPED-NEXT:         %21 = "neura.data_mov"(%16) {dfg_id = 22 : i32, mapping_locs = [{id = 27 : i32, index_per_ii = 0 : i32, invalid_iterations = 2 : i32, resource = "link", time_step = 4 : i32}]} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
+// MAPPED-NEXT:         %22 = "neura.data_mov"(%20) {dfg_id = 19 : i32, mapping_locs = [{id = 12 : i32, index_per_ii = 1 : i32, invalid_iterations = 1 : i32, resource = "link", time_step = 3 : i32}, {id = 256 : i32, index_per_ii = 0 : i32, invalid_iterations = 2 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 4 : i32}]} : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
+// MAPPED-NEXT:         %23 = neura.grant_predicate %21, %22 {dfg_id = 23 : i32, mapping_locs = [{id = 8 : i32, index_per_ii = 1 : i32, invalid_iterations = 2 : i32, resource = "tile", time_step = 5 : i32, x = 0 : i32, y = 2 : i32}]} : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
+// MAPPED-NEXT:         %24 = "neura.data_mov"(%23) {dfg_id = 24 : i32, mapping_locs = [{id = 256 : i32, index_per_ii = 1 : i32, invalid_iterations = 2 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 5 : i32}]} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
+// MAPPED-NEXT:         neura.return_value %24 : !neura.data<i32, i1> {dfg_id = 25 : i32, mapping_locs = [{id = 8 : i32, index_per_ii = 0 : i32, invalid_iterations = 3 : i32, resource = "tile", time_step = 6 : i32, x = 0 : i32, y = 2 : i32}]}
+// MAPPED-NEXT:         neura.yield {dfg_id = 3 : i32}
+// MAPPED-NEXT:       } : i32
+// MAPPED-NEXT:       "taskflow.yield"(%1) <{operandSegmentSizes = array<i32: 0, 1>}> : (i32) -> ()
+// MAPPED-NEXT:     }) : (memref<?xi32>, memref<?xi32>, i32) -> i32
+// MAPPED-NEXT:     return %value_outputs : i32
+// MAPPED-NEXT:   }
+// MAPPED-NEXT: }
