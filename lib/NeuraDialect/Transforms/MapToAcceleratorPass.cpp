@@ -225,6 +225,9 @@ struct MapToAcceleratorPass
       rec_mii = 1; // No recurrence cycles found, set MII to 1.
     }
 
+    llvm::errs() << "[MapToAcceleratorPass] Calculated Recurrence MII: "
+                 << rec_mii << "\n";
+
     int res_mii = calculateResMii(region, architecture);
 
     const int possible_min_ii = std::max(rec_mii, res_mii);
