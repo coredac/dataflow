@@ -100,10 +100,6 @@ int main(int argc, char **argv) {
   // Register all standard conversion passes
   mlir::registerConversionPasses();
 
-  // Register TOSA to Taskflow pipeline
-  mlir::registerTosaToAffinePipeline();
-  mlir::registerTosaToTaskflowPipeline();
-
   // Print architecture spec file info
   if (!architecture_spec_file.empty()) {
     llvm::errs() << "[mlir-neura-opt] Architecture specification file: "
