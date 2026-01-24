@@ -21,11 +21,12 @@ struct TileDefaults {
   // Default function unit types - include all supported function units
   // types for newbie convenience.
   std::vector<std::string> function_units = {
-      "add",          "mul",   "div",       "fadd",      "fmul",
-      "fdiv",         "logic", "cmp",       "sel",       "type_conv",
-      "shift",        "vfmul", "fadd_fadd", "fmul_fadd", "grant",
-      "loop_control", "phi",   "constant",  "mem",       "return",
-      "mem_indexed",  "alloca"};
+      "add",         "mul",       "div",     "fadd",
+      "fmul",        "fdiv",      "logic",   "cmp",
+      "sel",         "type_conv", "shift",   "vfmul",
+      "fadd_fadd",   "fmul_fadd", "grant",   "loop_control",
+      "phi",         "constant",  "mem",     "return",
+      "mem_indexed", "alloca",    "counter", "extract_predicate"};
 };
 
 // Structure for holding memory configuration.
