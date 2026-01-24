@@ -22,6 +22,7 @@ std::unique_ptr<mlir::Pass> createLowerAffineToNeuraPass();
 
 // TaskFlow Conversion Passes.
 std::unique_ptr<mlir::Pass> createConvertAffineToTaskflowPass();
+void registerTosaToAffinePipeline();
 void registerTosaToTaskflowPipeline();
 
 #define GEN_PASS_REGISTRATION

@@ -101,6 +101,7 @@ int main(int argc, char **argv) {
   mlir::registerConversionPasses();
 
   // Register TOSA to Taskflow pipeline
+  mlir::registerTosaToAffinePipeline();
   mlir::registerTosaToTaskflowPipeline();
 
   // Print architecture spec file info

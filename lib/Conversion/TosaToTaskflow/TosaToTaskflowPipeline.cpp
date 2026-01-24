@@ -27,7 +27,7 @@
 using namespace mlir;
 
 namespace {
-void buildTosaToTaskflowPipeline(OpPassManager &pm) {
+void buildTosaToAffinePipeline(OpPassManager &pm) {
   // 1. TOSA to Linalg/Arith/Tensor
   pm.addNestedPass<func::FuncOp>(tosa::createTosaToLinalgNamed());
   pm.addNestedPass<func::FuncOp>(tosa::createTosaToLinalg());
@@ -56,11 +56,23 @@ void buildTosaToTaskflowPipeline(OpPassManager &pm) {
   pm.addNestedPass<func::FuncOp>(memref::createFoldMemRefAliasOpsPass());
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
+}
 
-  // 5. Affine to Taskflow
+void buildTosaToTaskflowPipeline(OpPassManager &pm) {
+  // 1. TOSA to Affine (foundational pipeline)
+  buildTosaToAffinePipeline(pm);
+
+  // 2. Affine to Taskflow
   pm.addPass(createConvertAffineToTaskflowPass());
 }
 } // namespace
+
+void mlir::registerTosaToAffinePipeline() {
+  PassPipelineRegistration<>(
+      "tosa-to-affine-pipeline",
+      "Lower TOSA to Affine dialect (TOSA -> Linalg -> Affine).",
+      buildTosaToAffinePipeline);
+}
 
 void mlir::registerTosaToTaskflowPipeline() {
   PassPipelineRegistration<>(
