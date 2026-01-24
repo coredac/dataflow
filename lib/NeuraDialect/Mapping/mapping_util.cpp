@@ -191,10 +191,10 @@ void traverseAlongPath(Operation *op, Value reserve_value,
 } // namespace
 
 SmallVector<RecurrenceCycle, 4>
-mlir::neura::collectRecurrenceCycles(Operation *func_op) {
+mlir::neura::collectRecurrenceCycles(Region &region) {
   SmallVector<RecurrenceCycle, 4> recurrence_cycles;
 
-  func_op->walk([&](neura::CtrlMovOp ctrl_mov_op) {
+  region.walk([&](neura::CtrlMovOp ctrl_mov_op) {
     Value target = ctrl_mov_op.getTarget();
     auto reserve_op = target.getDefiningOp<neura::ReserveOp>();
     if (!reserve_op) {
@@ -226,12 +226,12 @@ mlir::neura::collectRecurrenceCycles(Operation *func_op) {
   return recurrence_cycles;
 }
 
-int mlir::neura::calculateResMii(Operation *func_op,
+int mlir::neura::calculateResMii(Region &region,
                                  const Architecture &architecture) {
   int num_ops = 0;
 
   // Count all "compute" operations (non-terminators, non-block ops).
-  func_op->walk([&](Operation *op) {
+  region.walk([&](Operation *op) {
     // Skips non-materialized ops.
     if (isa<func::FuncOp>(op) ||
         isa<neura::CtrlMovOp, neura::DataMovOp, neura::ReserveOp>(op)) {
@@ -254,13 +254,13 @@ int mlir::neura::calculateResMii(Operation *func_op,
 }
 
 std::vector<Operation *>
-mlir::neura::getTopologicallySortedOps(Operation *func_op) {
+mlir::neura::getTopologicallySortedOps(Region &region) {
   std::vector<Operation *> sorted_ops;
   llvm::DenseMap<Operation *, int> pending_deps;
   std::deque<Operation *> ready_queue;
 
   // Collects recurrence cycle ops.
-  auto recurrence_cycles = collectRecurrenceCycles(func_op);
+  auto recurrence_cycles = collectRecurrenceCycles(region);
   llvm::DenseSet<Operation *> recurrence_ops;
   for (const auto &cycle : recurrence_cycles) {
     for (Operation *op : cycle.operations) {
@@ -268,10 +268,10 @@ mlir::neura::getTopologicallySortedOps(Operation *func_op) {
     }
   }
   // Counts unresolved dependencies for each op.
-  func_op->walk([&](Operation *op) {
-    if (op == func_op) {
-      return;
-    }
+  region.walk([&](Operation *op) {
+    // if (op == func_op) {
+    //   return;
+    // }
     int dep_count = 0;
     for (Value operand : op->getOperands()) {
       if (operand.getDefiningOp()) {
@@ -417,14 +417,14 @@ std::vector<std::pair<Operation *, int>> mlir::neura::flatten_level_buckets(
                               const std::pair<Operation *, int> &b_pair) {
                 Operation *a = a_pair.first;
                 Operation *b = b_pair.first;
-                
+
                 bool a_is_critical = critical_ops.count(a) > 0;
                 bool b_is_critical = critical_ops.count(b) > 0;
-                
+
                 // Priority 1: Critical ops come first (within same ALAP level).
                 if (a_is_critical != b_is_critical)
                   return a_is_critical > b_is_critical;
-                
+
                 // Priority 2: Degree (connectivity) - higher degree first.
                 int degree_a = a->getNumOperands();
                 int degree_b = b->getNumOperands();
@@ -438,7 +438,7 @@ std::vector<std::pair<Operation *, int>> mlir::neura::flatten_level_buckets(
                 }
                 if (degree_a != degree_b)
                   return degree_a > degree_b;
-                
+
                 // Priority 3: Original index (stability tie-breaker).
                 return a_pair.second < b_pair.second;
               });
@@ -1036,18 +1036,22 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
           }
 
           float in_ratio = (total_in > 0) ? (float)occupied_in / total_in : 0;
-          float out_ratio = (total_out > 0) ? (float)occupied_out / total_out : 0;
-          
+          float out_ratio =
+              (total_out > 0) ? (float)occupied_out / total_out : 0;
+
           // Adaptive penalty strategy:
-          // - Use very strong penalty (60) only for high fan-in ops (>= 3 producers)
+          // - Use very strong penalty (60) only for high fan-in ops (>= 3
+          // producers)
           // - Use weak penalty (15) for low fan-in ops
-          // This optimizes fuse-pattern (II=11 target) without breaking iter-merge
+          // This optimizes fuse-pattern (II=11 target) without breaking
+          // iter-merge
           int base_penalty_coeff = (producers.size() >= 3)
                                        ? kStrongCongestionPenalty
                                        : kWeakCongestionPenalty;
-          
-          int congestion_penalty = static_cast<int>(in_ratio * in_ratio * base_penalty_coeff) +
-                                   static_cast<int>(out_ratio * out_ratio * base_penalty_coeff);
+
+          int congestion_penalty =
+              static_cast<int>(in_ratio * in_ratio * base_penalty_coeff) +
+              static_cast<int>(out_ratio * out_ratio * base_penalty_coeff);
 
           int total_award = tile_award + time_bonus - congestion_penalty;
           updateAward(locs_with_award, tile_loc_candidate, total_award);
@@ -1062,15 +1066,14 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
 
   // Sorts by award (descending). Use stable sort/tie-breaker logic
   // to minimize noise in mapping results.
-  std::sort(
-      locs_award_vec.begin(), locs_award_vec.end(),
-      [](const std::pair<MappingLoc, int> &a,
-         const std::pair<MappingLoc, int> &b) {
-        if (a.second != b.second)
-          return a.second > b.second;
-        // Tie-breaker: earlier time step first.
-        return a.first.time_step < b.first.time_step;
-      });
+  std::sort(locs_award_vec.begin(), locs_award_vec.end(),
+            [](const std::pair<MappingLoc, int> &a,
+               const std::pair<MappingLoc, int> &b) {
+              if (a.second != b.second)
+                return a.second > b.second;
+              // Tie-breaker: earlier time step first.
+              return a.first.time_step < b.first.time_step;
+            });
   // TODO: Needs to handle tie case and prioritize lower resource utilization,
   // however, compiled II becomes worse after adding this tie-breaker:
   // https://github.com/coredac/dataflow/issues/59.

@@ -28,7 +28,7 @@ struct InsertDataMovForNeuraOps : public RewritePattern {
       return failure();
     }
 
-    // Skip operations inside fused_op regions
+    // Skips operations inside fused_op regions.
     Operation *parent_op = op->getParentOp();
     while (parent_op) {
       if (isa<neura::FusedOp>(parent_op)) {
@@ -36,7 +36,6 @@ struct InsertDataMovForNeuraOps : public RewritePattern {
       }
       parent_op = parent_op->getParentOp();
     }
-    
 
     bool all_inputs_are_mov_except_reserve =
         llvm::all_of(op->getOperands(), [](Value v) {
@@ -86,15 +85,16 @@ struct InsertDataMovForNeuraOps : public RewritePattern {
       return failure(); // do not rewrite
     }
 
-
     // Wraps operands in mov, but skip those already wrapped or from reserve.
     SmallVector<Value> new_operands;
     bool any_change = false;
     for (Value operand : op->getOperands()) {
       Operation *producer = operand.getDefiningOp();
 
-      // Skips adding mov for any operand that comes from a reserve op or already from data_mov.
-      if (producer && (isa<neura::ReserveOp>(producer) || isa<neura::DataMovOp>(producer))) {
+      // Skips adding mov for any operand that comes from a reserve op or
+      // already from data_mov.
+      if (producer && (isa<neura::ReserveOp>(producer) ||
+                       isa<neura::DataMovOp>(producer))) {
         new_operands.push_back(operand);
         continue;
       }
@@ -129,7 +129,8 @@ struct InsertDataMovForNeuraOps : public RewritePattern {
   }
 };
 
-// Wraps all fused_op's inputs and outputs with data_mov operations in the module.
+// Wraps all fused_op's inputs and outputs with data_mov operations in the
+// module.
 void wrapFusedOpsWithDataMov(ModuleOp module_op) {
   SmallVector<neura::FusedOp> fused_ops_to_process;
   module_op.walk([&](neura::FusedOp fused_op) {
@@ -145,13 +146,14 @@ void wrapFusedOpsWithDataMov(ModuleOp module_op) {
     SmallVector<Value> new_operands;
     for (Value operand : fused_op->getOperands()) {
       Operation *producer = operand.getDefiningOp();
-      
+
       // Skip if already wrapped in data_mov or from reserve
       if (isa_and_nonnull<neura::DataMovOp>(producer) ||
           isa_and_nonnull<neura::ReserveOp>(producer)) {
         new_operands.push_back(operand);
       } else {
-        auto mov = rewriter.create<neura::DataMovOp>(loc, operand.getType(), operand);
+        auto mov =
+            rewriter.create<neura::DataMovOp>(loc, operand.getType(), operand);
         new_operands.push_back(mov);
       }
     }
@@ -161,9 +163,9 @@ void wrapFusedOpsWithDataMov(ModuleOp module_op) {
     for (size_t i = 0; i < fused_op->getNumOperands(); ++i) {
       mapper.map(fused_op->getOperand(i), new_operands[i]);
     }
-    
+
     Operation *new_fused_op = rewriter.clone(*fused_op.getOperation(), mapper);
-    
+
     // Update the operands of the cloned operation
     for (size_t i = 0; i < new_operands.size(); ++i) {
       new_fused_op->setOperand(i, new_operands[i]);
@@ -171,33 +173,35 @@ void wrapFusedOpsWithDataMov(ModuleOp module_op) {
 
     // Wrap outputs with data_mov - create separate data_mov for each user
     rewriter.setInsertionPointAfter(new_fused_op);
-    
+
     // For each result of the fused_op, create a separate data_mov for each user
-    for (size_t result_idx = 0; result_idx < fused_op->getNumResults(); ++result_idx) {
+    for (size_t result_idx = 0; result_idx < fused_op->getNumResults();
+         ++result_idx) {
       Value old_result = fused_op->getResult(result_idx);
       Value new_result = new_fused_op->getResult(result_idx);
-      
+
       // Collect all users first (to avoid iterator invalidation)
-      SmallVector<OpOperand*> users_to_update;
+      SmallVector<OpOperand *> users_to_update;
       for (OpOperand &use : old_result.getUses()) {
         users_to_update.push_back(&use);
       }
-      
+
       // Create a separate data_mov for each user
       for (OpOperand *use : users_to_update) {
         Operation *user_op = use->getOwner();
-        
-        // If the user is already a data_mov (created by another fused_op's input wrapping),
-        // just update its operand to avoid nested data_mov
+
+        // If the user is already a data_mov (created by another fused_op's
+        // input wrapping), just update its operand to avoid nested data_mov
         if (auto existing_mov = llvm::dyn_cast<neura::DataMovOp>(user_op)) {
           if (use->getOperandNumber() == 0) { // data_mov only has one operand
             existing_mov->setOperand(0, new_result);
             continue;
           }
         }
-        
+
         // Otherwise, create a new data_mov for this user
-        auto mov = rewriter.create<neura::DataMovOp>(loc, new_result.getType(), new_result);
+        auto mov = rewriter.create<neura::DataMovOp>(loc, new_result.getType(),
+                                                     new_result);
         use->set(mov);
       }
     }
@@ -226,19 +230,69 @@ struct InsertDataMovPass
 
     ModuleOp module_op = getOperation();
 
-    // First, handle fused_op operations specially
+    // Step 1, handles fused_op operations specially.
     wrapFusedOpsWithDataMov(module_op);
 
-    // Then applies patterns to every region inside the module, excluding fused_op regions.
-    module_op.walk([&](Operation *op) {
-      if (!op->getRegions().empty() && !llvm::isa<neura::FusedOp>(op)) {
-        for (Region &region : op->getRegions()) {
-          if (failed(applyPatternsGreedily(region, frozen))) {
-            signalPassFailure();
-          }
-        }
+    // Then applies patterns to every region inside the module, excluding
+    // fused_op regions.
+    // module_op.walk([&](Operation *op) {
+    //   if (!op->getRegions().empty() && !llvm::isa<neura::FusedOp>(op)) {
+    //     for (Region &region : op->getRegions()) {
+    //       if (failed(applyPatternsGreedily(region, frozen))) {
+    //         signalPassFailure();
+    //       }
+    //     }
+    //   }
+    // });
+
+    // Step 2: Processes functions with neura accelerator attribute.
+    llvm::errs() << "[InsertDataMovPass] Processing functions...\n";
+    module_op.walk([&](func::FuncOp func_op) {
+      auto accel_attr =
+          func_op->getAttrOfType<StringAttr>(accel::kAcceleratorAttr);
+
+      if (!accel_attr || accel_attr.getValue() != accel::kNeuraTarget) {
+        llvm::errs() << "[InsertDataMovPass]   Skipping function: "
+                     << func_op.getName() << " (not neura target)\n";
+        return;
+      }
+
+      llvm::errs() << "[InsertDataMovPass]   Processing function: "
+                   << func_op.getName() << "\n";
+
+      Region &func_region = func_op.getBody();
+      if (failed(applyPatternsGreedily(func_region, frozen))) {
+        llvm::errs() << "[InsertDataMovPass]   ❌ Failed to apply patterns\n";
+        signalPassFailure();
+      } else {
+        llvm::errs() << "[InsertDataMovPass]   ✅ Successfully processed\n";
       }
     });
+
+    // Step 3: Processes kernels with neura accelerator attributes.
+    llvm::errs() << "[InsertDataMovPass] Processing kernels...\n";
+    module_op.walk([&](neura::KernelOp kernel_op) {
+      auto accel_attr =
+          kernel_op->getAttrOfType<StringAttr>(accel::kAcceleratorAttr);
+
+      if (!accel_attr || accel_attr.getValue() != accel::kNeuraTarget) {
+        llvm::errs()
+            << "[InsertDataMovPass]   Skipping kernel (not neura target)\n";
+        return;
+      }
+
+      llvm::errs() << "[InsertDataMovPass]   Processing kernel...\n";
+
+      Region &kernel_region = kernel_op.getBody();
+      if (failed(applyPatternsGreedily(kernel_region, frozen))) {
+        llvm::errs() << "[InsertDataMovPass]   ❌ Failed to apply patterns\n";
+        signalPassFailure();
+      } else {
+        llvm::errs() << "[InsertDataMovPass]   ✅ Successfully processed\n";
+      }
+    });
+
+    llvm::errs() << "[InsertDataMovPass] ✅ Pass complete\n";
   }
 };
 } // namespace
