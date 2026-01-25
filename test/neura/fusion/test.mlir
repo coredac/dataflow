@@ -138,38 +138,42 @@
 // CHECK-HARDWARE-MERGE:       {
 // CHECK-HARDWARE-MERGE:         "template_id": 0,
 // CHECK-HARDWARE-MERGE:         "instance_count": 2,
-// CHECK-HARDWARE-MERGE:         "supported_single_ops": ["neura.gep", "neura.load", "neura.phi_start", "neura.store"],
+// CHECK-HARDWARE-MERGE:         "supported_single_ops": ["neura.gep", "neura.grant_once", "neura.grant_predicate", "neura.load", "neura.phi_start", "neura.store"],
 // CHECK-HARDWARE-MERGE:         "supported_composite_ops": [
 // CHECK-HARDWARE-MERGE:           {"pattern_id": 10, "name": "phi_start->fused_op:gep->load"},
-// CHECK-HARDWARE-MERGE:           {"pattern_id": 0, "name": "gep->load"}
+// CHECK-HARDWARE-MERGE:           {"pattern_id": 0, "name": "gep->load"},
+// CHECK-HARDWARE-MERGE:           {"pattern_id": 11, "name": "phi_start->grant_predicate"}
 // CHECK-HARDWARE-MERGE:         ],
-// CHECK-HARDWARE-MERGE:         "slots": [
-// CHECK-HARDWARE-MERGE:           {"slot_id": 0, "supported_ops": ["neura.phi_start"]},
-// CHECK-HARDWARE-MERGE:           {"slot_id": 1, "supported_ops": ["neura.gep"]},
-// CHECK-HARDWARE-MERGE:           {"slot_id": 2, "supported_ops": ["neura.load"]}
+// CHECK-HARDWARE-MERGE:         "functional_units": [
+// CHECK-HARDWARE-MERGE:           {"fu_id": 0, "op_type": "neura.phi_start"},
+// CHECK-HARDWARE-MERGE:           {"fu_id": 1, "op_type": "neura.gep"},
+// CHECK-HARDWARE-MERGE:           {"fu_id": 2, "op_type": "neura.load"},
+// CHECK-HARDWARE-MERGE:           {"fu_id": 3, "op_type": "neura.grant_predicate"}
 // CHECK-HARDWARE-MERGE:         ],
-// CHECK-HARDWARE-MERGE:         "slot_connections": {
-// CHECK-HARDWARE-MERGE:           "connections": [{"from": 0, "to": 1}, {"from": 1, "to": 2}]
-// CHECK-HARDWARE-MERGE:         },
+// CHECK-HARDWARE-MERGE:         "fu_connections": [
+// CHECK-HARDWARE-MERGE:           {"from_fu": 0, "to_fu": 1},
+// CHECK-HARDWARE-MERGE:           {"from_fu": 0, "to_fu": 3},
+// CHECK-HARDWARE-MERGE:           {"from_fu": 1, "to_fu": 2}
+// CHECK-HARDWARE-MERGE:         ],
 // CHECK-HARDWARE-MERGE:         "pattern_execution_plans": [
 // CHECK-HARDWARE-MERGE:           {
 // CHECK-HARDWARE-MERGE:             "pattern_id": 10,
 // CHECK-HARDWARE-MERGE:             "pattern_name": "phi_start->fused_op:gep->load",
-// CHECK-HARDWARE-MERGE:             "slot_mapping": [0, 1, 2],
+// CHECK-HARDWARE-MERGE:             "fu_mapping": [0, 1, 2],
 // CHECK-HARDWARE-MERGE:             "execution_stages": [
 // CHECK-HARDWARE-MERGE:               {
 // CHECK-HARDWARE-MERGE:                 "stage": 0,
-// CHECK-HARDWARE-MERGE:                 "parallel_slots": [0],
+// CHECK-HARDWARE-MERGE:                 "parallel_fus": [0],
 // CHECK-HARDWARE-MERGE:                 "parallel_ops": ["neura.phi_start"]
 // CHECK-HARDWARE-MERGE:               },
 // CHECK-HARDWARE-MERGE:               {
 // CHECK-HARDWARE-MERGE:                 "stage": 1,
-// CHECK-HARDWARE-MERGE:                 "parallel_slots": [1],
+// CHECK-HARDWARE-MERGE:                 "parallel_fus": [1],
 // CHECK-HARDWARE-MERGE:                 "parallel_ops": ["neura.gep"]
 // CHECK-HARDWARE-MERGE:               },
 // CHECK-HARDWARE-MERGE:               {
 // CHECK-HARDWARE-MERGE:                 "stage": 2,
-// CHECK-HARDWARE-MERGE:                 "parallel_slots": [2],
+// CHECK-HARDWARE-MERGE:                 "parallel_fus": [2],
 // CHECK-HARDWARE-MERGE:                 "parallel_ops": ["neura.load"]
 // CHECK-HARDWARE-MERGE:               }
 // CHECK-HARDWARE-MERGE:             ]
@@ -177,17 +181,34 @@
 // CHECK-HARDWARE-MERGE:           {
 // CHECK-HARDWARE-MERGE:             "pattern_id": 0,
 // CHECK-HARDWARE-MERGE:             "pattern_name": "gep->load",
-// CHECK-HARDWARE-MERGE:             "slot_mapping": [1, 2],
+// CHECK-HARDWARE-MERGE:             "fu_mapping": [1, 2],
 // CHECK-HARDWARE-MERGE:             "execution_stages": [
 // CHECK-HARDWARE-MERGE:               {
 // CHECK-HARDWARE-MERGE:                 "stage": 0,
-// CHECK-HARDWARE-MERGE:                 "parallel_slots": [1],
+// CHECK-HARDWARE-MERGE:                 "parallel_fus": [1],
 // CHECK-HARDWARE-MERGE:                 "parallel_ops": ["neura.gep"]
 // CHECK-HARDWARE-MERGE:               },
 // CHECK-HARDWARE-MERGE:               {
 // CHECK-HARDWARE-MERGE:                 "stage": 1,
-// CHECK-HARDWARE-MERGE:                 "parallel_slots": [2],
+// CHECK-HARDWARE-MERGE:                 "parallel_fus": [2],
 // CHECK-HARDWARE-MERGE:                 "parallel_ops": ["neura.load"]
+// CHECK-HARDWARE-MERGE:               }
+// CHECK-HARDWARE-MERGE:             ]
+// CHECK-HARDWARE-MERGE:           },
+// CHECK-HARDWARE-MERGE:           {
+// CHECK-HARDWARE-MERGE:             "pattern_id": 11,
+// CHECK-HARDWARE-MERGE:             "pattern_name": "phi_start->grant_predicate",
+// CHECK-HARDWARE-MERGE:             "fu_mapping": [0, 3],
+// CHECK-HARDWARE-MERGE:             "execution_stages": [
+// CHECK-HARDWARE-MERGE:               {
+// CHECK-HARDWARE-MERGE:                 "stage": 0,
+// CHECK-HARDWARE-MERGE:                 "parallel_fus": [0],
+// CHECK-HARDWARE-MERGE:                 "parallel_ops": ["neura.phi_start"]
+// CHECK-HARDWARE-MERGE:               },
+// CHECK-HARDWARE-MERGE:               {
+// CHECK-HARDWARE-MERGE:                 "stage": 1,
+// CHECK-HARDWARE-MERGE:                 "parallel_fus": [3],
+// CHECK-HARDWARE-MERGE:                 "parallel_ops": ["neura.grant_predicate"]
 // CHECK-HARDWARE-MERGE:               }
 // CHECK-HARDWARE-MERGE:             ]
 // CHECK-HARDWARE-MERGE:           }
@@ -202,28 +223,29 @@
 // CHECK-HARDWARE-MERGE:           {"pattern_id": 3, "name": "icmp->grant_predicate"},
 // CHECK-HARDWARE-MERGE:           {"pattern_id": 2, "name": "grant_predicate->grant_predicate"}
 // CHECK-HARDWARE-MERGE:         ],
-// CHECK-HARDWARE-MERGE:         "slots": [
-// CHECK-HARDWARE-MERGE:           {"slot_id": 0, "supported_ops": ["neura.icmp"]},
-// CHECK-HARDWARE-MERGE:           {"slot_id": 1, "supported_ops": ["neura.grant_predicate"]},
-// CHECK-HARDWARE-MERGE:           {"slot_id": 2, "supported_ops": ["neura.grant_predicate"]}
+// CHECK-HARDWARE-MERGE:         "functional_units": [
+// CHECK-HARDWARE-MERGE:           {"fu_id": 0, "op_type": "neura.icmp"},
+// CHECK-HARDWARE-MERGE:           {"fu_id": 1, "op_type": "neura.grant_predicate"},
+// CHECK-HARDWARE-MERGE:           {"fu_id": 2, "op_type": "neura.grant_predicate"}
 // CHECK-HARDWARE-MERGE:         ],
-// CHECK-HARDWARE-MERGE:         "slot_connections": {
-// CHECK-HARDWARE-MERGE:           "connections": [{"from": 0, "to": 1}, {"from": 1, "to": 2}]
-// CHECK-HARDWARE-MERGE:         },
+// CHECK-HARDWARE-MERGE:         "fu_connections": [
+// CHECK-HARDWARE-MERGE:           {"from_fu": 0, "to_fu": 1},
+// CHECK-HARDWARE-MERGE:           {"from_fu": 1, "to_fu": 2}
+// CHECK-HARDWARE-MERGE:         ],
 // CHECK-HARDWARE-MERGE:         "pattern_execution_plans": [
 // CHECK-HARDWARE-MERGE:           {
 // CHECK-HARDWARE-MERGE:             "pattern_id": 1,
 // CHECK-HARDWARE-MERGE:             "pattern_name": "fused_op:icmp->grant_predicate->grant_predicate",
-// CHECK-HARDWARE-MERGE:             "slot_mapping": [0, 1, 2],
+// CHECK-HARDWARE-MERGE:             "fu_mapping": [0, 1, 2],
 // CHECK-HARDWARE-MERGE:             "execution_stages": [
 // CHECK-HARDWARE-MERGE:               {
 // CHECK-HARDWARE-MERGE:                 "stage": 0,
-// CHECK-HARDWARE-MERGE:                 "parallel_slots": [0],
+// CHECK-HARDWARE-MERGE:                 "parallel_fus": [0],
 // CHECK-HARDWARE-MERGE:                 "parallel_ops": ["neura.icmp"]
 // CHECK-HARDWARE-MERGE:               },
 // CHECK-HARDWARE-MERGE:               {
 // CHECK-HARDWARE-MERGE:                 "stage": 1,
-// CHECK-HARDWARE-MERGE:                 "parallel_slots": [1, 2],
+// CHECK-HARDWARE-MERGE:                 "parallel_fus": [1, 2],
 // CHECK-HARDWARE-MERGE:                 "parallel_ops": ["neura.grant_predicate", "neura.grant_predicate"]
 // CHECK-HARDWARE-MERGE:               }
 // CHECK-HARDWARE-MERGE:             ]
@@ -231,16 +253,16 @@
 // CHECK-HARDWARE-MERGE:           {
 // CHECK-HARDWARE-MERGE:             "pattern_id": 3,
 // CHECK-HARDWARE-MERGE:             "pattern_name": "icmp->grant_predicate",
-// CHECK-HARDWARE-MERGE:             "slot_mapping": [0, 2],
+// CHECK-HARDWARE-MERGE:             "fu_mapping": [0, 1],
 // CHECK-HARDWARE-MERGE:             "execution_stages": [
 // CHECK-HARDWARE-MERGE:               {
 // CHECK-HARDWARE-MERGE:                 "stage": 0,
-// CHECK-HARDWARE-MERGE:                 "parallel_slots": [0],
+// CHECK-HARDWARE-MERGE:                 "parallel_fus": [0],
 // CHECK-HARDWARE-MERGE:                 "parallel_ops": ["neura.icmp"]
 // CHECK-HARDWARE-MERGE:               },
 // CHECK-HARDWARE-MERGE:               {
 // CHECK-HARDWARE-MERGE:                 "stage": 1,
-// CHECK-HARDWARE-MERGE:                 "parallel_slots": [2],
+// CHECK-HARDWARE-MERGE:                 "parallel_fus": [1],
 // CHECK-HARDWARE-MERGE:                 "parallel_ops": ["neura.grant_predicate"]
 // CHECK-HARDWARE-MERGE:               }
 // CHECK-HARDWARE-MERGE:             ]
@@ -248,16 +270,16 @@
 // CHECK-HARDWARE-MERGE:           {
 // CHECK-HARDWARE-MERGE:             "pattern_id": 2,
 // CHECK-HARDWARE-MERGE:             "pattern_name": "grant_predicate->grant_predicate",
-// CHECK-HARDWARE-MERGE:             "slot_mapping": [1, 2],
+// CHECK-HARDWARE-MERGE:             "fu_mapping": [1, 2],
 // CHECK-HARDWARE-MERGE:             "execution_stages": [
 // CHECK-HARDWARE-MERGE:               {
 // CHECK-HARDWARE-MERGE:                 "stage": 0,
-// CHECK-HARDWARE-MERGE:                 "parallel_slots": [1],
+// CHECK-HARDWARE-MERGE:                 "parallel_fus": [1],
 // CHECK-HARDWARE-MERGE:                 "parallel_ops": ["neura.grant_predicate"]
 // CHECK-HARDWARE-MERGE:               },
 // CHECK-HARDWARE-MERGE:               {
 // CHECK-HARDWARE-MERGE:                 "stage": 1,
-// CHECK-HARDWARE-MERGE:                 "parallel_slots": [2],
+// CHECK-HARDWARE-MERGE:                 "parallel_fus": [2],
 // CHECK-HARDWARE-MERGE:                 "parallel_ops": ["neura.grant_predicate"]
 // CHECK-HARDWARE-MERGE:               }
 // CHECK-HARDWARE-MERGE:             ]
@@ -266,37 +288,36 @@
 // CHECK-HARDWARE-MERGE:       },
 // CHECK-HARDWARE-MERGE:       {
 // CHECK-HARDWARE-MERGE:         "template_id": 2,
-// CHECK-HARDWARE-MERGE:         "instance_count": 3,
+// CHECK-HARDWARE-MERGE:         "instance_count": 2,
 // CHECK-HARDWARE-MERGE:         "supported_single_ops": ["neura.grant_once", "neura.grant_predicate", "neura.phi_start"],
 // CHECK-HARDWARE-MERGE:         "supported_composite_ops": [
 // CHECK-HARDWARE-MERGE:           {"pattern_id": 4, "name": "grant_once->fused_op:phi_start->phi_start"},
 // CHECK-HARDWARE-MERGE:           {"pattern_id": 9, "name": "grant_once->phi_start"},
-// CHECK-HARDWARE-MERGE:           {"pattern_id": 11, "name": "phi_start->grant_predicate"},
 // CHECK-HARDWARE-MERGE:           {"pattern_id": 8, "name": "phi_start->phi_start"}
 // CHECK-HARDWARE-MERGE:         ],
-// CHECK-HARDWARE-MERGE:         "slots": [
-// CHECK-HARDWARE-MERGE:           {"slot_id": 0, "supported_ops": ["neura.grant_once"]},
-// CHECK-HARDWARE-MERGE:           {"slot_id": 1, "supported_ops": ["neura.phi_start"]},
-// CHECK-HARDWARE-MERGE:           {"slot_id": 2, "supported_ops": ["neura.phi_start"]},
-// CHECK-HARDWARE-MERGE:           {"slot_id": 3, "supported_ops": ["neura.grant_predicate"]}
+// CHECK-HARDWARE-MERGE:         "functional_units": [
+// CHECK-HARDWARE-MERGE:           {"fu_id": 0, "op_type": "neura.grant_once"},
+// CHECK-HARDWARE-MERGE:           {"fu_id": 1, "op_type": "neura.phi_start"},
+// CHECK-HARDWARE-MERGE:           {"fu_id": 2, "op_type": "neura.phi_start"}
 // CHECK-HARDWARE-MERGE:         ],
-// CHECK-HARDWARE-MERGE:         "slot_connections": {
-// CHECK-HARDWARE-MERGE:           "connections": [{"from": 0, "to": 1}, {"from": 1, "to": 2}, {"from": 2, "to": 3}]
-// CHECK-HARDWARE-MERGE:         },
+// CHECK-HARDWARE-MERGE:         "fu_connections": [
+// CHECK-HARDWARE-MERGE:           {"from_fu": 0, "to_fu": 1},
+// CHECK-HARDWARE-MERGE:           {"from_fu": 1, "to_fu": 2}
+// CHECK-HARDWARE-MERGE:         ],
 // CHECK-HARDWARE-MERGE:         "pattern_execution_plans": [
 // CHECK-HARDWARE-MERGE:           {
 // CHECK-HARDWARE-MERGE:             "pattern_id": 9,
 // CHECK-HARDWARE-MERGE:             "pattern_name": "grant_once->phi_start",
-// CHECK-HARDWARE-MERGE:             "slot_mapping": [0, 2],
+// CHECK-HARDWARE-MERGE:             "fu_mapping": [0, 1],
 // CHECK-HARDWARE-MERGE:             "execution_stages": [
 // CHECK-HARDWARE-MERGE:               {
 // CHECK-HARDWARE-MERGE:                 "stage": 0,
-// CHECK-HARDWARE-MERGE:                 "parallel_slots": [0],
+// CHECK-HARDWARE-MERGE:                 "parallel_fus": [0],
 // CHECK-HARDWARE-MERGE:                 "parallel_ops": ["neura.grant_once"]
 // CHECK-HARDWARE-MERGE:               },
 // CHECK-HARDWARE-MERGE:               {
 // CHECK-HARDWARE-MERGE:                 "stage": 1,
-// CHECK-HARDWARE-MERGE:                 "parallel_slots": [2],
+// CHECK-HARDWARE-MERGE:                 "parallel_fus": [1],
 // CHECK-HARDWARE-MERGE:                 "parallel_ops": ["neura.phi_start"]
 // CHECK-HARDWARE-MERGE:               }
 // CHECK-HARDWARE-MERGE:             ]
@@ -304,21 +325,21 @@
 // CHECK-HARDWARE-MERGE:           {
 // CHECK-HARDWARE-MERGE:             "pattern_id": 4,
 // CHECK-HARDWARE-MERGE:             "pattern_name": "grant_once->fused_op:phi_start->phi_start",
-// CHECK-HARDWARE-MERGE:             "slot_mapping": [0, 1, 2],
+// CHECK-HARDWARE-MERGE:             "fu_mapping": [0, 1, 2],
 // CHECK-HARDWARE-MERGE:             "execution_stages": [
 // CHECK-HARDWARE-MERGE:               {
 // CHECK-HARDWARE-MERGE:                 "stage": 0,
-// CHECK-HARDWARE-MERGE:                 "parallel_slots": [0],
+// CHECK-HARDWARE-MERGE:                 "parallel_fus": [0],
 // CHECK-HARDWARE-MERGE:                 "parallel_ops": ["neura.grant_once"]
 // CHECK-HARDWARE-MERGE:               },
 // CHECK-HARDWARE-MERGE:               {
 // CHECK-HARDWARE-MERGE:                 "stage": 1,
-// CHECK-HARDWARE-MERGE:                 "parallel_slots": [1],
+// CHECK-HARDWARE-MERGE:                 "parallel_fus": [1],
 // CHECK-HARDWARE-MERGE:                 "parallel_ops": ["neura.phi_start"]
 // CHECK-HARDWARE-MERGE:               },
 // CHECK-HARDWARE-MERGE:               {
 // CHECK-HARDWARE-MERGE:                 "stage": 2,
-// CHECK-HARDWARE-MERGE:                 "parallel_slots": [2],
+// CHECK-HARDWARE-MERGE:                 "parallel_fus": [2],
 // CHECK-HARDWARE-MERGE:                 "parallel_ops": ["neura.phi_start"]
 // CHECK-HARDWARE-MERGE:               }
 // CHECK-HARDWARE-MERGE:             ]
@@ -326,34 +347,17 @@
 // CHECK-HARDWARE-MERGE:           {
 // CHECK-HARDWARE-MERGE:             "pattern_id": 8,
 // CHECK-HARDWARE-MERGE:             "pattern_name": "phi_start->phi_start",
-// CHECK-HARDWARE-MERGE:             "slot_mapping": [1, 2],
+// CHECK-HARDWARE-MERGE:             "fu_mapping": [1, 2],
 // CHECK-HARDWARE-MERGE:             "execution_stages": [
 // CHECK-HARDWARE-MERGE:               {
 // CHECK-HARDWARE-MERGE:                 "stage": 0,
-// CHECK-HARDWARE-MERGE:                 "parallel_slots": [1],
+// CHECK-HARDWARE-MERGE:                 "parallel_fus": [1],
 // CHECK-HARDWARE-MERGE:                 "parallel_ops": ["neura.phi_start"]
 // CHECK-HARDWARE-MERGE:               },
 // CHECK-HARDWARE-MERGE:               {
 // CHECK-HARDWARE-MERGE:                 "stage": 1,
-// CHECK-HARDWARE-MERGE:                 "parallel_slots": [2],
+// CHECK-HARDWARE-MERGE:                 "parallel_fus": [2],
 // CHECK-HARDWARE-MERGE:                 "parallel_ops": ["neura.phi_start"]
-// CHECK-HARDWARE-MERGE:               }
-// CHECK-HARDWARE-MERGE:             ]
-// CHECK-HARDWARE-MERGE:           },
-// CHECK-HARDWARE-MERGE:           {
-// CHECK-HARDWARE-MERGE:             "pattern_id": 11,
-// CHECK-HARDWARE-MERGE:             "pattern_name": "phi_start->grant_predicate",
-// CHECK-HARDWARE-MERGE:             "slot_mapping": [2, 3],
-// CHECK-HARDWARE-MERGE:             "execution_stages": [
-// CHECK-HARDWARE-MERGE:               {
-// CHECK-HARDWARE-MERGE:                 "stage": 0,
-// CHECK-HARDWARE-MERGE:                 "parallel_slots": [2],
-// CHECK-HARDWARE-MERGE:                 "parallel_ops": ["neura.phi_start"]
-// CHECK-HARDWARE-MERGE:               },
-// CHECK-HARDWARE-MERGE:               {
-// CHECK-HARDWARE-MERGE:                 "stage": 1,
-// CHECK-HARDWARE-MERGE:                 "parallel_slots": [3],
-// CHECK-HARDWARE-MERGE:                 "parallel_ops": ["neura.grant_predicate"]
 // CHECK-HARDWARE-MERGE:               }
 // CHECK-HARDWARE-MERGE:             ]
 // CHECK-HARDWARE-MERGE:           }

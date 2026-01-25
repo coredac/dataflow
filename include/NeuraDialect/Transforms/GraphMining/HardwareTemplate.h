@@ -6,7 +6,7 @@
 // The hardware template system maximizes pattern coverage while minimizing
 // hardware cost through resource sharing. Key concepts:
 //
-// - Functional Unit (FU): A single hardware unit that executes one operation type
+// - FunctionalUnit (FU): A single hardware unit that executes one operation type
 // - HardwareTemplate: A collection of FUs with connections supporting multiple patterns
 // - HardwarePattern: A sequence of operations mapped to template FUs
 //
@@ -49,10 +49,10 @@ struct HardwarePattern {
 };
 
 //===----------------------------------------------------------------------===//
-// Functional Unit (FU) - A single hardware execution unit
+// FunctionalUnit (FU) - A single hardware execution unit
 //===----------------------------------------------------------------------===//
 //
-// A Functional Unit represents a single hardware unit that can execute exactly
+// A FunctionalUnit represents a single hardware unit that can execute exactly
 // one type of operation (e.g., adder, multiplier, load unit).
 //
 // Key Properties:
@@ -87,16 +87,16 @@ struct HardwarePattern {
 //   └─────┘
 //
 //===----------------------------------------------------------------------===//
-struct Functional Unit {
+struct FunctionalUnit {
   int id;                    // Unique FU ID within the template
   std::string op_type;       // Operation type this FU executes (e.g., "neura.add")
   
-  Functional Unit(int i, const std::string& op);
+  FunctionalUnit(int i, const std::string& op);
 };
 
 // Execution stage for a pattern - contains FU indices that can execute in parallel.
 struct ExecutionStage {
-  std::vector<int> fus;          // FUs that execute in this stage (parallel)
+  std::vector<int> fus;       // FUs that execute in this stage (parallel)
   std::vector<std::string> ops;  // Corresponding operations
 };
 
@@ -110,7 +110,7 @@ struct PatternExecutionPlan {
 // Operations supported by a hardware template.
 struct TemplateSupportedOps {
   int template_id;
-  std::set<std::string> single_ops;    // Individual ops this template can support
+  std::set<std::string> single_ops;  // Individual ops this template can support
   std::vector<int64_t> composite_ops;  // Pattern IDs (composite operations)
 };
 
@@ -128,7 +128,7 @@ private:
 // HardwareTemplate - A collection of FUs forming a reusable hardware block
 //===----------------------------------------------------------------------===//
 //
-// A HardwareTemplate contains multiple Functional Units connected together.
+// A HardwareTemplate contains multiple FunctionalUnits connected together.
 // Multiple patterns can be mapped to the same template by reusing FUs.
 //
 // Key differences from the old slot-based design:
@@ -139,7 +139,7 @@ private:
 //===----------------------------------------------------------------------===//
 struct HardwareTemplate {
   int id;
-  std::vector<Functional Unit> fus;             // All FUs in this template
+  std::vector<FunctionalUnit> fus;              // All FUs in this template
   std::vector<int64_t> patterns;                // Pattern IDs mapped to this template
   std::map<int64_t, std::vector<int>> mapping;  // pattern_id -> FU id sequence
   std::set<std::pair<int, int>> connections;    // FU connections: (from_fu_id, to_fu_id)
@@ -173,7 +173,9 @@ struct HardwareTemplate {
   
 private:
   // DFS helper for finding mappings.
-  void dfs_find_mapping(const HardwarePattern& pat, size_t op_idx, std::vector<int>& cur_mapping, std::set<int>& used_fus, std::vector<int>& best_mapping, int& best_reuse_count) const;
+  void dfs_find_mapping(const HardwarePattern& pat, size_t op_idx, 
+                        std::vector<int>& cur_mapping, std::set<int>& used_fus,
+                        std::vector<int>& best_mapping, int& best_reuse_count) const;
 };
 
 // Extracts all patterns from module.
@@ -192,16 +194,26 @@ void generate_connections(const std::vector<HardwarePattern>& patterns, std::vec
 void generate_optimized_connections(const std::vector<HardwarePattern>& patterns, std::vector<HardwareTemplate>& templates);
 
 // Generates execution plans for all patterns on their assigned templates.
-void generate_execution_plans(const std::vector<HardwarePattern>& patterns, const std::vector<HardwareTemplate>& templates, std::vector<PatternExecutionPlan>& plans);
+void generate_execution_plans(const std::vector<HardwarePattern>& patterns, 
+                            const std::vector<HardwareTemplate>& templates,
+                            std::vector<PatternExecutionPlan>& plans);
 
 // Collects supported operations (single + composite) for each template.
-void collect_supported_operations(const std::vector<HardwarePattern>& patterns, const std::vector<HardwareTemplate>& templates, const std::set<std::string>& all_dfg_ops, std::vector<TemplateSupportedOps>& supported_ops);
+void collect_supported_operations(const std::vector<HardwarePattern>& patterns,
+                                const std::vector<HardwareTemplate>& templates,
+                                const std::set<std::string>& all_dfg_ops,
+                                std::vector<TemplateSupportedOps>& supported_ops);
 
 // Calculates total cost of templates.
 double calculate_total_cost(const std::vector<HardwareTemplate>& templates, const OperationCostModel& cost_model);
 
 // Writes hardware configuration to JSON file (extended version with execution plans and supported ops).
-void write_hardware_config_json(const std::string& path, const std::vector<HardwarePattern>& patterns, const std::vector<HardwareTemplate>& templates, const OperationCostModel& cost_model, const std::vector<PatternExecutionPlan>& execution_plans, const std::vector<TemplateSupportedOps>& supported_ops);
+void write_hardware_config_json(const std::string& path, 
+                             const std::vector<HardwarePattern>& patterns, 
+                             const std::vector<HardwareTemplate>& templates, 
+                             const OperationCostModel& cost_model,
+                             const std::vector<PatternExecutionPlan>& execution_plans,
+                             const std::vector<TemplateSupportedOps>& supported_ops);
 
 // Legacy version for backward compatibility.
 void write_hardware_config_json(const std::string& path, const std::vector<HardwarePattern>& patterns, const std::vector<HardwareTemplate>& templates, const OperationCostModel& cost_model);
