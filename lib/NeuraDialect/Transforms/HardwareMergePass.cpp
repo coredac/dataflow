@@ -1,9 +1,10 @@
 //===- HardwareMergePass.cpp - Hardware Template Merging Pass -------------===//
 //
 // This pass maximizes pattern coverage with minimum hardware cost by merging
-// patterns into shared hardware templates. It supports slot bypassing,
-// optimized connections with transitive reachability, and generates execution
-// plans for parallel execution stages.
+// patterns into shared hardware templates. It uses a Functional Unit (FU)
+// based design where each FU executes exactly one operation type. The pass
+// generates optimized FU connections with transitive reduction and creates
+// execution plans for parallel execution stages.
 //
 //===----------------------------------------------------------------------===//
 
