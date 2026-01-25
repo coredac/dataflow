@@ -6,9 +6,9 @@
 // The hardware template system maximizes pattern coverage while minimizing
 // hardware cost through resource sharing. Key concepts:
 //
-// - HardwareSlot: A single FU position where ops execute mutually exclusively
-// - HardwareTemplate: A pipeline of slots supporting multiple patterns
-// - HardwarePattern: A sequence of operations mapped to template slots
+// - Functional Unit (FU): A single hardware unit that executes one operation type
+// - HardwareTemplate: A collection of FUs with connections supporting multiple patterns
+// - HardwarePattern: A sequence of operations mapped to template FUs
 //
 // For detailed documentation with examples and diagrams, see:
 //   docs/HardwareTemplateGuide.md
@@ -49,83 +49,54 @@ struct HardwarePattern {
 };
 
 //===----------------------------------------------------------------------===//
-// HardwareSlot - A configurable execution unit within a Hardware Template
+// Functional Unit (FU) - A single hardware execution unit
 //===----------------------------------------------------------------------===//
 //
-// A HardwareSlot represents a single pipeline stage or functional unit (FU) position
-// within a hardware template. Each slot can support multiple compatible operations
-// through hardware multiplexing.
+// A Functional Unit represents a single hardware unit that can execute exactly
+// one type of operation (e.g., adder, multiplier, load unit).
 //
 // Key Properties:
 // ---------------
-// 1. MUTUAL EXCLUSION: Operations within the same slot CANNOT execute simultaneously.
-//    Only ONE operation can be active in a slot at any given time. This is because
-//    a slot represents a single physical FU that is configured at runtime.
+// 1. SINGLE OPERATION TYPE: Each FU executes exactly one operation type.
+//    For example, an "adder" FU only executes neura.add operations.
 //
-// 2. OPERATION SHARING: Multiple compatible ops can share the same slot to reduce
-//    hardware cost. For example, `neura.add` and `neura.sub` can share an ALU slot.
+// 2. MULTIPLE INSTANCES: A template can have multiple FUs of the same type.
+//    For example, two adders to support patterns needing parallel additions.
 //
-// 3. PIPELINE POSITION: Slots are ordered (slot 0 -> slot 1 -> slot 2 ...) and data
-//    flows forward through connections. A slot cannot send data backwards.
-//
-// When to Use Slots:
-// ------------------
-// - Resource sharing: When multiple patterns use similar operations (e.g., add/sub),
-//   mapping them to the same slot saves hardware by sharing the underlying FU.
-// - Pipeline stages: Each slot acts as a stage in a pipelined datapath, allowing
-//   multiple patterns to be executed with different timing.
-// - Bypass support: Connections can skip slots (e.g., 0->2) for patterns that
-//   don't use intermediate slots.
+// 3. DIRECT CONNECTIONS: FUs are connected directly to each other, forming
+//    a dataflow graph within the template.
 //
 // Example:
 // --------
-// Consider a template supporting two patterns:
-//   Pattern A: gep -> load (slots [0, 1])
-//   Pattern B: phi_start -> gep -> load (slots [0, 1, 2])
+// Consider a template supporting pattern: gep -> load -> add -> store
 //
 // Template structure:
-//   ┌─────────┐     ┌─────────┐     ┌─────────┐
-//   │ Slot 0  │ --> │ Slot 1  │ --> │ Slot 2  │
-//   │phi_start│     │  gep    │     │  load   │
-//   └─────────┘     └─────────┘     └─────────┘
+//   ┌─────┐     ┌──────┐     ┌─────┐     ┌───────┐
+//   │ gep │ --> │ load │ --> │ add │ --> │ store │
+//   │FU 0 │     │ FU 1 │     │FU 2 │     │ FU 3  │
+//   └─────┘     └──────┘     └─────┘     └───────┘
 //
-// For Pattern A (gep->load):
-//   - Uses slots [1, 2], bypassing slot 0
-//   - Stage 0: Slot 1 executes gep
-//   - Stage 1: Slot 2 executes load
-//
-// For Pattern B (phi_start->gep->load):
-//   - Uses slots [0, 1, 2]
-//   - Stage 0: Slot 0 executes phi_start
-//   - Stage 1: Slot 1 executes gep
-//   - Stage 2: Slot 2 executes load
-//
-// Slot Sharing Example:
-// --------------------
-// If two patterns need:
-//   Pattern X: add -> mul
-//   Pattern Y: sub -> mul
-//
-// Since add and sub are compatible (same ALU), they can share slot 0:
-//   ┌─────────────┐     ┌─────────┐
-//   │   Slot 0    │ --> │ Slot 1  │
-//   │ add OR sub  │     │   mul   │
-//   └─────────────┘     └─────────┘
-//
-// At runtime, slot 0's FU is configured for either add or sub based on which
-// pattern is executing. Both patterns use the same physical hardware.
+// For patterns with parallel operations (e.g., add + mul -> store):
+//   ┌─────┐
+//   │ add │ ──┐
+//   │FU 0 │   │     ┌───────┐
+//   └─────┘   ├──-> │ store │
+//   ┌─────┐   │     │ FU 2  │
+//   │ mul │ ──┘     └───────┘
+//   │FU 1 │
+//   └─────┘
 //
 //===----------------------------------------------------------------------===//
-struct HardwareSlot {
-  int id;                      // Slot position in the template pipeline (0, 1, 2, ...)
-  std::set<std::string> ops;   // Set of operations this slot can execute (mutually exclusive)
+struct Functional Unit {
+  int id;                    // Unique FU ID within the template
+  std::string op_type;       // Operation type this FU executes (e.g., "neura.add")
   
-  HardwareSlot(int i);
+  Functional Unit(int i, const std::string& op);
 };
 
-// Execution stage for a pattern - contains slot indices that can execute in parallel.
+// Execution stage for a pattern - contains FU indices that can execute in parallel.
 struct ExecutionStage {
-  std::vector<int> slots;  // Slots that execute in this stage (parallel)
+  std::vector<int> fus;          // FUs that execute in this stage (parallel)
   std::vector<std::string> ops;  // Corresponding operations
 };
 
@@ -139,7 +110,7 @@ struct PatternExecutionPlan {
 // Operations supported by a hardware template.
 struct TemplateSupportedOps {
   int template_id;
-  std::set<std::string> single_ops;  // Individual ops this template can support
+  std::set<std::string> single_ops;    // Individual ops this template can support
   std::vector<int64_t> composite_ops;  // Pattern IDs (composite operations)
 };
 
@@ -147,34 +118,62 @@ class OperationCostModel {
 public:
   OperationCostModel();
   double get(const std::string& op) const;
-  double slot_cost(const std::set<std::string>& ops) const;
+  double fu_cost(const std::string& op) const;
   double pattern_cost(const std::vector<std::string>& ops) const;
 private:
   std::map<std::string, double> costs;
 };
 
+//===----------------------------------------------------------------------===//
+// HardwareTemplate - A collection of FUs forming a reusable hardware block
+//===----------------------------------------------------------------------===//
+//
+// A HardwareTemplate contains multiple Functional Units connected together.
+// Multiple patterns can be mapped to the same template by reusing FUs.
+//
+// Key differences from the old slot-based design:
+// - Each FU has exactly one operation type (no multiplexing within FU)
+// - Template can have multiple FUs of the same type
+// - Connections are between specific FU IDs, not abstract slot positions
+//
+//===----------------------------------------------------------------------===//
 struct HardwareTemplate {
   int id;
-  std::vector<HardwareSlot> slots;
-  std::vector<int64_t> patterns;
-  std::map<int64_t, std::vector<int>> mapping;
-  std::set<std::pair<int, int>> connections;  // Slot connections: (from_slot, to_slot)
+  std::vector<Functional Unit> fus;             // All FUs in this template
+  std::vector<int64_t> patterns;                // Pattern IDs mapped to this template
+  std::map<int64_t, std::vector<int>> mapping;  // pattern_id -> FU id sequence
+  std::set<std::pair<int, int>> connections;    // FU connections: (from_fu_id, to_fu_id)
   int instances;
   
   HardwareTemplate(int i);
-  void add_slot();
-  void insert_slot_at_front();
-  bool can_route(int from, int to) const;
-  std::vector<int> find_mapping(const std::vector<std::string>& pat_ops) const;
-  bool slot_can_handle(size_t s, const std::string& op) const;
-  static bool compatible(const std::string& a, const std::string& b);
-  bool try_accommodate(const HardwarePattern& pat, const OperationCostModel& cm, std::vector<int>& out_mapping, double& out_cost_increase);
+  
+  // Adds a new FU with the given operation type, returns its ID.
+  int add_fu(const std::string& op_type);
+  
+  // Finds an existing FU that can handle the operation, or -1 if none available.
+  int find_available_fu(const std::string& op_type, const std::set<int>& used_fus) const;
+  
+  // Finds a mapping for a pattern into the existing template.
+  // Returns FU IDs for each operation, or empty if no valid mapping exists.
+  std::vector<int> find_mapping(const HardwarePattern& pat) const;
+  
+  // Tries to accommodate a pattern, potentially adding new FUs.
+  // Returns true if successful, with the mapping and cost increase.
+  bool try_accommodate(const HardwarePattern& pat, const OperationCostModel& cm, 
+                       std::vector<int>& out_mapping, double& out_cost_increase);
+  
+  // Applies a mapping to the template.
   void apply_mapping(const HardwarePattern& pat, const std::vector<int>& m);
+  
+  // Computes the total cost of the template.
   double compute_cost(const OperationCostModel& cm) const;
   
+  // Checks if two operations are compatible (can potentially share resources in future).
+  static bool compatible(const std::string& a, const std::string& b);
+  
 private:
-  void dfs_with_scoring(const std::vector<std::string>& pat_ops, size_t op_idx, int prev_slot, std::vector<int> cur, std::vector<int>& best_mapping, int& best_score) const;
-  std::vector<int> dfs(const std::vector<std::string>& pat_ops, size_t op_idx, int prev_slot, std::vector<int> cur) const;
+  // DFS helper for finding mappings.
+  void dfs_find_mapping(const HardwarePattern& pat, size_t op_idx, std::vector<int>& cur_mapping, std::set<int>& used_fus, std::vector<int>& best_mapping, int& best_reuse_count) const;
 };
 
 // Extracts all patterns from module.
@@ -186,36 +185,23 @@ void extract_all_standalone_ops(ModuleOp module, std::set<std::string>& all_ops)
 // Creates hardware templates from patterns.
 void create_hardware_templates(const std::vector<HardwarePattern>& patterns, std::vector<HardwareTemplate>& templates, OperationCostModel& cost_model);
 
-// Generates optimized slot connections for all templates.
-// Connections are minimized using transitive reachability (bypass support).
-// Only adds connection A->C if there's no path A->B->C already.
-void generate_optimized_connections(const std::vector<HardwarePattern>& patterns, std::vector<HardwareTemplate>& templates);
-
-// Generates slot connections for all templates based on pattern mappings.
+// Generates FU connections for all templates based on pattern dependencies.
 void generate_connections(const std::vector<HardwarePattern>& patterns, std::vector<HardwareTemplate>& templates);
 
+// Generates optimized FU connections (removes redundant connections using transitive reachability).
+void generate_optimized_connections(const std::vector<HardwarePattern>& patterns, std::vector<HardwareTemplate>& templates);
+
 // Generates execution plans for all patterns on their assigned templates.
-// Returns the mapping from (template_id, pattern_id) to execution plan.
-void generate_execution_plans(const std::vector<HardwarePattern>& patterns, 
-                            const std::vector<HardwareTemplate>& templates,
-                            std::vector<PatternExecutionPlan>& plans);
+void generate_execution_plans(const std::vector<HardwarePattern>& patterns, const std::vector<HardwareTemplate>& templates, std::vector<PatternExecutionPlan>& plans);
 
 // Collects supported operations (single + composite) for each template.
-void collect_supported_operations(const std::vector<HardwarePattern>& patterns,
-                                const std::vector<HardwareTemplate>& templates,
-                                const std::set<std::string>& all_dfg_ops,
-                                std::vector<TemplateSupportedOps>& supported_ops);
+void collect_supported_operations(const std::vector<HardwarePattern>& patterns, const std::vector<HardwareTemplate>& templates, const std::set<std::string>& all_dfg_ops, std::vector<TemplateSupportedOps>& supported_ops);
 
 // Calculates total cost of templates.
 double calculate_total_cost(const std::vector<HardwareTemplate>& templates, const OperationCostModel& cost_model);
 
 // Writes hardware configuration to JSON file (extended version with execution plans and supported ops).
-void write_hardware_config_json(const std::string& path, 
-                             const std::vector<HardwarePattern>& patterns, 
-                             const std::vector<HardwareTemplate>& templates, 
-                             const OperationCostModel& cost_model,
-                             const std::vector<PatternExecutionPlan>& execution_plans,
-                             const std::vector<TemplateSupportedOps>& supported_ops);
+void write_hardware_config_json(const std::string& path, const std::vector<HardwarePattern>& patterns, const std::vector<HardwareTemplate>& templates, const OperationCostModel& cost_model, const std::vector<PatternExecutionPlan>& execution_plans, const std::vector<TemplateSupportedOps>& supported_ops);
 
 // Legacy version for backward compatibility.
 void write_hardware_config_json(const std::string& path, const std::vector<HardwarePattern>& patterns, const std::vector<HardwareTemplate>& templates, const OperationCostModel& cost_model);

@@ -3,6 +3,9 @@
 // This file contains data structures and helper functions for hardware template
 // merging, including pattern extraction, template creation, and cost calculation.
 //
+// This version uses Functional Unit (FU) based design where each FU executes
+// exactly one operation type, and templates can have multiple FUs of the same type.
+//
 //===----------------------------------------------------------------------===//
 
 #include "NeuraDialect/Transforms/GraphMining/HardwareTemplate.h"
@@ -45,11 +48,9 @@ double OperationCostModel::get(const std::string& op) const {
   return it != costs.end() ? it->second : 5.0;
 }
 
-// Returns the maximum cost among all operations in a slot.
-double OperationCostModel::slot_cost(const std::set<std::string>& ops) const {
-  double mx = 0;
-  for (const auto& op : ops) mx = std::max(mx, get(op));
-  return mx;
+// Returns the cost for a single FU (same as get).
+double OperationCostModel::fu_cost(const std::string& op) const {
+  return get(op);
 }
 
 // Returns the total cost for a pattern by summing costs of all its operations.
@@ -64,114 +65,30 @@ double OperationCostModel::pattern_cost(const std::vector<std::string>& ops) con
 HardwarePattern::HardwarePattern(int64_t i, const std::string& n, int64_t f) 
     : id(i), name(n), freq(f), cost(0) {}
 
-// Constructs a HardwareSlot with the given id.
-HardwareSlot::HardwareSlot(int i) : id(i) {}
+// Constructs a FunctionalUnit with the given id and operation type.
+FunctionalUnit::FunctionalUnit(int i, const std::string& op) : id(i), op_type(op) {}
 
 // Constructs a HardwareTemplate with the given id and one instance.
 HardwareTemplate::HardwareTemplate(int i) : id(i), instances(1) {}
 
-// Adds a new slot at the end of the template.
-void HardwareTemplate::add_slot() {
-  int new_id = slots.size();
-  slots.emplace_back(new_id);
-}
-  
-// Inserts a new slot at the front of the template, shifting all existing slot IDs.
-void HardwareTemplate::insert_slot_at_front() {
-  for (auto& slot : slots) {
-    slot.id++;
-  }
-  
-  slots.insert(slots.begin(), HardwareSlot(0));
-  
-  for (auto& pair : mapping) {
-    for (int& slot_idx : pair.second) {
-      slot_idx++;
-    }
-  }
-}
-  
-// Checks if a connection can be made between two slots.
-bool HardwareTemplate::can_route(int from, int to) const {
-  if (from < 0) return true;
-  return from < to;
+// Adds a new FU with the given operation type, returns its ID.
+int HardwareTemplate::add_fu(const std::string& op_type) {
+  int new_id = fus.size();
+  fus.emplace_back(new_id, op_type);
+  return new_id;
 }
 
-// Finds a mapping for a pattern into the existing template.
-std::vector<int> HardwareTemplate::find_mapping(const std::vector<std::string>& pat_ops) const {
-  std::vector<int> best_mapping;
-  int best_score = -1;
-  
-  dfs_with_scoring(pat_ops, 0, -1, {}, best_mapping, best_score);
-  return best_mapping;
-}
-  
-// Performs DFS with scoring to find the best mapping for a pattern.
-void HardwareTemplate::dfs_with_scoring(const std::vector<std::string>& pat_ops, size_t op_idx, int prev_slot, std::vector<int> cur, std::vector<int>& best_mapping, int& best_score) const {
-  if (op_idx >= pat_ops.size()) {
-    int score = 0;
-    for (size_t i = 0; i < pat_ops.size(); ++i) {
-      int slot = cur[i];
-      const std::string& op = pat_ops[i];
-      
-      if (slot_can_handle(slot, op) && !slots[slot].ops.empty()) {
-        score += 10;
-      }
-    }
-    if (score > best_score) {
-      best_score = score;
-      best_mapping = cur;
-    }
-    return;
-  }
-  
-  const std::string& op = pat_ops[op_idx];
-  
-  std::vector<std::pair<int, size_t>> candidates;
-  for (size_t s = 0; s < slots.size(); ++s) {
-    if (!slot_can_handle(s, op)) continue;
-    
-    if (!slots[s].ops.empty()) {
-      candidates.push_back({100, s});
-    } else {
-      candidates.push_back({50, s});
+// Finds an existing FU that can handle the operation and is not already used.
+int HardwareTemplate::find_available_fu(const std::string& op_type, const std::set<int>& used_fus) const {
+  for (const auto& fu : fus) {
+    if (fu.op_type == op_type && used_fus.find(fu.id) == used_fus.end()) {
+      return fu.id;
     }
   }
-  
-  std::sort(candidates.rbegin(), candidates.rend());
-  
-  for (const auto& cand : candidates) {
-    size_t s = cand.second;
-    if (!can_route(prev_slot, (int)s)) continue;
-    if (std::find(cur.begin(), cur.end(), (int)s) != cur.end()) continue;
-    
-    auto next = cur;
-    next.push_back((int)s);
-    dfs_with_scoring(pat_ops, op_idx + 1, (int)s, next, best_mapping, best_score);
-  }
+  return -1;  // No available FU found
 }
-  
-// Performs DFS search to find a mapping, wrapping dfs_with_scoring.
-std::vector<int> HardwareTemplate::dfs(const std::vector<std::string>& pat_ops, size_t op_idx, int prev_slot, std::vector<int> cur) const {
-  std::vector<int> best;
-  int score = -1;
-  dfs_with_scoring(pat_ops, op_idx, prev_slot, cur, best, score);
-  return best;
-}
-  
-// Checks if a slot can handle an operation.
-bool HardwareTemplate::slot_can_handle(size_t s, const std::string& op) const {
-  if (slots[s].ops.count(op)) return true;
-  
-  if (slots[s].ops.empty()) return true;
-  
-  for (const auto& existing : slots[s].ops) {
-    if (!compatible(existing, op)) return false;
-  }
-  return true;
-}
-  
-// Checks if two operations are compatible and can share the same slot.
+
+// Checks if two operations are compatible (could share hardware in extended designs).
 bool HardwareTemplate::compatible(const std::string& a, const std::string& b) {
   if (a == b) return true;
   
@@ -198,101 +115,145 @@ bool HardwareTemplate::compatible(const std::string& a, const std::string& b) {
   return false;
 }
 
-// Tries to accommodate a pattern into the existing template.
-bool HardwareTemplate::try_accommodate(const HardwarePattern& pat, const OperationCostModel& cm, std::vector<int>& out_mapping, double& out_cost_increase) {
-  auto m = find_mapping(pat.ops);
-  if (!m.empty()) {
-    double old_cost = compute_cost(cm);
-    
-    for (size_t i = 0; i < m.size(); ++i) {
-      slots[m[i]].ops.insert(pat.ops[i]);
+// DFS helper for finding the best mapping with maximum FU reuse.
+void HardwareTemplate::dfs_find_mapping(const HardwarePattern& pat, size_t op_idx, 
+                                         std::vector<int>& cur_mapping, std::set<int>& used_fus,
+                                         std::vector<int>& best_mapping, int& best_reuse_count) const {
+  if (op_idx >= pat.ops.size()) {
+    // Count reused FUs (existing FUs that were mapped)
+    int reuse_count = 0;
+    for (int fu_id : cur_mapping) {
+      if (fu_id >= 0 && fu_id < (int)fus.size()) {
+        reuse_count++;
+      }
     }
-    double new_cost = compute_cost(cm);
-    
-    for (size_t i = 0; i < m.size(); ++i) {
-      slots[m[i]].ops.erase(pat.ops[i]);
+    if (reuse_count > best_reuse_count) {
+      best_reuse_count = reuse_count;
+      best_mapping = cur_mapping;
     }
-    
-    out_mapping = m;
-    out_cost_increase = new_cost - old_cost;
-    return true;
-  }
-
-  int orig_size = slots.size();
-  int needed = pat.ops.size();
-  
-  bool should_insert_at_front = false;
-  if (!pat.ops.empty() && !slots.empty() && slot_can_handle(0, pat.ops[0])) {
-    should_insert_at_front = true;
+    return;
   }
   
-  int slots_to_add = std::max(0, needed + 2 - (int)slots.size());
+  const std::string& op = pat.ops[op_idx];
   
-  if (should_insert_at_front && slots_to_add > 0) {
-    for (int i = 0; i < slots_to_add; ++i) {
-      insert_slot_at_front();
-    }
-  } else { 
-    while ((int)slots.size() < needed + 2) {
-      add_slot();
+  // Try to find an existing FU that matches this operation
+  for (const auto& fu : fus) {
+    if (fu.op_type == op && used_fus.find(fu.id) == used_fus.end()) {
+      // Check dependency constraints: all predecessors must be mapped to FUs
+      // that can connect to this FU
+      bool valid = true;
+      if (op_idx < pat.op_preds.size()) {
+        for (int pred_idx : pat.op_preds[op_idx]) {
+          if (pred_idx >= 0 && pred_idx < (int)cur_mapping.size()) {
+            // Predecessor is mapped, connection will be established later
+            // For now, we just need to ensure the mapping is valid
+          }
+        }
+      }
+      
+      if (valid) {
+        cur_mapping.push_back(fu.id);
+        used_fus.insert(fu.id);
+        dfs_find_mapping(pat, op_idx + 1, cur_mapping, used_fus, best_mapping, best_reuse_count);
+        used_fus.erase(fu.id);
+        cur_mapping.pop_back();
+      }
     }
   }
   
-  m = find_mapping(pat.ops);
-  if (!m.empty()) {
-    double old_cost = compute_cost(cm);
-    for (size_t i = 0; i < m.size(); ++i) {
-      slots[m[i]].ops.insert(pat.ops[i]);
-    }
-    double new_cost = compute_cost(cm);
-    for (size_t i = 0; i < m.size(); ++i) {
-      slots[m[i]].ops.erase(pat.ops[i]);
-    }
-    
-    out_mapping = m;
-    out_cost_increase = new_cost - old_cost;
-    return true;
-  }
-  
-  while ((int)slots.size() > orig_size) {
-    slots.pop_back();
-  }
-  
-  return false;
+  // Also try creating a "virtual" new FU (represented by -1 - op_idx to distinguish)
+  // This indicates we'll need to add a new FU for this operation
+  cur_mapping.push_back(-1 - (int)op_idx);  // Negative value indicates new FU needed
+  dfs_find_mapping(pat, op_idx + 1, cur_mapping, used_fus, best_mapping, best_reuse_count);
+  cur_mapping.pop_back();
 }
+
+// Finds a mapping for a pattern into the existing template.
+std::vector<int> HardwareTemplate::find_mapping(const HardwarePattern& pat) const {
+  std::vector<int> best_mapping;
+  int best_reuse = -1;
+  std::vector<int> cur_mapping;
+  std::set<int> used_fus;
   
-// Applies a mapping to the template, adding the pattern's operations to slots.
+  dfs_find_mapping(pat, 0, cur_mapping, used_fus, best_mapping, best_reuse);
+  
+  return best_mapping;
+}
+
+// Tries to accommodate a pattern into the existing template.
+bool HardwareTemplate::try_accommodate(const HardwarePattern& pat, const OperationCostModel& cm, 
+                                        std::vector<int>& out_mapping, double& out_cost_increase) {
+  auto mapping = find_mapping(pat);
+  if (mapping.empty() && !pat.ops.empty()) {
+    return false;
+  }
+  
+  // Calculate cost increase: count how many new FUs we need to add
+  double old_cost = compute_cost(cm);
+  int new_fus_needed = 0;
+  
+  for (size_t i = 0; i < mapping.size(); ++i) {
+    if (mapping[i] < 0) {
+      new_fus_needed++;
+    }
+  }
+  
+  // Convert negative indices to actual new FU IDs
+  std::vector<int> final_mapping;
+  int next_fu_id = fus.size();
+  for (size_t i = 0; i < mapping.size(); ++i) {
+    if (mapping[i] < 0) {
+      final_mapping.push_back(next_fu_id++);
+    } else {
+      final_mapping.push_back(mapping[i]);
+    }
+  }
+  
+  // Calculate new cost
+  double new_cost = old_cost;
+  for (size_t i = 0; i < pat.ops.size(); ++i) {
+    if (mapping[i] < 0) {
+      new_cost += cm.fu_cost(pat.ops[i]);
+    }
+  }
+  
+  out_mapping = final_mapping;
+  out_cost_increase = new_cost - old_cost;
+  return true;
+}
+
+// Applies a mapping to the template, adding new FUs as needed.
 void HardwareTemplate::apply_mapping(const HardwarePattern& pat, const std::vector<int>& m) {
   patterns.push_back(pat.id);
   mapping[pat.id] = m;
-  for (size_t i = 0; i < m.size(); ++i) {
-    if (!slot_can_handle(m[i], pat.ops[i])) {
-      continue;
+  
+  // Add any new FUs that don't exist yet
+  for (size_t i = 0; i < m.size() && i < pat.ops.size(); ++i) {
+    int fu_id = m[i];
+    // If this FU ID doesn't exist, we need to add FUs until it does
+    while (fu_id >= (int)fus.size()) {
+      // Find the operation that should go in this new FU
+      for (size_t j = 0; j < m.size(); ++j) {
+        if (m[j] == (int)fus.size()) {
+          add_fu(pat.ops[j]);
+          break;
+        }
+      }
+      // Safety: if no matching op found, break to avoid infinite loop
+      if (fu_id >= (int)fus.size() && fus.size() > 0) {
+        // This shouldn't happen with correct mappings
+        break;
+      }
     }
-    slots[m[i]].ops.insert(pat.ops[i]);
   }
 }
-  
-// Computes the total cost of the template based on operations in each slot.
+
+// Computes the total cost of the template based on all FUs.
 double HardwareTemplate::compute_cost(const OperationCostModel& cm) const {
   double sum = 0;
-  
-  std::map<std::string, int> op_slot_count;
-  for (const auto& slot : slots) {
-    for (const auto& op : slot.ops) {
-      op_slot_count[op]++;
-    }
+  for (const auto& fu : fus) {
+    sum += cm.fu_cost(fu.op_type);
   }
-  
-  std::set<std::string> counted_ops;
-  for (const auto& slot : slots) {
-    for (const auto& op : slot.ops) {
-      if (counted_ops.count(op)) continue;
-      counted_ops.insert(op);
-      sum += cm.get(op) * op_slot_count[op];
-    }
-  }
-  
   return sum;
 }
 
@@ -450,17 +411,15 @@ void create_hardware_templates(const std::vector<HardwarePattern>& patterns, std
     double new_tmpl_cost = pat.cost;
     
     if (best_t >= 0 && best_inc <= new_tmpl_cost * 0.5) {
-      while ((int)templates[best_t].slots.size() < *std::max_element(best_m.begin(), best_m.end()) + 1) {
-        templates[best_t].add_slot();
-      }
       templates[best_t].apply_mapping(pat, best_m);
     } else {
+      // Create a new template with FUs for this pattern
       HardwareTemplate t(templates.size());
-      for (size_t i = 0; i < pat.ops.size(); ++i) {
-        t.add_slot();
-      }
       std::vector<int> m;
-      for (size_t i = 0; i < pat.ops.size(); ++i) m.push_back(i);
+      for (size_t i = 0; i < pat.ops.size(); ++i) {
+        int fu_id = t.add_fu(pat.ops[i]);
+        m.push_back(fu_id);
+      }
       t.apply_mapping(pat, m);
       templates.push_back(t);
     }
@@ -477,38 +436,58 @@ void create_hardware_templates(const std::vector<HardwarePattern>& patterns, std
   }
 }
 
-// Generates slot connections for all templates based on pattern mappings.
-// For each pattern, creates connections between consecutive slots in its mapping.
-// Handles bypass cases where slots are skipped (e.g., mapping [0, 2] creates connection 0->2).
+// Generates FU connections for all templates based on pattern mappings.
+// For each pattern, creates connections based on the dependency graph (op_preds).
 void generate_connections(const std::vector<HardwarePattern>& patterns, std::vector<HardwareTemplate>& templates) {
+  std::map<int64_t, const HardwarePattern*> pattern_map;
+  for (const auto& p : patterns) {
+    pattern_map[p.id] = &p;
+  }
+  
   for (auto& tmpl : templates) {
     tmpl.connections.clear();
     
-    // For each pattern mapped to this template, generate connections based on its slot mapping.
-    for (const auto& [pid, slot_mapping] : tmpl.mapping) {
-      if (slot_mapping.size() < 2) continue;  // Need at least 2 slots to form a connection
+    // For each pattern mapped to this template, generate connections based on dependencies.
+    for (const auto& [pid, fu_mapping] : tmpl.mapping) {
+      auto pat_it = pattern_map.find(pid);
+      if (pat_it == pattern_map.end()) continue;
+      const HardwarePattern* pat = pat_it->second;
       
-      // Creates connections between consecutive slots in the pattern's execution order.
-      // For example, if mapping is [0, 1, 2], creates connections 0->1 and 1->2.
-      // If mapping is [0, 2] (bypassing slot 1), creates connection 0->2.
-      for (size_t i = 0; i < slot_mapping.size() - 1; ++i) {
-        int from = slot_mapping[i];
-        int to = slot_mapping[i + 1];
-        
-        // Only adds connection if from < to (satisfies can_route constraint).
-        if (from >= 0 && to >= 0 && from < to) {
-          tmpl.connections.insert({from, to});
+      if (fu_mapping.size() < 2) continue;
+      
+      // Use op_preds to determine actual data dependencies
+      if (!pat->op_preds.empty()) {
+        for (size_t op_idx = 0; op_idx < pat->op_preds.size() && op_idx < fu_mapping.size(); ++op_idx) {
+          int to_fu = fu_mapping[op_idx];
+          
+          for (int pred_op_idx : pat->op_preds[op_idx]) {
+            if (pred_op_idx >= 0 && pred_op_idx < (int)fu_mapping.size()) {
+              int from_fu = fu_mapping[pred_op_idx];
+              if (from_fu >= 0 && to_fu >= 0 && from_fu != to_fu) {
+                tmpl.connections.insert({from_fu, to_fu});
+              }
+            }
+          }
+        }
+      } else {
+        // Fallback: create linear chain if no dependency info
+        for (size_t i = 0; i < fu_mapping.size() - 1; ++i) {
+          int from = fu_mapping[i];
+          int to = fu_mapping[i + 1];
+          if (from >= 0 && to >= 0 && from != to) {
+            tmpl.connections.insert({from, to});
+          }
         }
       }
     }
   }
 }
 
-// Checks if slot 'from' can reach slot 'to' through existing connections.
-static bool can_reach_via_bypass(const std::set<std::pair<int, int>>& connections, int from, int to, int num_slots) {
-  if (from >= to) return false;
+// Checks if FU 'from' can reach FU 'to' through existing connections.
+static bool can_reach_via_connections(const std::set<std::pair<int, int>>& connections, int from, int to, int num_fus) {
+  if (from == to) return true;
   
-  std::vector<bool> visited(num_slots, false);
+  std::vector<bool> visited(num_fus, false);
   std::vector<int> queue;
   queue.push_back(from);
   visited[from] = true;
@@ -526,7 +505,8 @@ static bool can_reach_via_bypass(const std::set<std::pair<int, int>>& connection
   return false;
 }
 
-// Generates optimized slot connections for all templates based on pattern dependencies.
+// Generates optimized FU connections for all templates based on pattern dependencies.
+// Removes redundant connections using transitive reachability.
 void generate_optimized_connections(const std::vector<HardwarePattern>& patterns, std::vector<HardwareTemplate>& templates) {
   std::map<int64_t, const HardwarePattern*> pattern_map;
   for (const auto& p : patterns) {
@@ -536,50 +516,51 @@ void generate_optimized_connections(const std::vector<HardwarePattern>& patterns
   for (auto& tmpl : templates) {
     std::set<std::pair<int, int>> required_connections;
     
-    for (const auto& [pid, slot_mapping] : tmpl.mapping) {
+    for (const auto& [pid, fu_mapping] : tmpl.mapping) {
       auto pat_it = pattern_map.find(pid);
       if (pat_it == pattern_map.end()) continue;
       const HardwarePattern* pat = pat_it->second;
       
-      if (slot_mapping.size() < 2) continue;
+      if (fu_mapping.size() < 2) continue;
       
       if (!pat->op_preds.empty()) {
-        for (size_t op_idx = 0; op_idx < pat->op_preds.size() && op_idx < slot_mapping.size(); ++op_idx) {
-          int to_slot = slot_mapping[op_idx];
+        for (size_t op_idx = 0; op_idx < pat->op_preds.size() && op_idx < fu_mapping.size(); ++op_idx) {
+          int to_fu = fu_mapping[op_idx];
           
           for (int pred_op_idx : pat->op_preds[op_idx]) {
-            if (pred_op_idx >= 0 && pred_op_idx < (int)slot_mapping.size()) {
-              int from_slot = slot_mapping[pred_op_idx];
-              if (from_slot >= 0 && to_slot >= 0 && from_slot < to_slot) {
-                required_connections.insert({from_slot, to_slot});
+            if (pred_op_idx >= 0 && pred_op_idx < (int)fu_mapping.size()) {
+              int from_fu = fu_mapping[pred_op_idx];
+              if (from_fu >= 0 && to_fu >= 0 && from_fu != to_fu) {
+                required_connections.insert({from_fu, to_fu});
               }
             }
           }
         }
       } else {
-        for (size_t i = 0; i < slot_mapping.size() - 1; ++i) {
-          int from = slot_mapping[i];
-          int to = slot_mapping[i + 1];
-          if (from >= 0 && to >= 0 && from < to) {
+        for (size_t i = 0; i < fu_mapping.size() - 1; ++i) {
+          int from = fu_mapping[i];
+          int to = fu_mapping[i + 1];
+          if (from >= 0 && to >= 0 && from != to) {
             required_connections.insert({from, to});
           }
         }
       }
     }
     
+    // Sort connections by "distance" (prefer shorter connections first for transitive reduction)
     std::vector<std::pair<int, int>> sorted_connections(required_connections.begin(), required_connections.end());
     std::sort(sorted_connections.begin(), sorted_connections.end(), 
               [](const auto& a, const auto& b) {
-                return (a.second - a.first) < (b.second - b.first);
+                return std::abs(a.second - a.first) < std::abs(b.second - b.first);
               });
     
     // Build optimized connections - add a connection only if it's not already reachable.
     tmpl.connections.clear();
-    int num_slots = tmpl.slots.size();
+    int num_fus = tmpl.fus.size();
     
     for (const auto& conn : sorted_connections) {
       // Check if we can already reach conn.second from conn.first via existing connections.
-      if (!can_reach_via_bypass(tmpl.connections, conn.first, conn.second, num_slots)) {
+      if (!can_reach_via_connections(tmpl.connections, conn.first, conn.second, num_fus)) {
         tmpl.connections.insert(conn);
       }
     }
@@ -608,21 +589,22 @@ void generate_execution_plans(const std::vector<HardwarePattern>& patterns, cons
     auto mapping_it = tmpl->mapping.find(pat.id);
     if (mapping_it == tmpl->mapping.end()) continue;
     
-    const std::vector<int>& slot_mapping = mapping_it->second;
+    const std::vector<int>& fu_mapping = mapping_it->second;
     
+    // Group operations by their topological level for parallel execution
     std::map<int, std::vector<std::pair<int, std::pair<int, std::string>>>> level_to_ops;
     
-    for (size_t i = 0; i < pat.ops.size() && i < slot_mapping.size(); ++i) {
+    for (size_t i = 0; i < pat.ops.size() && i < fu_mapping.size(); ++i) {
       int level = (i < pat.op_levels.size()) ? pat.op_levels[i] : (int)i;
-      int slot = slot_mapping[i];
-      level_to_ops[level].push_back({(int)i, {slot, pat.ops[i]}});
+      int fu = fu_mapping[i];
+      level_to_ops[level].push_back({(int)i, {fu, pat.ops[i]}});
     }
     
     for (const auto& [level, ops_at_level] : level_to_ops) {
       ExecutionStage stage;
-      for (const auto& [op_idx, slot_and_op] : ops_at_level) {
-        stage.slots.push_back(slot_and_op.first);
-        stage.ops.push_back(slot_and_op.second);
+      for (const auto& [op_idx, fu_and_op] : ops_at_level) {
+        stage.fus.push_back(fu_and_op.first);
+        stage.ops.push_back(fu_and_op.second);
       }
       plan.stages.push_back(stage);
     }
@@ -637,33 +619,23 @@ void collect_supported_operations(const std::vector<HardwarePattern>& patterns, 
     TemplateSupportedOps ops;
     ops.template_id = tmpl.id;
     
+    // Collect all operation types present in this template's FUs
     std::set<std::string> template_ops;
-    for (const auto& slot : tmpl.slots) {
-      for (const auto& op : slot.ops) {
-        template_ops.insert(op);
-      }
+    for (const auto& fu : tmpl.fus) {
+      template_ops.insert(fu.op_type);
     }
     
+    // For each DFG op, check if this template can support it
     for (const std::string& dfg_op : all_dfg_ops) {
       bool can_support = false;
       
+      // Direct support: template has an FU for this op
       if (template_ops.count(dfg_op)) {
         can_support = true;
       } else {
-        for (const auto& slot : tmpl.slots) {
-          if (!slot.ops.empty()) {
-            bool compatible = true;
-            for (const auto& existing_op : slot.ops) {
-              if (!HardwareTemplate::compatible(existing_op, dfg_op)) {
-                compatible = false;
-                break;
-              }
-            }
-            if (compatible) {
-              can_support = true;
-              break;
-            }
-          } else {
+        // Check if any existing FU type is compatible
+        for (const auto& existing_op : template_ops) {
+          if (HardwareTemplate::compatible(existing_op, dfg_op)) {
             can_support = true;
             break;
           }
@@ -754,31 +726,24 @@ void write_hardware_config_json(const std::string& path, const std::vector<Hardw
       os << "\n        ],\n";
     }
     
-    os << "        \"slots\": [\n";
-    for (size_t s = 0; s < tmpl.slots.size(); ++s) {
-      const auto& slot = tmpl.slots[s];
-      if (s) os << ",\n";
-      os << "          {\"slot_id\": " << slot.id << ", \"supported_ops\": [";
-      bool first = true;
-      for (const auto& op : slot.ops) {
-        if (!first) os << ", ";
-        first = false;
-        os << "\"" << op << "\"";
-      }
-      os << "]}";
+    // Output FUs (functional units) instead of slots
+    os << "        \"functional_units\": [\n";
+    for (size_t f = 0; f < tmpl.fus.size(); ++f) {
+      const auto& fu = tmpl.fus[f];
+      if (f) os << ",\n";
+      os << "          {\"fu_id\": " << fu.id << ", \"op_type\": \"" << fu.op_type << "\"}";
     }
     os << "\n        ],\n";
     
-    os << "        \"slot_connections\": {\n";
-    os << "          \"connections\": [";
+    // Output FU connections
+    os << "        \"fu_connections\": [\n";
     bool first_conn = true;
     for (const auto& conn : tmpl.connections) {
-      if (!first_conn) os << ", ";
+      if (!first_conn) os << ",\n";
       first_conn = false;
-      os << "{\"from\": " << conn.first << ", \"to\": " << conn.second << "}";
+      os << "          {\"from_fu\": " << conn.first << ", \"to_fu\": " << conn.second << "}";
     }
-    os << "]\n";
-    os << "        },\n";
+    os << "\n        ],\n";
     
     os << "        \"pattern_execution_plans\": [\n";
     bool first_plan = true;
@@ -792,7 +757,7 @@ void write_hardware_config_json(const std::string& path, const std::vector<Hardw
       os << "          {\n";
       os << "            \"pattern_id\": " << plan.pattern_id << ",\n";
       os << "            \"pattern_name\": \"" << escape_json_string(plan.pattern_name) << "\",\n";
-      os << "            \"slot_mapping\": [";
+      os << "            \"fu_mapping\": [";
       const auto& m = mapping_it->second;
       for (size_t i = 0; i < m.size(); ++i) {
         if (i) os << ", ";
@@ -805,10 +770,10 @@ void write_hardware_config_json(const std::string& path, const std::vector<Hardw
         if (stage_idx) os << ",\n";
         os << "              {\n";
         os << "                \"stage\": " << stage_idx << ",\n";
-        os << "                \"parallel_slots\": [";
-        for (size_t i = 0; i < stage.slots.size(); ++i) {
+        os << "                \"parallel_fus\": [";
+        for (size_t i = 0; i < stage.fus.size(); ++i) {
           if (i) os << ", ";
-          os << stage.slots[i];
+          os << stage.fus[i];
         }
         os << "],\n";
         os << "                \"parallel_ops\": [";
