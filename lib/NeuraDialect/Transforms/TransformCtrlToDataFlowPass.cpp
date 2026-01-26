@@ -86,7 +86,6 @@ void GrantPredicateInEntryBlock(Block *entry_block, OpBuilder &builder,
     return;
   }
   SmallVector<Value> live_out_arg_values;
-  SmallVector<Value> live_out_non_arg_values;
 
   // Step 1: Collects all live-out values first.
   for (Operation &op : *entry_block) {
