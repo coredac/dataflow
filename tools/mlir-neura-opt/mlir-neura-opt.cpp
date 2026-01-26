@@ -29,7 +29,7 @@ mlir::neura::Architecture mlir::neura::getArchitecture() {
   auto arch_parser = ArchParser(architecture_spec_file);
   auto architecture_result = arch_parser.getArchitecture();
   if (failed(architecture_result)) {
-    llvm::report_fatal_error("[neura-compiler] Failed to get architecture.");
+    llvm::report_fatal_error("[mlir-neura-opt] Failed to get architecture.");
   }
   return std::move(architecture_result.value());
 }

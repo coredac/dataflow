@@ -41,7 +41,7 @@ mlir::FailureOr<Architecture> ArchParser::getArchitecture() {
     llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> buffer_or_err =
         llvm::MemoryBuffer::getFile(architecture_spec_file);
     if (!buffer_or_err) {
-      llvm::errs() << "[MapToAcceleratorPass] Failed to open architecture "
+      llvm::errs() << "Failed to open architecture "
                       "specification file: "
                    << architecture_spec_file << "\n";
       return failure();
@@ -60,8 +60,7 @@ mlir::FailureOr<Architecture> ArchParser::getArchitecture() {
     }
 
     if (parse_failed) {
-      llvm::errs() << "[MapToAcceleratorPass] YAML parse error in: "
-                   << architecture_spec_file << "\n";
+      llvm::errs() << "YAML parse error in: " << architecture_spec_file << "\n";
       return failure();
     }
 
@@ -74,7 +73,7 @@ mlir::FailureOr<Architecture> ArchParser::getArchitecture() {
       return failure();
     }
   } else {
-    llvm::errs() << "[MapToAcceleratorPass] No architecture specification "
+    llvm::errs() << "No architecture specification "
                     "file provided.\n";
   }
 
@@ -197,8 +196,7 @@ bool ArchParser::parseArchitectureYaml(
       if (link_overrides_seq)
         parseLinkOverrides(link_overrides_seq, link_overrides);
     } else {
-      llvm::errs() << "[MapToAcceleratorPass] Unknown YAML root key: "
-                   << key_ref << "\n";
+      llvm::errs() << "Unknown YAML root key: " << key_ref << "\n";
     }
   }
   return true;
