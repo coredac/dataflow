@@ -272,6 +272,7 @@ static Topology getTopologyFromArchitecture(int per_cgra_rows, int per_cgra_colu
                                          mlir::neura::BaseTopology::MESH,
                                          per_cgra_rows,
                                          per_cgra_columns,
+                                         20,
                                          mlir::neura::BaseTopology::MESH,
                                          mlir::neura::TileDefaults{},
                                          std::vector<mlir::neura::TileOverride>{},

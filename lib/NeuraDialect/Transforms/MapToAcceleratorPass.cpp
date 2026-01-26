@@ -4,7 +4,6 @@
 
 #include "Common/AcceleratorAttrs.h"
 #include "NeuraDialect/Architecture/Architecture.h"
-#include "NeuraDialect/Architecture/ArchitectureSpec.h"
 #include "NeuraDialect/Mapping/HeuristicMapping/HeuristicMapping.h"
 #include "NeuraDialect/Mapping/MappingState.h"
 #include "NeuraDialect/Mapping/mapping_util.h"
@@ -192,71 +191,8 @@ struct MapToAcceleratorPass
       return;
     }
 
-    // Handle architecture specification file
-    constexpr int kMultiCgraDefaultRows = 1;
-    constexpr int kMultiCgraDefaultColumns = 1;
-    constexpr int kPerCgraDefaultRows = 4;
-    constexpr int kPerCgraDefaultColumns = 4;
-    constexpr int kDefaultMaxCtrlMemItems = 20;
+    Architecture architecture = mlir::neura::getArchitecture();
 
-    std::string architecture_spec_file = mlir::neura::getArchitectureSpecFile();
-    int multi_cgra_rows = kMultiCgraDefaultRows;
-    int multi_cgra_columns = kMultiCgraDefaultColumns;
-    int per_cgra_rows = kPerCgraDefaultRows;
-    int per_cgra_columns = kPerCgraDefaultColumns;
-    int max_ctrl_mem_items = kDefaultMaxCtrlMemItems;
-    mlir::neura::TileDefaults tile_defaults;
-    std::vector<mlir::neura::TileOverride> tile_overrides;
-    mlir::neura::LinkDefaults link_defaults;
-    std::vector<mlir::neura::LinkOverride> link_overrides;
-    mlir::neura::BaseTopology multi_cgra_base_topology =
-        mlir::neura::BaseTopology::MESH;
-    mlir::neura::BaseTopology per_cgra_base_topology =
-        mlir::neura::BaseTopology::MESH;
-
-    if (!architecture_spec_file.empty()) {
-
-      // Use LLVM YAML parser to validate the YAML syntax (no mapping yet)
-      llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> buffer_or_err =
-          llvm::MemoryBuffer::getFile(architecture_spec_file);
-      if (!buffer_or_err) {
-        llvm::errs() << "[MapToAcceleratorPass] Failed to open architecture "
-                        "specification file: "
-                     << architecture_spec_file << "\n";
-        return;
-      }
-
-      llvm::SourceMgr sm;
-      sm.AddNewSourceBuffer(std::move(*buffer_or_err), llvm::SMLoc());
-      llvm::yaml::Stream yaml_stream(
-          sm.getMemoryBuffer(sm.getMainFileID())->getBuffer(), sm);
-
-      bool parse_failed = false;
-      llvm::yaml::Document &yaml_doc = *yaml_stream.begin();
-      (void)yaml_doc; // ensure document is created
-      if (yaml_stream.failed()) {
-        parse_failed = true;
-      }
-
-      if (parse_failed) {
-        llvm::errs() << "[MapToAcceleratorPass] YAML parse error in: "
-                     << architecture_spec_file << "\n";
-        return;
-      }
-
-      // Parse YAML configuration
-      if (!parseArchitectureYaml(
-              yaml_doc, multi_cgra_rows, multi_cgra_columns,
-              multi_cgra_base_topology, per_cgra_rows, per_cgra_columns,
-              per_cgra_base_topology, max_ctrl_mem_items, tile_defaults,
-              tile_overrides, link_defaults, link_overrides)) {
-        return;
-      }
-    } else {
-      llvm::errs() << "[MapToAcceleratorPass] No architecture specification "
-                      "file provided.\n";
-    }
-    // assert(false);
     module.walk([&](func::FuncOp func) {
       // Skips functions not targeting the neura accelerator.
       auto accel_attr =
@@ -314,16 +250,10 @@ struct MapToAcceleratorPass
         rec_mii = 1; // No recurrence cycles found, set MII to 1.
       }
 
-      // Always use full constructor with YAML configuration
-      Architecture architecture(
-          multi_cgra_rows, multi_cgra_columns, multi_cgra_base_topology,
-          per_cgra_rows, per_cgra_columns, per_cgra_base_topology,
-          tile_defaults, tile_overrides, link_defaults, link_overrides);
       int res_mii = calculateResMii(func, architecture);
 
       const int possible_min_ii = std::max(rec_mii, res_mii);
-      const int max_ii =
-          max_ctrl_mem_items; // Use YAML config (default 20 if not specified)
+      const int max_ii = architecture.getMaxCtrlMemItems();
 
       std::vector<Operation *> topologically_sorted_ops =
           getTopologicallySortedOps(func);

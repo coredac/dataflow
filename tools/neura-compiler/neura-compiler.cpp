@@ -12,7 +12,12 @@
 #include "Conversion/ConversionPasses.h"
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraPasses.h"
-#include "NeuraDialect/Architecture/ArchitectureSpec.h"
+#include "NeuraDialect/Architecture/Architecture.h"
+#include "NeuraDialect/Util/ArchParser.h"
+#include "mlir/Support/LogicalResult.h"
+
+using mlir::neura::Architecture;
+using mlir::neura::util::ArchParser;
 
 // Global variable to store architecture spec file path
 static std::string architecture_spec_file;
@@ -26,6 +31,15 @@ std::string mlir::neura::getArchitectureSpecFile() {
 // Function to get tile defaults configuration
 mlir::neura::TileDefaults mlir::neura::getTileDefaults() {
   return tile_defaults;
+}
+
+Architecture mlir::neura::getArchitecture() {
+  auto arch_parser = ArchParser(architecture_spec_file);
+  auto architecture_result = arch_parser.getArchitecture();
+  if (failed(architecture_result)) {
+    llvm::report_fatal_error("[neura-compiler] Failed to get architecture.");
+  }
+  return std::move(architecture_result.value());
 }
 
 int main(int argc, char **argv) {

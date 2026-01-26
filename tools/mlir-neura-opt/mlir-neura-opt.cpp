@@ -14,11 +14,13 @@
 #include "llvm/Support/CommandLine.h"
 
 #include "Conversion/ConversionPasses.h"
-#include "NeuraDialect/Architecture/ArchitectureSpec.h"
+#include "NeuraDialect/Architecture/Architecture.h"
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraPasses.h"
 #include "TaskflowDialect/TaskflowDialect.h"
 #include "TaskflowDialect/TaskflowPasses.h"
+#include "NeuraDialect/Util/ArchParser.h"
+using mlir::neura::util::ArchParser;
 
 // Global variable to store architecture spec file path
 static std::string architecture_spec_file;
@@ -33,6 +35,15 @@ std::string mlir::neura::getArchitectureSpecFile() {
 mlir::neura::TileDefaults mlir::neura::getTileDefaults() {
   return tile_defaults;
 }
+mlir::neura::Architecture mlir::neura::getArchitecture() {
+  auto arch_parser = ArchParser(architecture_spec_file);
+  auto architecture_result = arch_parser.getArchitecture();
+  if (failed(architecture_result)) {
+    llvm::report_fatal_error("[neura-compiler] Failed to get architecture.");
+  }
+  return std::move(architecture_result.value());
+}
+
 
 int main(int argc, char **argv) {
   // Manually scan and strip --architecture-spec from argv, keep others for
