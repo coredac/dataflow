@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Sync Dataflow e2e outputs into Zeonica_Testbench.
+# - Copies generated DFG/instruction artifacts from test/e2e/<kernel>
+# - Renames them to Zeonica_Testbench's expected naming
+# - Creates missing kernel directories under the submodule
+
 ROOT="$(git -C "$(dirname "${BASH_SOURCE[0]}")/.." rev-parse --show-toplevel)"
 
 SRC_E2E="${ROOT}/test/e2e"
@@ -22,7 +27,7 @@ shopt -s nullglob
 for d in "${SRC_E2E}"/*/; do
   k="$(basename "${d}")"
 
-  # Ensure destination exists (user asked to sync all e2e outputs).
+  # Ensure destination exists for every kernel.
   if [[ ! -d "${DST_KERNEL}/${k}" ]]; then
     echo "[create] ${DST_KERNEL}/${k}"
     mkdir -p "${DST_KERNEL}/${k}"
@@ -37,6 +42,7 @@ for d in "${SRC_E2E}"/*/; do
   [[ -f "${d}/tmp-generated-instructions.yaml" ]] && cp -f "${d}/tmp-generated-instructions.yaml" "${DST_KERNEL}/${k}/${k}-instructions.yaml"
 done
 
+# Optional: git commit/push for the submodule (kept commented on purpose).
 # if [[ -n "$(git -C "${DST_TESTBENCH}" status --porcelain)" ]]; then
 #   echo "[git] changes detected in Zeonica_Testbench"
 #   git -C "${DST_TESTBENCH}" add -A
