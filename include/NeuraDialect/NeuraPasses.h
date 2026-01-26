@@ -47,6 +47,9 @@ std::unique_ptr<mlir::Pass> createCanonicalizeCastPass();
 std::unique_ptr<mlir::Pass> createIterMergePatternPass();
 std::unique_ptr<mlir::Pass> createInitPatternPass();
 
+// Hardware optimization passes
+std::unique_ptr<mlir::Pass> createHardwareMergePass();
+
 #define GEN_PASS_REGISTRATION
 #include "NeuraDialect/NeuraPasses.h.inc"
 

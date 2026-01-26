@@ -174,4 +174,24 @@ def WrapLoopInKernelPass : Pass<"wrap-loop-in-kernel", "func::FuncOp">{
   }];
   let constructor = "neura::createWrapLoopInKernelPass()";
 }
+
+def HardwareMerge : Pass<"hardware-merge", "ModuleOp"> {
+  let summary = "Merge and optimize hardware units for pattern execution";
+  let description = [{
+    This pass analyzes patterns (fused_op regions) and designs an optimal
+    hardware configuration that supports all patterns while minimizing
+    hardware cost. It uses a Functional Unit (FU) based design where each
+    FU executes exactly one operation type.
+    
+    Algorithm:
+    1. Extract pattern DAGs with topological structure from fused_op regions
+    2. Sort patterns by complexity (distinct operation count and cost)
+    3. For each pattern, try to accommodate it into existing templates by reusing FUs with matching operation types
+    4. If accommodation cost is too high, create a new template with dedicated FUs for the pattern
+    5. Generate FU connections based on pattern dependencies with transitive reduction optimization
+    6. Generate execution plans with parallel execution stages
+    7. Output the final hardware configuration as a JSON file
+  }];
+  let constructor = "neura::createHardwareMergePass()";
+}
 #endif // NEURA_PASSES_TD
