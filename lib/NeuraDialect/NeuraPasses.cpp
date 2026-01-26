@@ -39,5 +39,6 @@ void mlir::neura::registerNeuraConversionPassPipeline() {
 
         pm.addPass(mlir::neura::createMapToAcceleratorPass());
         pm.addPass(mlir::neura::createGenerateCodePass());
+        pm.addPass(mlir::createPrintOpGraphPass(os));
       });
 }
