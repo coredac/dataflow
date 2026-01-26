@@ -3,6 +3,9 @@
 // This file contains data structures and helper functions for hardware template
 // merging, including pattern extraction, template creation, and cost calculation.
 //
+// This version uses Functional Unit (FU) based design where each FU executes
+// exactly one operation type, and templates can have multiple FUs of the same type.
+//
 //===----------------------------------------------------------------------===//
 
 #include "NeuraDialect/Transforms/GraphMining/HardwareTemplate.h"
@@ -21,7 +24,8 @@ using namespace mlir;
 
 namespace mlir::neura {
 
-// Cost Model Implementation
+// Initializes the operation cost model with default costs for each operation type.
+// TODO: The cost model should be imported from the input file.
 OperationCostModel::OperationCostModel() {
   costs["neura.div"] = 100; costs["neura.fdiv"] = 100; costs["neura.rem"] = 80;
   costs["neura.load"] = 50; costs["neura.store"] = 50;
@@ -38,162 +42,72 @@ OperationCostModel::OperationCostModel() {
   costs["neura.data_mov"] = 1; costs["neura.constant"] = 1;
 }
 
+// Returns the cost for a given operation, or 5.0 as default if not found.
 double OperationCostModel::get(const std::string& op) const {
   auto it = costs.find(op);
   return it != costs.end() ? it->second : 5.0;
 }
 
-double OperationCostModel::slotCost(const std::set<std::string>& ops) const {
-  double mx = 0;
-  for (const auto& op : ops) mx = std::max(mx, get(op));
-  return mx;
+// Returns the cost for a single FU (same as get).
+double OperationCostModel::fu_cost(const std::string& op) const {
+  return get(op);
 }
 
-double OperationCostModel::patternCost(const std::vector<std::string>& ops) const {
+// Returns the total cost for a pattern by summing costs of all its operations.
+double OperationCostModel::pattern_cost(const std::vector<std::string>& ops) const {
   double sum = 0;
   for (const auto& op : ops) sum += get(op);
   return sum;
 }
 
 
-// Hardware Pattern Implementation
+// Constructs a HardwarePattern with the given id, name, and frequency.
 HardwarePattern::HardwarePattern(int64_t i, const std::string& n, int64_t f) 
     : id(i), name(n), freq(f), cost(0) {}
 
-HardwareSlot::HardwareSlot(int i) : id(i) {}
+// Constructs a FunctionalUnit with the given id and operation type.
+FunctionalUnit::FunctionalUnit(int i, const std::string& op) : id(i), op_type(op) {}
 
+// Constructs a HardwareTemplate with the given id and one instance.
 HardwareTemplate::HardwareTemplate(int i) : id(i), instances(1) {}
 
-void HardwareTemplate::addSlot() {
-  int newId = slots.size();
-  slots.emplace_back(newId);
-}
-  
-void HardwareTemplate::insertSlotAtFront() {
-  for (auto& slot : slots) {
-    slot.id++;
-  }
-  
-  slots.insert(slots.begin(), HardwareSlot(0));
-  
-  for (auto& pair : mapping) {
-    for (int& slotIdx : pair.second) {
-      slotIdx++;
-    }
-  }
-}
-  
-// Checks if a connection can be made between two slots (simplified: only checks index order).
-bool HardwareTemplate::canRoute(int from, int to) const {
-  if (from < 0) return true;
-  return from < to;
+// Adds a new FU with the given operation type, returns its ID.
+int HardwareTemplate::add_fu(const std::string& op_type) {
+  int new_id = fus.size();
+  fus.emplace_back(new_id, op_type);
+  return new_id;
 }
 
-// Finds a mapping for a pattern into the existing template.
-std::vector<int> HardwareTemplate::findMapping(const std::vector<std::string>& patOps) const {
-  std::vector<int> bestMapping;
-  int bestScore = -1;
-  
-  dfsWithScoring(patOps, 0, -1, {}, bestMapping, bestScore);
-  return bestMapping;
-}
-  
-// DFS with scoring to find the best mapping for a pattern into the existing template.
-// opIdx: current operation index in the pattern; prevSlot: previous slot index
-void HardwareTemplate::dfsWithScoring(const std::vector<std::string>& patOps, size_t opIdx, int prevSlot, std::vector<int> cur, std::vector<int>& bestMapping, int& bestScore) const {
-  // Finishs processing all the pattern operations.
-  if (opIdx >= patOps.size()) {
-    int score = 0;
-    for (size_t i = 0; i < patOps.size(); ++i) {
-      int slot = cur[i];
-      const std::string& op = patOps[i];
-      
-      if (slotCanHandle(slot, op) && !slots[slot].ops.empty()) {
-        score += 10;
-      }
-    }
-    if (score > bestScore) {
-      bestScore = score;
-      bestMapping = cur;
-    }
-    return;
-  }
-  
-  const std::string& op = patOps[opIdx];
-  
-  std::vector<std::pair<int, size_t>> candidates;
-  for (size_t s = 0; s < slots.size(); ++s) {
-    if (!slotCanHandle(s, op)) continue;  // Skip slots that cannot handle this op
-    
-    // Non-empty slots with compatible ops: highest priority (reuses hardware, no cost increase)
-    if (!slots[s].ops.empty()) {
-      candidates.push_back({100, s});
-    }
-    // Empty slots: lower priority (needs new hardware)
-    else {
-      candidates.push_back({50, s});
+// Finds an existing FU that can handle the operation and is not already used.
+int HardwareTemplate::find_available_fu(const std::string& op_type, const std::set<int>& used_fus) const {
+  for (const auto& fu : fus) {
+    if (fu.op_type == op_type && used_fus.find(fu.id) == used_fus.end()) {
+      return fu.id;
     }
   }
-  
-  std::sort(candidates.rbegin(), candidates.rend());
-  
-  for (const auto& cand : candidates) {
-    size_t s = cand.second;
-    if (!canRoute(prevSlot, (int)s)) continue;
-    if (std::find(cur.begin(), cur.end(), (int)s) != cur.end()) continue;
-    
-    auto next = cur;
-    next.push_back((int)s);
-    dfsWithScoring(patOps, opIdx + 1, (int)s, next, bestMapping, bestScore);
-  }
+  return -1;  // No available FU found
 }
-  
-std::vector<int> HardwareTemplate::dfs(const std::vector<std::string>& patOps, 
-                                       size_t opIdx, int prevSlot,
-                                       std::vector<int> cur) const {
-  std::vector<int> best;
-  int score = -1;
-  dfsWithScoring(patOps, opIdx, prevSlot, cur, best, score);
-  return best;
-}
-  
-// Checks if a slot can handle an operation.
-// A slot can only contain ops from the same compatible group.
-// Empty slots can accept any op; non-empty slots can only accept ops compatible with all existing ops.
-bool HardwareTemplate::slotCanHandle(size_t s, const std::string& op) const {
-  // If slot already contains this exact op, it can handle it.
-  if (slots[s].ops.count(op)) return true;
-  
-  // If slot is empty, it can accept any op.
-  if (slots[s].ops.empty()) return true;
-  
-  // If slot has existing ops, the new op must be compatible with ALL existing ops.
-  // This ensures the slot only contains ops from the same compatible group.
-  for (const auto& existing : slots[s].ops) {
-    if (!compatible(existing, op)) return false;
-  }
-  return true;
-}
-  
+
+// Checks if two operations are compatible (could share hardware in extended designs).
 bool HardwareTemplate::compatible(const std::string& a, const std::string& b) {
   if (a == b) return true;
   
-  auto inGroup = [](const std::string& op, const std::vector<std::string>& group) -> bool {
+  auto in_group = [](const std::string& op, const std::vector<std::string>& group) -> bool {
     for (const auto& keyword : group) {
       if (op.find(keyword) != std::string::npos) return true;
     }
     return false;
   };
   
-  static const std::vector<std::vector<std::string>> compatibleGroups = {
+  static const std::vector<std::vector<std::string>> compatible_groups = {
     {"add", "sub"},
     {"grant_once", "grant_predicate", "grant_always"},
     {"and", "or", "not", "xor"},
     {"load", "store"}
   };
   
-  for (const auto& group : compatibleGroups) {
-    if (inGroup(a, group) && inGroup(b, group)) {
+  for (const auto& group : compatible_groups) {
+    if (in_group(a, group) && in_group(b, group)) {
       return true;
     }
   }
@@ -201,135 +115,164 @@ bool HardwareTemplate::compatible(const std::string& a, const std::string& b) {
   return false;
 }
 
-// Tries to accommodate a pattern into the existing template.
-// outMapping: mapping of pattern operations to template slots; outCostIncrease: cost increase for the mapping this pattern.
-bool HardwareTemplate::tryAccommodate(const HardwarePattern& pat, const OperationCostModel& cm, std::vector<int>& outMapping, double& outCostIncrease) {
-  // Tries to find a mapping wihout extending current templates.
-  auto m = findMapping(pat.ops);
-  if (!m.empty()) {
-    double oldCost = computeCost(cm);
-    
-    for (size_t i = 0; i < m.size(); ++i) {
-      slots[m[i]].ops.insert(pat.ops[i]);
+// DFS helper for finding the best mapping with maximum FU reuse.
+void HardwareTemplate::dfs_find_mapping(const HardwarePattern& pat, size_t op_idx, 
+                                         std::vector<int>& cur_mapping, std::set<int>& used_fus,
+                                         std::vector<int>& best_mapping, int& best_reuse_count) const {
+  if (op_idx >= pat.ops.size()) {
+    // Count reused FUs (existing FUs that were mapped)
+    int reuse_count = 0;
+    for (int fu_id : cur_mapping) {
+      if (fu_id >= 0 && fu_id < (int)fus.size()) {
+        reuse_count++;
+      }
     }
-    double newCost = computeCost(cm);
-    
-    for (size_t i = 0; i < m.size(); ++i) {
-      slots[m[i]].ops.erase(pat.ops[i]);
+    if (reuse_count > best_reuse_count) {
+      best_reuse_count = reuse_count;
+      best_mapping = cur_mapping;
     }
-    
-    outMapping = m;
-    outCostIncrease = newCost - oldCost;
-    return true;
-  }
-
-  // Checks if we need to insert some slots at the front of the template.
-  int origSize = slots.size();
-  int needed = pat.ops.size();
-  
-  // Simplified heuristic: inserts at front if pattern's first op can be handled by slot[0].
-  // This encourages more patterns to share early slots.
-  bool shouldInsertAtFront = false;
-  if (!pat.ops.empty() && !slots.empty() && slotCanHandle(0, pat.ops[0])) {
-    shouldInsertAtFront = true;
+    return;
   }
   
-  int slotsToAdd = std::max(0, needed + 2 - (int)slots.size());
+  const std::string& op = pat.ops[op_idx];
   
-  if (shouldInsertAtFront && slotsToAdd > 0) {
-    for (int i = 0; i < slotsToAdd; ++i) {
-      insertSlotAtFront();
-    }
-  } else { 
-    while ((int)slots.size() < needed + 2) {
-      addSlot();
+  // Try to find an existing FU that matches this operation
+  for (const auto& fu : fus) {
+    if (fu.op_type == op && used_fus.find(fu.id) == used_fus.end()) {
+      // Check dependency constraints: all predecessors must be mapped to FUs
+      // that can connect to this FU
+      bool valid = true;
+      if (op_idx < pat.op_preds.size()) {
+        for (int pred_idx : pat.op_preds[op_idx]) {
+          if (pred_idx >= 0 && pred_idx < (int)cur_mapping.size()) {
+            // Predecessor is mapped, connection will be established later
+            // For now, we just need to ensure the mapping is valid
+          }
+        }
+      }
+      
+      if (valid) {
+        cur_mapping.push_back(fu.id);
+        used_fus.insert(fu.id);
+        dfs_find_mapping(pat, op_idx + 1, cur_mapping, used_fus, best_mapping, best_reuse_count);
+        used_fus.erase(fu.id);
+        cur_mapping.pop_back();
+      }
     }
   }
   
-  m = findMapping(pat.ops);
-  if (!m.empty()) {
-    double oldCost = computeCost(cm);
-    for (size_t i = 0; i < m.size(); ++i) {
-      slots[m[i]].ops.insert(pat.ops[i]);
-    }
-    double newCost = computeCost(cm);
-    for (size_t i = 0; i < m.size(); ++i) {
-      slots[m[i]].ops.erase(pat.ops[i]);
-    }
-    
-    outMapping = m;
-    outCostIncrease = newCost - oldCost;
-    return true;
-  }
-  
-  // Fails to find a mapping, so we need to remove new slots.
-  while ((int)slots.size() > origSize) {
-    slots.pop_back();
-  }
-  
-  return false;
+  // Also try creating a "virtual" new FU (represented by -1 - op_idx to distinguish)
+  // This indicates we'll need to add a new FU for this operation
+  cur_mapping.push_back(-1 - (int)op_idx);  // Negative value indicates new FU needed
+  dfs_find_mapping(pat, op_idx + 1, cur_mapping, used_fus, best_mapping, best_reuse_count);
+  cur_mapping.pop_back();
 }
+
+// Finds a mapping for a pattern into the existing template.
+std::vector<int> HardwareTemplate::find_mapping(const HardwarePattern& pat) const {
+  std::vector<int> best_mapping;
+  int best_reuse = -1;
+  std::vector<int> cur_mapping;
+  std::set<int> used_fus;
   
-void HardwareTemplate::applyMapping(const HardwarePattern& pat, const std::vector<int>& m) {
+  dfs_find_mapping(pat, 0, cur_mapping, used_fus, best_mapping, best_reuse);
+  
+  return best_mapping;
+}
+
+// Tries to accommodate a pattern into the existing template.
+bool HardwareTemplate::try_accommodate(const HardwarePattern& pat, const OperationCostModel& cm, 
+                                        std::vector<int>& out_mapping, double& out_cost_increase) {
+  auto mapping = find_mapping(pat);
+  if (mapping.empty() && !pat.ops.empty()) {
+    return false;
+  }
+  
+  // Calculate cost increase: count how many new FUs we need to add
+  double old_cost = compute_cost(cm);
+  int new_fus_needed = 0;
+  
+  for (size_t i = 0; i < mapping.size(); ++i) {
+    if (mapping[i] < 0) {
+      new_fus_needed++;
+    }
+  }
+  
+  // Convert negative indices to actual new FU IDs
+  std::vector<int> final_mapping;
+  int next_fu_id = fus.size();
+  for (size_t i = 0; i < mapping.size(); ++i) {
+    if (mapping[i] < 0) {
+      final_mapping.push_back(next_fu_id++);
+    } else {
+      final_mapping.push_back(mapping[i]);
+    }
+  }
+  
+  // Calculate new cost
+  double new_cost = old_cost;
+  for (size_t i = 0; i < pat.ops.size(); ++i) {
+    if (mapping[i] < 0) {
+      new_cost += cm.fu_cost(pat.ops[i]);
+    }
+  }
+  
+  out_mapping = final_mapping;
+  out_cost_increase = new_cost - old_cost;
+  return true;
+}
+
+// Applies a mapping to the template, adding new FUs as needed.
+void HardwareTemplate::apply_mapping(const HardwarePattern& pat, const std::vector<int>& m) {
   patterns.push_back(pat.id);
   mapping[pat.id] = m;
-  for (size_t i = 0; i < m.size(); ++i) {
-    // Verifies the op can be handled by the slot (satisfies compatible group constraint).
-    // If not, this indicates the slot state changed since tryAccommodate was called.
-    // In this case, we skip adding the op (it may already be in the slot from a previous pattern).
-    if (!slotCanHandle(m[i], pat.ops[i])) {
-      // The op may already be in the slot, or the slot state changed.
-      // If it's already there, we're fine; otherwise, this is a logic error.
-      if (!slots[m[i]].ops.count(pat.ops[i])) {
-        llvm::errs() << "Warning: Cannot apply op " << pat.ops[i] 
-                     << " to slot " << m[i] << " (incompatible with existing ops)\n";
-        // Continue anyway - the mapping may still be valid for other ops
+  
+  // Add any new FUs that don't exist yet
+  for (size_t i = 0; i < m.size() && i < pat.ops.size(); ++i) {
+    int fu_id = m[i];
+    // If this FU ID doesn't exist, we need to add FUs until it does
+    while (fu_id >= (int)fus.size()) {
+      // Find the operation that should go in this new FU
+      for (size_t j = 0; j < m.size(); ++j) {
+        if (m[j] == (int)fus.size()) {
+          add_fu(pat.ops[j]);
+          break;
+        }
       }
-      continue;
+      // Safety: if no matching op found, break to avoid infinite loop
+      if (fu_id >= (int)fus.size() && fus.size() > 0) {
+        // This shouldn't happen with correct mappings
+        break;
+      }
     }
-    slots[m[i]].ops.insert(pat.ops[i]);
   }
 }
-  
-double HardwareTemplate::computeCost(const OperationCostModel& cm) const {
+
+// Computes the total cost of the template based on all FUs.
+double HardwareTemplate::compute_cost(const OperationCostModel& cm) const {
   double sum = 0;
-  
-  std::map<std::string, int> opSlotCount;
-  for (const auto& slot : slots) {
-    for (const auto& op : slot.ops) {
-      opSlotCount[op]++;
-    }
+  for (const auto& fu : fus) {
+    sum += cm.fu_cost(fu.op_type);
   }
-  
-  std::set<std::string> countedOps;
-  for (const auto& slot : slots) {
-    for (const auto& op : slot.ops) {
-      if (countedOps.count(op)) continue;
-      countedOps.insert(op);
-      sum += cm.get(op) * opSlotCount[op];
-    }
-  }
-  
   return sum;
 }
 
 // Extracts operations from fused op and linearizes them via topological sort.
-// Also stores the topological level and predecessor information for execution planning.
-void extractPatternOps(neura::FusedOp fop, HardwarePattern& pat) {
+void extract_pattern_ops(neura::FusedOp fop, HardwarePattern& pat) {
   Region& body = fop.getBody();
   if (body.empty()) return;
   Block& blk = body.front();
   
-  llvm::DenseMap<Operation*, int> opId;
-  std::vector<std::string> opNames;
+  llvm::DenseMap<Operation*, int> op_id;
+  std::vector<std::string> op_names;
   std::vector<std::vector<int>> preds;
   
   int id = 0;
   for (Operation& op : blk.getOperations()) {
     std::string name = op.getName().getStringRef().str();
     if (name == "neura.yield") continue;
-    opId[&op] = id++;
-    opNames.push_back(name);
+    op_id[&op] = id++;
+    op_names.push_back(name);
     preds.push_back({});
   }
   
@@ -339,21 +282,21 @@ void extractPatternOps(neura::FusedOp fop, HardwarePattern& pat) {
     if (name == "neura.yield") continue;
     for (Value v : op.getOperands()) {
       if (Operation* def = v.getDefiningOp()) {
-        if (opId.count(def)) {
-          preds[idx].push_back(opId[def]);
+        if (op_id.count(def)) {
+          preds[idx].push_back(op_id[def]);
         }
       }
     }
     idx++;
   }
   
-  int n = opNames.size();
+  int n = op_names.size();
   std::vector<int> level(n, 0);
-  std::vector<int> inDeg(n, 0);
-  for (int i = 0; i < n; ++i) inDeg[i] = preds[i].size();
+  std::vector<int> in_deg(n, 0);
+  for (int i = 0; i < n; ++i) in_deg[i] = preds[i].size();
   
   std::vector<int> q;
-  for (int i = 0; i < n; ++i) if (inDeg[i] == 0) q.push_back(i);
+  for (int i = 0; i < n; ++i) if (in_deg[i] == 0) q.push_back(i);
   
   for (size_t h = 0; h < q.size(); ++h) {
     int cur = q[h];
@@ -361,13 +304,12 @@ void extractPatternOps(neura::FusedOp fop, HardwarePattern& pat) {
       for (int p : preds[i]) {
         if (p == cur) {
           level[i] = std::max(level[i], level[cur] + 1);
-          if (--inDeg[i] == 0) q.push_back(i);
+          if (--in_deg[i] == 0) q.push_back(i);
         }
       }
     }
   }
   
-  // Sort by level to get topological order.
   std::vector<int> order;
   for (int i = 0; i < n; ++i) order.push_back(i);
   std::sort(order.begin(), order.end(), [&](int a, int b) {
@@ -375,149 +317,73 @@ void extractPatternOps(neura::FusedOp fop, HardwarePattern& pat) {
   });
   
   // Build mapping from old index to new index after reordering.
-  std::vector<int> oldToNew(n);
-  for (int newIdx = 0; newIdx < n; ++newIdx) {
-    oldToNew[order[newIdx]] = newIdx;
+  std::vector<int> old_to_new(n);
+  for (int new_idx = 0; new_idx < n; ++new_idx) {
+    old_to_new[order[new_idx]] = new_idx;
   }
   
-  // Store ops, levels, and predecessors in the new order.
   for (int i : order) {
-    pat.ops.push_back(opNames[i]);
-    pat.opLevels.push_back(level[i]);
+    pat.ops.push_back(op_names[i]);
+    pat.op_levels.push_back(level[i]);
     
-    // Remap predecessor indices to new order.
-    std::vector<int> remappedPreds;
+    std::vector<int> remapped_preds;
     for (int p : preds[i]) {
-      remappedPreds.push_back(oldToNew[p]);
+      remapped_preds.push_back(old_to_new[p]);
     }
-    pat.opPreds.push_back(remappedPreds);
+    pat.op_preds.push_back(remapped_preds);
   }
 }
 
 // Extracts all patterns from module.
-void extractPatterns(ModuleOp module, std::vector<HardwarePattern>& patterns, OperationCostModel& costModel) {
+void extract_patterns(ModuleOp module, std::vector<HardwarePattern>& patterns, OperationCostModel& cost_model) {
   module.walk([&](neura::FusedOp fop) {
     int64_t pid = fop.getPatternId();
     if (std::find_if(patterns.begin(), patterns.end(), 
         [pid](const HardwarePattern& p) { return p.id == pid; }) != patterns.end()) return;
     
     HardwarePattern pat(pid, fop.getPatternName().str(), fop.getFrequency());
-    extractPatternOps(fop, pat);
-    pat.cost = costModel.patternCost(pat.ops);
+    extract_pattern_ops(fop, pat);
+    pat.cost = cost_model.pattern_cost(pat.ops);
     patterns.push_back(pat);
   });
 }
 
-// Extracts all standalone operations from module (ops not inside FusedOp).
-// These are basic operations that are not fused into patterns.
-void extractAllStandaloneOps(ModuleOp module, std::set<std::string>& allOps) {
+// Extracts all standalone operations from module.
+void extract_all_standalone_ops(ModuleOp module, std::set<std::string>& all_ops) {
   module.walk([&](Operation* op) {
-    // Skip FusedOp themselves - their contents are patterns
     if (isa<neura::FusedOp>(op)) return;
     
-    // Skip operations inside FusedOp
     Operation* parent = op->getParentOp();
     while (parent) {
       if (isa<neura::FusedOp>(parent)) return;
       parent = parent->getParentOp();
     }
     
-    std::string opName = op->getName().getStringRef().str();
-    // Only collect neura dialect ops
-    if (opName.find("neura.") == 0) {
-      // Skip structural/meta ops that aren't real FUs
-      if (opName == "neura.yield" || opName == "neura.fused_op") return;
-      allOps.insert(opName);
+    std::string op_name = op->getName().getStringRef().str();
+    if (op_name.find("neura.") == 0) {
+      if (op_name == "neura.yield" || op_name == "neura.fused_op") return;
+      all_ops.insert(op_name);
     }
   });
 }
 
-// Helper function for DFS with slot preference.
-void dfsWithSlotPreferenceHelper(const HardwareTemplate& tmpl, const std::vector<std::string>& ops, size_t opIdx, int prevSlot, std::vector<int> cur, const std::map<std::string, int>& preferred, std::vector<int>& bestMapping, int& bestScore) {
-  if (opIdx >= ops.size()) {
-    int score = 0;
-    for (size_t i = 0; i < ops.size(); ++i) {
-      int slot = cur[i];
-      const std::string& op = ops[i];
-      
-      // Slot already has compatible ops (reuses hardware, no cost increase)
-      if (tmpl.slotCanHandle(slot, op) && !tmpl.slots[slot].ops.empty()) {
-        score += 50;
-      }
-      // Empty slot (needs new hardware) gets no score
-    }
-    if (score > bestScore) {
-      bestScore = score;
-      bestMapping = cur;
-    }
-    return;
-  }
-  
-  const std::string& op = ops[opIdx];
-  
-  std::vector<size_t> candidates;
-  auto prefIt = preferred.find(op);
-  if (prefIt != preferred.end()) {
-    int prefSlot = prefIt->second;
-    if (prefSlot >= 0 && prefSlot < (int)tmpl.slots.size() && tmpl.slotCanHandle(prefSlot, op) && tmpl.canRoute(prevSlot, prefSlot)) {
-      candidates.push_back(prefSlot);
-    }
-  }
-  
-  for (size_t s = 0; s < tmpl.slots.size(); ++s) {
-    if (tmpl.slots[s].ops.count(op) && 
-        std::find(candidates.begin(), candidates.end(), s) == candidates.end() &&
-        tmpl.canRoute(prevSlot, (int)s)) {
-      candidates.push_back(s);
-    }
-  }
-  
-  for (size_t s = 0; s < tmpl.slots.size(); ++s) {
-    if (tmpl.slotCanHandle(s, op) &&
-        std::find(candidates.begin(), candidates.end(), s) == candidates.end() &&
-        tmpl.canRoute(prevSlot, (int)s)) {
-      candidates.push_back(s);
-    }
-  }
-  
-  for (size_t s : candidates) {
-    if (std::find(cur.begin(), cur.end(), (int)s) != cur.end()) continue;
-    
-    auto next = cur;
-    next.push_back((int)s);
-    dfsWithSlotPreferenceHelper(tmpl, ops, opIdx + 1, (int)s, next, preferred, 
-                               bestMapping, bestScore);
-  }
-}
-
-// Finds mapping with strong preference for slots that already have same ops.
-std::vector<int> findMappingWithSlotPreference(HardwareTemplate& tmpl, const HardwarePattern& pat,
-                                               const std::map<std::string, int>& preferred) {
-  std::vector<int> bestMapping;
-  int bestScore = -1;
-  
-  dfsWithSlotPreferenceHelper(tmpl, pat.ops, 0, -1, {}, preferred, bestMapping, bestScore);
-  return bestMapping;
-}
-
 // Creates hardware templates from patterns.
-void createHardwareTemplates(const std::vector<HardwarePattern>& patterns, std::vector<HardwareTemplate>& templates, OperationCostModel& costModel) {
-  auto countDistinctOps = [](const HardwarePattern& p) -> int {
-    std::set<std::string> distinctOps;
+void create_hardware_templates(const std::vector<HardwarePattern>& patterns, std::vector<HardwareTemplate>& templates, OperationCostModel& cost_model) {
+  auto count_distinct_ops = [](const HardwarePattern& p) -> int {
+    std::set<std::string> distinct_ops;
     for (const auto& op : p.ops) {
-      distinctOps.insert(op);
+      distinct_ops.insert(op);
     }
-    return distinctOps.size();
+    return distinct_ops.size();
   };
   
   std::vector<int> order;
-  // Sorts patterns by distinct ops and cost. We prefer to solve the most diverse patterns first.
   for (size_t i = 0; i < patterns.size(); ++i) order.push_back(i);
-  std::sort(order.begin(), order.end(), [&patterns, &countDistinctOps](int a, int b) {
-    int distA = countDistinctOps(patterns[a]);
-    int distB = countDistinctOps(patterns[b]);
-    if (distA != distB) {
-      return distA > distB;
+  std::sort(order.begin(), order.end(), [&patterns, &count_distinct_ops](int a, int b) {
+    int dist_a = count_distinct_ops(patterns[a]);
+    int dist_b = count_distinct_ops(patterns[b]);
+    if (dist_a != dist_b) {
+      return dist_a > dist_b;
     }
     return patterns[a].cost > patterns[b].cost;
   });
@@ -525,99 +391,103 @@ void createHardwareTemplates(const std::vector<HardwarePattern>& patterns, std::
   for (int idx : order) {
     const HardwarePattern& pat = patterns[idx];
     
-    int bestT = -1;
-    std::vector<int> bestM;
-    double bestInc = 1e18;
+    int best_t = -1;
+    std::vector<int> best_m;
+    double best_inc = 1e18;
     
     for (size_t t = 0; t < templates.size(); ++t) {
-      HardwareTemplate tempTmpl = templates[t];
+      HardwareTemplate temp_tmpl = templates[t];
       std::vector<int> m;
       double inc;
-      if (tempTmpl.tryAccommodate(pat, costModel, m, inc)) {
-        if (inc < bestInc) {
-          bestInc = inc;
-          bestT = t;
-          bestM = m;
+      if (temp_tmpl.try_accommodate(pat, cost_model, m, inc)) {
+        if (inc < best_inc) {
+          best_inc = inc;
+          best_t = t;
+          best_m = m;
         }
       }
     }
     
-    double newTmplCost = pat.cost;
+    double new_tmpl_cost = pat.cost;
     
-    // Reuses existing template if the cost increase is less than half of the pattern cost.
-    if (bestT >= 0 && bestInc <= newTmplCost * 0.5) {
-      while ((int)templates[bestT].slots.size() < *std::max_element(bestM.begin(), bestM.end()) + 1) {
-        templates[bestT].addSlot();
-      }
-      templates[bestT].applyMapping(pat, bestM);
-      
-      llvm::errs() << "  P" << pat.id << " → T" << bestT << " slots[";
-      for (size_t i = 0; i < bestM.size(); ++i) {
-        if (i) llvm::errs() << ",";
-        llvm::errs() << bestM[i];
-      }
-      llvm::errs() << "] +cost=" << bestInc << "\n";
+    if (best_t >= 0 && best_inc <= new_tmpl_cost * 0.5) {
+      templates[best_t].apply_mapping(pat, best_m);
     } else {
-      // Creates a new template
+      // Create a new template with FUs for this pattern
       HardwareTemplate t(templates.size());
-      for (size_t i = 0; i < pat.ops.size(); ++i) {
-        t.addSlot();
-      }
       std::vector<int> m;
-      for (size_t i = 0; i < pat.ops.size(); ++i) m.push_back(i);
-      t.applyMapping(pat, m);
+      for (size_t i = 0; i < pat.ops.size(); ++i) {
+        int fu_id = t.add_fu(pat.ops[i]);
+        m.push_back(fu_id);
+      }
+      t.apply_mapping(pat, m);
       templates.push_back(t);
-      
-      llvm::errs() << "  P" << pat.id << " → NEW T" << t.id << "\n";
     }
   }
   
   for (auto& t : templates) {
-    int64_t totalFreq = 0;
+    int64_t total_freq = 0;
     for (int64_t pid : t.patterns) {
       for (const auto& p : patterns) {
-        if (p.id == pid) { totalFreq += p.freq; break; }
+        if (p.id == pid) { total_freq += p.freq; break; }
       }
     }
-    t.instances = std::max(1, (int)std::ceil(totalFreq / 10.0));
+    t.instances = std::max(1, (int)std::ceil(total_freq / 10.0));
   }
-  
-  llvm::errs() << "\n[HardwareMerge] " << templates.size() << " templates\n";
 }
 
-// Generates slot connections for all templates based on pattern mappings.
-// For each pattern, creates connections between consecutive slots in its mapping.
-// Handles bypass cases where slots are skipped (e.g., mapping [0, 2] creates connection 0->2).
-void generateConnections(const std::vector<HardwarePattern>& patterns, std::vector<HardwareTemplate>& templates) {
+// Generates FU connections for all templates based on pattern mappings.
+// For each pattern, creates connections based on the dependency graph (op_preds).
+void generate_connections(const std::vector<HardwarePattern>& patterns, std::vector<HardwareTemplate>& templates) {
+  std::map<int64_t, const HardwarePattern*> pattern_map;
+  for (const auto& p : patterns) {
+    pattern_map[p.id] = &p;
+  }
+  
   for (auto& tmpl : templates) {
     tmpl.connections.clear();
     
-    // For each pattern mapped to this template, generate connections based on its slot mapping.
-    for (const auto& [pid, slotMapping] : tmpl.mapping) {
-      if (slotMapping.size() < 2) continue;  // Need at least 2 slots to form a connection
+    // For each pattern mapped to this template, generate connections based on dependencies.
+    for (const auto& [pid, fu_mapping] : tmpl.mapping) {
+      auto pat_it = pattern_map.find(pid);
+      if (pat_it == pattern_map.end()) continue;
+      const HardwarePattern* pat = pat_it->second;
       
-      // Creates connections between consecutive slots in the pattern's execution order.
-      // For example, if mapping is [0, 1, 2], creates connections 0->1 and 1->2.
-      // If mapping is [0, 2] (bypassing slot 1), creates connection 0->2.
-      for (size_t i = 0; i < slotMapping.size() - 1; ++i) {
-        int from = slotMapping[i];
-        int to = slotMapping[i + 1];
-        
-        // Only adds connection if from < to (satisfies canRoute constraint).
-        if (from >= 0 && to >= 0 && from < to) {
-          tmpl.connections.insert({from, to});
+      if (fu_mapping.size() < 2) continue;
+      
+      // Use op_preds to determine actual data dependencies
+      if (!pat->op_preds.empty()) {
+        for (size_t op_idx = 0; op_idx < pat->op_preds.size() && op_idx < fu_mapping.size(); ++op_idx) {
+          int to_fu = fu_mapping[op_idx];
+          
+          for (int pred_op_idx : pat->op_preds[op_idx]) {
+            if (pred_op_idx >= 0 && pred_op_idx < (int)fu_mapping.size()) {
+              int from_fu = fu_mapping[pred_op_idx];
+              if (from_fu >= 0 && to_fu >= 0 && from_fu != to_fu) {
+                tmpl.connections.insert({from_fu, to_fu});
+              }
+            }
+          }
+        }
+      } else {
+        // Fallback: create linear chain if no dependency info
+        for (size_t i = 0; i < fu_mapping.size() - 1; ++i) {
+          int from = fu_mapping[i];
+          int to = fu_mapping[i + 1];
+          if (from >= 0 && to >= 0 && from != to) {
+            tmpl.connections.insert({from, to});
+          }
         }
       }
     }
   }
 }
 
-// Checks if slot 'from' can reach slot 'to' through existing connections (transitive reachability).
-static bool canReachViaBypass(const std::set<std::pair<int, int>>& connections, int from, int to, int numSlots) {
-  if (from >= to) return false;
+// Checks if FU 'from' can reach FU 'to' through existing connections.
+static bool can_reach_via_connections(const std::set<std::pair<int, int>>& connections, int from, int to, int num_fus) {
+  if (from == to) return true;
   
-  // BFS to check if there's a path from 'from' to 'to' using existing connections.
-  std::vector<bool> visited(numSlots, false);
+  std::vector<bool> visited(num_fus, false);
   std::vector<int> queue;
   queue.push_back(from);
   visited[from] = true;
@@ -635,124 +505,106 @@ static bool canReachViaBypass(const std::set<std::pair<int, int>>& connections, 
   return false;
 }
 
-// Generates optimized slot connections for all templates based on pattern dependencies.
-// Connections are based on actual data dependencies in patterns, not just slot order.
-// Minimizes connections using transitive reachability (bypass support).
-void generateOptimizedConnections(const std::vector<HardwarePattern>& patterns, std::vector<HardwareTemplate>& templates) {
-  // Build pattern lookup map.
-  std::map<int64_t, const HardwarePattern*> patternMap;
+// Generates optimized FU connections for all templates based on pattern dependencies.
+// Removes redundant connections using transitive reachability.
+void generate_optimized_connections(const std::vector<HardwarePattern>& patterns, std::vector<HardwareTemplate>& templates) {
+  std::map<int64_t, const HardwarePattern*> pattern_map;
   for (const auto& p : patterns) {
-    patternMap[p.id] = &p;
+    pattern_map[p.id] = &p;
   }
   
   for (auto& tmpl : templates) {
-    // Collect all required connections from all patterns based on their dependency graphs.
-    std::set<std::pair<int, int>> requiredConnections;
+    std::set<std::pair<int, int>> required_connections;
     
-    for (const auto& [pid, slotMapping] : tmpl.mapping) {
-      auto patIt = patternMap.find(pid);
-      if (patIt == patternMap.end()) continue;
-      const HardwarePattern* pat = patIt->second;
+    for (const auto& [pid, fu_mapping] : tmpl.mapping) {
+      auto pat_it = pattern_map.find(pid);
+      if (pat_it == pattern_map.end()) continue;
+      const HardwarePattern* pat = pat_it->second;
       
-      if (slotMapping.size() < 2) continue;
+      if (fu_mapping.size() < 2) continue;
       
-      // If pattern has dependency info, use it.
-      if (!pat->opPreds.empty()) {
-        // Generate connections based on actual dependencies in the pattern.
-        for (size_t opIdx = 0; opIdx < pat->opPreds.size() && opIdx < slotMapping.size(); ++opIdx) {
-          int toSlot = slotMapping[opIdx];
+      if (!pat->op_preds.empty()) {
+        for (size_t op_idx = 0; op_idx < pat->op_preds.size() && op_idx < fu_mapping.size(); ++op_idx) {
+          int to_fu = fu_mapping[op_idx];
           
-          for (int predOpIdx : pat->opPreds[opIdx]) {
-            if (predOpIdx >= 0 && predOpIdx < (int)slotMapping.size()) {
-              int fromSlot = slotMapping[predOpIdx];
-              // Only add connection if from < to (valid routing).
-              if (fromSlot >= 0 && toSlot >= 0 && fromSlot < toSlot) {
-                requiredConnections.insert({fromSlot, toSlot});
+          for (int pred_op_idx : pat->op_preds[op_idx]) {
+            if (pred_op_idx >= 0 && pred_op_idx < (int)fu_mapping.size()) {
+              int from_fu = fu_mapping[pred_op_idx];
+              if (from_fu >= 0 && to_fu >= 0 && from_fu != to_fu) {
+                required_connections.insert({from_fu, to_fu});
               }
             }
           }
         }
       } else {
-        // Fallback: assume linear dependencies (consecutive ops depend on previous).
-        for (size_t i = 0; i < slotMapping.size() - 1; ++i) {
-          int from = slotMapping[i];
-          int to = slotMapping[i + 1];
-          if (from >= 0 && to >= 0 && from < to) {
-            requiredConnections.insert({from, to});
+        for (size_t i = 0; i < fu_mapping.size() - 1; ++i) {
+          int from = fu_mapping[i];
+          int to = fu_mapping[i + 1];
+          if (from >= 0 && to >= 0 && from != to) {
+            required_connections.insert({from, to});
           }
         }
       }
     }
     
-    // Sort connections by distance (shorter first) to prioritize direct connections.
-    std::vector<std::pair<int, int>> sortedConnections(requiredConnections.begin(), requiredConnections.end());
-    std::sort(sortedConnections.begin(), sortedConnections.end(), 
+    // Sort connections by "distance" (prefer shorter connections first for transitive reduction)
+    std::vector<std::pair<int, int>> sorted_connections(required_connections.begin(), required_connections.end());
+    std::sort(sorted_connections.begin(), sorted_connections.end(), 
               [](const auto& a, const auto& b) {
-                return (a.second - a.first) < (b.second - b.first);
+                return std::abs(a.second - a.first) < std::abs(b.second - b.first);
               });
     
     // Build optimized connections - add a connection only if it's not already reachable.
     tmpl.connections.clear();
-    int numSlots = tmpl.slots.size();
+    int num_fus = tmpl.fus.size();
     
-    for (const auto& conn : sortedConnections) {
+    for (const auto& conn : sorted_connections) {
       // Check if we can already reach conn.second from conn.first via existing connections.
-      if (!canReachViaBypass(tmpl.connections, conn.first, conn.second, numSlots)) {
+      if (!can_reach_via_connections(tmpl.connections, conn.first, conn.second, num_fus)) {
         tmpl.connections.insert(conn);
       }
     }
-    
-    llvm::errs() << "  Template " << tmpl.id << ": " << requiredConnections.size() 
-                 << " required connections -> " << tmpl.connections.size() << " optimized\n";
   }
 }
 
 // Generates execution plans for all patterns on their assigned templates.
-// Uses the pattern's topological levels to determine parallel execution stages.
-// Operations at the same topological level can execute in parallel.
-void generateExecutionPlans(const std::vector<HardwarePattern>& patterns, 
-                            const std::vector<HardwareTemplate>& templates,
-                            std::vector<PatternExecutionPlan>& plans) {
-  // Find the template for each pattern.
-  std::map<int64_t, const HardwareTemplate*> patternToTemplate;
+void generate_execution_plans(const std::vector<HardwarePattern>& patterns, const std::vector<HardwareTemplate>& templates, std::vector<PatternExecutionPlan>& plans) {
+  std::map<int64_t, const HardwareTemplate*> pattern_to_template;
   
   for (const auto& t : templates) {
     for (int64_t pid : t.patterns) {
-      patternToTemplate[pid] = &t;
+      pattern_to_template[pid] = &t;
     }
   }
   
   for (const auto& pat : patterns) {
     PatternExecutionPlan plan;
-    plan.patternId = pat.id;
-    plan.patternName = pat.name;
+    plan.pattern_id = pat.id;
+    plan.pattern_name = pat.name;
     
-    auto it = patternToTemplate.find(pat.id);
-    if (it == patternToTemplate.end()) continue;
+    auto it = pattern_to_template.find(pat.id);
+    if (it == pattern_to_template.end()) continue;
     
     const HardwareTemplate* tmpl = it->second;
-    auto mappingIt = tmpl->mapping.find(pat.id);
-    if (mappingIt == tmpl->mapping.end()) continue;
+    auto mapping_it = tmpl->mapping.find(pat.id);
+    if (mapping_it == tmpl->mapping.end()) continue;
     
-    const std::vector<int>& slotMapping = mappingIt->second;
+    const std::vector<int>& fu_mapping = mapping_it->second;
     
-    // Group operations by their topological level (not slot index).
-    // Operations at the same level can execute in parallel.
-    std::map<int, std::vector<std::pair<int, std::pair<int, std::string>>>> levelToOps;  // level -> [(opIdx, (slot, opName))]
+    // Group operations by their topological level for parallel execution
+    std::map<int, std::vector<std::pair<int, std::pair<int, std::string>>>> level_to_ops;
     
-    for (size_t i = 0; i < pat.ops.size() && i < slotMapping.size(); ++i) {
-      int level = (i < pat.opLevels.size()) ? pat.opLevels[i] : (int)i;
-      int slot = slotMapping[i];
-      levelToOps[level].push_back({(int)i, {slot, pat.ops[i]}});
+    for (size_t i = 0; i < pat.ops.size() && i < fu_mapping.size(); ++i) {
+      int level = (i < pat.op_levels.size()) ? pat.op_levels[i] : (int)i;
+      int fu = fu_mapping[i];
+      level_to_ops[level].push_back({(int)i, {fu, pat.ops[i]}});
     }
     
-    // Create execution stages based on topological levels.
-    // Operations at the same level are in the same stage (can run in parallel).
-    for (const auto& [level, opsAtLevel] : levelToOps) {
+    for (const auto& [level, ops_at_level] : level_to_ops) {
       ExecutionStage stage;
-      for (const auto& [opIdx, slotAndOp] : opsAtLevel) {
-        stage.slots.push_back(slotAndOp.first);
-        stage.ops.push_back(slotAndOp.second);
+      for (const auto& [op_idx, fu_and_op] : ops_at_level) {
+        stage.fus.push_back(fu_and_op.first);
+        stage.ops.push_back(fu_and_op.second);
       }
       plan.stages.push_back(stage);
     }
@@ -761,85 +613,57 @@ void generateExecutionPlans(const std::vector<HardwarePattern>& patterns,
   }
 }
 
-// Collects supported operations (single + composite) for each template.
-// Single ops: any op that any slot in the template can handle.
-// Composite ops: the patterns that are mapped to this template.
-void collectSupportedOperations(const std::vector<HardwarePattern>& patterns,
-                                const std::vector<HardwareTemplate>& templates,
-                                const std::set<std::string>& allDfgOps,
-                                std::vector<TemplateSupportedOps>& supportedOps) {
+// Collects supported operations for each template.
+void collect_supported_operations(const std::vector<HardwarePattern>& patterns, const std::vector<HardwareTemplate>& templates, const std::set<std::string>& all_dfg_ops, std::vector<TemplateSupportedOps>& supported_ops) {
   for (const auto& tmpl : templates) {
     TemplateSupportedOps ops;
-    ops.templateId = tmpl.id;
+    ops.template_id = tmpl.id;
     
-    // Collect all ops that any slot can handle (single ops).
-    std::set<std::string> templateOps;
-    for (const auto& slot : tmpl.slots) {
-      for (const auto& op : slot.ops) {
-        templateOps.insert(op);
-      }
+    // Collect all operation types present in this template's FUs
+    std::set<std::string> template_ops;
+    for (const auto& fu : tmpl.fus) {
+      template_ops.insert(fu.op_type);
     }
     
-    // Check which DFG ops this template can support.
-    // An op is supported if it exists in any slot OR is compatible with any slot's ops.
-    for (const std::string& dfgOp : allDfgOps) {
-      bool canSupport = false;
+    // For each DFG op, check if this template can support it
+    for (const std::string& dfg_op : all_dfg_ops) {
+      bool can_support = false;
       
-      // Check if directly in template.
-      if (templateOps.count(dfgOp)) {
-        canSupport = true;
+      // Direct support: template has an FU for this op
+      if (template_ops.count(dfg_op)) {
+        can_support = true;
       } else {
-        // Check if compatible with any slot.
-        for (const auto& slot : tmpl.slots) {
-          if (!slot.ops.empty()) {
-            bool compatible = true;
-            for (const auto& existingOp : slot.ops) {
-              if (!HardwareTemplate::compatible(existingOp, dfgOp)) {
-                compatible = false;
-                break;
-              }
-            }
-            if (compatible) {
-              canSupport = true;
-              break;
-            }
-          } else {
-            // Empty slot can accept any op.
-            canSupport = true;
+        // Check if any existing FU type is compatible
+        for (const auto& existing_op : template_ops) {
+          if (HardwareTemplate::compatible(existing_op, dfg_op)) {
+            can_support = true;
             break;
           }
         }
       }
       
-      if (canSupport) {
-        ops.singleOps.insert(dfgOp);
+      if (can_support) {
+        ops.single_ops.insert(dfg_op);
       }
     }
     
-    // Composite ops are the patterns mapped to this template.
-    ops.compositeOps = tmpl.patterns;
+    ops.composite_ops = tmpl.patterns;
     
-    supportedOps.push_back(ops);
-  }
-}
-
-void IncreaseHardwareComponent(std::map<std::string, int>* hardware_components) {
-  for (const auto& [op, count] : *hardware_components) {
-    (*hardware_components)[op]++;
+    supported_ops.push_back(ops);
   }
 }
 
 // Calculates total cost of templates.
-double calculateTotalCost(const std::vector<HardwareTemplate>& templates, const OperationCostModel& costModel) {
-  double totalCost = 0;
+double calculate_total_cost(const std::vector<HardwareTemplate>& templates, const OperationCostModel& cost_model) {
+  double total_cost = 0;
   for (const auto& t : templates) {
-    totalCost += t.computeCost(costModel) * t.instances;
+    total_cost += t.compute_cost(cost_model) * t.instances;
   }
-  return totalCost;
+  return total_cost;
 }
 
 // Escapes string for JSON output.
-std::string escapeJsonString(const std::string& s) {
+std::string escape_json_string(const std::string& s) {
   std::string r;
   for (char c : s) {
     if (c == '"') r += "\\\"";
@@ -850,31 +674,18 @@ std::string escapeJsonString(const std::string& s) {
 }
 
 // Writes hardware configuration to JSON file (extended version with execution plans and supported ops).
-void writeHardwareConfigJson(const std::string& path, 
-                             const std::vector<HardwarePattern>& patterns, 
-                             const std::vector<HardwareTemplate>& templates, 
-                             const OperationCostModel& costModel,
-                             const std::vector<PatternExecutionPlan>& executionPlans,
-                             const std::vector<TemplateSupportedOps>& supportedOps) {
+void write_hardware_config_json(const std::string& path, const std::vector<HardwarePattern>& patterns, const std::vector<HardwareTemplate>& templates, const OperationCostModel& cost_model, const std::vector<PatternExecutionPlan>& execution_plans, const std::vector<TemplateSupportedOps>& supported_ops) {
   std::error_code EC;
   llvm::raw_fd_ostream os(path, EC, llvm::sys::fs::OF_Text);
   if (EC) return;
   
-  double costNoShare = 0;
-  for (const auto& p : patterns) costNoShare += p.cost;
-  double totalCost = calculateTotalCost(templates, costModel);
-  
   // Build pattern name lookup.
-  std::map<int64_t, std::string> patternNames;
-  for (const auto& p : patterns) patternNames[p.id] = p.name;
+  std::map<int64_t, std::string> pattern_names;
+  for (const auto& p : patterns) pattern_names[p.id] = p.name;
   
   os << "{\n  \"hardware_configuration\": {\n";
-  os << "    \"description\": \"Maximally-merged hardware templates with execution plans\",\n";
   os << "    \"summary\": {\n";
-  os << "      \"total_templates\": " << templates.size() << ",\n";
-  os << "      \"total_cost\": " << totalCost << ",\n";
-  os << "      \"cost_without_sharing\": " << costNoShare << ",\n";
-  os << "      \"cost_reduction_percent\": " << (1 - totalCost/costNoShare)*100 << "\n";
+  os << "      \"total_templates\": " << templates.size() << "\n";
   os << "    },\n";
   
   os << "    \"hardware_templates\": [\n";
@@ -885,22 +696,19 @@ void writeHardwareConfigJson(const std::string& path,
     os << "      {\n";
     os << "        \"template_id\": " << tmpl.id << ",\n";
     os << "        \"instance_count\": " << tmpl.instances << ",\n";
-    os << "        \"cost_per_instance\": " << tmpl.computeCost(costModel) << ",\n";
-    os << "        \"total_cost\": " << tmpl.computeCost(costModel) * tmpl.instances << ",\n";
     
-    // Supported operations (single + composite).
-    const TemplateSupportedOps* tmplSupportedOps = nullptr;
-    for (const auto& sop : supportedOps) {
-      if (sop.templateId == tmpl.id) {
-        tmplSupportedOps = &sop;
+    const TemplateSupportedOps* tmpl_supported_ops = nullptr;
+    for (const auto& sop : supported_ops) {
+      if (sop.template_id == tmpl.id) {
+        tmpl_supported_ops = &sop;
         break;
       }
     }
     
-    if (tmplSupportedOps) {
+    if (tmpl_supported_ops) {
       os << "        \"supported_single_ops\": [";
       bool first = true;
-      for (const auto& op : tmplSupportedOps->singleOps) {
+      for (const auto& op : tmpl_supported_ops->single_ops) {
         if (!first) os << ", ";
         first = false;
         os << "\"" << op << "\"";
@@ -908,75 +716,64 @@ void writeHardwareConfigJson(const std::string& path,
       os << "],\n";
       
       os << "        \"supported_composite_ops\": [\n";
-      for (size_t i = 0; i < tmplSupportedOps->compositeOps.size(); ++i) {
+      for (size_t i = 0; i < tmpl_supported_ops->composite_ops.size(); ++i) {
         if (i) os << ",\n";
-        int64_t pid = tmplSupportedOps->compositeOps[i];
-        auto nameIt = patternNames.find(pid);
-        std::string pname = (nameIt != patternNames.end()) ? nameIt->second : "";
-        os << "          {\"pattern_id\": " << pid << ", \"name\": \"" << escapeJsonString(pname) << "\"}";
+        int64_t pid = tmpl_supported_ops->composite_ops[i];
+        auto name_it = pattern_names.find(pid);
+        std::string pname = (name_it != pattern_names.end()) ? name_it->second : "";
+        os << "          {\"pattern_id\": " << pid << ", \"name\": \"" << escape_json_string(pname) << "\"}";
       }
       os << "\n        ],\n";
     }
     
-    os << "        \"slots\": [\n";
-    for (size_t s = 0; s < tmpl.slots.size(); ++s) {
-      const auto& slot = tmpl.slots[s];
-      if (s) os << ",\n";
-      os << "          {\"slot_id\": " << slot.id << ", \"supported_ops\": [";
-      bool first = true;
-      for (const auto& op : slot.ops) {
-        if (!first) os << ", ";
-        first = false;
-        os << "\"" << op << "\"";
-      }
-      os << "], \"cost\": " << costModel.slotCost(slot.ops) << "}";
+    // Output FUs (functional units) instead of slots
+    os << "        \"functional_units\": [\n";
+    for (size_t f = 0; f < tmpl.fus.size(); ++f) {
+      const auto& fu = tmpl.fus[f];
+      if (f) os << ",\n";
+      os << "          {\"fu_id\": " << fu.id << ", \"op_type\": \"" << fu.op_type << "\"}";
     }
     os << "\n        ],\n";
     
-    // Slot connections with bypass info.
-    os << "        \"slot_connections\": {\n";
-    os << "          \"description\": \"Connections between slots. Connections support bypass (data can skip intermediate slots via existing paths).\",\n";
-    os << "          \"connections\": [";
-    bool firstConn = true;
+    // Output FU connections
+    os << "        \"fu_connections\": [\n";
+    bool first_conn = true;
     for (const auto& conn : tmpl.connections) {
-      if (!firstConn) os << ", ";
-      firstConn = false;
-      os << "{\"from\": " << conn.first << ", \"to\": " << conn.second << "}";
+      if (!first_conn) os << ",\n";
+      first_conn = false;
+      os << "          {\"from_fu\": " << conn.first << ", \"to_fu\": " << conn.second << "}";
     }
-    os << "]\n";
-    os << "        },\n";
+    os << "\n        ],\n";
     
-    // Pattern execution plans for this template.
     os << "        \"pattern_execution_plans\": [\n";
-    bool firstPlan = true;
-    for (const auto& plan : executionPlans) {
-      // Find if this plan belongs to this template.
-      auto mappingIt = tmpl.mapping.find(plan.patternId);
-      if (mappingIt == tmpl.mapping.end()) continue;
+    bool first_plan = true;
+    for (const auto& plan : execution_plans) {
+      auto mapping_it = tmpl.mapping.find(plan.pattern_id);
+      if (mapping_it == tmpl.mapping.end()) continue;
       
-      if (!firstPlan) os << ",\n";
-      firstPlan = false;
+      if (!first_plan) os << ",\n";
+      first_plan = false;
       
       os << "          {\n";
-      os << "            \"pattern_id\": " << plan.patternId << ",\n";
-      os << "            \"pattern_name\": \"" << escapeJsonString(plan.patternName) << "\",\n";
-      os << "            \"slot_mapping\": [";
-      const auto& m = mappingIt->second;
+      os << "            \"pattern_id\": " << plan.pattern_id << ",\n";
+      os << "            \"pattern_name\": \"" << escape_json_string(plan.pattern_name) << "\",\n";
+      os << "            \"fu_mapping\": [";
+      const auto& m = mapping_it->second;
       for (size_t i = 0; i < m.size(); ++i) {
         if (i) os << ", ";
         os << m[i];
       }
       os << "],\n";
       os << "            \"execution_stages\": [\n";
-      for (size_t stageIdx = 0; stageIdx < plan.stages.size(); ++stageIdx) {
-        const auto& stage = plan.stages[stageIdx];
-        if (stageIdx) os << ",\n";
+      for (size_t stage_idx = 0; stage_idx < plan.stages.size(); ++stage_idx) {
+        const auto& stage = plan.stages[stage_idx];
+        if (stage_idx) os << ",\n";
         os << "              {\n";
-        os << "                \"stage\": " << stageIdx << ",\n";
-        os << "                \"parallel_slots\": [";
-        for (size_t i = 0; i < stage.slots.size(); ++i) {
+        os << "                \"stage\": " << stage_idx << ",\n";
+        os << "                \"parallel_fus\": [";
+        for (size_t i = 0; i < stage.fus.size(); ++i) {
           if (i) os << ", ";
-          os << stage.slots[i];
+          os << stage.fus[i];
         }
         os << "],\n";
         os << "                \"parallel_ops\": [";
@@ -993,70 +790,27 @@ void writeHardwareConfigJson(const std::string& path,
     os << "\n        ]\n";
     os << "      }";
   }
-  os << "\n    ],\n";
-  
-  os << "    \"pattern_to_template\": [\n";
-  for (size_t i = 0; i < patterns.size(); ++i) {
-    const auto& p = patterns[i];
-    if (i) os << ",\n";
-    int tid = -1;
-    std::vector<int> m;
-    for (const auto& t : templates) {
-      auto it = t.mapping.find(p.id);
-      if (it != t.mapping.end()) {
-        tid = t.id;
-        m = it->second;
-        break;
-      }
-    }
-    os << "      {\"pattern_id\": " << p.id << ", \"name\": \"" << escapeJsonString(p.name)
-       << "\", \"freq\": " << p.freq << ", \"template\": " << tid << ", \"slots\": [";
-    for (size_t j = 0; j < m.size(); ++j) {
-      if (j) os << ", ";
-      os << m[j];
-    }
-    os << "], \"ops\": [";
-    for (size_t j = 0; j < p.ops.size(); ++j) {
-      if (j) os << ", ";
-      os << "\"" << p.ops[j] << "\"";
-    }
-    os << "]}";
-  }
-  os << "\n    ],\n";
-  
-  os << "    \"cost_model\": {";
-  std::set<std::string> allOps;
-  for (const auto& p : patterns) for (const auto& op : p.ops) allOps.insert(op);
-  bool first = true;
-  for (const auto& op : allOps) {
-    if (!first) os << ", ";
-    first = false;
-    os << "\"" << op << "\": " << costModel.get(op);
-  }
-  os << "}\n";
+  os << "\n    ]\n";
   
   os << "  }\n}\n";
-  
-  llvm::errs() << "[HardwareMerge] Output: " << path << "\n";
 }
 
 // Legacy version for backward compatibility.
-void writeHardwareConfigJson(const std::string& path, const std::vector<HardwarePattern>& patterns, const std::vector<HardwareTemplate>& templates, const OperationCostModel& costModel) {
-  // Generate execution plans and supported ops.
+void write_hardware_config_json(const std::string& path, const std::vector<HardwarePattern>& patterns, const std::vector<HardwareTemplate>& templates, const OperationCostModel& cost_model) {
   std::vector<PatternExecutionPlan> plans;
-  generateExecutionPlans(patterns, templates, plans);
+  generate_execution_plans(patterns, templates, plans);
   
-  std::set<std::string> allDfgOps;
+  std::set<std::string> all_dfg_ops;
   for (const auto& p : patterns) {
     for (const auto& op : p.ops) {
-      allDfgOps.insert(op);
+      all_dfg_ops.insert(op);
     }
   }
   
-  std::vector<TemplateSupportedOps> supportedOps;
-  collectSupportedOperations(patterns, templates, allDfgOps, supportedOps);
+  std::vector<TemplateSupportedOps> supported_ops;
+  collect_supported_operations(patterns, templates, all_dfg_ops, supported_ops);
   
-  writeHardwareConfigJson(path, patterns, templates, costModel, plans, supportedOps);
+  write_hardware_config_json(path, patterns, templates, cost_model, plans, supported_ops);
 }
 
 } // namespace mlir::neura

@@ -1,3 +1,4 @@
+#include "Common/AcceleratorAttrs.h"
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraOps.h"
 #include "NeuraDialect/NeuraPasses.h"
@@ -20,7 +21,7 @@ struct InsertCtrlMovForNeuraOps : public RewritePattern {
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
-    if (op->getDialect()->getNamespace() != "neura" ||
+    if (op->getDialect()->getNamespace() != accel::kNeuraTarget ||
         isa<neura::CtrlMovOp>(op)) {
       return failure();
     }

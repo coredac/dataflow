@@ -195,16 +195,17 @@ def HardwareMerge : Pass<"hardware-merge", "ModuleOp"> {
   let description = [{
     This pass analyzes patterns (fused_op regions) and designs an optimal
     hardware configuration that supports all patterns while minimizing
-    hardware unit duplication. It considers the topological order of operations
-    within each pattern to ensure correct hardware pipeline design.
+    hardware cost. It uses a Functional Unit (FU) based design where each
+    FU executes exactly one operation type.
     
     Algorithm:
     1. Extract pattern DAGs with topological structure from fused_op regions
-    2. Group patterns by structural similarity (same DAG shape)
-    3. For structurally similar patterns, create hardware templates where
-       each slot supports all operations that appear at that position
-    4. For structurally different patterns, use independent hardware units
-    5. Output the final hardware configuration as a JSON file
+    2. Sort patterns by complexity (distinct operation count and cost)
+    3. For each pattern, try to accommodate it into existing templates by reusing FUs with matching operation types
+    4. If accommodation cost is too high, create a new template with dedicated FUs for the pattern
+    5. Generate FU connections based on pattern dependencies with transitive reduction optimization
+    6. Generate execution plans with parallel execution stages
+    7. Output the final hardware configuration as a JSON file
   }];
   let constructor = "neura::createHardwareMergePass()";
 }

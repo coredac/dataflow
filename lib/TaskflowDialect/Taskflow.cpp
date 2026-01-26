@@ -41,3 +41,15 @@ void TaskflowDialect::printAttribute(mlir::Attribute attr,
   // Currently no custom attributes to print.
   llvm_unreachable("Unknown Taskflow attribute");
 }
+
+mlir::Type TaskflowDialect::parseType(mlir::DialectAsmParser &parser) const {
+  // Currently no custom types to parse.
+  parser.emitError(parser.getNameLoc()) << "unknown Taskflow type";
+  return mlir::Type();
+}
+
+void TaskflowDialect::printType(mlir::Type type,
+                                mlir::DialectAsmPrinter &printer) const {
+  // Currently no custom types to print.
+  llvm_unreachable("Unknown Taskflow type");
+}

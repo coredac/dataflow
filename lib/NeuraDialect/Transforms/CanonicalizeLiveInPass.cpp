@@ -1,3 +1,4 @@
+#include "Common/AcceleratorAttrs.h"
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -608,6 +609,11 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region,
             continue;
           }
 
+          if (direct_dominating_live_in_values[&current_block].contains(
+                  live_in)) {
+            continue;
+          }
+
           // If it is defined in the current block, that means it is not a
           // live-in value for the current block. We can skip it.
           if (Operation *def_op = live_in.getDefiningOp()) {
@@ -696,7 +702,7 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region,
             } else if (all_live_ins[pred_block].contains(live_in)) {
               new_operands.push_back(block_value_to_arg[{pred_block, live_in}]);
             } else {
-              assert(false && "Unexpected live-in value");
+              assert(false && "Unexpected live-in value (br operation)");
             }
           }
           OpBuilder builder(br_op);
@@ -720,11 +726,15 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region,
               true_operands.push_back(live_in);
             } else if (block_arg && block_arg.getOwner() == pred_block) {
               true_operands.push_back(block_arg);
+            } else if (direct_dominating_live_in_values[pred_block].contains(
+                           live_in)) {
+              true_operands.push_back(live_in);
             } else if (all_live_ins[pred_block].contains(live_in)) {
               true_operands.push_back(
                   block_value_to_arg[{pred_block, live_in}]);
             } else {
-              assert(false && "Unexpected live-in value");
+              assert(false && "Unexpected live-in value (true branch of "
+                              "cond_br operation)");
             }
           }
         }
@@ -739,11 +749,15 @@ LogicalResult promoteLiveInValuesToBlockArgs(Region &region,
               false_operands.push_back(live_in);
             } else if (block_arg && block_arg.getOwner() == pred_block) {
               false_operands.push_back(block_arg);
+            } else if (direct_dominating_live_in_values[pred_block].contains(
+                           live_in)) {
+              false_operands.push_back(live_in);
             } else if (all_live_ins[pred_block].contains(live_in)) {
               false_operands.push_back(
                   block_value_to_arg[{pred_block, live_in}]);
             } else {
-              assert(false && "Unexpected live-in value");
+              assert(false && "Unexpected live-in value (false branch of "
+                              "cond_br operation)");
             }
           }
         }
@@ -783,14 +797,16 @@ struct CanonicalizeLiveInPass
     module_op.walk([&](Operation *op) {
       Region *region = nullptr;
       if (auto func_op = dyn_cast<func::FuncOp>(op)) {
-        auto accel_attr = func_op->getAttrOfType<StringAttr>("accelerator");
-        if (!accel_attr || accel_attr.getValue() != "neura") {
+        auto accel_attr =
+            func_op->getAttrOfType<StringAttr>(accel::kAcceleratorAttr);
+        if (!accel_attr || accel_attr.getValue() != accel::kNeuraTarget) {
           return;
         }
         region = &func_op.getBody();
       } else if (auto llvm_func = dyn_cast<LLVM::LLVMFuncOp>(op)) {
-        auto accel_attr = llvm_func->getAttrOfType<StringAttr>("accelerator");
-        if (!accel_attr || accel_attr.getValue() != "neura") {
+        auto accel_attr =
+            llvm_func->getAttrOfType<StringAttr>(accel::kAcceleratorAttr);
+        if (!accel_attr || accel_attr.getValue() != accel::kNeuraTarget) {
           return;
         }
         region = &llvm_func.getBody();

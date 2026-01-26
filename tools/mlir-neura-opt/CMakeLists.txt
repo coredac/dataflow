@@ -5,8 +5,20 @@ set(LIBS
         ${dialect_libs}
         ${conversion_libs}
         MLIRNeuraTransforms
+        MLIRTaskflowTransforms
         MLIRConversion
         MLIRNeura
+        MLIRTaskflow
+        MLIRTosaDialect
+        MLIRTosaTransforms
+        MLIRLinalgTransforms
+        MLIRArithTransforms
+        MLIRSCFTransforms
+        MLIRTensorTransforms
+        MLIRBufferizationDialect
+        MLIRBufferizationTransforms
+        MLIRFuncAllExtensions
+        MLIRTensorAllExtensions
         MLIRTransforms
         MLIROptLib
         MLIRPass
