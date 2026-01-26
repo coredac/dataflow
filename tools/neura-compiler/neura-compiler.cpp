@@ -10,9 +10,9 @@
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 
 #include "Conversion/ConversionPasses.h"
+#include "NeuraDialect/Architecture/Architecture.h"
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraPasses.h"
-#include "NeuraDialect/Architecture/Architecture.h"
 #include "NeuraDialect/Util/ArchParser.h"
 #include "mlir/Support/LogicalResult.h"
 
@@ -21,17 +21,6 @@ using mlir::neura::util::ArchParser;
 
 // Global variable to store architecture spec file path
 static std::string architecture_spec_file;
-static mlir::neura::TileDefaults tile_defaults;
-
-// Function to get the architecture spec file path
-std::string mlir::neura::getArchitectureSpecFile() {
-  return architecture_spec_file;
-}
-
-// Function to get tile defaults configuration
-mlir::neura::TileDefaults mlir::neura::getTileDefaults() {
-  return tile_defaults;
-}
 
 Architecture mlir::neura::getArchitecture() {
   auto arch_parser = ArchParser(architecture_spec_file);
@@ -55,6 +44,10 @@ int main(int argc, char **argv) {
         architecture_spec_file = argv[i + 1];
         ++i; // skip value
         continue;
+      } else {
+        llvm::errs() << "[neura-compiler] Error: --architecture-spec option "
+                        "requires a value\n";
+        return EXIT_FAILURE;
       }
     } else if (arg_ref.starts_with("--architecture-spec=")) {
       architecture_spec_file =
@@ -87,6 +80,6 @@ int main(int argc, char **argv) {
                     "provided, using default configuration\n";
   }
   // Runs the MLIR optimizer.
-  return mlir::asMainReturnCode(
-      mlir::MlirOptMain(new_argc, new_argv, "Neura Dialect Compiler", registry));
+  return mlir::asMainReturnCode(mlir::MlirOptMain(
+      new_argc, new_argv, "Neura Dialect Compiler", registry));
 }

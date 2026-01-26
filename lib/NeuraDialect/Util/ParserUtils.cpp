@@ -46,7 +46,7 @@ void parseYamlStringSequence(llvm::yaml::Node *node,
 
 // Utility: Print YAML parse error and return false.
 bool yamlParseError(const std::string &msg, const std::string &file) {
-  llvm::errs() << "[MapToAcceleratorPass] YAML parse error";
+  llvm::errs() << "YAML parse error";
   if (!file.empty())
     llvm::errs() << " in: " << file;
   llvm::errs() << ": " << msg << "\n";
@@ -73,8 +73,7 @@ void parseTileDefaults(llvm::yaml::MappingNode *tile_defaults_map,
       parseYamlStringSequence(key_value_pair.getValue(),
                               tile_defaults.function_units);
     } else {
-      llvm::errs() << "[MapToAcceleratorPass] Unknown tile_defaults key: "
-                   << key_ref << "\n";
+      llvm::errs() << "Unknown tile_defaults key: " << key_ref << "\n";
     }
   }
 }
@@ -97,8 +96,7 @@ void parseTileOverrideOperations(llvm::yaml::MappingNode *override_map,
       if (parseYamlScalarInt(key_value_pair.getValue(), temp_value))
         override.num_registers = temp_value;
     } else {
-      llvm::errs() << "[MapToAcceleratorPass] Unknown tile_override key: "
-                   << key_ref << "\n";
+      llvm::errs() << "Unknown tile_override key: " << key_ref << "\n";
     }
   }
 }
@@ -139,8 +137,7 @@ void parseSingleTileOverride(llvm::yaml::MappingNode *override_map,
             (value == "true" || value == "True" || value == "1");
       }
     } else {
-      llvm::errs() << "[MapToAcceleratorPass] Unknown tile_override key: "
-                   << key_ref << "\n";
+      llvm::errs() << "Unknown tile_override key: " << key_ref << "\n";
     }
   }
 }
@@ -180,8 +177,7 @@ bool parseLinkDefaults(llvm::yaml::MappingNode *link_defaults_map,
       if (parseYamlScalarInt(key_value_pair.getValue(), temp_value))
         link_defaults.bandwidth = temp_value;
     } else {
-      llvm::errs() << "[MapToAcceleratorPass] Unknown link_defaults key: "
-                   << key_ref << "\n";
+      llvm::errs() << "Unknown link_defaults key: " << key_ref << "\n";
     }
   }
   return true;
@@ -224,8 +220,7 @@ void parseSingleLinkOverride(llvm::yaml::MappingNode *override_map,
             (value == "true" || value == "True" || value == "1");
       }
     } else {
-      llvm::errs() << "[MapToAcceleratorPass] Unknown link_override key: "
-                   << key_ref << "\n";
+      llvm::errs() << "Unknown link_override key: " << key_ref << "\n";
     }
   }
 }
