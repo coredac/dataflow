@@ -17,6 +17,9 @@ add_mlir_library(
     IterMergePatternPass.cpp
     TransformToSteerControlPass.cpp
     RemovePredicatedTypePass.cpp
+    HardwareMergePass.cpp
+    GraphMining/HardwareTemplate.cpp
+    WrapLoopInKernelPass.cpp
 
     DEPENDS
     MLIRNeuraTransformsIncGen
