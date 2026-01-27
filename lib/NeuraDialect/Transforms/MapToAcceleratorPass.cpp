@@ -191,7 +191,7 @@ struct MapToAcceleratorPass
       return;
     }
 
-    Architecture architecture = mlir::neura::getArchitecture();
+    const Architecture &architecture = mlir::neura::getArchitecture();
 
     module.walk([&](func::FuncOp func) {
       // Skips functions not targeting the neura accelerator.

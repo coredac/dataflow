@@ -526,7 +526,7 @@ private:
 };
 
 // Function for getting the architecture object.
-Architecture getArchitecture();
+const Architecture &getArchitecture();
 } // namespace neura
 } // namespace mlir
 

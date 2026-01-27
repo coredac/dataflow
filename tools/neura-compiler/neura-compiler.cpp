@@ -22,13 +22,16 @@ using mlir::neura::util::ArchParser;
 // Global variable to store architecture spec file path
 static std::string architecture_spec_file;
 
-Architecture mlir::neura::getArchitecture() {
-  auto arch_parser = ArchParser(architecture_spec_file);
-  auto architecture_result = arch_parser.getArchitecture();
-  if (failed(architecture_result)) {
-    llvm::report_fatal_error("[neura-compiler] Failed to get architecture.");
-  }
-  return std::move(architecture_result.value());
+const Architecture &mlir::neura::getArchitecture() {
+  static Architecture instance = []() {
+    auto arch_parser = ArchParser(architecture_spec_file);
+    auto architecture_result = arch_parser.getArchitecture();
+    if (failed(architecture_result)) {
+      llvm::report_fatal_error("[neura-compiler] Failed to get architecture.");
+    }
+    return std::move(architecture_result.value());
+  }();
+  return instance;
 }
 
 int main(int argc, char **argv) {
