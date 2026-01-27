@@ -117,7 +117,7 @@
 // RUN: mlir-neura-opt --architecture-spec=%S/../../arch_spec/architecture.yaml --verify-each=true --mlir-print-ir-after-failure \
 // RUN:           --assign-accelerator \
 // RUN:           --lower-llvm-to-neura \
-// RUN:           --promote-func-arg-to-const \
+// RUN:           --promote-input-arg-to-const \
 // RUN:           --canonicalize-return \
 // RUN:           --canonicalize-cast \
 // RUN:           --canonicalize-live-in \
