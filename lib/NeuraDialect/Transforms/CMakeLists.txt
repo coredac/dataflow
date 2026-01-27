@@ -19,7 +19,6 @@ add_mlir_library(
     RemovePredicatedTypePass.cpp
     HardwareMergePass.cpp
     GraphMining/HardwareTemplate.cpp
-    WrapLoopInKernelPass.cpp
 
     DEPENDS
     MLIRNeuraTransformsIncGen
