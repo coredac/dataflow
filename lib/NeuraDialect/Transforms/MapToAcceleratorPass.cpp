@@ -253,7 +253,7 @@ struct MapToAcceleratorPass
       int res_mii = calculateResMii(func, architecture);
 
       const int possible_min_ii = std::max(rec_mii, res_mii);
-      const int max_ii = architecture.getMaxCtrlMemItems();
+      const int max_allowed_ii = architecture.getMaxCtrlMemItems();
 
       std::vector<Operation *> topologically_sorted_ops =
           getTopologicallySortedOps(func);
@@ -309,7 +309,7 @@ struct MapToAcceleratorPass
                      << " (ALAP level: " << level << ")\n";
       }
       // assert(false);
-      for (int ii = possible_min_ii; ii <= max_ii; ++ii) {
+      for (int ii = possible_min_ii; ii <= max_allowed_ii; ++ii) {
         llvm::errs()
             << "[MapToAcceleratorPass] Start mapping with target II of " << ii
             << "\n";

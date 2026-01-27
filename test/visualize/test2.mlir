@@ -10,11 +10,23 @@ func.func @test_print_op_graph(%a: f32, %b: f32) -> f32 {
 }
 
 // CHECK-GRAPH: digraph G
-// CHECK-GRAPH: label = "neura.constant : (!neura.data<f32, i1>)\n\ndfg_id: 0 : i32\nmapping_locs: [{id = 0 : i32, inde...\nvalue: \"%arg0\"", shape = ellipse, style = filled];
-// CHECK-GRAPH: label = "neura.data_mov : (!neura.data<f32, i1>)\n\ndfg_id: 2 : i32\nmapping_locs: [{id = 0 : i32, inde...", shape = ellipse, style = filled];
-// CHECK-GRAPH: label = "neura.fadd : (!neura.data<f32, i1>)\n\ndfg_id: 3 : i32\nmapping_locs: [{id = 1 : i32, inde...\nrhs_value: \"%arg1\"", shape = ellipse, style = filled];
-// CHECK-GRAPH: label = "neura.data_mov : (!neura.data<f32, i1>)\n\ndfg_id: 4 : i32\nmapping_locs: [{id = 3 : i32, inde...", shape = ellipse, style = filled];
-// CHECK-GRAPH: label = "neura.fmul : (!neura.data<f32, i1>)\n\ndfg_id: 5 : i32\nmapping_locs: [{id = 2 : i32, inde...\nrhs_value: 2.000000e+00 : f32", shape = ellipse, style = filled];
-// CHECK-GRAPH: label = "neura.data_mov : (!neura.data<f32, i1>)\n\ndfg_id: 6 : i32\nmapping_locs: [{id = 6 : i32, inde...", shape = ellipse, style = filled];
-// CHECK-GRAPH: label = "neura.return_value : ()\n\ndfg_id: 7 : i32\nmapping_locs: [{id = 3 : i32, inde...", shape = ellipse, style = filled];
-// CHECK-GRAPH: label = "neura.yield : ()\n\ndfg_id: 1 : i32", shape = ellipse, style = filled];
+// CHECK-GRAPH: label = "neura.constant : (f32)\n\nvalue: 2.000000e+00 : f32", shape = ellipse, style = filled];
+// CHECK-GRAPH: label = "neura.fadd : (f32)\n", shape = ellipse, style = filled];
+// CHECK-GRAPH: label = "neura.fmul : (f32)\n", shape = ellipse, style = filled];
+// CHECK-GRAPH: label = "neura.return : ()\n", shape = ellipse, style = filled];
+
+// CHECK-GRAPH: digraph G
+// CHECK-GRAPH: label = "neura.constant : (!neura.data<f32, i1>)\n\nvalue: \"%arg0\"", shape = ellipse, style = filled];
+// CHECK-GRAPH: label = "neura.fadd : (!neura.data<f32, i1>)\n\nrhs_value: \"%arg1\"", shape = ellipse, style = filled];
+// CHECK-GRAPH: label = "neura.fmul : (!neura.data<f32, i1>)\n\nrhs_value: 2.000000e+00 : f32", shape = ellipse, style = filled];
+// CHECK-GRAPH: label = "neura.return : ()\n\nreturn_type: \"value\"", shape = ellipse, style = filled];
+
+// CHECK-GRAPH: digraph G
+// CHECK-GRAPH: label = "neura.constant : (!neura.data<f32, i1>)\n\nvalue: \"%arg0\"", shape = ellipse, style = filled];
+// CHECK-GRAPH: label = "neura.data_mov : (!neura.data<f32, i1>)\n", shape = ellipse, style = filled];
+// CHECK-GRAPH: label = "neura.fadd : (!neura.data<f32, i1>)\n\nrhs_value: \"%arg1\"", shape = ellipse, style = filled];
+// CHECK-GRAPH: label = "neura.data_mov : (!neura.data<f32, i1>)\n", shape = ellipse, style = filled];
+// CHECK-GRAPH: label = "neura.fmul : (!neura.data<f32, i1>)\n\nrhs_value: 2.000000e+00 : f32", shape = ellipse, style = filled];
+// CHECK-GRAPH: label = "neura.data_mov : (!neura.data<f32, i1>)\n", shape = ellipse, style = filled];
+// CHECK-GRAPH: label = "neura.return_value : ()\n", shape = ellipse, style = filled];
+// CHECK-GRAPH: label = "neura.yield : ()\n", shape = ellipse, style = filled];
