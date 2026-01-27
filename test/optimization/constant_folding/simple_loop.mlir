@@ -1,5 +1,5 @@
 // RUN: mlir-neura-opt %s \
-// RUN: --promote-func-arg-to-const \
+// RUN: --promote-input-arg-to-const \
 // RUN: --fold-constant \
 // RUN: | FileCheck %s -check-prefix=FOLD
 

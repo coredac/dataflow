@@ -18,7 +18,7 @@
 // RUN: --lower-builtin-to-neura \
 // RUN: --lower-llvm-to-neura \
 // RUN: --canonicalize-cast \
-// RUN: --promote-func-arg-to-const \
+// RUN: --promote-input-arg-to-const \
 // RUN: --canonicalize-live-in | FileCheck %s --check-prefix=CANONICALIZE
 
 // RUN: mlir-neura-opt %t-llvm.mlir \
@@ -28,7 +28,7 @@
 // RUN: --lower-builtin-to-neura \
 // RUN: --lower-llvm-to-neura \
 // RUN: --canonicalize-cast \
-// RUN: --promote-func-arg-to-const \
+// RUN: --promote-input-arg-to-const \
 // RUN: --canonicalize-return \
 // RUN: --canonicalize-live-in \
 // RUN: --leverage-predicated-value \
@@ -42,7 +42,7 @@
 // RUN: --lower-builtin-to-neura \
 // RUN: --lower-llvm-to-neura \
 // RUN: --canonicalize-cast \
-// RUN: --promote-func-arg-to-const \
+// RUN: --promote-input-arg-to-const \
 // RUN: --fold-constant \
 // RUN: --canonicalize-return \
 // RUN: --canonicalize-live-in \
@@ -60,7 +60,7 @@
 // RUN: --lower-builtin-to-neura \
 // RUN: --lower-llvm-to-neura \
 // RUN: --canonicalize-cast \
-// RUN: --promote-func-arg-to-const \
+// RUN: --promote-input-arg-to-const \
 // RUN: --fold-constant \
 // RUN: --canonicalize-return \
 // RUN: --canonicalize-live-in \

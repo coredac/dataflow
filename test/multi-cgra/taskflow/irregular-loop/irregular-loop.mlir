@@ -107,7 +107,7 @@ module attributes {} {
 // HYPERBLOCK-NEXT:       ^bb0(%arg1: index, %arg2: i32):
 // HYPERBLOCK-NEXT:         %3 = arith.index_cast %arg1 : index to i32
 // HYPERBLOCK-NEXT:         %4 = arith.addi %arg2, %3 : i32
-// HYPERBLOCK-NEXT:         taskflow.hyperblock.yield outputs(%4 : i32)
+// HYPERBLOCK-NEXT:         taskflow.hyperblock.yield iter_args_next(%4 : i32) results(%4 : i32)
 // HYPERBLOCK-NEXT:       }) : (index, i32) -> i32
 // HYPERBLOCK-NEXT:       "taskflow.yield"(%2) <{operandSegmentSizes = array<i32: 0, 1>}> : (i32) -> ()
 // HYPERBLOCK-NEXT:     }) : (i32) -> i32
@@ -151,6 +151,8 @@ module attributes {} {
 // HYPERBLOCK-NEXT:   }
 // HYPERBLOCK-NEXT: }
 
+
+
 // CANONICALIZE:      module {
 // CANONICALIZE-NEXT:   func.func @_Z21irregularLoopExample1v() -> i32 attributes {llvm.linkage = #llvm.linkage<external>} {
 // CANONICALIZE-NEXT:     %c2_i32 = arith.constant 2 : i32
@@ -165,7 +167,7 @@ module attributes {} {
 // CANONICALIZE-NEXT:       ^bb0(%arg1: index, %arg2: i32):
 // CANONICALIZE-NEXT:         %3 = arith.index_cast %arg1 : index to i32
 // CANONICALIZE-NEXT:         %4 = arith.addi %arg2, %3 : i32
-// CANONICALIZE-NEXT:         taskflow.hyperblock.yield outputs(%4 : i32)
+// CANONICALIZE-NEXT:         taskflow.hyperblock.yield iter_args_next(%4 : i32) results(%4 : i32)
 // CANONICALIZE-NEXT:       }) : (index, i32) -> i32
 // CANONICALIZE-NEXT:       "taskflow.yield"(%2) <{operandSegmentSizes = array<i32: 0, 1>}> : (i32) -> ()
 // CANONICALIZE-NEXT:     }) : (i32) -> i32

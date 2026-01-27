@@ -97,12 +97,12 @@ def CanonicalizeLiveIn : Pass<"canonicalize-live-in", "ModuleOp"> {
   let constructor = "neura::createCanonicalizeLiveInPass()";
 }
 
-def PromoteFuncArgToConst : Pass<"promote-func-arg-to-const", "ModuleOp"> {
-  let summary = "Promotes function arguments to neura constant operations";
+def PromoteInputArgToConst : Pass<"promote-input-arg-to-const", "ModuleOp"> {
+  let summary = "Promotes input arguments of functions or neura.kernels to neura constant operations";
   let description = [{
-    This pass promotes function arguments to neura constant operations.
+    This pass promotes input arguments of functions or neura.kernels to neura constant operations.
   }];
-  let constructor = "neura::createPromoteFuncArgToConstPass()";
+  let constructor = "neura::createPromoteInputArgToConstPass()";
 }
 
 def CanonicalizeCast : Pass<"canonicalize-cast", "ModuleOp"> {
@@ -165,14 +165,6 @@ def InitPattern : Pass<"init-pattern", "ModuleOp"> {
     with a configurable minimum support threshold.
   }];
   let constructor = "neura::createInitPatternPass()";
-}
-
-def WrapLoopInKernelPass : Pass<"wrap-loop-in-kernel", "func::FuncOp">{
-  let summary = "Wrap loops in neura.kernel operations";
-  let description = [{
-    This pass wraps loops in neura.kernel operations to encapsulate loop bodies.
-  }];
-  let constructor = "neura::createWrapLoopInKernelPass()";
 }
 
 def HardwareMerge : Pass<"hardware-merge", "ModuleOp"> {

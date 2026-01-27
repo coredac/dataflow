@@ -88,7 +88,10 @@ enum OperationKind {
   // Data movement operations.
   IReserve = 38,
   IDataMov = 39,
-  ICtrlMov = 40
+  ICtrlMov = 40,
+  // Counter operations.
+  ICounter = 41,
+  IExtractPredicate = 42
 };
 
 // Maps hardware resource names to their supported operations.
@@ -135,7 +138,10 @@ static const std::map<std::string, std::vector<OperationKind>>
 
         // Predicate operations.
         {"grant", {IGrantPredicate, IGrantOnce, IGrantAlways}},
-};
+
+        // Counter operations.
+        {"counter", {ICounter}},
+        {"extract_predicate", {IExtractPredicate}}};
 
 //===----------------------------------------------------------------------===//
 // BasicResource: abstract base class for Tile, Link, etc.
