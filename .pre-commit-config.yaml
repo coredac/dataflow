@@ -1,3 +1,10 @@
+# Exclude git submodules from all hooks
+exclude: |
+  (?x)^(
+    test/benchmark/CGRA-Bench/.*|
+    test/benchmark/Zeonica_Testbench/.*
+  )$
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
