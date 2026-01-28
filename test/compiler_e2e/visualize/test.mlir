@@ -1,5 +1,5 @@
 // Test neura-compiler e2e pipeline
-// RUN: neura-compiler --neura-conversion %s --architecture-spec=%S/../arch_spec/architecture.yaml -o %t-mapping.mlir
+// RUN: neura-compiler --neura-conversion %s --architecture-spec=%S/../../arch_spec/architecture.yaml -o %t-mapping.mlir
 // RUN: FileCheck %s --input-file=%t-mapping.mlir -check-prefix=MAPPING
 // RUN: FileCheck %s --input-file=tmp-generated-instructions.yaml -check-prefix=YAML
 // RUN: FileCheck %s --input-file=tmp-generated-instructions.asm -check-prefix=ASM
