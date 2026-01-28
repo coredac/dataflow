@@ -19,6 +19,36 @@ using namespace mlir;
 #include "NeuraDialect/NeuraPasses.h.inc"
 
 namespace {
+/**
+ * @brief Specializes a region by "internalizing" its input arguments as
+ * constants.
+ *
+ * This function performs a redirection of the dataflow. It identifies all
+ * input arguments of the entry block, creates a corresponding
+ * `neura::ConstantOp` for each, and re-links all internal operations to use
+ * these constants instead of the original block parameters.
+ *
+ * ### Example Transformation:
+ * * **Before:**
+ * @code
+ * func.func @compute(%arg0: i32) {
+ * %0 = arith.addi %arg0, %arg0 : i32
+ * return %0 : i32
+ * }
+ * @endcode
+ * * **After:**
+ * @code
+ * func.func @compute(%arg0: i32) {
+ * %0 = "neura.constant"() {value = "%arg0"} : () -> i32
+ * %1 = arith.addi %0, %0 : i32  // Uses replaced
+ * return %1 : i32
+ * }
+ * @endcode
+ *
+ * @param region The MLIR Region (typically a function body) to transform.
+ * @return Success if the transformation was applied (even if the region was
+ * empty).
+ */
 LogicalResult promoteFunctionArgsToConstants(Region &region) {
   if (region.empty()) {
     return success();
