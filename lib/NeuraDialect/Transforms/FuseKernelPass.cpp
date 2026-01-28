@@ -1,20 +1,8 @@
 //===- FuseKernelPass.cpp - Kernel Fusion Pass for Neura Dialect ----------===//
 //
-// This pass implements kernel fusion for the Neura dialect, inspired by
-// MLIR's linalg and affine loop fusion algorithms.
-//
-// The pass supports three types of fusion:
-// 1. Producer-Consumer Fusion: Fuses a producer kernel into its consumer
-//    when the producer's output is only used by the consumer.
-// 2. Sibling Fusion: Fuses kernels that share the same input operands
-//    and have no data dependencies between them.
-// 3. Elementwise Fusion: Fuses kernels containing only elementwise operations.
-//
-// Cost Model:
-// The pass uses a cost model based on rec_mii, res_mii, and max_fanout to
-// determine whether fusion is profitable. Fusion is rejected if:
-// - Fused rec_mii or res_mii significantly increases (>20% threshold)
-// - Max fanout increases by more than 50%
+// This pass implements kernel fusion for the Neura dialect:
+// 1. Producer-Consumer Fusion: Fuses a producer kernel into its consumer.
+// 2. Sibling Fusion: Fuses kernels that share inputs without data dependency.
 //
 //===----------------------------------------------------------------------===//
 
@@ -44,880 +32,531 @@ using namespace mlir;
 
 namespace {
 
-//===----------------------------------------------------------------------===//
-// Cost Model for Fusion Profitability
-//===----------------------------------------------------------------------===//
-
-/// Represents metrics for evaluating fusion profitability.
+// Represents metrics for evaluating fusion profitability.
 struct FusionMetrics {
-  int recMii = 1;     // Recurrence-constrained MII
-  int resMii = 1;     // Resource-constrained MII
-  int maxFanout = 0;  // Maximum fanout
-  int numOps = 0;     // Total operation count
+  int rec_mii = 1;
+  int res_mii = 1;
+  int max_fanout = 0;
+  int num_ops = 0;
 };
 
-/// Calculates the maximum fanout in a block.
-static int calculateMaxFanoutInBlock(Block &block) {
-  int maxFanout = 0;
+// Calculates the maximum fanout in a block.
+int calculateMaxFanoutInBlock(Block &block) {
+  int max_fanout = 0;
   for (Operation &op : block) {
     for (Value result : op.getResults()) {
       int fanout = std::distance(result.use_begin(), result.use_end());
-      maxFanout = std::max(maxFanout, fanout);
+      max_fanout = std::max(max_fanout, fanout);
     }
   }
-  return maxFanout;
+  return max_fanout;
 }
 
-/// Runs the neura transformation pipeline on a test module and computes MII.
-/// After transformation, uses real neura::calculateResMii and collectRecurrenceCycles.
-static FusionMetrics computeRealMetrics(ModuleOp testModule,
-                                        const neura::Architecture &architecture) {
+// Runs the neura transformation pipeline on a cloned module and computes MII metrics.
+FusionMetrics computeRealMetrics(ModuleOp test_module, const neura::Architecture &architecture) {
   FusionMetrics metrics;
-  
-  PassManager pm(testModule.getContext());
+  auto cloned_module = test_module.clone();
+
+  PassManager pm(cloned_module.getContext());
+  pm.addPass(mlir::neura::createAssignAcceleratorPass());
   pm.addPass(mlir::createLowerArithToNeuraPass());
+  pm.addPass(neura::createCanonicalizeReturnPass());
+  pm.addPass(neura::createCanonicalizeCastPass());
+  pm.addPass(neura::createPromoteFuncArgToConstPass());
   pm.addPass(neura::createCanonicalizeLiveInPass());
+  pm.addPass(neura::createLeveragePredicatedValuePass());
   pm.addPass(neura::createTransformCtrlToDataFlowPass());
-  pm.enableVerifier(false);
-  
-  if (failed(pm.run(testModule))) {
-    llvm::errs() << "[FuseKernel] Warning: transformation pipeline failed\n";
-    metrics.recMii = 100;
-    metrics.resMii = 100;
+  pm.enableVerifier(true);
+
+  if (failed(pm.run(cloned_module))) {
+    metrics.rec_mii = 100;
+    metrics.res_mii = 100;
+    cloned_module.erase();
     return metrics;
   }
-  
-  testModule.walk([&](func::FuncOp funcOp) {
-    if (funcOp.getName() != "test_fused_kernel")
+
+  cloned_module.walk([&](func::FuncOp func_op) {
+    if (func_op.getName() != "test_fused_kernel") {
       return;
-    
-    metrics.resMii = neura::calculateResMii(funcOp, architecture);
-    
-    auto cycles = neura::collectRecurrenceCycles(funcOp);
-    metrics.recMii = 1;
-    for (const auto &cycle : cycles) {
-      metrics.recMii = std::max(metrics.recMii, cycle.length);
     }
-    
-    int numOps = 0;
-    funcOp.walk([&](Operation *op) {
+    metrics.res_mii = neura::calculateResMii(func_op, architecture);
+    auto cycles = neura::collectRecurrenceCycles(func_op);
+    metrics.rec_mii = 1;
+    for (const auto &cycle : cycles) {
+      metrics.rec_mii = std::max(metrics.rec_mii, cycle.length);
+    }
+    int num_ops = 0;
+    func_op.walk([&](Operation *op) {
       if (!isa<func::FuncOp>(op) && !op->hasTrait<OpTrait::IsTerminator>()) {
-        ++numOps;
+        ++num_ops;
       }
     });
-    metrics.numOps = numOps;
-    
-    if (!funcOp.getBody().empty()) {
-      metrics.maxFanout = calculateMaxFanoutInBlock(funcOp.getBody().front());
+    metrics.num_ops = num_ops;
+    if (!func_op.getBody().empty()) {
+      metrics.max_fanout = calculateMaxFanoutInBlock(func_op.getBody().front());
     }
   });
-  
+
+  cloned_module.erase();
   return metrics;
 }
 
-/// Creates a test module using a separate MLIRContext to avoid interference.
-static FusionMetrics computeMetricsWithSeparateContext(
-    neura::KernelOp kernel1, neura::KernelOp kernel2, bool isProducerConsumer,
-    const neura::Architecture &architecture, bool isFusedMetrics) {
-  
-  // Create a separate context to avoid interference with original IR
-  MLIRContext testCtx;
-  testCtx.loadDialect<neura::NeuraDialect>();
-  testCtx.loadDialect<func::FuncDialect>();
-  testCtx.loadDialect<arith::ArithDialect>();
-  testCtx.loadDialect<LLVM::LLVMDialect>();
-  testCtx.loadDialect<math::MathDialect>();
-  
-  OpBuilder builder(&testCtx);
-  
-  // Create a new module in the test context
+// Clones operations from a kernel block, collecting yield values.
+void cloneKernelBlockOps(Block &source_block, OpBuilder &builder, IRMapping &mapping, SmallVectorImpl<Value> &yield_values) {
+  for (Operation &op : source_block) {
+    if (auto yield_op = dyn_cast<neura::YieldOp>(&op)) {
+      for (Value v : yield_op.getOperands()) {
+        yield_values.push_back(mapping.lookup(v));
+      }
+      continue;
+    }
+    builder.clone(op, mapping);
+  }
+}
+
+// Creates a test function from a kernel's body and returns the function.
+func::FuncOp cloneKernelToTestFunction(neura::KernelOp kernel, OpBuilder &builder, Location loc) {
+  Block &kernel_block = kernel.getBody().front();
+
+  SmallVector<Type> input_types;
+  for (auto arg : kernel_block.getArguments()) {
+    input_types.push_back(arg.getType());
+  }
+  SmallVector<Type> output_types(kernel.getResultTypes());
+
+  if (input_types.empty()) {
+    input_types.push_back(builder.getI64Type());
+  }
+  if (output_types.empty()) {
+    output_types.push_back(builder.getI64Type());
+  }
+
+  auto func_type = builder.getFunctionType(input_types, output_types);
+  auto func_op = builder.create<func::FuncOp>(loc, "test_fused_kernel", func_type);
+  func_op->setAttr("accelerator", builder.getStringAttr("neura"));
+
+  Block *entry_block = func_op.addEntryBlock();
+  builder.setInsertionPointToStart(entry_block);
+
+  IRMapping mapping;
+  for (auto [kernel_arg, func_arg] : llvm::zip(kernel_block.getArguments(), entry_block->getArguments())) {
+    mapping.map(kernel_arg, func_arg);
+  }
+
+  SmallVector<Value> yield_values;
+  cloneKernelBlockOps(kernel_block, builder, mapping, yield_values);
+
+  if (yield_values.empty()) {
+    yield_values.push_back(entry_block->getArgument(0));
+  }
+  auto return_op = builder.create<neura::ReturnOp>(loc, yield_values);
+  return_op->setAttr("return_type", builder.getStringAttr("value"));
+
+  return func_op;
+}
+
+// Computes metrics for a single kernel by creating a test module.
+FusionMetrics computeSingleKernelMetrics(neura::KernelOp kernel, const neura::Architecture &architecture) {
+  MLIRContext *ctx = kernel.getContext();
+  OpBuilder builder(ctx);
+
   auto module = ModuleOp::create(builder.getUnknownLoc());
   builder.setInsertionPointToStart(module.getBody());
-  
-  // Count operations to estimate metrics (without actually cloning the IR structure)
-  // This avoids the cross-context reference issues
-  int numOps1 = 0, numOps2 = 0;
-  int maxDepth1 = 1, maxDepth2 = 1;
-  
-  if (!kernel1.getBody().empty()) {
-    Block &block1 = kernel1.getBody().front();
-    llvm::DenseMap<Operation *, int> depth;
-    for (Operation &op : block1) {
-      if (isa<neura::YieldOp>(&op)) continue;
-      ++numOps1;
-      int opDepth = 1;
-      for (Value operand : op.getOperands()) {
-        if (Operation *defOp = operand.getDefiningOp()) {
-          if (depth.count(defOp)) {
-            opDepth = std::max(opDepth, depth[defOp] + 1);
-          }
-        }
-      }
-      depth[&op] = opDepth;
-      maxDepth1 = std::max(maxDepth1, opDepth);
-    }
-  }
-  
-  if (!isFusedMetrics) {
-    // For single kernel metrics, create a simple function with estimated ops
-    SmallVector<Type> inputTypes, outputTypes;
-    for (Value input : kernel1.getInputs()) {
-      inputTypes.push_back(input.getType());
-    }
-    for (Type t : kernel1.getResultTypes()) {
-      outputTypes.push_back(t);
-    }
-    
-    auto funcType = builder.getFunctionType(inputTypes, outputTypes);
-    auto funcOp = builder.create<func::FuncOp>(
-        builder.getUnknownLoc(), "test_fused_kernel", funcType);
-    funcOp->setAttr("accelerator", builder.getStringAttr("neura"));
-    
-    Block *entryBlock = funcOp.addEntryBlock();
-    builder.setInsertionPointToStart(entryBlock);
-    
-    // Create dummy operations to get proper res_mii
-    SmallVector<Value> lastValues;
-    for (int i = 0; i < numOps1; ++i) {
-      Value constVal = builder.create<arith::ConstantOp>(
-          builder.getUnknownLoc(), builder.getI64IntegerAttr(i));
-      lastValues.push_back(constVal);
-    }
-    
-    // Create return with one value
-    Value returnVal = lastValues.empty() ? 
-        builder.create<arith::ConstantOp>(builder.getUnknownLoc(), builder.getI64IntegerAttr(0)) :
-        lastValues.back();
-    auto returnOp = builder.create<neura::ReturnOp>(
-        builder.getUnknownLoc(), ValueRange{returnVal});
-    returnOp->setAttr("return_type", builder.getStringAttr("value"));
-    
-    FusionMetrics metrics = computeRealMetrics(module, architecture);
-    metrics.recMii = maxDepth1;  // Override with actual depth
-    return metrics;
-  }
-  
-  // For fused metrics
-  if (!kernel2.getBody().empty()) {
-    Block &block2 = kernel2.getBody().front();
-    llvm::DenseMap<Operation *, int> depth;
-    for (Operation &op : block2) {
-      if (isa<neura::YieldOp>(&op)) continue;
-      ++numOps2;
-      int opDepth = 1;
-      for (Value operand : op.getOperands()) {
-        if (Operation *defOp = operand.getDefiningOp()) {
-          if (depth.count(defOp)) {
-            opDepth = std::max(opDepth, depth[defOp] + 1);
-          }
-        }
-      }
-      depth[&op] = opDepth;
-      maxDepth2 = std::max(maxDepth2, opDepth);
-    }
-  }
-  
-  int totalOps = numOps1 + numOps2;
-  int fusedRecMii = isProducerConsumer ? (maxDepth1 + maxDepth2) : std::max(maxDepth1, maxDepth2);
-  
-  // Create test module for fused kernel
-  SmallVector<Type> inputTypes, outputTypes;
-  inputTypes.push_back(builder.getI64Type());
-  outputTypes.push_back(builder.getI64Type());
-  
-  auto funcType = builder.getFunctionType(inputTypes, outputTypes);
-  auto funcOp = builder.create<func::FuncOp>(
-      builder.getUnknownLoc(), "test_fused_kernel", funcType);
-  funcOp->setAttr("accelerator", builder.getStringAttr("neura"));
-  
-  Block *entryBlock = funcOp.addEntryBlock();
-  builder.setInsertionPointToStart(entryBlock);
-  
-  // Create dummy operations
-  Value lastVal = entryBlock->getArgument(0);
-  for (int i = 0; i < totalOps; ++i) {
-    lastVal = builder.create<arith::AddIOp>(builder.getUnknownLoc(), lastVal, lastVal);
-  }
-  
-  auto returnOp = builder.create<neura::ReturnOp>(
-      builder.getUnknownLoc(), ValueRange{lastVal});
-  returnOp->setAttr("return_type", builder.getStringAttr("value"));
-  
+  cloneKernelToTestFunction(kernel, builder, builder.getUnknownLoc());
+
   FusionMetrics metrics = computeRealMetrics(module, architecture);
-  metrics.recMii = fusedRecMii;  // Override with estimated depth
+  module.erase();
   return metrics;
 }
 
-/// Checks if fusion is profitable based on real MII metrics from neura pipeline.
-static bool isFusionProfitable(neura::KernelOp kernel1, neura::KernelOp kernel2,
-                               bool isProducerConsumer) {
-  // Creates architecture: 1x1 multi-CGRA with 4x4 per-CGRA (16 tiles), MESH topology.
-  neura::Architecture architecture(
-      1, 1,                              // multi_cgra_rows, multi_cgra_columns
-      neura::BaseTopology::MESH,         // multi_cgra_base_topology
-      4, 4,                              // per_cgra_rows, per_cgra_columns
-      neura::BaseTopology::MESH          // per_cgra_base_topology
-  );
-  
-  FusionMetrics m1 = computeMetricsWithSeparateContext(kernel1, kernel1, false, architecture, false);
-  FusionMetrics m2 = computeMetricsWithSeparateContext(kernel2, kernel2, false, architecture, false);
-  FusionMetrics fused = computeMetricsWithSeparateContext(kernel1, kernel2, isProducerConsumer, architecture, true);
+// Computes metrics for fused kernels by directly merging kernel bodies into a test function.
+FusionMetrics computeFusedKernelMetrics(neura::KernelOp kernel1, neura::KernelOp kernel2, bool is_producer_consumer, Value fused_value, const neura::Architecture &architecture) {
+  MLIRContext *ctx = kernel1.getContext();
+  OpBuilder builder(ctx);
+  Location loc = builder.getUnknownLoc();
 
-  // Calculates the baseline. 
-  int baselineRecMii = isProducerConsumer ? (m1.recMii + m2.recMii)
-                                          : std::max(m1.recMii, m2.recMii);
-  int baselineResMii = std::max(m1.resMii, m2.resMii);
-  int baselineMaxFanout = std::max(m1.maxFanout, m2.maxFanout);
+  auto module = ModuleOp::create(loc);
+  builder.setInsertionPointToStart(module.getBody());
 
-  // Thresholds for rejecting fusion
-  constexpr double MII_INCREASE_THRESHOLD = 2.0;
-  constexpr double FANOUT_INCREASE_THRESHOLD = 2.0;
+  Block &k1_block = kernel1.getBody().front();
+  Block &k2_block = kernel2.getBody().front();
 
-  if (fused.recMii > baselineRecMii * MII_INCREASE_THRESHOLD) {
-    return false;
-  }
-  if (fused.resMii > baselineResMii * MII_INCREASE_THRESHOLD) {
-    return false;
-  }
-  if (baselineMaxFanout > 0 &&
-      fused.maxFanout > baselineMaxFanout * FANOUT_INCREASE_THRESHOLD) {
-    return false;
+  // Collects input types from both kernels.
+  SmallVector<Type> input_types;
+  for (auto arg : k1_block.getArguments()) {
+    input_types.push_back(arg.getType());
   }
 
-  return true;
+  // Finds which kernel2 arg corresponds to fused_value for producer-consumer fusion.
+  int fused_value_arg_idx = -1;
+  if (is_producer_consumer && fused_value) {
+    for (auto [idx, input] : llvm::enumerate(kernel2.getInputs())) {
+      if (input == fused_value) {
+        fused_value_arg_idx = idx;
+        break;
+      }
+    }
+  }
+
+  for (auto [idx, arg] : llvm::enumerate(k2_block.getArguments())) {
+    if (static_cast<int>(idx) != fused_value_arg_idx) {
+      input_types.push_back(arg.getType());
+    }
+  }
+
+  // Determines output types based on fusion type.
+  SmallVector<Type> output_types;
+  if (is_producer_consumer) {
+    output_types.append(kernel2.getResultTypes().begin(), kernel2.getResultTypes().end());
+  } else {
+    output_types.append(kernel1.getResultTypes().begin(), kernel1.getResultTypes().end());
+    output_types.append(kernel2.getResultTypes().begin(), kernel2.getResultTypes().end());
+  }
+  if (input_types.empty()) {
+    input_types.push_back(builder.getI64Type());
+  }
+  if (output_types.empty()) {
+    output_types.push_back(builder.getI64Type());
+  }
+
+  // Creates test function.
+  auto func_type = builder.getFunctionType(input_types, output_types);
+  auto func_op = builder.create<func::FuncOp>(loc, "test_fused_kernel", func_type);
+  func_op->setAttr("accelerator", builder.getStringAttr("neura"));
+  Block *entry_block = func_op.addEntryBlock();
+  builder.setInsertionPointToStart(entry_block);
+
+  // Maps kernel1's block arguments to function arguments.
+  IRMapping mapping;
+  unsigned func_arg_idx = 0;
+  for (auto k1_arg : k1_block.getArguments()) {
+    mapping.map(k1_arg, entry_block->getArgument(func_arg_idx++));
+  }
+
+  // Clones kernel1's operations.
+  SmallVector<Value> k1_yields;
+  cloneKernelBlockOps(k1_block, builder, mapping, k1_yields);
+
+  // Maps kernel2's block arguments.
+  for (auto [idx, k2_arg] : llvm::enumerate(k2_block.getArguments())) {
+    if (is_producer_consumer && static_cast<int>(idx) == fused_value_arg_idx) {
+      if (!k1_yields.empty()) {
+        mapping.map(k2_arg, k1_yields[0]);
+      }
+    } else {
+      mapping.map(k2_arg, entry_block->getArgument(func_arg_idx++));
+    }
+  }
+
+  // Clones kernel2's operations.
+  SmallVector<Value> k2_yields;
+  cloneKernelBlockOps(k2_block, builder, mapping, k2_yields);
+
+  // Creates return with appropriate yields.
+  SmallVector<Value> return_values;
+  if (is_producer_consumer) {
+    return_values = k2_yields;
+  } else {
+    return_values.append(k1_yields.begin(), k1_yields.end());
+    return_values.append(k2_yields.begin(), k2_yields.end());
+  }
+  if (return_values.empty()) {
+    return_values.push_back(entry_block->getArgument(0));
+  }
+  auto return_op = builder.create<neura::ReturnOp>(loc, return_values);
+  return_op->setAttr("return_type", builder.getStringAttr("value"));
+
+  FusionMetrics metrics = computeRealMetrics(module, architecture);
+  module.erase();
+  return metrics;
 }
 
-//===----------------------------------------------------------------------===//
-// Utility Functions
-//===----------------------------------------------------------------------===//
+int estimateMII(const FusionMetrics &metrics, int total_ops, int total_tiles) {
+  const float alpha = 0.5;
+  const float beta = 0.5;
+  int mii = std::max(metrics.rec_mii, metrics.res_mii);
+  return std::ceil((1.0 + alpha * (total_ops / float(total_tiles))) * (1 + beta * std::max(metrics.max_fanout - 4, 0)) * mii);
+}
 
-/// Check if two kernel operations can be fused based on their memory access
-/// patterns. Returns true if there's no read-after-write or write-after-write
-/// conflict that would prevent fusion.
-static bool canFuseKernels(neura::KernelOp producer, neura::KernelOp consumer) {
-  // Basic checks
-  if (!producer || !consumer)
+// Checks if fusion is profitable based on MII and fanout metrics.
+bool isFusionProfitable(neura::KernelOp kernel1, neura::KernelOp kernel2, bool is_producer_consumer, Value fused_value = nullptr) {
+  neura::Architecture architecture(1, 1, neura::BaseTopology::MESH, 4, 4, neura::BaseTopology::MESH);
+
+  FusionMetrics m1 = computeSingleKernelMetrics(kernel1, architecture);
+  FusionMetrics m2 = computeSingleKernelMetrics(kernel2, architecture);
+  FusionMetrics fused = computeFusedKernelMetrics(kernel1, kernel2, is_producer_consumer, fused_value, architecture);
+  
+  return estimateMII(fused, fused.num_ops, architecture.getNumTiles()) <= std::max(estimateMII(m1, m1.num_ops, architecture.getNumTiles()), estimateMII(m2, m2.num_ops, architecture.getNumTiles()));
+
+}
+
+// Checks if two kernels can be fused (same block, producer before consumer).
+bool canFuseKernels(neura::KernelOp producer, neura::KernelOp consumer) {
+  if (!producer || !consumer || producer == consumer) {
     return false;
-
-  // Don't fuse if they're the same operation
-  if (producer == consumer)
+  }
+  if (producer->getBlock() != consumer->getBlock()) {
     return false;
+  }
+  return producer->isBeforeInBlock(consumer);
+}
 
-  // Check that producer dominates consumer (producer comes before consumer)
-  // This is a simplified check - in the same block, check operation order
-  if (producer->getBlock() != consumer->getBlock())
-    return false;
+// Returns true if consumer uses any of producer's results.
+bool hasProducerConsumerRelation(neura::KernelOp producer, neura::KernelOp consumer) {
+  for (Value result : producer.getOutputs()) {
+    for (Value input : consumer.getInputs()) {
+      if (result == input) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
-  // Verify producer comes before consumer
-  bool producerBeforeConsumer = false;
+// Checks if two kernels are siblings (share inputs but no data dependency).
+bool areSiblingKernels(neura::KernelOp kernel1, neura::KernelOp kernel2) {
+  llvm::SmallPtrSet<Value, 8> kernel1_inputs(kernel1.getInputs().begin(), kernel1.getInputs().end());
+  bool share_input = llvm::any_of(kernel2.getInputs(), [&](Value input) {
+    return kernel1_inputs.contains(input);
+  });
+  return share_input && !hasProducerConsumerRelation(kernel1, kernel2) && !hasProducerConsumerRelation(kernel2, kernel1);
+}
+
+// Checks if any operation between producer and consumer uses producer's results.
+bool hasInterveningUses(neura::KernelOp producer, neura::KernelOp consumer) {
+  llvm::SmallPtrSet<Value, 8> producer_results(producer.getOutputs().begin(), producer.getOutputs().end());
+  bool in_range = false;
   for (Operation &op : *producer->getBlock()) {
     if (&op == producer.getOperation()) {
-      producerBeforeConsumer = true;
+      in_range = true;
+      continue;
     }
     if (&op == consumer.getOperation()) {
       break;
     }
-  }
-  if (!producerBeforeConsumer)
-    return false;
-
-  return true;
-}
-
-/// Check if there's a producer-consumer relationship between two kernels.
-/// Returns true if consumer uses any of producer's results.
-static bool hasProducerConsumerRelation(neura::KernelOp producer,
-                                         neura::KernelOp consumer) {
-  for (Value result : producer.getOutputs()) {
-    for (Value input : consumer.getInputs()) {
-      if (result == input)
-        return true;
+    if (in_range) {
+      for (Value operand : op.getOperands()) {
+        if (producer_results.contains(operand)) {
+          return true;
+        }
+      }
     }
   }
   return false;
 }
 
-/// Check if two kernels are siblings (share inputs but no data dependency).
-static bool areSiblingKernels(neura::KernelOp kernel1, neura::KernelOp kernel2) {
-  // Check if they share any input operands
-  llvm::SmallPtrSet<Value, 8> kernel1Inputs;
-  for (Value input : kernel1.getInputs()) {
-    kernel1Inputs.insert(input);
+// Collects inputs from two kernels, avoiding duplicates.
+void collectFusedInputs(OperandRange inputs1, OperandRange inputs2, SmallVectorImpl<Value> &fused_inputs, SmallVectorImpl<Type> &fused_input_types, llvm::SmallDenseMap<Value, unsigned> &input_index_map) {
+  for (Value input : inputs1) {
+    input_index_map[input] = fused_inputs.size();
+    fused_inputs.push_back(input);
+    fused_input_types.push_back(input.getType());
   }
-
-  bool shareInput = false;
-  for (Value input : kernel2.getInputs()) {
-    if (kernel1Inputs.contains(input)) {
-      shareInput = true;
-      break;
+  for (Value input : inputs2) {
+    if (!input_index_map.count(input)) {
+      input_index_map[input] = fused_inputs.size();
+      fused_inputs.push_back(input);
+      fused_input_types.push_back(input.getType());
     }
   }
-
-  if (!shareInput)
-    return false;
-
-  // Check there's no producer-consumer relationship
-  if (hasProducerConsumerRelation(kernel1, kernel2) ||
-      hasProducerConsumerRelation(kernel2, kernel1))
-    return false;
-
-  return true;
 }
 
-/// Collect all operations between two operations in the same block.
-static void collectOperationsBetween(Operation *start, Operation *end,
-                                      SmallVectorImpl<Operation *> &ops) {
-  if (start->getBlock() != end->getBlock())
-    return;
-
-  bool inRange = false;
-  for (Operation &op : *start->getBlock()) {
-    if (&op == start) {
-      inRange = true;
+// Clones operations from a kernel block with input index mapping for sibling fusion.
+void cloneKernelOpsWithIndexMap(Block &source_block, Block *fused_block, OpBuilder &builder, IRMapping &mapping, OperandRange kernel_inputs, const llvm::SmallDenseMap<Value, unsigned> &input_index_map, SmallVectorImpl<Value> *yield_values) {
+  for (auto [idx, old_arg] : llvm::enumerate(source_block.getArguments())) {
+    Value original_input = kernel_inputs[idx];
+    mapping.map(old_arg, fused_block->getArgument(input_index_map.lookup(original_input)));
+  }
+  for (Operation &op : source_block) {
+    if (auto yield_op = dyn_cast<neura::YieldOp>(&op)) {
+      if (yield_values) {
+        for (Value v : yield_op.getOperands()) {
+          yield_values->push_back(mapping.lookup(v));
+        }
+      }
       continue;
     }
-    if (&op == end)
-      break;
-    if (inRange)
-      ops.push_back(&op);
+    builder.clone(op, mapping);
   }
 }
 
-/// Check if any operation between producer and consumer uses producer's results.
-static bool hasInterveningUses(neura::KernelOp producer,
-                                neura::KernelOp consumer) {
-  SmallVector<Operation *> betweenOps;
-  collectOperationsBetween(producer, consumer, betweenOps);
+// Fuses a producer kernel into its consumer and returns the fused kernel.
+neura::KernelOp fuseProducerConsumerKernels(neura::KernelOp producer, neura::KernelOp consumer, Value fused_value, OpBuilder &builder) {
+  Location loc = consumer.getLoc();
 
-  llvm::SmallPtrSet<Value, 8> producerResults;
-  for (Value result : producer.getOutputs()) {
-    producerResults.insert(result);
+  SmallVector<Value> fused_inputs;
+  SmallVector<Type> fused_input_types;
+  for (Value input : producer.getInputs()) {
+    fused_inputs.push_back(input);
+    fused_input_types.push_back(input.getType());
   }
-
-  for (Operation *op : betweenOps) {
-    for (Value operand : op->getOperands()) {
-      if (producerResults.contains(operand))
-        return true;
+  for (Value input : consumer.getInputs()) {
+    if (input != fused_value) {
+      fused_inputs.push_back(input);
+      fused_input_types.push_back(input.getType());
     }
   }
-  return false;
+
+  SmallVector<Type> fused_output_types(consumer.getResultTypes());
+  auto fused_kernel = builder.create<neura::KernelOp>(loc, fused_output_types, fused_inputs, consumer.getCgraIdAttr(), builder.getStringAttr("fused_producer_consumer"), consumer.getAcceleratorAttr());
+
+  Block *fused_block = builder.createBlock(&fused_kernel.getBody());
+  for (Type t : fused_input_types) {
+    fused_block->addArgument(t, loc);
+  }
+
+  OpBuilder::InsertionGuard guard(builder);
+  builder.setInsertionPointToStart(fused_block);
+
+  // Maps and clones producer's operations.
+  IRMapping producer_mapping;
+  Block &producer_block = producer.getBody().front();
+  for (auto [old_arg, new_arg] : llvm::zip(producer_block.getArguments(), fused_block->getArguments().take_front(producer.getInputs().size()))) {
+    producer_mapping.map(old_arg, new_arg);
+  }
+  SmallVector<Value> producer_yields;
+  cloneKernelBlockOps(producer_block, builder, producer_mapping, producer_yields);
+
+  // Maps and clones consumer's operations with fused value mapped to producer's output.
+  IRMapping consumer_mapping;
+  Block &consumer_block = consumer.getBody().front();
+  unsigned consumer_input_idx = producer.getInputs().size();
+  for (auto [idx, old_arg] : llvm::enumerate(consumer_block.getArguments())) {
+    Value original_input = consumer.getInputs()[idx];
+    if (original_input == fused_value) {
+      consumer_mapping.map(old_arg, producer_yields.empty() ? Value() : producer_yields[0]);
+    } else {
+      consumer_mapping.map(old_arg, fused_block->getArgument(consumer_input_idx++));
+    }
+  }
+  SmallVector<Value> consumer_yields;
+  cloneKernelBlockOps(consumer_block, builder, consumer_mapping, consumer_yields);
+
+  builder.create<neura::YieldOp>(loc, consumer_yields);
+  return fused_kernel;
 }
 
-//===----------------------------------------------------------------------===//
-// Producer-Consumer Fusion Pattern
-// Similar to linalg's tiled producer-consumer fusion
-//===----------------------------------------------------------------------===//
+// Fuses two sibling kernels and returns the fused kernel.
+neura::KernelOp fuseSiblingKernels(neura::KernelOp kernel1, neura::KernelOp kernel2, OpBuilder &builder) {
+  Location loc = kernel1.getLoc();
 
-struct ProducerConsumerFusionPattern
-    : public OpRewritePattern<neura::KernelOp> {
+  SmallVector<Value> fused_inputs;
+  SmallVector<Type> fused_input_types;
+  llvm::SmallDenseMap<Value, unsigned> input_index_map;
+  collectFusedInputs(kernel1.getInputs(), kernel2.getInputs(), fused_inputs, fused_input_types, input_index_map);
+
+  SmallVector<Type> fused_output_types(kernel1.getResultTypes());
+  fused_output_types.append(kernel2.getResultTypes().begin(), kernel2.getResultTypes().end());
+
+  auto fused_kernel = builder.create<neura::KernelOp>(loc, fused_output_types, fused_inputs, kernel1.getCgraIdAttr(), builder.getStringAttr("fused_sibling"), kernel1.getAcceleratorAttr());
+
+  Block *fused_block = builder.createBlock(&fused_kernel.getBody());
+  for (Type t : fused_input_types) {
+    fused_block->addArgument(t, loc);
+  }
+
+  OpBuilder::InsertionGuard guard(builder);
+  builder.setInsertionPointToStart(fused_block);
+
+  IRMapping mapping1;
+  Block &block1 = kernel1.getBody().front();
+  SmallVector<Value> kernel1_yields;
+  cloneKernelOpsWithIndexMap(block1, fused_block, builder, mapping1, kernel1.getInputs(), input_index_map, &kernel1_yields);
+
+  IRMapping mapping2;
+  Block &block2 = kernel2.getBody().front();
+  SmallVector<Value> kernel2_yields;
+  cloneKernelOpsWithIndexMap(block2, fused_block, builder, mapping2, kernel2.getInputs(), input_index_map, &kernel2_yields);
+
+  SmallVector<Value> all_yields(kernel1_yields);
+  all_yields.append(kernel2_yields);
+  builder.create<neura::YieldOp>(loc, all_yields);
+
+  return fused_kernel;
+}
+
+// Pattern that fuses a producer kernel into its consumer.
+struct ProducerConsumerFusion : public OpRewritePattern<neura::KernelOp> {
   using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(neura::KernelOp consumer,
-                                PatternRewriter &rewriter) const override {
-    // Find a producer kernel that can be fused into this consumer
+  LogicalResult matchAndRewrite(neura::KernelOp consumer, PatternRewriter &rewriter) const override {
     neura::KernelOp producer = nullptr;
-    Value fusedValue;
+    Value fused_value;
 
     for (Value input : consumer.getInputs()) {
-      if (auto defOp = input.getDefiningOp<neura::KernelOp>()) {
-        // Check fusion legality
-        if (!canFuseKernels(defOp, consumer))
-          continue;
-
-        // Check that producer has only one use (this consumer)
-        bool hasOnlyOneUse = true;
-        for (Value result : defOp.getOutputs()) {
-          if (!result.hasOneUse()) {
-            hasOnlyOneUse = false;
-            break;
-          }
-        }
-        if (!hasOnlyOneUse)
-          continue;
-
-        // Check no intervening uses
-        if (hasInterveningUses(defOp, consumer))
-          continue;
-
-        // Check if fusion is profitable using cost model
-        if (!isFusionProfitable(defOp, consumer, /*isProducerConsumer=*/true))
-          continue;
-
-        producer = defOp;
-        fusedValue = input;
-        break;
+      auto def_op = input.getDefiningOp<neura::KernelOp>();
+      if (!canFuseKernels(def_op, consumer)) {
+        continue;
       }
+      bool has_only_one_use = llvm::all_of(def_op.getOutputs(), [](Value result) {
+        return result.hasOneUse() || result.use_empty();
+      });
+      if (!has_only_one_use || hasInterveningUses(def_op, consumer)) {
+        continue;
+      }
+      if (!isFusionProfitable(def_op, consumer, true, input)) {
+        continue;
+      }
+      producer = def_op;
+      fused_value = input;
+      break;
     }
 
-    if (!producer)
+    if (!producer) {
       return failure();
-
-    // Create the fused kernel
-    Location loc = consumer.getLoc();
-
-    // Collect inputs: producer's inputs + consumer's inputs (excluding fused value)
-    SmallVector<Value> fusedInputs;
-    SmallVector<Type> fusedInputTypes;
-
-    // Add producer's inputs
-    for (Value input : producer.getInputs()) {
-      fusedInputs.push_back(input);
-      fusedInputTypes.push_back(input.getType());
     }
 
-    // Add consumer's inputs (excluding the fused value from producer)
-    for (Value input : consumer.getInputs()) {
-      if (input != fusedValue) {
-        fusedInputs.push_back(input);
-        fusedInputTypes.push_back(input.getType());
-      }
-    }
-
-    // Output types from consumer
-    SmallVector<Type> fusedOutputTypes;
-    for (Type t : consumer.getResultTypes()) {
-      fusedOutputTypes.push_back(t);
-    }
-
-    // Create fused kernel
-    auto fusedKernel = rewriter.create<neura::KernelOp>(
-        loc, fusedOutputTypes, fusedInputs,
-        /*cgra_id=*/consumer.getCgraIdAttr(),
-        /*kernel_name=*/rewriter.getStringAttr("fused_producer_consumer"),
-        /*accelerator=*/consumer.getAcceleratorAttr());
-
-    // Create the fused kernel body
-    Block *fusedBlock = rewriter.createBlock(&fusedKernel.getBody());
-
-    // Add block arguments for all inputs
-    for (Type t : fusedInputTypes) {
-      fusedBlock->addArgument(t, loc);
-    }
-
-    // Map old values to new block arguments
-    IRMapping producerMapping;
-    IRMapping consumerMapping;
-
-    // Map producer's block arguments
-    Block &producerBlock = producer.getBody().front();
-    for (auto [oldArg, newArg] :
-         llvm::zip(producerBlock.getArguments(),
-                   fusedBlock->getArguments().take_front(
-                       producer.getInputs().size()))) {
-      producerMapping.map(oldArg, newArg);
-    }
-
-    // Clone producer's operations into fused kernel
-    rewriter.setInsertionPointToStart(fusedBlock);
-    Value producerYieldValue;
-    for (Operation &op : producerBlock) {
-      if (auto yieldOp = dyn_cast<neura::YieldOp>(&op)) {
-        // Save the yielded value for the consumer to use
-        if (!yieldOp.getOperands().empty()) {
-          producerYieldValue = producerMapping.lookup(yieldOp.getOperands()[0]);
-        }
-        continue; // Don't clone yield yet
-      }
-      rewriter.clone(op, producerMapping);
-    }
-
-    // Map consumer's block arguments
-    Block &consumerBlock = consumer.getBody().front();
-    unsigned consumerInputIdx = producer.getInputs().size();
-    for (auto [idx, oldArg] : llvm::enumerate(consumerBlock.getArguments())) {
-      Value originalInput = consumer.getInputs()[idx];
-      if (originalInput == fusedValue) {
-        // Map to producer's output
-        consumerMapping.map(oldArg, producerYieldValue);
-      } else {
-        // Map to corresponding fused block argument
-        consumerMapping.map(oldArg, fusedBlock->getArgument(consumerInputIdx++));
-      }
-    }
-
-    // Clone consumer's operations into fused kernel
-    for (Operation &op : consumerBlock) {
-      rewriter.clone(op, consumerMapping);
-    }
-
-    // Replace consumer with fused kernel
-    rewriter.replaceOp(consumer, fusedKernel.getOutputs());
-
-    // Erase the producer
+    auto fused_kernel = fuseProducerConsumerKernels(producer, consumer, fused_value, rewriter);
+    rewriter.replaceOp(consumer, fused_kernel.getOutputs());
     rewriter.eraseOp(producer);
-
     return success();
   }
 };
 
-//===----------------------------------------------------------------------===//
-// Sibling Fusion Pattern
-// Similar to affine's sibling loop fusion
-//===----------------------------------------------------------------------===//
-
-struct SiblingFusionPattern : public OpRewritePattern<neura::KernelOp> {
+// Pattern that fuses kernels sharing the same inputs without data dependencies.
+struct SiblingFusion : public OpRewritePattern<neura::KernelOp> {
   using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(neura::KernelOp kernel1,
-                                PatternRewriter &rewriter) const override {
-    // Find the next kernel operation in the same block
+  LogicalResult matchAndRewrite(neura::KernelOp kernel1, PatternRewriter &rewriter) const override {
     neura::KernelOp kernel2 = nullptr;
 
     for (Operation *op = kernel1->getNextNode(); op; op = op->getNextNode()) {
-      if (auto nextKernel = dyn_cast<neura::KernelOp>(op)) {
-        if (areSiblingKernels(kernel1, nextKernel) &&
-            canFuseKernels(kernel1, nextKernel) &&
-            isFusionProfitable(kernel1, nextKernel, /*isProducerConsumer=*/false)) {
-          kernel2 = nextKernel;
+      if (auto next_kernel = dyn_cast<neura::KernelOp>(op)) {
+        if (areSiblingKernels(kernel1, next_kernel) && canFuseKernels(kernel1, next_kernel) && isFusionProfitable(kernel1, next_kernel, false)) {
+          kernel2 = next_kernel;
           break;
         }
       }
     }
 
-    if (!kernel2)
+    if (!kernel2) {
       return failure();
-
-    // Create the fused kernel
-    Location loc = kernel1.getLoc();
-
-    // Merge inputs (avoid duplicates)
-    SmallVector<Value> fusedInputs;
-    SmallVector<Type> fusedInputTypes;
-    llvm::SmallDenseMap<Value, unsigned> inputIndexMap;
-
-    // Add kernel1's inputs
-    for (Value input : kernel1.getInputs()) {
-      inputIndexMap[input] = fusedInputs.size();
-      fusedInputs.push_back(input);
-      fusedInputTypes.push_back(input.getType());
     }
 
-    // Add kernel2's unique inputs
-    for (Value input : kernel2.getInputs()) {
-      if (!inputIndexMap.count(input)) {
-        inputIndexMap[input] = fusedInputs.size();
-        fusedInputs.push_back(input);
-        fusedInputTypes.push_back(input.getType());
-      }
-    }
+    auto fused_kernel = fuseSiblingKernels(kernel1, kernel2, rewriter);
 
-    // Combine output types
-    SmallVector<Type> fusedOutputTypes;
-    for (Type t : kernel1.getResultTypes()) {
-      fusedOutputTypes.push_back(t);
-    }
-    for (Type t : kernel2.getResultTypes()) {
-      fusedOutputTypes.push_back(t);
-    }
-
-    // Create fused kernel
-    auto fusedKernel = rewriter.create<neura::KernelOp>(
-        loc, fusedOutputTypes, fusedInputs,
-        /*cgra_id=*/kernel1.getCgraIdAttr(),
-        /*kernel_name=*/rewriter.getStringAttr("fused_sibling"),
-        /*accelerator=*/kernel1.getAcceleratorAttr());
-
-    // Create the fused kernel body
-    Block *fusedBlock = rewriter.createBlock(&fusedKernel.getBody());
-
-    // Add block arguments
-    for (Type t : fusedInputTypes) {
-      fusedBlock->addArgument(t, loc);
-    }
-
-    // Map and clone kernel1's operations
-    IRMapping mapping1;
-    Block &block1 = kernel1.getBody().front();
-    for (auto [idx, oldArg] : llvm::enumerate(block1.getArguments())) {
-      Value originalInput = kernel1.getInputs()[idx];
-      mapping1.map(oldArg, fusedBlock->getArgument(inputIndexMap[originalInput]));
-    }
-
-    rewriter.setInsertionPointToStart(fusedBlock);
-    SmallVector<Value> kernel1Yields;
-    for (Operation &op : block1) {
-      if (auto yieldOp = dyn_cast<neura::YieldOp>(&op)) {
-        for (Value v : yieldOp.getOperands()) {
-          kernel1Yields.push_back(mapping1.lookup(v));
-        }
-        continue;
-      }
-      rewriter.clone(op, mapping1);
-    }
-
-    // Map and clone kernel2's operations
-    IRMapping mapping2;
-    Block &block2 = kernel2.getBody().front();
-    for (auto [idx, oldArg] : llvm::enumerate(block2.getArguments())) {
-      Value originalInput = kernel2.getInputs()[idx];
-      mapping2.map(oldArg, fusedBlock->getArgument(inputIndexMap[originalInput]));
-    }
-
-    SmallVector<Value> kernel2Yields;
-    for (Operation &op : block2) {
-      if (auto yieldOp = dyn_cast<neura::YieldOp>(&op)) {
-        for (Value v : yieldOp.getOperands()) {
-          kernel2Yields.push_back(mapping2.lookup(v));
-        }
-        continue;
-      }
-      rewriter.clone(op, mapping2);
-    }
-
-    // Create combined yield
-    SmallVector<Value> allYields;
-    allYields.append(kernel1Yields);
-    allYields.append(kernel2Yields);
-    rewriter.create<neura::YieldOp>(loc, allYields);
-
-    // Replace both kernels
-    SmallVector<Value> kernel1Results, kernel2Results;
+    SmallVector<Value> kernel1_results, kernel2_results;
     for (unsigned i = 0; i < kernel1.getNumResults(); ++i) {
-      kernel1Results.push_back(fusedKernel.getResult(i));
+      kernel1_results.push_back(fused_kernel.getResult(i));
     }
     for (unsigned i = 0; i < kernel2.getNumResults(); ++i) {
-      kernel2Results.push_back(
-          fusedKernel.getResult(kernel1.getNumResults() + i));
+      kernel2_results.push_back(fused_kernel.getResult(kernel1.getNumResults() + i));
     }
 
-    rewriter.replaceOp(kernel1, kernel1Results);
-    rewriter.replaceOp(kernel2, kernel2Results);
-
+    rewriter.replaceOp(kernel1, kernel1_results);
+    rewriter.replaceOp(kernel2, kernel2_results);
     return success();
   }
 };
 
-//===----------------------------------------------------------------------===//
-// Elementwise Fusion Pattern
-// Fuses kernels that contain only elementwise operations (e.g., relu, gelu,
-// add, mul) so they can share loop iteration overhead.
-//===----------------------------------------------------------------------===//
-
-/// Check if all operations inside a kernel are elementwise (no complex memory
-/// access patterns, no loop-carried dependencies).
-static bool isElementwiseKernel(neura::KernelOp kernel) {
-  if (kernel.getBody().empty())
-    return false;
-
-  Block &body = kernel.getBody().front();
-
-  for (Operation &op : body) {
-    // Yield is always allowed
-    if (isa<neura::YieldOp>(&op))
-      continue;
-
-    // Allow common elementwise arithmetic operations
-    if (isa<arith::AddFOp, arith::SubFOp, arith::MulFOp, arith::DivFOp,
-            arith::AddIOp, arith::SubIOp, arith::MulIOp, arith::DivSIOp,
-            arith::DivUIOp, arith::RemSIOp, arith::RemUIOp,
-            arith::MaximumFOp, arith::MinimumFOp, arith::MaxSIOp,
-            arith::MinSIOp, arith::MaxUIOp, arith::MinUIOp,
-            arith::CmpFOp, arith::CmpIOp, arith::SelectOp,
-            arith::NegFOp, arith::AndIOp, arith::OrIOp, arith::XOrIOp,
-            arith::ShLIOp, arith::ShRSIOp, arith::ShRUIOp,
-            arith::ExtFOp, arith::TruncFOp, arith::ExtSIOp, arith::ExtUIOp,
-            arith::TruncIOp, arith::SIToFPOp, arith::FPToSIOp,
-            arith::UIToFPOp, arith::FPToUIOp, arith::BitcastOp>(&op))
-      continue;
-
-    // Allow math operations (exp, tanh, sqrt, etc. are elementwise)
-    if (op.getDialect()->getNamespace() == "math")
-      continue;
-
-    // Allow constants
-    if (isa<arith::ConstantOp>(&op))
-      continue;
-
-    // If we encounter something else (e.g., memory ops, complex control flow),
-    // it's not a simple elementwise kernel
-    return false;
-  }
-
-  return true;
-}
-
-struct ElementwiseFusionPattern : public OpRewritePattern<neura::KernelOp> {
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(neura::KernelOp kernel1,
-                                PatternRewriter &rewriter) const override {
-    // Only fuse elementwise kernels
-    if (!isElementwiseKernel(kernel1))
-      return failure();
-
-    // Find the next elementwise kernel in the same block
-    neura::KernelOp kernel2 = nullptr;
-
-    for (Operation *op = kernel1->getNextNode(); op; op = op->getNextNode()) {
-      if (auto nextKernel = dyn_cast<neura::KernelOp>(op)) {
-        // Check if the next kernel is also elementwise
-        if (!isElementwiseKernel(nextKernel))
-          continue;
-
-        // Check basic fusion legality
-        if (!canFuseKernels(kernel1, nextKernel))
-          continue;
-
-        // Skip if there's a producer-consumer relationship
-        // (let ProducerConsumerFusionPattern handle those cases)
-        if (hasProducerConsumerRelation(kernel1, nextKernel))
-          continue;
-
-        // For elementwise fusion, we don't require producer-consumer or sibling
-        // relationship - we just need compatible iteration domains (same shape)
-        // Here we use a simplified check: same number and types of outputs
-        if (kernel1.getNumResults() == nextKernel.getNumResults()) {
-          bool compatible = true;
-          for (auto [r1, r2] : llvm::zip(kernel1.getResultTypes(),
-                                          nextKernel.getResultTypes())) {
-            if (r1 != r2) {
-              compatible = false;
-              break;
-            }
-          }
-          // Also check fusion profitability
-          if (compatible &&
-              isFusionProfitable(kernel1, nextKernel, /*isProducerConsumer=*/false)) {
-            kernel2 = nextKernel;
-            break;
-          }
-        }
-      }
-    }
-
-    if (!kernel2)
-      return failure();
-
-    // Check if there are intervening uses that would prevent fusion
-    if (hasInterveningUses(kernel1, kernel2))
-      return failure();
-
-    // Create the fused elementwise kernel
-    Location loc = kernel1.getLoc();
-
-    // Merge inputs (avoid duplicates)
-    SmallVector<Value> fusedInputs;
-    SmallVector<Type> fusedInputTypes;
-    llvm::SmallDenseMap<Value, unsigned> inputIndexMap;
-
-    // Add kernel1's inputs
-    for (Value input : kernel1.getInputs()) {
-      inputIndexMap[input] = fusedInputs.size();
-      fusedInputs.push_back(input);
-      fusedInputTypes.push_back(input.getType());
-    }
-
-    // Add kernel2's unique inputs
-    for (Value input : kernel2.getInputs()) {
-      if (!inputIndexMap.count(input)) {
-        inputIndexMap[input] = fusedInputs.size();
-        fusedInputs.push_back(input);
-        fusedInputTypes.push_back(input.getType());
-      }
-    }
-
-    // Combine output types
-    SmallVector<Type> fusedOutputTypes;
-    for (Type t : kernel1.getResultTypes()) {
-      fusedOutputTypes.push_back(t);
-    }
-    for (Type t : kernel2.getResultTypes()) {
-      fusedOutputTypes.push_back(t);
-    }
-
-    // Create fused kernel
-    auto fusedKernel = rewriter.create<neura::KernelOp>(
-        loc, fusedOutputTypes, fusedInputs,
-        /*cgra_id=*/kernel1.getCgraIdAttr(),
-        /*kernel_name=*/rewriter.getStringAttr("fused_elementwise"),
-        /*accelerator=*/kernel1.getAcceleratorAttr());
-
-    // Create the fused kernel body
-    Block *fusedBlock = rewriter.createBlock(&fusedKernel.getBody());
-
-    // Add block arguments
-    for (Type t : fusedInputTypes) {
-      fusedBlock->addArgument(t, loc);
-    }
-
-    // Map and clone kernel1's operations
-    IRMapping mapping1;
-    Block &block1 = kernel1.getBody().front();
-    for (auto [idx, oldArg] : llvm::enumerate(block1.getArguments())) {
-      Value originalInput = kernel1.getInputs()[idx];
-      mapping1.map(oldArg, fusedBlock->getArgument(inputIndexMap[originalInput]));
-    }
-
-    rewriter.setInsertionPointToStart(fusedBlock);
-    SmallVector<Value> kernel1Yields;
-    for (Operation &op : block1) {
-      if (auto yieldOp = dyn_cast<neura::YieldOp>(&op)) {
-        for (Value v : yieldOp.getOperands()) {
-          kernel1Yields.push_back(mapping1.lookup(v));
-        }
-        continue;
-      }
-      rewriter.clone(op, mapping1);
-    }
-
-    // Map and clone kernel2's operations
-    IRMapping mapping2;
-    Block &block2 = kernel2.getBody().front();
-    for (auto [idx, oldArg] : llvm::enumerate(block2.getArguments())) {
-      Value originalInput = kernel2.getInputs()[idx];
-      mapping2.map(oldArg, fusedBlock->getArgument(inputIndexMap[originalInput]));
-    }
-
-    SmallVector<Value> kernel2Yields;
-    for (Operation &op : block2) {
-      if (auto yieldOp = dyn_cast<neura::YieldOp>(&op)) {
-        for (Value v : yieldOp.getOperands()) {
-          kernel2Yields.push_back(mapping2.lookup(v));
-        }
-        continue;
-      }
-      rewriter.clone(op, mapping2);
-    }
-
-    // Create combined yield
-    SmallVector<Value> allYields;
-    allYields.append(kernel1Yields);
-    allYields.append(kernel2Yields);
-    rewriter.create<neura::YieldOp>(loc, allYields);
-
-    // Replace both kernels
-    SmallVector<Value> kernel1Results, kernel2Results;
-    for (unsigned i = 0; i < kernel1.getNumResults(); ++i) {
-      kernel1Results.push_back(fusedKernel.getResult(i));
-    }
-    for (unsigned i = 0; i < kernel2.getNumResults(); ++i) {
-      kernel2Results.push_back(
-          fusedKernel.getResult(kernel1.getNumResults() + i));
-    }
-
-    rewriter.replaceOp(kernel1, kernel1Results);
-    rewriter.replaceOp(kernel2, kernel2Results);
-
-    return success();
-  }
-};
-
-//===----------------------------------------------------------------------===//
-// FuseKernelPass
-//===----------------------------------------------------------------------===//
-
-struct FuseKernelPass
-    : public PassWrapper<FuseKernelPass, OperationPass<ModuleOp>> {
+// Pass that fuses neura.kernel operations using producer-consumer and sibling fusion.
+struct FuseKernelPass : public PassWrapper<FuseKernelPass, OperationPass<ModuleOp>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(FuseKernelPass)
 
   StringRef getArgument() const override { return "fuse-kernel"; }
-  StringRef getDescription() const override {
-    return "Fuse neura.kernel operations using producer-consumer and sibling "
-           "fusion strategies (inspired by linalg/affine fusion).";
-  }
+  StringRef getDescription() const override { return "Fuses neura.kernel operations using producer-consumer and sibling fusion."; }
 
   void getDependentDialects(DialectRegistry &registry) const override {
-    // Register dialects needed by the pass pipeline we run internally
     registry.insert<mlir::LLVM::LLVMDialect>();
     registry.insert<mlir::func::FuncDialect>();
     registry.insert<mlir::arith::ArithDialect>();
@@ -927,34 +566,20 @@ struct FuseKernelPass
   void runOnOperation() override {
     ModuleOp module = getOperation();
 
-    // Apply fusion patterns with different priorities
-    // Higher benefit = higher priority
     RewritePatternSet patterns(&getContext());
-
-    // Producer-consumer fusion has highest priority as it reduces data movement
-    patterns.add<ProducerConsumerFusionPattern>(&getContext(), /*benefit=*/10);
-
-    // Elementwise fusion: fuse kernels with only elementwise ops to share loop overhead
-    patterns.add<ElementwiseFusionPattern>(&getContext(), /*benefit=*/7);
-
-    // Sibling fusion has lower priority
-    patterns.add<SiblingFusionPattern>(&getContext(), /*benefit=*/5);
+    patterns.add<ProducerConsumerFusion>(&getContext(), 10);
+    patterns.add<SiblingFusion>(&getContext(), 5);
 
     FrozenRewritePatternSet frozen(std::move(patterns));
-
-    // Apply patterns to IsolatedFromAbove operations (func.func, etc.)
-    // applyPatternsGreedily requires IsolatedFromAbove trait
-    module.walk([&](func::FuncOp funcOp) {
-      if (failed(applyPatternsGreedily(funcOp, frozen))) {
+    module.walk([&](func::FuncOp func_op) {
+      if (failed(applyPatternsGreedily(func_op, frozen))) {
         signalPassFailure();
       }
     });
 
-    // Print statistics
-    unsigned numKernels = 0;
-    module.walk([&](neura::KernelOp) { ++numKernels; });
-    llvm::outs() << "[FuseKernelPass] Remaining kernels after fusion: "
-                 << numKernels << "\n";
+    unsigned num_kernels = 0;
+    module.walk([&](neura::KernelOp) { ++num_kernels; });
+    llvm::outs() << "[FuseKernelPass] Remaining kernels after fusion: " << num_kernels << "\n";
   }
 };
 
