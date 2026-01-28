@@ -116,5 +116,12 @@ bool canReachLocInTime(const std::vector<Operation *> &producers,
 Register *getAvailableRegister(const MappingState &mapping_state, Tile *tile,
                                int start_time, int exclusive_end_time);
 
+// Gets the execution latency of an operation from its "latency" attribute.
+// Returns 1 (single-cycle) if the attribute is not present.
+int getOpLatency(Operation *op);
+
+// Checks if an operation is a multi-cycle operation (latency > 1).
+bool isMultiCycleOp(Operation *op);
+
 } // namespace neura
 } // namespace mlir

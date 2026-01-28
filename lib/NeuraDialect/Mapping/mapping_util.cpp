@@ -4,6 +4,7 @@
 #include "NeuraDialect/Mapping/mapping_util.h"
 #include "NeuraDialect/NeuraOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Operation.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
@@ -1112,13 +1113,37 @@ llvm::SmallVector<Operation *> mlir::neura::getCtrlMovUsers(Operation *op) {
 
 bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
                                 MappingState &mapping_state) {
-  if (mapping_state.bindOp(target_loc, op)) {
+  // Get the latency of the operation to determine if it's multi-cycle
+  int latency = getOpLatency(op);
+  bool is_multi_cycle = latency > 1;
+
+  bool bind_success = false;
+  if (is_multi_cycle) {
+    // For multi-cycle ops, bind across multiple time steps with pipeline status
+    bind_success = mapping_state.bindMultiCycleOp(
+        target_loc.resource, target_loc.time_step, latency, op);
+    if (bind_success) {
+      llvm::errs() << "[DEBUG] Bound multi-cycle op (latency=" << latency
+                   << ") " << *op << " onto loc: "
+                   << target_loc.resource->getType() << "#"
+                   << target_loc.resource->getId()
+                   << " @t=" << target_loc.time_step << " to t="
+                   << (target_loc.time_step + latency - 1) << "\n";
+    }
+  } else {
+    // For single-cycle ops, use default SINGLE_OCCUPY binding
+    bind_success = mapping_state.bindOp(target_loc, op);
+    if (bind_success) {
+      llvm::errs() << "[DEBUG] Schedule op " << *op
+                   << " onto loc: " << target_loc.resource->getType() << "#"
+                   << target_loc.resource->getId()
+                   << " @t=" << target_loc.time_step << "\n";
+    }
+  }
+
+  if (bind_success) {
     std::vector<Operation *> routed_operands;
     std::vector<Operation *> routed_ctrl_movs;
-    llvm::errs() << "[DEBUG] Schedule op " << *op
-                 << " onto loc: " << target_loc.resource->getType() << "#"
-                 << target_loc.resource->getId()
-                 << " @t=" << target_loc.time_step << "\n";
     // Tries to route the data move operations.
     for (Value operand : op->getOperands()) {
       llvm::errs() << "Processing operand: " << operand << "\n";
@@ -1219,4 +1244,17 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
     return true;
   }
   return false;
+}
+
+int mlir::neura::getOpLatency(Operation *op) {
+  // Try to get the latency attribute from the operation
+  if (auto latency_attr = op->getAttrOfType<IntegerAttr>("latency")) {
+    return latency_attr.getInt();
+  }
+  // Default to single-cycle if no latency attribute is present
+  return 1;
+}
+
+bool mlir::neura::isMultiCycleOp(Operation *op) {
+  return getOpLatency(op) > 1;
 }
