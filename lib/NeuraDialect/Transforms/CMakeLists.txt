@@ -5,6 +5,7 @@ add_mlir_library(
     InsertDataMovPass.cpp
     InsertCtrlMovPass.cpp
     FusePatternPass.cpp
+    FuseKernelPass.cpp
     AssignAcceleratorPass.cpp
     TransformCtrlToDataFlowPass.cpp
     LeveragePredicatedValuePass.cpp
@@ -18,6 +19,7 @@ add_mlir_library(
     TransformToSteerControlPass.cpp
     RemovePredicatedTypePass.cpp
     HardwareMergePass.cpp
+    InitExecLatencyPass.cpp
     GraphMining/HardwareTemplate.cpp
     WrapLoopInKernelPass.cpp
 

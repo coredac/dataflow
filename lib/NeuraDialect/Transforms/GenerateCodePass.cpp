@@ -85,6 +85,7 @@ static bool isCtrlMov(Operation *op) { return dyn_cast<CtrlMovOp>(op) != nullptr
 static bool isPhiStart(Operation *op) { return dyn_cast<PhiStartOp>(op) != nullptr; }
 static bool isReserve(Operation *op) { return dyn_cast<ReserveOp>(op) != nullptr; }
 static bool isConstant(Operation *op) { return dyn_cast<ConstantOp>(op) != nullptr; }
+static bool isFusedOp(Operation *op) { return dyn_cast<FusedOp>(op) != nullptr; }
 // ---- Constant for phi_start operation ----.
 static constexpr unsigned kReserveOpIndex = 1;
 
@@ -484,24 +485,29 @@ struct GenerateCodePass
                SmallVector<Operation*> &ctrl_movs,
                DenseMap<Value, Operation*> &reserve_to_phi_map) {
     function.walk([&](Operation *op) {
-      // placement for every op (even for mov/reserve).
+      // Skips operations inside fused_op regions. 
+      if (op->getParentOp() && isFusedOp(op->getParentOp())) {
+        return;
+      }
+
+      // Records Records placement for every op (even for mov/reserve).
       operation_placements[op] = getTileLocation(op);
 
-      // build reserve -> phi mapping.
+      // Builds reserve -> phi mapping for loop-carried dependencies.
       if (isPhiStart(op)) {
         if (Value reserve = getReserveOperand(op)) {
           reserve_to_phi_map[reserve] = op;
         }
       }
 
-      // collect forwarders.
+      // Collects forwarders for later expansion.
       if (isDataMov(op)) { data_movs.push_back(op); return; }
       if (isCtrlMov(op)) { ctrl_movs.push_back(op); return; }
 
-      // skip Reserve from materialization.
+      // Skips Reserve from materialization.
       if (isReserve(op)) return;
 
-      // materialize all other ops placed on tiles (compute/phi/const/etc.).
+      // Materializes all other ops placed on tiles (compute/phi/const/fused_op/etc.).
       TileLocation placement = operation_placements[op];
       if (!placement.has_tile) return;
 
@@ -831,6 +837,31 @@ struct GenerateCodePass
                      const DenseMap<Value, Operation*> &reserve2phi) {
     if (!validateForwarderShape<IsCtrl>(forwarder)) return;
 
+    // Checks if this data_mov/ctrl_mov has mapping_locs assigned by MapToAcceleratorPass.
+    auto mapping_locs = getMappingLocations(forwarder);
+    if (!mapping_locs || mapping_locs.empty()) {
+      // Skips this mov operation - it will be handled by its consumer or does not need routing.
+      // This is expected for data_mov that only feeds into ctrl_mov.
+      if constexpr (!IsCtrl) {
+        // For data_mov without mapping, verifies if it is only used by ctrl_mov.
+        bool only_ctrl_mov_users = true;
+        for (OpOperand &use : forwarder->getResult(0).getUses()) {
+          if (!isa<CtrlMovOp>(use.getOwner())) {
+            only_ctrl_mov_users = false;
+            break;
+          }
+        }
+        if (only_ctrl_mov_users) {
+          // This is expected - ctrl_mov handles this data transfer implicitly.
+          return;
+        } else {
+          // This data_mov has non-ctrl_mov users but no mapping - this is an error.
+          forwarder->emitWarning("data_mov without mapping_locs has non-ctrl_mov users");
+        }
+      }
+      return;
+    }
+
     MovBasics<IsCtrl> basics = buildMovBasics<IsCtrl>(forwarder, topo);
 
     emitMovRoutingInstructions<IsCtrl>(forwarder, basics, topo);
@@ -1029,6 +1060,10 @@ struct GenerateCodePass
       if (operation == func.getOperation()) return;  // Skips function itself.
       if (isReserve(operation)) return; // Skips reserve nodes entirely (bypass later).
       if (isa<YieldOp>(operation)) return; // Skips yield nodes entirely (bypass later).
+      // Skips operations inside fused_op regions - they are handled by hardware
+      if (operation->getParentOp() && isFusedOp(operation->getParentOp())) {
+        return;
+      }
 
       int dfg_id = getDfgId(operation);
       if (dfg_id < 0) {

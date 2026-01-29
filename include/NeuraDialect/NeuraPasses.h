@@ -38,6 +38,7 @@ std::unique_ptr<mlir::Pass> createWrapLoopInKernelPass();
 // Hardware specific optimization passes
 std::unique_ptr<mlir::Pass> createFuseLoopControlPass();
 std::unique_ptr<mlir::Pass> createFusePatternPass();
+std::unique_ptr<mlir::Pass> createFuseKernelPass();
 
 // Hardware agnostic optimization passes
 std::unique_ptr<mlir::Pass> createFoldConstantPass();
@@ -49,6 +50,7 @@ std::unique_ptr<mlir::Pass> createInitPatternPass();
 
 // Hardware optimization passes
 std::unique_ptr<mlir::Pass> createHardwareMergePass();
+std::unique_ptr<mlir::Pass> createInitExecLatencyPass();
 
 #define GEN_PASS_REGISTRATION
 #include "NeuraDialect/NeuraPasses.h.inc"

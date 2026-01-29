@@ -20,6 +20,21 @@ def FusePattern : Pass<"fuse-pattern", "ModuleOp"> {
   let constructor = "neura::createFusePatternPass()";
 }
 
+def FuseKernel : Pass<"fuse-kernel", "ModuleOp"> {
+  let summary = "Fuses kernel operations in the Neura dialect";
+  let description = [{
+    This pass fuses neura.kernel operations using producer-consumer and sibling
+    fusion strategies, inspired by MLIR's linalg and affine loop fusion.
+    
+    Producer-Consumer Fusion: Fuses a producer kernel into its consumer when
+    the producer's output is only used by the consumer.
+    
+    Sibling Fusion: Fuses kernels that share the same input operands and have
+    no data dependencies between them.
+  }];
+  let constructor = "neura::createFuseKernelPass()";
+}
+
 def InsertDataMov : Pass<"insert-data-mov", "ModuleOp"> {
   let summary = "Inserts data move operations in the Neura dialect";
   let description =
@@ -193,5 +208,13 @@ def HardwareMerge : Pass<"hardware-merge", "ModuleOp"> {
     7. Output the final hardware configuration as a JSON file
   }];
   let constructor = "neura::createHardwareMergePass()";
+}
+
+def InitExecLatency : Pass<"init-exec-latency", "ModuleOp"> {
+  let summary = "Initialize execution latency information";
+  let description = [{
+    This pass initializes execution latency information.
+  }];
+  let constructor = "neura::createInitExecLatencyPass()";
 }
 #endif // NEURA_PASSES_TD

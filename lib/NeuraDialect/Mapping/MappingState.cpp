@@ -3,6 +3,7 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "llvm/Support/raw_ostream.h"
+#include <algorithm>
 
 using namespace mlir;
 using namespace mlir::neura;
@@ -30,11 +31,59 @@ MappingState::MappingState(const Architecture &arch, int II,
     : II(II), is_spatial_only(is_spatial_only) {}
 
 bool MappingState::bindOp(const MappingLoc &loc, Operation *op) {
+  // Default to SINGLE_OCCUPY for backward compatibility
+  return bindOp(loc, op, SINGLE_OCCUPY);
+}
+
+bool MappingState::bindOp(const MappingLoc &loc, Operation *op,
+                          int occupy_status) {
+  // Check if the location is available for the specified occupy status
+  if (!isAvailableForOccupyStatus(loc, occupy_status)) {
+    return false;
+  }
+
   loc_to_op[loc] = op;
-  occupied_locs.insert(loc);
+  occupied_locs[loc].push_back({occupy_status, op});
   auto it = op_to_locs.find(op);
   assert(it == op_to_locs.end() && "Operation already has reserved locations");
   op_to_locs[op].push_back(loc);
+  return true;
+}
+
+bool MappingState::bindMultiCycleOp(BasicResource *resource, int start_time,
+                                    int latency, Operation *op) {
+  // First check if all locations are available
+  for (int t = start_time; t < start_time + latency; ++t) {
+    MappingLoc check_loc = {resource, t};
+    int status;
+    if (t == start_time) {
+      status = START_PIPE_OCCUPY;
+    } else if (t == start_time + latency - 1) {
+      status = END_PIPE_OCCUPY;
+    } else {
+      status = IN_PIPE_OCCUPY;
+    }
+    if (!isAvailableForOccupyStatus(check_loc, status)) {
+      return false;
+    }
+  }
+
+  // Now bind all locations
+  for (int t = start_time; t < start_time + latency; ++t) {
+    MappingLoc loc = {resource, t};
+    int status;
+    if (t == start_time) {
+      status = START_PIPE_OCCUPY;
+    } else if (t == start_time + latency - 1) {
+      status = END_PIPE_OCCUPY;
+    } else {
+      status = IN_PIPE_OCCUPY;
+    }
+
+    loc_to_op[loc] = op;
+    occupied_locs[loc].push_back({status, op});
+    op_to_locs[op].push_back(loc);
+  }
   return true;
 }
 
@@ -46,7 +95,21 @@ void MappingState::unbindOp(Operation *op) {
 
   for (const MappingLoc &loc : it->second) {
     loc_to_op.erase(loc);
-    occupied_locs.erase(loc);
+    // Remove entries for this op from occupied_locs
+    auto occ_it = occupied_locs.find(loc);
+    if (occ_it != occupied_locs.end()) {
+      auto &entries = occ_it->second;
+      entries.erase(
+          std::remove_if(entries.begin(), entries.end(),
+                         [op](const std::pair<int, Operation *> &entry) {
+                           return entry.second == op;
+                         }),
+          entries.end());
+      // Remove the location entirely if no more entries
+      if (entries.empty()) {
+        occupied_locs.erase(occ_it);
+      }
+    }
   }
 
   op_to_locs.erase(it);
@@ -57,21 +120,128 @@ bool MappingState::isAvailableAcrossTime(const MappingLoc &loc) const {
   if (this->is_spatial_only) {
     for (int t = 0; t < II * kMaxSteps; ++t) {
       MappingLoc check_loc = {loc.resource, t};
-      if (occupied_locs.find(check_loc) != occupied_locs.end()) {
+      auto it = occupied_locs.find(check_loc);
+      if (it != occupied_locs.end()) {
+        // Check if all existing occupy statuses allow new single-cycle op
+        for (const auto &entry : it->second) {
+          if (entry.first != IN_PIPE_OCCUPY) {
+            return false;
+          }
+        }
+      }
+    }
+    return true;
+  } else {
+    // Checks the availability across time domain.
+    for (int t = loc.time_step % II; t < II * kMaxSteps; t += II) {
+      MappingLoc check_loc = {loc.resource, t};
+      auto it = occupied_locs.find(check_loc);
+      if (it != occupied_locs.end()) {
+        // Check if all existing occupy statuses allow new single-cycle op
+        for (const auto &entry : it->second) {
+          if (entry.first != IN_PIPE_OCCUPY) {
+            return false;
+          }
+        }
+      }
+    }
+    return true;
+  }
+}
+
+bool MappingState::isAvailableForOccupyStatus(const MappingLoc &loc,
+                                              int new_occupy_status) const {
+  // Helper lambda to check a single location against all existing entries
+  auto checkSingleLoc = [this, new_occupy_status](const MappingLoc &check_loc) -> bool {
+    auto it = occupied_locs.find(check_loc);
+    if (it == occupied_locs.end() || it->second.empty()) {
+      // Location is free, always available
+      return true;
+    }
+
+    // Check against all existing entries at this location
+    for (const auto &entry : it->second) {
+      int existing_status = entry.first;
+
+      // Implement the pipeline-aware availability rules:
+      // - SINGLE_OCCUPY (0): exclusive, no other op can share
+      // - START_PIPE_OCCUPY (1): cannot coexist with SINGLE or another START
+      // - END_PIPE_OCCUPY (2): cannot coexist with SINGLE or another END
+      // - IN_PIPE_OCCUPY (3): can coexist with any status except SINGLE
+
+      if (existing_status == SINGLE_OCCUPY) {
+        // SINGLE_OCCUPY blocks everything
+        return false;
+      }
+
+      if (new_occupy_status == SINGLE_OCCUPY) {
+        // SINGLE_OCCUPY cannot be placed if anything is there
+        return false;
+      }
+
+      if (new_occupy_status == START_PIPE_OCCUPY) {
+        // START cannot coexist with another START
+        if (existing_status == START_PIPE_OCCUPY) {
+          return false;
+        }
+      }
+
+      if (new_occupy_status == END_PIPE_OCCUPY) {
+        // END cannot coexist with another END
+        if (existing_status == END_PIPE_OCCUPY) {
+          return false;
+        }
+      }
+
+      // IN_PIPE_OCCUPY can coexist with START, END, or other IN_PIPE
+    }
+    return true;
+  };
+
+  // For spatial mapping, check all time steps
+  if (this->is_spatial_only) {
+    for (int t = 0; t < II * kMaxSteps; ++t) {
+      MappingLoc check_loc = {loc.resource, t};
+      if (!checkSingleLoc(check_loc)) {
         return false;
       }
     }
     return true;
   } else {
-
-    // Checks the availability across time domain.
+    // Check across time domain (modulo II)
     for (int t = loc.time_step % II; t < II * kMaxSteps; t += II) {
       MappingLoc check_loc = {loc.resource, t};
-      if (occupied_locs.find(check_loc) != occupied_locs.end()) {
+      if (!checkSingleLoc(check_loc)) {
         return false;
       }
     }
     return true;
+  }
+}
+
+int MappingState::getOccupyStatusAcrossTime(const MappingLoc &loc) const {
+  // For spatial mapping, check all time steps
+  if (this->is_spatial_only) {
+    for (int t = 0; t < II * kMaxSteps; ++t) {
+      MappingLoc check_loc = {loc.resource, t};
+      auto it = occupied_locs.find(check_loc);
+      if (it != occupied_locs.end() && !it->second.empty()) {
+        // Return the first status found (most restrictive)
+        return it->second[0].first;
+      }
+    }
+    return -1;
+  } else {
+    // Check across time domain (modulo II)
+    for (int t = loc.time_step % II; t < II * kMaxSteps; t += II) {
+      MappingLoc check_loc = {loc.resource, t};
+      auto it = occupied_locs.find(check_loc);
+      if (it != occupied_locs.end() && !it->second.empty()) {
+        // Return the first status found (most restrictive)
+        return it->second[0].first;
+      }
+    }
+    return -1;
   }
 }
 
@@ -202,12 +372,9 @@ void MappingState::reserveRoute(Operation *op, ArrayRef<MappingLoc> path) {
   op_to_locs[op] = std::vector<MappingLoc>(path.begin(), path.end());
 
   for (const MappingLoc &loc : path) {
-    assert(occupied_locs.find(loc) == occupied_locs.end() &&
-           "Mapping location already occupied");
     loc_to_op[loc] = op;
-    assert(occupied_locs.find(loc) == occupied_locs.end() &&
-           "Mapping location already occupied in occupied_locs");
-    occupied_locs.insert(loc);
+    // Use SINGLE_OCCUPY for route reservations (links/registers)
+    occupied_locs[loc].push_back({SINGLE_OCCUPY, op});
   }
 }
 
@@ -221,7 +388,21 @@ void MappingState::releaseRoute(Operation *op) {
 
   for (const MappingLoc &loc : route) {
     loc_to_op.erase(loc);
-    occupied_locs.erase(loc);
+    // Remove entries for this op from occupied_locs
+    auto occ_it = occupied_locs.find(loc);
+    if (occ_it != occupied_locs.end()) {
+      auto &entries = occ_it->second;
+      entries.erase(
+          std::remove_if(entries.begin(), entries.end(),
+                         [op](const std::pair<int, Operation *> &entry) {
+                           return entry.second == op;
+                         }),
+          entries.end());
+      // Remove the location entirely if no more entries
+      if (entries.empty()) {
+        occupied_locs.erase(occ_it);
+      }
+    }
   }
 
   op_to_locs.erase(it);

@@ -31,10 +31,16 @@
 // Global variable to store architecture spec file path
 static std::string architecture_spec_file;
 static mlir::neura::TileDefaults tile_defaults;
+static std::string latency_spec_file;
 
 // Function to get the architecture spec file path
 std::string mlir::neura::getArchitectureSpecFile() {
   return architecture_spec_file;
+}
+
+// Function to get the latency spec file path
+std::string mlir::neura::getLatencySpecFile() {
+  return latency_spec_file;
 }
 
 // Function to get tile defaults configuration
@@ -59,6 +65,15 @@ int main(int argc, char **argv) {
     } else if (arg_ref.starts_with("--architecture-spec=")) {
       architecture_spec_file =
           arg_ref.substr(strlen("--architecture-spec=")).str();
+      continue;
+    } else if (arg_ref == "--latency-spec") {
+      if (i + 1 < argc) {
+        latency_spec_file = argv[i + 1];
+        ++i; // skip value
+        continue;
+      }
+    } else if (arg_ref.starts_with("--latency-spec=")) {
+      latency_spec_file = arg_ref.substr(strlen("--latency-spec=")).str();
       continue;
     }
     forwarded_args.push_back(argv[i]);
