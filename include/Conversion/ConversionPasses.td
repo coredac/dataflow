@@ -48,6 +48,29 @@ def LowerAffineToNeura : Pass<"lower-affine-to-neura", "func::FuncOp">{
 // TaskFlow Conversion Passes.
 //=========================================================//
 
+def AssignTaskTarget : Pass<"assign-task-target", "ModuleOp">{
+  let summary = "Assign hardware targets to compute tasks (functions)";
+  let description = [{
+    This pass assigns hardware target attributes (target.device) to functions
+    based on their names. It enables heterogeneous workload partitioning across
+    different hardware units such as CPU, CGRA, and DOE.
+    
+    The pass applies simple pattern matching rules:
+    - Functions containing "ray_sampler" or "sampler" -> CPU
+    - Functions containing "hash_encoder" or "encoder" -> DOE
+    - Functions containing "nerf_mlp" or "mlp" -> CGRA
+    - Top-level orchestrator functions (e.g., "nerf_forward") -> CPU
+    - Default -> CPU
+    
+    Example output:
+      func.func @ray_sampler_func(...) attributes {target.device = "cpu"} { ... }
+      func.func @hash_encoder_func(...) attributes {target.device = "doe"} { ... }
+      func.func @nerf_mlp_func(...) attributes {target.device = "cgra"} { ... }
+  }];
+  let constructor = "mlir::createAssignTaskTargetPass()";
+  let dependentDialects = ["mlir::func::FuncDialect"];
+}
+
 def ConvertAffineToTaskflow : Pass<"convert-affine-to-taskflow", "ModuleOp">{
   let summary = "Convert top-level affine.for operations to Taskflow dialect";
   let description = [{
