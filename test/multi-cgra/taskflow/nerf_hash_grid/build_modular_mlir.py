@@ -128,9 +128,9 @@ def extract_and_rename_function(mlir_str, new_name):
   for line in lines:
     if 'func.func @forward(' in line:
       in_function = True
-      # Rename and mark as private.
+      # Rename function
       line = line.replace('func.func @forward',
-                          f'func.func private @{new_name}')
+                          f'func.func @{new_name}')
 
     if in_function:
       func_lines.append(line)
@@ -150,14 +150,97 @@ def collect_map_definitions(mlir_str):
     mlir_str: MLIR string.
 
   Returns:
-    List of unique affine_map definition strings.
+    List of tuples (map_name, map_definition) where map_name is like 'map'
+    or 'map1' and map_definition is the full affine_map expression.
   """
   maps = []
   for line in mlir_str.split('\n'):
     if line.startswith('#map'):
-      if line not in maps:  # Deduplicate.
-        maps.append(line)
+      # Parse: #map = affine_map<...>
+      # or:    #map1 = affine_map<...>
+      match = re.match(r'#(map\d*)\s*=\s*(.+)', line)
+      if match:
+        map_name = match.group(1)
+        map_def = match.group(2).strip()
+        maps.append((map_name, map_def))
   return maps
+
+
+def build_global_map_definitions(maps_list1, maps_list2, maps_list3):
+  """Builds global map definitions and renaming mappings for each module.
+
+  Args:
+    maps_list1: List of (map_name, map_def) tuples from module 1.
+    maps_list2: List of (map_name, map_def) tuples from module 2.
+    maps_list3: List of (map_name, map_def) tuples from module 3.
+
+  Returns:
+    Tuple of (global_map_lines, rename_map1, rename_map2, rename_map3) where:
+    - global_map_lines: List of global map definition strings.
+    - rename_mapX: Dict mapping old map name to new global map name for module X.
+  """
+  # Track unique map definitions and assign global names.
+  unique_maps = {}  # map_def -> global_name
+  global_map_lines = []
+  global_counter = 0
+
+  # Process all maps from all modules.
+  all_module_maps = [
+      ('module1', maps_list1),
+      ('module2', maps_list2),
+      ('module3', maps_list3),
+  ]
+
+  rename_maps = [{}, {}, {}]  # One dict per module.
+
+  for module_idx, (module_name, maps_list) in enumerate(all_module_maps):
+    for old_name, map_def in maps_list:
+      if map_def not in unique_maps:
+        # New unique map definition - assign global name.
+        if global_counter == 0:
+          global_name = 'map'
+        else:
+          global_name = f'map{global_counter}'
+        global_counter += 1
+
+        unique_maps[map_def] = global_name
+        global_map_lines.append(f'#{global_name} = {map_def}')
+
+      # Record the renaming: old_name -> global_name.
+      global_name = unique_maps[map_def]
+      rename_maps[module_idx][old_name] = global_name
+
+  return global_map_lines, rename_maps[0], rename_maps[1], rename_maps[2]
+
+
+def rename_maps_in_function(func_str, rename_map):
+  """Renames map references in a function body.
+
+  Args:
+    func_str: Function definition as string.
+    rename_map: Dict mapping old map names to new map names.
+
+  Returns:
+    Function string with renamed map references.
+  """
+  # Use a callback function for atomic replacements to avoid chaining
+  def replace_callback(match):
+    map_name = match.group(1)  # Capture the map name without '#'
+    return '#' + rename_map.get(map_name, map_name)
+  
+  # Build pattern that matches any of the old map names
+  # Sort by length (descending) to match longer names first (e.g., map10 before map1)
+  sorted_names = sorted(rename_map.keys(), key=len, reverse=True)
+  if not sorted_names:
+    return func_str
+  
+  # Create pattern: #(map10|map1|map|...)(?=\W|$)
+  pattern = r'#(' + '|'.join(re.escape(name) for name in sorted_names) + r')(?=\W|$)'
+  
+  # Replace all matches in a single pass (atomic operation)
+  result = re.sub(pattern, replace_callback, func_str)
+  
+  return result
 
 
 def build_wrapper_function(sig1, sig2, sig3):
@@ -206,7 +289,7 @@ def build_wrapper_function(sig1, sig2, sig3):
     // Task 2: Hash Encoding
     // ================================================
     %encoded = func.call @hash_encoder_func(%positions)
-               : {out1[0]} -> {out2[0]}
+               : ({out1[0]}) -> {out2[0]}
     
     // ================================================
     // Task 3: MLP Inference
@@ -223,7 +306,7 @@ def build_wrapper_function(sig1, sig2, sig3):
 '''
   else:
     wrapper += f'''    %result = func.call @nerf_mlp_func(%encoded)
-                      : {out2[0]} -> ({', '.join(out3)})
+                      : ({out2[0]}) -> ({', '.join(out3)})
     
     return %result : {', '.join(out3)}
   }}
@@ -271,14 +354,29 @@ def merge_mlir_modules(mlir1, mlir2, mlir3):
 
   print('  ✓ Function extraction successful')
 
-  # Collect all map definitions.
+  # Collect and rename all map definitions.
   print('\nCollecting affine_map definitions...')
-  all_maps = collect_map_definitions(mlir1)
-  all_maps.extend(collect_map_definitions(mlir2))
-  all_maps.extend(collect_map_definitions(mlir3))
-  all_maps = list(dict.fromkeys(all_maps))  # Deduplicate, preserve order.
+  maps1 = collect_map_definitions(mlir1)
+  maps2 = collect_map_definitions(mlir2)
+  maps3 = collect_map_definitions(mlir3)
+  
+  print(f'  Module 1: {len(maps1)} maps')
+  print(f'  Module 2: {len(maps2)} maps')
+  print(f'  Module 3: {len(maps3)} maps')
 
-  print(f'  ✓ Collected {len(all_maps)} map definitions')
+  # Build global map definitions and rename mappings.
+  print('\nBuilding global map definitions with renaming...')
+  global_map_lines, rename_map1, rename_map2, rename_map3 = \
+      build_global_map_definitions(maps1, maps2, maps3)
+  
+  print(f'  ✓ Created {len(global_map_lines)} unique global map definitions')
+  
+  # Rename map references in each function.
+  print('\nRenaming map references in functions...')
+  func1 = rename_maps_in_function(func1, rename_map1)
+  func2 = rename_maps_in_function(func2, rename_map2)
+  func3 = rename_maps_in_function(func3, rename_map3)
+  print('  ✓ Map references renamed successfully')
 
   # Generate top-level function.
   print('\nGenerating top-level function...')
@@ -286,7 +384,7 @@ def merge_mlir_modules(mlir1, mlir2, mlir3):
   print('  ✓ Top-level function generation successful')
 
   # Assemble final MLIR.
-  merged = '\n'.join(all_maps) + '\n' if all_maps else ''
+  merged = '\n'.join(global_map_lines) + '\n' if global_map_lines else ''
   merged += 'module {\n'
   merged += ('  ml_program.global private mutable @global_seed'
              '(dense<0> : tensor<i64>) : tensor<i64>\n\n')
@@ -309,6 +407,61 @@ def merge_mlir_modules(mlir1, mlir2, mlir3):
   merged += '}\n'
 
   return merged
+
+
+def fix_tensor_expand_shape_syntax(mlir_str):
+  """Fixes tensor.expand_shape syntax for LLVM 20+ compatibility.
+  
+  Converts old syntax:
+    %x = tensor.expand_shape %y [[0, 1]] : tensor<16xf32> into tensor<1x16xf32>
+  
+  To new syntax:
+    %x = tensor.expand_shape %y [[0, 1]] output_shape [1, 16] : tensor<16xf32> into tensor<1x16xf32>
+  
+  Args:
+    mlir_str: MLIR string to fix.
+  
+  Returns:
+    Fixed MLIR string.
+  """
+  lines = mlir_str.split('\n')
+  fixed_lines = []
+  
+  for line in lines:
+    # Match tensor.expand_shape pattern
+    # Pattern: tensor.expand_shape %var [[...]] : tensor<...> into tensor<shape>
+    match = re.search(
+        r'(.*tensor\.expand_shape\s+%\S+\s+\[\[.*?\]\])\s*:\s*(tensor<[^>]+>)\s+into\s+tensor<([^>]+)>',
+        line
+    )
+    
+    if match:
+      prefix = match.group(1)  # Everything before ':'
+      input_type = match.group(2)  # tensor<16xf32>
+      output_shape = match.group(3)  # 1x16xf32
+      
+      # Extract shape dimensions from output_shape
+      # Remove type suffix (e.g., 'xf32', 'xi64')
+      shape_str = re.sub(r'x[a-z]\w+$', '', output_shape)
+      # Split by 'x' to get dimensions
+      dims = shape_str.split('x')
+      
+      # Build output_shape attribute
+      output_shape_attr = f"output_shape [{', '.join(dims)}]"
+      
+      # Reconstruct the line with output_shape attribute
+      fixed_line = f"{prefix} {output_shape_attr} : {input_type} into tensor<{output_shape}>"
+      
+      # Preserve any trailing content (like comments)
+      trailing = line[match.end():]
+      fixed_line += trailing
+      
+      fixed_lines.append(fixed_line)
+    else:
+      # No match, keep original line
+      fixed_lines.append(line)
+  
+  return '\n'.join(fixed_lines)
 
 
 def indent_mlir(mlir_str, spaces):
@@ -405,6 +558,15 @@ def main():
   if not merged:
     print('\n✗ Module merging failed')
     return 1
+
+  # Fix tensor.expand_shape syntax for LLVM 20+ compatibility.
+  print('\nApplying syntax fixes for LLVM 20+ compatibility...')
+  merged = fix_tensor_expand_shape_syntax(merged)
+  
+  if 'output_shape [' in merged:
+    print('  ✓ Fixed tensor.expand_shape syntax')
+  else:
+    print('  ℹ No tensor.expand_shape operations found')
 
   # Save output.
   output_file = args.output
