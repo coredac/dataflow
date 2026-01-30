@@ -151,8 +151,8 @@ public:
       return;
     }
 
-    llvm::outs() << "=== MCT Dependency Analysis ===\n";
-    llvm::outs() << "Found " << tasks.size() << " MCTs.\n\n";
+    llvm::errs() << "=== MCT Dependency Analysis ===\n";
+    llvm::errs() << "Found " << tasks.size() << " MCTs.\n\n";
 
     // Analyzes each task.
     SmallVector<MCTInfo> mct_infos;
@@ -171,32 +171,16 @@ public:
       }
 
       // Prints task info.
-      llvm::outs() << "MCT " << idx << ": " << info.task_name << "\n";
-      llvm::outs() << "  Counter Chain: ";
-      info.counter_chain.print(llvm::outs());
-      llvm::outs() << "\n";
-      llvm::outs() << "  Source Reads: ";
-      for (Value v : info.source_memref_reads) {
-        if (auto arg = dyn_cast<BlockArgument>(v)) {
-          llvm::outs() << "func_arg" << arg.getArgNumber() << " ";
-        } else {
-          llvm::outs() << v << " ";
-        }
-      }
-      llvm::outs() << "\n";
-      llvm::outs() << "  Source Writes: ";
-      for (Value v : info.source_memref_writes) {
-        if (auto arg = dyn_cast<BlockArgument>(v)) {
-          llvm::outs() << "func_arg" << arg.getArgNumber() << " ";
-        } else {
-          llvm::outs() << v << " ";
-        }
-      }
-      llvm::outs() << "\n\n";
+      llvm::errs() << "MCT " << idx << ": " << info.task_name << "\n";
+      llvm::errs() << "  Counter Chain: ";
+      info.counter_chain.print(llvm::errs());
+      llvm::errs() << "\n";
+      llvm::errs() << "  Source Reads: " << info.source_memref_reads.size() << " memrefs\n";
+      llvm::errs() << "  Source Writes: " << info.source_memref_writes.size() << " memrefs\n\n";
     }
 
     // Detects dependencies.
-    llvm::outs() << "=== Dependencies ===\n";
+    llvm::errs() << "=== Dependencies ===\n";
     SmallVector<Dependency> deps;
 
     for (size_t i = 0; i < mct_infos.size(); ++i) {
@@ -210,12 +194,12 @@ public:
           bool same_header = mct_infos[producer_idx].counter_chain ==
                              mct_infos[i].counter_chain;
           deps.push_back({DepType::SSA, producer_idx, i, same_header, input});
-          llvm::outs() << mct_infos[producer_idx].task_name << " → "
+          llvm::errs() << mct_infos[producer_idx].task_name << " → "
                        << mct_infos[i].task_name << " : SSA";
           if (same_header) {
-            llvm::outs() << " [SAME HEADER - FUSION CANDIDATE]";
+            llvm::errs() << " [SAME HEADER - FUSION CANDIDATE]";
           }
-          llvm::outs() << "\n";
+          llvm::errs() << "\n";
         }
       }
 
@@ -226,17 +210,12 @@ public:
             bool same_header =
                 mct_infos[j].counter_chain == mct_infos[i].counter_chain;
             deps.push_back({DepType::RAW, j, i, same_header, w});
-            llvm::outs() << mct_infos[j].task_name << " → "
-                         << mct_infos[i].task_name << " : RAW on ";
-            if (auto arg = dyn_cast<BlockArgument>(w)) {
-              llvm::outs() << "func_arg" << arg.getArgNumber();
-            } else {
-              llvm::outs() << w;
-            }
+            llvm::errs() << mct_infos[j].task_name << " → "
+                         << mct_infos[i].task_name << " : RAW";
             if (same_header) {
-              llvm::outs() << " [SAME HEADER - FUSION CANDIDATE]";
+              llvm::errs() << " [SAME HEADER - FUSION CANDIDATE]";
             }
-            llvm::outs() << "\n";
+            llvm::errs() << "\n";
           }
         }
 
@@ -246,17 +225,12 @@ public:
             bool same_header =
                 mct_infos[j].counter_chain == mct_infos[i].counter_chain;
             deps.push_back({DepType::WAR, j, i, same_header, r});
-            llvm::outs() << mct_infos[j].task_name << " → "
-                         << mct_infos[i].task_name << " : WAR on ";
-            if (auto arg = dyn_cast<BlockArgument>(r)) {
-              llvm::outs() << "func_arg" << arg.getArgNumber();
-            } else {
-              llvm::outs() << r;
-            }
+            llvm::errs() << mct_infos[j].task_name << " → "
+                         << mct_infos[i].task_name << " : WAR";
             if (same_header) {
-              llvm::outs() << " [SAME HEADER]";
+              llvm::errs() << " [SAME HEADER]";
             }
-            llvm::outs() << "\n";
+            llvm::errs() << "\n";
           }
         }
 
@@ -266,17 +240,12 @@ public:
             bool same_header =
                 mct_infos[j].counter_chain == mct_infos[i].counter_chain;
             deps.push_back({DepType::WAW, j, i, same_header, w});
-            llvm::outs() << mct_infos[j].task_name << " → "
-                         << mct_infos[i].task_name << " : WAW on ";
-            if (auto arg = dyn_cast<BlockArgument>(w)) {
-              llvm::outs() << "func_arg" << arg.getArgNumber();
-            } else {
-              llvm::outs() << w;
-            }
+            llvm::errs() << mct_infos[j].task_name << " → "
+                         << mct_infos[i].task_name << " : WAW";
             if (same_header) {
-              llvm::outs() << " [SAME HEADER]";
+              llvm::errs() << " [SAME HEADER]";
             }
-            llvm::outs() << "\n";
+            llvm::errs() << "\n";
           }
         }
       }
@@ -299,11 +268,11 @@ public:
         fusion_candidates++;
       }
     }
-    llvm::outs() << "\n=== Summary ===\n";
-    llvm::outs() << "Total dependencies: " << deps.size() << "\n";
-    llvm::outs() << "  SSA: " << ssa_count << ", RAW: " << raw_count
+    llvm::errs() << "\n=== Summary ===\n";
+    llvm::errs() << "Total dependencies: " << deps.size() << "\n";
+    llvm::errs() << "  SSA: " << ssa_count << ", RAW: " << raw_count
                  << ", WAR: " << war_count << ", WAW: " << waw_count << "\n";
-    llvm::outs() << "Fusion candidates (same-header SSA/RAW): " << fusion_candidates
+    llvm::errs() << "Fusion candidates (same-header SSA/RAW): " << fusion_candidates
                  << "\n";
   }
 };
