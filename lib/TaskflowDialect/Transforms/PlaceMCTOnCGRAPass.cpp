@@ -18,6 +18,12 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <algorithm>
+#include <climits>
+#include <cmath>
+#include <string>
+#include <vector>
+
 using namespace mlir;
 using namespace mlir::taskflow;
 
@@ -324,6 +330,15 @@ private:
           best_placement = candidate;
         }
       }
+    }
+
+    // Error handling: No available position found (grid over-subscribed).
+    if (best_placement.cgra_positions.empty()) {
+      llvm::errs() << "Warning: No available CGRA position for task "
+                   << task_idx << ". Grid is over-subscribed (" << grid_rows_
+                   << "x" << grid_cols_ << " grid with all cells occupied).\n";
+      // Fallback: Assign to position (0,0) with a warning.
+      best_placement.cgra_positions.push_back({0, 0});
     }
 
     return best_placement;
