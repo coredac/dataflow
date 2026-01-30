@@ -13,6 +13,13 @@
 // RUN: -o %t.canonicalized.mlir
 // RUN: FileCheck %s --input-file=%t.canonicalized.mlir --check-prefixes=CANONICALIZE
 
+// RUN: mlir-neura-opt %s --convert-affine-to-taskflow \
+// RUN: --construct-hyperblock-from-task \
+// RUN: --canonicalize-task \
+// RUN: --place-mct-on-cgra \
+// RUN: -o %t.placement.mlir
+// RUN: FileCheck %s --input-file=%t.placement.mlir --check-prefixes=PLACEMENT
+
 #set = affine_set<(d0, d1) : (d0 - 3 == 0, d1 - 7 == 0)>
 module attributes {} {
   func.func @_Z21irregularLoopExample1v() -> i32 attributes {llvm.linkage = #llvm.linkage<external>} {
@@ -216,3 +223,9 @@ module attributes {} {
 // CANONICALIZE-NEXT:   }
 // CANONICALIZE-NEXT: }
 
+// PLACEMENT: task_name = "Task_0"
+// PLACEMENT: cgra_col = 2 : i32, cgra_count = 1 : i32, cgra_row = 1 : i32
+// PLACEMENT: task_name = "Task_1"
+// PLACEMENT: cgra_col = 0 : i32, cgra_count = 1 : i32, cgra_row = 0 : i32
+// PLACEMENT: task_name = "Task_2"
+// PLACEMENT: cgra_col = 1 : i32, cgra_count = 1 : i32, cgra_row = 0 : i32

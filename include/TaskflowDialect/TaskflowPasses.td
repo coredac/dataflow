@@ -43,4 +43,30 @@ def ClassifyCounters : Pass<"classify-counters", "ModuleOp">{
   }];
   let constructor = "taskflow::createClassifyCountersPass()";
 }
+
+def AnalyzeMCTDependency : Pass<"analyze-mct-dependency", "func::FuncOp"> {
+  let summary = "Analyzes dependencies between MCTs for multi-CGRA mapping";
+  let description = [{
+    This pass analyzes Minimized Canonicalized Tasks (MCTs) to identify:
+    1. Memory dependencies (RAW, WAR, WAW) between tasks
+    2. Same-header task pairs that are fusion candidates
+    3. Counter chain (loop header) information for each task
+
+    Used for multi-CGRA mapping optimization.
+  }];
+  let constructor = "taskflow::createAnalyzeMCTDependencyPass()";
+}
+
+def PlaceMCTOnCGRA : Pass<"place-mct-on-cgra", "func::FuncOp"> {
+  let summary = "Places MCTs onto a 2D CGRA grid with adjacency optimization";
+  let description = [{
+    This pass places Minimized Canonicalized Tasks (MCTs) onto a 2D CGRA grid.
+    Fusion candidates (same-header SSA dependencies) are placed on adjacent
+    CGRAs to enable direct data forwarding.
+
+    Uses a default 4x4 CGRA grid.
+  }];
+  let constructor = "taskflow::createPlaceMCTOnCGRAPass()";
+}
+
 #endif // TASKFLOW_PASSES_TD

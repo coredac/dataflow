@@ -4,6 +4,8 @@ add_mlir_library(MLIRTaskflowTransforms
     ConstructHyperblockFromTaskPass.cpp
     CanonicalizeTaskPass.cpp
     ClassifyCountersPass.cpp
+    AnalyzeMCTDependencyPass.cpp
+    PlaceMCTOnCGRAPass.cpp
 
     DEPENDS
     MLIRTaskflowTransformsIncGen
