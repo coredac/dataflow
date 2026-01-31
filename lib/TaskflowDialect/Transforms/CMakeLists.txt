@@ -17,3 +17,5 @@ add_mlir_library(MLIRTaskflowTransforms
     ${dialect_libs}
     LLVMSupport
 )
+
+add_subdirectory(Optimizations)

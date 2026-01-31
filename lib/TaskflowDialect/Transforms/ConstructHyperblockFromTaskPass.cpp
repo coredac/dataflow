@@ -58,6 +58,9 @@ struct HyperblockInfo {
 
   // The corresponding loop.
   affine::AffineForOp loop_op = nullptr;
+
+  // Marks if this hyperblock follows the LEC pattern.
+  bool is_lec_pattern = false;
 };
 
 //----------------------------------------------------------------------------
@@ -177,11 +180,63 @@ getTopLevelLoopsInfo(SmallVector<LoopInfo> &loops_info) {
 }
 
 //----------------------------------------------------------------------------
+// Loop-Epilogue Code (LEC) Pattern Detection
+//----------------------------------------------------------------------------
+// Loop-Epilogue Code means code that appears after an inner loop.
+// Example:
+// for %i (outer loop) {
+//   for %j (nested loop) {
+//     <loop body>
+//   }
+//   <epilogue code>  ← Loop-Epilogue Code
+// }
+// For this pattern, we need to wrap the inner loop and the epilogue code into
+// a hyperblock. Only by doing this can we maintain the hyperblock as a pure
+// data-driven code block.
+struct LECPattern {
+  affine::AffineForOp outer_loop;
+  affine::AffineForOp inner_loop;
+
+  SmallVector<Operation *> prologue_code;
+  SmallVector<Operation *> epilogue_code;
+
+  bool has_lec_pattern = false;
+};
+
+// Detects Loop-Epilogue Code pattern in the task.
+static LECPattern detectLECPattern(affine::AffineForOp outer_loop) {
+  LECPattern pattern;
+  pattern.outer_loop = outer_loop;
+
+  Block &body = outer_loop.getRegion().front();
+  bool found_nested_loop = false;
+
+  for (Operation &op : body.getOperations()) {
+    if (auto nested_for = dyn_cast<affine::AffineForOp>(&op)) {
+      found_nested_loop = true;
+      if (!pattern.inner_loop) {
+        pattern.inner_loop = nested_for;
+      }
+    } else if (!(isa<affine::AffineYieldOp>(&op) && op.getOperands().empty())) {
+      if (!found_nested_loop) {
+        pattern.prologue_code.push_back(&op);
+        pattern.has_lec_pattern = true;
+      } else {
+        pattern.epilogue_code.push_back(&op);
+        pattern.has_lec_pattern = true;
+      }
+    }
+  }
+
+  return pattern;
+}
+
+//----------------------------------------------------------------------------
 // Hyperblock Creation
 //----------------------------------------------------------------------------
 // Recursively extracts hyperblocks from a region.
-// Key insight: Operations in a loop body that are used by nested loops should
-// be inlined into the nested loop's hyperblock.
+// Key insight: Operations in a loop body that are used by nested loops
+// should be inlined into the nested loop's hyperblock.
 static void extractHyperblocksInfoFromRegion(
     Region &region,
     const DenseMap<affine::AffineForOp, LoopInfo *> &loop_info_map,
@@ -196,14 +251,56 @@ static void extractHyperblocksInfoFromRegion(
 
   for (Operation &op : block.getOperations()) {
     if (auto for_op = dyn_cast<affine::AffineForOp>(&op)) {
+
+      LECPattern lec_pattern = detectLECPattern(for_op);
+
       // Gets the loop info.
       LoopInfo *loop_info = loop_info_map.lookup(for_op);
       assert(loop_info && "Loop not found in loop_info_map");
 
-      // Builds trigger indices fro this loop (parent indices + this loop's
+      // Builds trigger indices for this loop (parent indices + this loop's
       // index).
       SmallVector<Value> loop_indices = parent_indices;
       loop_indices.push_back(loop_info->counter_index);
+
+      // Handles the LEC pattern.
+      if (lec_pattern.has_lec_pattern) {
+        // 1. Emits any accumulated operations as a hyperblock.
+        if (!current_block_ops.empty()) {
+          HyperblockInfo info;
+          info.operations = current_block_ops;
+          info.trigger_indices = parent_indices;
+          info.is_loop_body = !parent_indices.empty();
+          info.loop_op = enclosing_loop;
+          hyperblocks_info.push_back(info);
+          current_block_ops.clear();
+        }
+
+        // 2. Creates a hyperblock for the prologue + inner loop + epilogue.
+        HyperblockInfo info;
+        if (!lec_pattern.prologue_code.empty()) {
+          info.operations.append(lec_pattern.prologue_code.begin(),
+                                 lec_pattern.prologue_code.end());
+        }
+
+        info.operations.push_back(lec_pattern.inner_loop);
+
+        if (!lec_pattern.epilogue_code.empty()) {
+          info.operations.append(lec_pattern.epilogue_code.begin(),
+                                 lec_pattern.epilogue_code.end());
+        }
+
+        info.trigger_indices = loop_indices;
+        info.is_loop_body = true;
+        info.loop_op = for_op;
+        info.is_lec_pattern = true;
+        hyperblocks_info.push_back(info);
+
+        // No need for further processing of this loop. Since we have already
+        // handled the whole for_op.
+        current_block_ops.clear();
+        continue;
+      }
 
       // Analyzes which of the current_ops are used by this loop.
       DenseSet<Value> values_used_in_loop;
