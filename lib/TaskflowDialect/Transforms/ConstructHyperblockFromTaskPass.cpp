@@ -134,7 +134,8 @@ static void createCounterChainRecursivly(OpBuilder &builder, Location loc,
         loc, builder.getIndexType(), parent_counter,
         builder.getIndexAttr(loop_info->lower_bound),
         builder.getIndexAttr(loop_info->upper_bound),
-        builder.getIndexAttr(loop_info->step));
+        builder.getIndexAttr(loop_info->step),
+        /*Counter Type*/ nullptr, /*Counter ID*/ nullptr);
     counter_index = counter_op.getCounterIndex();
   } else {
     // Top-level counter.
@@ -142,7 +143,8 @@ static void createCounterChainRecursivly(OpBuilder &builder, Location loc,
         loc, builder.getIndexType(), /*parent_index=*/nullptr,
         builder.getIndexAttr(loop_info->lower_bound),
         builder.getIndexAttr(loop_info->upper_bound),
-        builder.getIndexAttr(loop_info->step));
+        builder.getIndexAttr(loop_info->step),
+        /*Counter Type*/ nullptr, /*Counter ID*/ nullptr);
     counter_index = counter_op.getCounterIndex();
   }
 
@@ -431,7 +433,8 @@ static TaskflowHyperblockOp createHyperblock(
       }
 
       // Creates hyperblock.yield with the mapped operands.
-      hyperblock_builder.create<TaskflowHyperblockYieldOp>(loc, yield_operands);
+      hyperblock_builder.create<TaskflowHyperblockYieldOp>(loc, yield_operands,
+                                                           yield_operands);
       has_terminator = true;
       continue;
     }

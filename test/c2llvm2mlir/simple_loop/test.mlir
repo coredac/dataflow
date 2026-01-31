@@ -22,7 +22,7 @@
 
 // RUN: mlir-neura-opt --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
-// RUN:   --promote-func-arg-to-const \
+// RUN:   --promote-input-arg-to-const \
 // RUN:   --fold-constant \
 // RUN:   --canonicalize-return \
 // RUN:   --canonicalize-live-in \
@@ -36,7 +36,7 @@
 // Test with mapping table dump enabled
 // RUN: mlir-neura-opt --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
-// RUN:   --promote-func-arg-to-const \
+// RUN:   --promote-input-arg-to-const \
 // RUN:   --fold-constant \
 // RUN:   --canonicalize-return \
 // RUN:   --canonicalize-live-in \

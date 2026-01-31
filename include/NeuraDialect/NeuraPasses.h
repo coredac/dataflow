@@ -27,7 +27,7 @@ std::unique_ptr<mlir::Pass> createMapToAcceleratorPass();
 std::unique_ptr<mlir::Pass> createGenerateCodePass();
 std::unique_ptr<mlir::Pass> createCanonicalizeReturnPass();
 std::unique_ptr<mlir::Pass> createCanonicalizeLiveInPass();
-std::unique_ptr<mlir::Pass> createPromoteFuncArgToConstPass();
+std::unique_ptr<mlir::Pass> createPromoteInputArgToConstPass();
 std::unique_ptr<mlir::Pass> createTransformToSteerControlPass();
 std::unique_ptr<mlir::Pass> createRemovePredicatedTypePass();
 std::unique_ptr<mlir::Pass> createWrapLoopInKernelPass();
@@ -38,6 +38,7 @@ std::unique_ptr<mlir::Pass> createWrapLoopInKernelPass();
 // Hardware specific optimization passes
 std::unique_ptr<mlir::Pass> createFuseLoopControlPass();
 std::unique_ptr<mlir::Pass> createFusePatternPass();
+std::unique_ptr<mlir::Pass> createWrapLoopInKernelPass();
 
 // Hardware agnostic optimization passes
 std::unique_ptr<mlir::Pass> createFoldConstantPass();

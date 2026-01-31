@@ -31,7 +31,7 @@ void mlir::neura::registerNeuraConversionPassPipeline() {
 
         pm.addPass(mlir::neura::createCanonicalizeReturnPass());
         pm.addPass(mlir::neura::createCanonicalizeCastPass());
-        pm.addPass(mlir::neura::createPromoteFuncArgToConstPass());
+        pm.addPass(mlir::neura::createPromoteInputArgToConstPass());
         pm.addPass(mlir::neura::createFoldConstantPass());
         pm.addPass(mlir::neura::createCanonicalizeLiveInPass());
         pm.addPass(mlir::neura::createLeveragePredicatedValuePass());

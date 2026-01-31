@@ -29,4 +29,4 @@ func.func @test_print_op_graph(%a: f32, %b: f32) -> f32 {
 // CHECK-GRAPH: label = "neura.fmul : (!neura.data<f32, i1>)\n\nrhs_value: 2.000000e+00 : f32", shape = ellipse, style = filled];
 // CHECK-GRAPH: label = "neura.data_mov : (!neura.data<f32, i1>)\n", shape = ellipse, style = filled];
 // CHECK-GRAPH: label = "neura.return_value : ()\n", shape = ellipse, style = filled];
-// CHECK-GRAPH: label = "neura.yield : ()\n", shape = ellipse, style = filled];
+// CHECK-GRAPH: label = "neura.yield : ()\n\noperandSegmentSizes: array<i32: 0, 0>", shape = ellipse, style = filled];

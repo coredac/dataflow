@@ -5,21 +5,11 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/StringRef.h"
-
-namespace mlir {
-namespace neura {
-// Uses arith2neura instead of llvm to avoid conflicts.
-namespace arith2neura {
-
-#include "ArithToNeuraPatterns.inc"
-
-} // namespace arith2neura
-} // namespace neura
-} // namespace mlir
 
 using namespace mlir;
 using namespace mlir::func;
@@ -96,7 +86,6 @@ struct ArithSubFToNeuraFSub : public OpRewritePattern<mlir::arith::SubFOp> {
     Value rhs = op.getRhs();
     Type result_type = op.getType();
 
-
     rewriter.replaceOpWithNewOp<neura::FSubOp>(op, result_type, lhs, rhs);
     return success();
   }
@@ -125,7 +114,6 @@ struct ArithMulFToNeuraFMul : public OpRewritePattern<mlir::arith::MulFOp> {
     Value lhs = op.getLhs();
     Value rhs = op.getRhs();
     Type result_type = op.getType();
-
 
     rewriter.replaceOpWithNewOp<neura::FMulOp>(op, result_type, lhs, rhs);
     return success();
@@ -171,8 +159,7 @@ struct ArithRemSIToNeuraOp : public OpRewritePattern<mlir::arith::RemSIOp> {
     Location loc = op.getLoc();
     // Converts arith RemSIOp to basic Neura Op.
 
-    Value div =
-        rewriter.create<neura::DivOp>(loc, result_type, lhs, rhs);
+    Value div = rewriter.create<neura::DivOp>(loc, result_type, lhs, rhs);
     Value mul = rewriter.create<neura::MulOp>(loc, result_type, rhs, div);
     Value rem = rewriter.create<neura::SubOp>(loc, result_type, lhs, mul);
 
@@ -244,7 +231,8 @@ struct ArithSelectToNeuraSel : public OpRewritePattern<mlir::arith::SelectOp> {
     Value false_value = op.getFalseValue();
     Type result_type = op.getType();
 
-    // Converts arith SelectOp to Neura SelOp with consistent order: (cond, ifTrue, ifFalse).
+    // Converts arith SelectOp to Neura SelOp with consistent order: (cond,
+    // ifTrue, ifFalse).
     rewriter.replaceOpWithNewOp<neura::SelOp>(op, result_type, condition,
                                               true_value, false_value);
     return success();
@@ -261,8 +249,8 @@ struct ArithExtUIToNeuraCast : public OpRewritePattern<mlir::arith::ExtUIOp> {
 
     // Converts arith ExtUIOp to Neura cast operation.
 
-    rewriter.replaceOpWithNewOp<neura::CastOp>(
-        op, result_type, input, rewriter.getStringAttr("extui"));
+    rewriter.replaceOpWithNewOp<neura::CastOp>(op, result_type, input,
+                                               rewriter.getStringAttr("extui"));
     return success();
   }
 };
@@ -277,8 +265,8 @@ struct ArithExtfToNeuraCast : public OpRewritePattern<mlir::arith::ExtFOp> {
 
     // Converts arith ExtFOp to Neura cast operation.
 
-    rewriter.replaceOpWithNewOp<neura::CastOp>(
-        op, result_type, input, rewriter.getStringAttr("extf"));
+    rewriter.replaceOpWithNewOp<neura::CastOp>(op, result_type, input,
+                                               rewriter.getStringAttr("extf"));
     return success();
   }
 };
@@ -326,26 +314,47 @@ struct LowerArithToNeuraPass
     registry.insert<mlir::neura::NeuraDialect>();
   }
 
+  RewritePatternSet populateArithToNeuraPatterns(MLIRContext *context) {
+    RewritePatternSet patterns(context);
+    patterns
+        .add<ArithFAddToNeuraFAdd, ArithConstantToNeuraConstant,
+             ArithAddIToNeuraAdd, ArithCmpiToNeuraICmp, ArithSelectToNeuraSel,
+             ArithExtUIToNeuraCast, ArithIndexCastToNeuraCast,
+             ArithFDivToNeuraFDiv, ArithExtfToNeuraCast, ArithMulFToNeuraFMul,
+             ArithSubIToNeuraSub, ArithSubFToNeuraFSub, ArithMulIToNeuraMul,
+             ArithDivSIToNeuraDiv, ArithRemSIToNeuraOp>(context);
+    return patterns;
+  }
+
   void runOnOperation() override {
     ModuleOp module_op = getOperation();
     MLIRContext *context = &getContext();
+
     module_op.walk([&](func::FuncOp func_op) {
       if (func_op->hasAttr(mlir::accel::kAcceleratorAttr)) {
         auto target =
             func_op->getAttrOfType<StringAttr>(mlir::accel::kAcceleratorAttr);
         if (target && target.getValue() == mlir::accel::kNeuraTarget) {
-          RewritePatternSet patterns(&getContext());
-          mlir::neura::arith2neura::populateWithGenerated(patterns);
-          patterns.add<
-              ArithFAddToNeuraFAdd, ArithConstantToNeuraConstant,
-              ArithAddIToNeuraAdd, ArithCmpiToNeuraICmp, ArithSelectToNeuraSel,
-              ArithExtUIToNeuraCast, ArithIndexCastToNeuraCast,
-              ArithFDivToNeuraFDiv, ArithExtfToNeuraCast, ArithMulFToNeuraFMul,
-              ArithSubIToNeuraSub, ArithSubFToNeuraFSub, ArithMulIToNeuraMul,
-              ArithDivSIToNeuraDiv, ArithRemSIToNeuraOp>(context);
+          RewritePatternSet patterns = populateArithToNeuraPatterns(context);
           // Apply patterns to the function, not the entire module
+          if (failed(applyPatternsGreedily(func_op, std::move(patterns)))) {
+            signalPassFailure();
+          }
+        }
+      }
+    });
+
+    // Applies patterns to the neura.kernel regions.
+    module_op.walk([&](neura::KernelOp kernel_op) {
+      if (kernel_op->hasAttr(mlir::accel::kAcceleratorAttr)) {
+        auto accel_target =
+            kernel_op->getAttrOfType<StringAttr>(mlir::accel::kAcceleratorAttr);
+        if (accel_target &&
+            accel_target.getValue() == mlir::accel::kNeuraTarget) {
+          Region &kernel_region = kernel_op.getBody();
+          RewritePatternSet patterns = populateArithToNeuraPatterns(context);
           if (failed(
-                  applyPatternsGreedily(func_op, std::move(patterns)))) {
+                  applyPatternsGreedily(kernel_region, std::move(patterns)))) {
             signalPassFailure();
           }
         }

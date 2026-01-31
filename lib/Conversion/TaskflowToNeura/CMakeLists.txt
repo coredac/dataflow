@@ -1,7 +1,7 @@
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
-add_mlir_conversion_library(MLIRNeuraLlvmToNeuraPass
-  LlvmToNeuraPass.cpp
+add_mlir_conversion_library(MLIRTaskflowToNeuraPass
+  TaskflowToNeuraPass.cpp
 
   DEPENDS
   MLIRConversionIncGen
@@ -10,6 +10,7 @@ add_mlir_conversion_library(MLIRNeuraLlvmToNeuraPass
   MLIRArithDialect
   MLIRFuncDialect
   MLIRLLVMDialect
+  MLIRTaskflow
   MLIRIR
   MLIRPass
   MLIRTransforms

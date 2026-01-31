@@ -30,13 +30,13 @@ struct RecurrenceCycle {
 };
 
 // Collects recurrence cycles rooted at reserve and closed by ctrl_mov.
-SmallVector<RecurrenceCycle, 4> collectRecurrenceCycles(Operation *func_op);
+SmallVector<RecurrenceCycle, 4> collectRecurrenceCycles(Region &region);
 
 // Calculates ResMII: ceil(#ops / #tiles).
-int calculateResMii(Operation *func_op, const Architecture &architecture);
+int calculateResMii(Region &region, const Architecture &architecture);
 
-// Returns topologically sorted operations in func_op.
-std::vector<Operation *> getTopologicallySortedOps(Operation *func_op);
+// Returns topologically sorted operations in region.
+std::vector<Operation *> getTopologicallySortedOps(Region &region);
 
 // Given the sorted operations, returns a vector of pairs where each pair
 // contains a vector of operations at the same ALAP (as late as possible)
@@ -82,8 +82,8 @@ bool tryRouteBackwardMove(Operation *mov_op, MappingLoc src_loc,
 // ctrl_mov users found.
 llvm::SmallVector<Operation *> getCtrlMovUsers(Operation *op);
 
-// Identifies operations on the critical path (i.e., operations with zero slack).
-// Returns pair of: (critical_ops_set, asap_level_map)
+// Identifies operations on the critical path (i.e., operations with zero
+// slack). Returns pair of: (critical_ops_set, asap_level_map)
 std::pair<std::set<Operation *>, llvm::DenseMap<Operation *, int>>
 identifyCriticalPathOps(const std::vector<Operation *> &sorted_ops);
 

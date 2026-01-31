@@ -29,4 +29,18 @@ def CanonicalizeTask: Pass<"canonicalize-task", "func::FuncOp">{
   }];
   let constructor = "taskflow::createCanonicalizeTaskPass()";
 }
+
+def ClassifyCounters : Pass<"classify-counters", "ModuleOp">{
+  let summary = "Classifies counters as root/relay/leaf";
+  let description = [{
+    Analyzes the counter hierarchy within taskflow.task operations and
+    classifies each counter:
+    - root: Top-level counter with no parent
+    - relay: Intermediate counter with both parent and child counters
+    - leaf: Innermost counter with no child counters
+
+    Leaf counters are mapped to CGRA tile arrays.
+  }];
+  let constructor = "taskflow::createClassifyCountersPass()";
+}
 #endif // TASKFLOW_PASSES_TD

@@ -103,9 +103,9 @@ func.func @loop_test() -> f32 {
 // CHECK-NEXT:   %7 = "neura.fadd"(%6, %3) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
 // CHECK-NEXT:   %8 = "neura.add"(%5, %2) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
 // CHECK-NEXT:   %9 = "neura.icmp"(%8, %0) <{cmpType = "slt"}> : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i1, i1>
-// CHECK-NEXT:   neura.cond_br %9 : !neura.data<i1, i1> then %8, %7 : !neura.data<i64, i1>, !neura.data<f32, i1> to ^bb1 else %7 : !neura.data<f32, i1> to ^bb2
-// CHECK-NEXT: ^bb2(%10: !neura.data<f32, i1>):  // pred: ^bb1
-// CHECK-NEXT:   "neura.return"(%10) : (!neura.data<f32, i1>) -> ()
+// CHECK-NEXT:   neura.cond_br %9 : !neura.data<i1, i1> then %8, %7 : !neura.data<i64, i1>, !neura.data<f32, i1> to ^bb1 else to ^bb2
+// CHECK-NEXT: ^bb2:  // pred: ^bb1
+// CHECK-NEXT:   "neura.return"(%7) : (!neura.data<f32, i1>) -> ()
 // CHECK-NEXT: }
 
 // CANONICALIZE:       func.func @loop_test() -> f32 attributes {accelerator = "neura"} {

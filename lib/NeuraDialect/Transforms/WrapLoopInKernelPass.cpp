@@ -72,10 +72,10 @@ static LogicalResult wrapInnermostLoopAsKernel(affine::AffineForOp for_op,
   if (has_outputs) {
     // If the loop has outputs, yield the loop results.
     SmallVector<Value> yield_operands(for_op.getResults());
-    builder.create<neura::YieldOp>(loc, yield_operands);
+    builder.create<neura::YieldOp>(loc, ValueRange{}, yield_operands);
   } else {
     // If the loop has no outputs, create an empty yield.
-    builder.create<neura::YieldOp>(loc, ValueRange{});
+    builder.create<neura::YieldOp>(loc);
   }
 
   return success();

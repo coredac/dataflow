@@ -144,31 +144,32 @@ def TaskflowChannelOp : TaskflowOpBase<"channel", [Pure, SameOperandsAndResultTy
 // Intra-Task Operations.
 //----------------------------------------------------------------------
 // Counter operation representing loop iteration control within a Taskflow task.
-def TaskflowCounterOp : TaskflowOpBase<"counter", [Pure]>{
+def TaskflowCounterOp : TaskflowOpBase<"counter", []>{
   let summary = "Loop counter operation with hardware counter semantics";
 
   let description = [{
     Represents a loop counter that generates iteration indices.
     The hardware counter produces a predicated index value.
 
-    Counter behavior:
-    - Top-level counter: increments unconditionally each cycle.
-    - Nested counter: increments only when the parent counter is valid.
+    Counter classification:
+    - "root": Top-level counter with no parent (drives entire loop nest)
+    - "relay": Intermediate counter with both parent and child counters
+    - "leaf": Innermost counter with no child counters (maps to CGRA tile array)
 
     Example:
-      // Top-level counter
+      // Root counter
       %i = taskflow.counter {
         lower_bound = 0 : index,
         upper_bound = 16 : index,
         step = 1 : index,
-        counter_name = "i"
+        counter_type = "root"
       } : index
-      // Nested counter
+      // Leaf counter
       %j = taskflow.counter parent(%i) {
         lower_bound = 0 : index,
         upper_bound = 8 : index,
         step = 1 : index,
-        counter_name = "j"
+        counter_type = "leaf"
       } : index
   }];
 
@@ -176,7 +177,9 @@ def TaskflowCounterOp : TaskflowOpBase<"counter", [Pure]>{
     Optional<AnyType>:$parent_index,
     IndexAttr:$lower_bound,
     IndexAttr:$upper_bound,
-    IndexAttr:$step
+    IndexAttr:$step,
+    OptionalAttr<StrAttr>:$counter_type,
+    OptionalAttr<I32Attr>:$counter_id
   );
 
   let results = (outs AnyType:$counter_index);
@@ -233,6 +236,7 @@ def TaskflowHyperblockYieldOp : TaskflowOpBase<"hyperblock.yield", [
   Terminator,
   Pure,
   ReturnLike,
+  AttrSizedOperandSegments,
   ParentOneOf<["TaskflowHyperblockOp"]>
 ]>{
   let summary = "Yield operation for Taskflow hyperblock";
@@ -241,15 +245,18 @@ def TaskflowHyperblockYieldOp : TaskflowOpBase<"hyperblock.yield", [
     Terminates the hyperblock body.
   }];
 
-  let arguments = (ins Variadic<AnyType>:$outputs);
+  let arguments = (ins
+    Variadic<AnyType>:$iter_args_next,
+    Variadic<AnyType>:$results);
 
   let assemblyFormat = [{
-    (`outputs` `(` $outputs^ `:` type($outputs) `)`)?
+    (`iter_args_next` `(` $iter_args_next^ `:` type($iter_args_next) `)`)?
+    (`results` `(` $results^ `:` type($results) `)`)?
     attr-dict
   }];
 
   let builders = [
-    OpBuilder<(ins), [{build($_builder, $_state, ValueRange{});}]>
+    OpBuilder<(ins), [{build($_builder, $_state, ValueRange{}, ValueRange{});}]>
   ];
 }
 
