@@ -30,6 +30,7 @@ std::unique_ptr<mlir::Pass> createCanonicalizeLiveInPass();
 std::unique_ptr<mlir::Pass> createPromoteInputArgToConstPass();
 std::unique_ptr<mlir::Pass> createTransformToSteerControlPass();
 std::unique_ptr<mlir::Pass> createRemovePredicatedTypePass();
+std::unique_ptr<mlir::Pass> createWrapLoopInKernelPass();
 
 // ====================================
 // Optimization Passes
