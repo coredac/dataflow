@@ -37,6 +37,7 @@ std::unique_ptr<mlir::Pass> createRemovePredicatedTypePass();
 // Hardware specific optimization passes
 std::unique_ptr<mlir::Pass> createFuseLoopControlPass();
 std::unique_ptr<mlir::Pass> createFusePatternPass();
+std::unique_ptr<mlir::Pass> createWrapLoopInKernelPass();
 
 // Hardware agnostic optimization passes
 std::unique_ptr<mlir::Pass> createFoldConstantPass();
