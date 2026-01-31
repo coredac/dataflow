@@ -178,9 +178,8 @@ struct MapToAcceleratorPass
 
   // Generic mapping function works for both function and kernel mapping.
   template <typename OpType>
-  bool mapRegion(OpType op, Region &region, Architecture &architecture,
+  bool mapRegion(OpType op, Region &region, const Architecture &architecture,
                  Mapping *mapping_strategy, bool is_spatial_only,
-                 int max_ctrl_mem_items,
                  const std::string &resolved_mapping_mode,
                  const std::string &resolved_mapping_strategy) {
     // Checks steering mode compatibility with architecture.
@@ -231,8 +230,7 @@ struct MapToAcceleratorPass
     int res_mii = calculateResMii(region, architecture);
 
     const int possible_min_ii = std::max(rec_mii, res_mii);
-    const int max_ii =
-        max_ctrl_mem_items; // Use YAML config (default 20 if not specified)
+    const int max_ii = architecture.getMaxCtrlMemItems();
 
     std::vector<Operation *> topologically_sorted_ops =
         getTopologicallySortedOps(region);
@@ -359,70 +357,6 @@ struct MapToAcceleratorPass
 
     const Architecture &architecture = mlir::neura::getArchitecture();
 
-    std::string architecture_spec_file = mlir::neura::getArchitectureSpecFile();
-    int multi_cgra_rows = kMultiCgraDefaultRows;
-    int multi_cgra_columns = kMultiCgraDefaultColumns;
-    int per_cgra_rows = kPerCgraDefaultRows;
-    int per_cgra_columns = kPerCgraDefaultColumns;
-    int max_ctrl_mem_items = kDefaultMaxCtrlMemItems;
-    mlir::neura::TileDefaults tile_defaults;
-    std::vector<mlir::neura::TileOverride> tile_overrides;
-    mlir::neura::LinkDefaults link_defaults;
-    std::vector<mlir::neura::LinkOverride> link_overrides;
-    mlir::neura::BaseTopology multi_cgra_base_topology =
-        mlir::neura::BaseTopology::MESH;
-    mlir::neura::BaseTopology per_cgra_base_topology =
-        mlir::neura::BaseTopology::MESH;
-
-    if (!architecture_spec_file.empty()) {
-
-      // Use LLVM YAML parser to validate the YAML syntax (no mapping yet)
-      llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> buffer_or_err =
-          llvm::MemoryBuffer::getFile(architecture_spec_file);
-      if (!buffer_or_err) {
-        llvm::errs() << "[MapToAcceleratorPass] Failed to open architecture "
-                        "specification file: "
-                     << architecture_spec_file << "\n";
-        return;
-      }
-
-      llvm::SourceMgr sm;
-      sm.AddNewSourceBuffer(std::move(*buffer_or_err), llvm::SMLoc());
-      llvm::yaml::Stream yaml_stream(
-          sm.getMemoryBuffer(sm.getMainFileID())->getBuffer(), sm);
-
-      bool parse_failed = false;
-      llvm::yaml::Document &yaml_doc = *yaml_stream.begin();
-      (void)yaml_doc; // ensure document is created
-      if (yaml_stream.failed()) {
-        parse_failed = true;
-      }
-
-      if (parse_failed) {
-        llvm::errs() << "[MapToAcceleratorPass] YAML parse error in: "
-                     << architecture_spec_file << "\n";
-        return;
-      }
-
-      // Parses YAML configuration.
-      if (!parseArchitectureYaml(
-              yaml_doc, multi_cgra_rows, multi_cgra_columns,
-              multi_cgra_base_topology, per_cgra_rows, per_cgra_columns,
-              per_cgra_base_topology, max_ctrl_mem_items, tile_defaults,
-              tile_overrides, link_defaults, link_overrides)) {
-        return;
-      }
-    } else {
-      llvm::errs() << "[MapToAcceleratorPass] No architecture specification "
-                      "file provided.\n";
-    }
-
-    // Creates architecture.
-    Architecture architecture(
-        multi_cgra_rows, multi_cgra_columns, multi_cgra_base_topology,
-        per_cgra_rows, per_cgra_columns, per_cgra_base_topology, tile_defaults,
-        tile_overrides, link_defaults, link_overrides);
-
     // Maps kernels.
     module.walk([&](neura::KernelOp kernel_op) {
       auto accel_attr =
@@ -434,8 +368,7 @@ struct MapToAcceleratorPass
       Region &kernel_region = kernel_op.getBody();
       if (!mapRegion(kernel_op, kernel_region, architecture,
                      mapping_strategy.get(), is_spatial_only,
-                     max_ctrl_mem_items, resolved_mapping_mode,
-                     resolved_mapping_strategy)) {
+                     resolved_mapping_mode, resolved_mapping_strategy)) {
         llvm::errs() << "[MapToAcceleratorPass] Mapping failed for kernel.\n";
         signalPassFailure();
       }
@@ -452,7 +385,7 @@ struct MapToAcceleratorPass
       Region &func_region = func_op.getBody();
 
       if (!mapRegion(func_op, func_region, architecture, mapping_strategy.get(),
-                     is_spatial_only, max_ctrl_mem_items, resolved_mapping_mode,
+                     is_spatial_only, resolved_mapping_mode,
                      resolved_mapping_strategy)) {
         llvm::errs() << "[MapToAcceleratorPass] Failed to map function.\n";
         signalPassFailure();
