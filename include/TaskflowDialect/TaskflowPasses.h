@@ -17,11 +17,8 @@ namespace taskflow {
 #include "TaskflowDialect/TaskflowPasses.h.inc"
 std::unique_ptr<mlir::Pass> createConstructHyperblockFromTaskPass();
 std::unique_ptr<mlir::Pass> createCanonicalizeTaskPass();
-<<<<<<< HEAD
 std::unique_ptr<mlir::Pass> createClassifyCountersPass();
-=======
-std::unique_ptr<mlir::Pass> createPlaceACTOnCGRAPass();
->>>>>>> a0f7fc7 (feat(taskflow): implement graph-based ACT placement and memory management framework)
+std::unique_ptr<mlir::Pass> createMapCTOnCGRAArrayPass();
 
 #define GEN_PASS_REGISTRATION
 #include "TaskflowDialect/TaskflowPasses.h.inc"

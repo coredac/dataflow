@@ -30,7 +30,6 @@ def CanonicalizeTask: Pass<"canonicalize-task", "func::FuncOp">{
   let constructor = "taskflow::createCanonicalizeTaskPass()";
 }
 
-<<<<<<< HEAD
 def ClassifyCounters : Pass<"classify-counters", "ModuleOp">{
   let summary = "Classifies counters as root/relay/leaf";
   let description = [{
@@ -43,19 +42,17 @@ def ClassifyCounters : Pass<"classify-counters", "ModuleOp">{
     Leaf counters are mapped to CGRA tile arrays.
   }];
   let constructor = "taskflow::createClassifyCountersPass()";
-=======
+}
 
-
-def PlaceACTOnCGRA : Pass<"place-act-on-cgra", "func::FuncOp"> {
-  let summary = "Places ACTs onto a 2D CGRA grid with adjacency optimization";
+def MapCTOnCGRAArray : Pass<"map-ct-on-cgra-array", "func::FuncOp"> {
+  let summary = "Maps Canonical Tasks (CTs) onto a 2D CGRA grid array";
   let description = [{
-    This pass places Atomic Canonical Tasks (ACTs) onto a 2D CGRA grid.
+    This pass maps Canonical Tasks (CTs) onto a 2D CGRA grid array.
     Fusion candidates (same-header SSA dependencies) are placed on adjacent
     CGRAs to enable direct data forwarding.
 
     Uses a default 4x4 CGRA grid.
   }];
-  let constructor = "taskflow::createPlaceACTOnCGRAPass()";
->>>>>>> a0f7fc7 (feat(taskflow): implement graph-based ACT placement and memory management framework)
+  let constructor = "taskflow::createMapCTOnCGRAArrayPass()";
 }
 #endif // TASKFLOW_PASSES_TD

@@ -1,8 +1,9 @@
-//===- PlaceACTOnCGRAPass.cpp - ACT to CGRA Placement Pass ----------------===//
+//===- MapCTOnCGRAArrayPass.cpp - CT to CGRA Mapping Pass ----------------===//
 //
-// This pass places Atomic Canonical Tasks (ACTs) onto a 2D CGRA grid：
-// 1. SSA use-def placement: Tasks with SSA dependencies placed on adjacent CGRAs.
-// 2. Memory mapping: Assigns memrefs to SRAMs (single-SRAM constraint per data).
+// This pass maps Canonical Tasks (CTs) onto a 2D CGRA grid array:
+// 1. Places tasks with SSA dependencies on adjacent CGRAs.
+// 2. Assigns memrefs to SRAMs (each MemRef is assigned to exactly one SRAM,
+//    determined by proximity to the task that first accesses it).
 //
 //===----------------------------------------------------------------------===//
 
@@ -92,9 +93,9 @@ struct TaskNode {
   TaskflowTaskOp op;
   int alap_level = 0;
   
-  // Edges
-  SmallVector<MemoryNode *> read_memrefs;
-  SmallVector<MemoryNode *> write_memrefs;
+  // Edges (Note: read/write naming refers to taskflow memory_inputs/outputs)
+  SmallVector<MemoryNode *> read_memrefs;  // taskflow.task memory_inputs (readiness triggers)
+  SmallVector<MemoryNode *> write_memrefs; // taskflow.task memory_outputs (produce readiness)
   SmallVector<TaskNode *> ssa_users;
   SmallVector<TaskNode *> ssa_operands;
 
@@ -137,16 +138,29 @@ public:
 
     // 2. Creates MemoryNodes and defines Edges.
     for (auto &t_node : task_nodes) {
-      // Memory Inputs (Reads)
+      // Memory Inputs (dependency for readiness)
       for (Value input : t_node->op.getMemoryInputs()) {
         MemoryNode *m_node = getOrCreateMemoryNode(input);
         t_node->read_memrefs.push_back(m_node);
         m_node->readers.push_back(t_node.get());
       }
 
-      // Memory Outputs (Writes)
+      // Memory Outputs (produced readiness)
+      Operation *terminator = t_node->op.getBody().front().getTerminator();
       for (Value output : t_node->op.getMemoryOutputs()) {
-        MemoryNode *m_node = getOrCreateMemoryNode(output);
+        unsigned res_idx = mlir::cast<OpResult>(output).getResultNumber();
+        MemoryNode *m_node = nullptr;
+
+        // Ensures the output corresponds to a yield operand.
+        assert(res_idx < terminator->getNumOperands() && "Invalid yield operand index");
+        
+        Value source = terminator->getOperand(res_idx);
+        // Gets (or create if alloc inside) the node for the source value.
+        m_node = getOrCreateMemoryNode(source);
+        
+        // Maps the Output Result to the SAME node.
+        memref_to_node[output] = m_node;
+
         t_node->write_memrefs.push_back(m_node);
         m_node->writers.push_back(t_node.get());
       }
@@ -155,7 +169,7 @@ public:
     // 3. Builds SSA Edges (Inter-Task Value Dependencies).
     // Identifies if a task uses a value produced by another task.
     for (auto &consumer_node : task_nodes) {
-        // Iterate all operands for now to be safe.
+        // Interates all operands for now to be safe.
         for (Value operand : consumer_node->op->getOperands()) {
             if (auto producer_op = operand.getDefiningOp<TaskflowTaskOp>()) {
                 if (auto *producer_node = op_to_node[producer_op]) {
@@ -298,10 +312,11 @@ private:
     return sram_id;
   }
 
-private:
-  /// Finds best placement for a task requiring cgra_count CGRAs.
-  /// TODO: Implement a block-search algorithm for tasks with cgra_count > 1 to
-  /// find contiguous rectangular regions instead of single tiles.
+
+  /// Finds best placement for a task.
+  /// TODO: Currently defaults to single-CGRA placement. Multi-CGRA binding logic
+  /// (cgra_count > 1) is experimental/placeholder and should ideally be handled 
+  /// by an upstream resource binding pass.
   TaskPlacement findBestPlacement(TaskNode *task_node, int cgra_count,
                                   TaskMemoryGraph &graph) {
     int best_score = INT_MIN;
@@ -402,15 +417,9 @@ private:
     return kAlpha * ssa_score + kBeta * mem_score + kGamma * bal_score;
   }
 
-  /// Computes ALAP levels for efficient scheduling order.
+  /// Computes ALAP levels considering both SSA and memory dependencies.
   void computeALAP(TaskMemoryGraph &graph) {
-    // 1. Calculates in-degrees for topological sort simulation.
-    DenseMap<TaskNode*, int> in_degree;
-    for (auto &node : graph.task_nodes) {
-        for (TaskNode *user : node->ssa_users) in_degree[user]++;
-    }
-    
-    // 2. DFS for longest path from node to any sink (ALAP Level).
+    // DFS for longest path from node to any sink (ALAP Level).
     DenseMap<TaskNode*, int> memo;
     for (auto &node : graph.task_nodes) {
         node->alap_level = calculateLevel(node.get(), memo);
@@ -425,7 +434,7 @@ private:
         max_child_level = std::max(max_child_level, calculateLevel(child, memo) + 1);
     }
 
-    // Check memory dependencies too (Producer -> Mem -> Consumer)
+    // Checks memory dependencies too (Producer -> Mem -> Consumer).
     for (MemoryNode *mem : node->write_memrefs) {
         for (TaskNode *reader : mem->readers) {
             if (reader != node)
@@ -446,17 +455,17 @@ private:
 //===----------------------------------------------------------------------===//
 // Pass Definition
 //===----------------------------------------------------------------------===//
-struct PlaceACTOnCGRAPass
-    : public PassWrapper<PlaceACTOnCGRAPass, OperationPass<func::FuncOp>> {
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PlaceACTOnCGRAPass)
+struct MapCTOnCGRAArrayPass
+    : public PassWrapper<MapCTOnCGRAArrayPass, OperationPass<func::FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(MapCTOnCGRAArrayPass)
 
-  PlaceACTOnCGRAPass() = default;
+  MapCTOnCGRAArrayPass() = default;
 
-  StringRef getArgument() const override { return "place-act-on-cgra"; }
+  StringRef getArgument() const override { return "map-ct-on-cgra-array"; }
 
   StringRef getDescription() const override {
-    return "Places ACTs onto a 2D CGRA grid with adjacency optimization and "
-           "memory mapping.";
+    return "Maps Canonical Tasks (CTs) onto a 2D CGRA grid with adjacency "
+           "optimization and memory mapping.";
   }
 
   void runOnOperation() override {
@@ -473,8 +482,8 @@ struct PlaceACTOnCGRAPass
 namespace mlir {
 namespace taskflow {
 
-std::unique_ptr<Pass> createPlaceACTOnCGRAPass() {
-  return std::make_unique<PlaceACTOnCGRAPass>();
+std::unique_ptr<Pass> createMapCTOnCGRAArrayPass() {
+  return std::make_unique<MapCTOnCGRAArrayPass>();
 }
 
 } // namespace taskflow

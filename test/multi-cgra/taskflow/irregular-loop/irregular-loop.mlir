@@ -16,7 +16,7 @@
 // RUN: mlir-neura-opt %s --convert-affine-to-taskflow \
 // RUN: --construct-hyperblock-from-task \
 // RUN: --canonicalize-task \
-// RUN: --place-act-on-cgra \
+// RUN: --map-ct-on-cgra-array \
 // RUN: -o %t.placement.mlir
 // RUN: FileCheck %s --input-file=%t.placement.mlir --check-prefixes=PLACEMENT
 
