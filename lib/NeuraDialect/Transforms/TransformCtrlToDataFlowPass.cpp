@@ -148,7 +148,7 @@ void GrantPredicateInEntryBlock(Block *entry_block, OpBuilder &builder,
 //---------------------------------------------------------------------------
 void handleKernelIterArgs(neura::KernelOp kernel_op, Block *entry_block,
                           OpBuilder &builder,
-                          SmallVector<Value> &iter_arg_final_values) {
+                          SmallVector<Value> &iter_arg_phi_values) {
   llvm::errs() << "[iter_args] Handling kernel iter_args...\n";
 
   SmallVector<neura::ConstantOp> iter_arg_init_ops;
@@ -213,7 +213,7 @@ void handleKernelIterArgs(neura::KernelOp kernel_op, Block *entry_block,
     builder.create<neura::CtrlMovOp>(yield_op.getLoc(), feedback_value,
                                      reserve_op.getResult());
 
-    iter_arg_final_values.push_back(feedback_value);
+    iter_arg_phi_values.push_back(phi.getResult());
 
     init_const->removeAttr(kIterArgInitAttr);
     llvm::errs() << "[iter_args]     Created iter_arg with grant_once\n";
@@ -227,7 +227,7 @@ void handleKernelIterArgs(neura::KernelOp kernel_op, Block *entry_block,
 //---------------------------------------------------------------------------
 void handleKernelYieldTermination(
     neura::KernelOp kernel_op, Block *entry_block, OpBuilder &builder,
-    bool has_task_counter, const SmallVector<Value> &iter_arg_final_values) {
+    bool has_task_counter, const SmallVector<Value> &iter_arg_phi_values) {
   llvm::errs() << "[yield] ========================================\n";
   llvm::errs() << "[yield] Handling Yield Termination\n";
   llvm::errs() << "[yield] ========================================\n";
@@ -294,9 +294,12 @@ void handleKernelYieldTermination(
 
       // Gates all results with NOT (counter predicate).
       SmallVector<Value> gated_results;
-      for (Value result : yield_op.getResults()) {
+      for (size_t i = 0; i < yield_op.getResults().size(); ++i) {
+        Value result_to_gate = iter_arg_phi_values[i];
+
         auto gated = builder.create<neura::GrantPredicateOp>(
-            yield_op.getLoc(), result.getType(), result, return_gate);
+            yield_op.getLoc(), result_to_gate.getType(), result_to_gate,
+            return_gate);
         gated_results.push_back(gated.getResult());
 
         llvm::errs() << "[yield]     Gated result with NOT(counter_pred)\n";
@@ -1043,12 +1046,12 @@ struct TransformCtrlToDataFlowPass
         return;
       }
 
-      SmallVector<Value> iter_arg_final_values;
+      SmallVector<Value> iter_arg_phi_values;
 
       // STEP 1: Handles iter_args of the neura.kernel.
       llvm::errs() << "[ctrl2data] === STEP 1: Handle iter_args ===\n";
       handleKernelIterArgs(kernel_op, entry_block, builder,
-                           iter_arg_final_values);
+                           iter_arg_phi_values);
 
       // STEP 2: Grants predicates (only if NO task counter).
       llvm::errs() << "[ctrl2data] === STEP 2: Grant predicates ===\n";
@@ -1065,12 +1068,12 @@ struct TransformCtrlToDataFlowPass
       } else {
         llvm::errs() << "[ctrl2data] === STEP 3: Single block (skip) ===\n";
       }
-      convertPhiToPhiStart(kernel_region, builder);
-
       // STEP 4: Handles yield termination in neura.kernel.
       llvm::errs() << "[ctrl2data] === STEP 4: Handle yield ===\n";
       handleKernelYieldTermination(kernel_op, entry_block, builder,
-                                   has_task_counter, iter_arg_final_values);
+                                   has_task_counter, iter_arg_phi_values);
+
+      convertPhiToPhiStart(kernel_region, builder);
 
       kernel_op->setAttr(neura::attr::kDataflowMode,
                          StringAttr::get(kernel_op.getContext(),
