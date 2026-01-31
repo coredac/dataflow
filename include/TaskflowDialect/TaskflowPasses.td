@@ -43,4 +43,16 @@ def ClassifyCounters : Pass<"classify-counters", "ModuleOp">{
   }];
   let constructor = "taskflow::createClassifyCountersPass()";
 }
+
+def PlaceACTOnCGRA : Pass<"place-act-on-cgra", "func::FuncOp"> {
+  let summary = "Places ACTs onto a 2D CGRA grid with adjacency optimization";
+  let description = [{
+    This pass places Atomic Canonical Tasks (ACTs) onto a 2D CGRA grid.
+    Fusion candidates (same-header SSA dependencies) are placed on adjacent
+    CGRAs to enable direct data forwarding.
+
+    Uses a default 4x4 CGRA grid.
+  }];
+  let constructor = "taskflow::createPlaceACTOnCGRAPass()";
+}
 #endif // TASKFLOW_PASSES_TD

@@ -13,6 +13,13 @@
 // RUN: -o %t.canonicalized.mlir
 // RUN: FileCheck %s --input-file=%t.canonicalized.mlir --check-prefixes=CANONICALIZE
 
+// RUN: mlir-neura-opt %s --convert-affine-to-taskflow \
+// RUN: --construct-hyperblock-from-task \
+// RUN: --canonicalize-task \
+// RUN: --place-act-on-cgra \
+// RUN: -o %t.placement.mlir
+// RUN: FileCheck %s --input-file=%t.placement.mlir --check-prefixes=PLACEMENT
+
 module attributes {} {
   func.func @_Z21pureNestedLoopExamplePA8_A6_iPA8_A5_iS4_PA7_iPA9_iPiS9_S9_S9_S9_(%arg0: memref<?x8x6xi32>, %arg1: memref<?x8x5xi32>, %arg2: memref<?x8x5xi32>, %arg3: memref<?x7xi32>, %arg4: memref<?x9xi32>, %arg5: memref<?xi32>, %arg6: memref<?xi32>, %arg7: memref<?xi32>, %arg8: memref<?xi32>, %arg9: memref<?xi32>) -> i32 attributes {llvm.linkage = #llvm.linkage<external>} {
     affine.for %arg10 = 0 to 4 {
@@ -232,3 +239,14 @@ module attributes {} {
 // CANONICALIZE-NEXT:     return %0 : i32
 // CANONICALIZE-NEXT:   }
 // CANONICALIZE-NEXT: }
+
+// PLACEMENT: task_name = "Task_0"
+// PLACEMENT: cgra_col = 0 : i32, cgra_count = 1 : i32, cgra_row = 0 : i32
+// PLACEMENT: task_name = "Task_1"
+// PLACEMENT: cgra_col = 1 : i32, cgra_count = 1 : i32, cgra_row = 1 : i32
+// PLACEMENT: task_name = "Task_2"
+// PLACEMENT: cgra_col = 1 : i32, cgra_count = 1 : i32, cgra_row = 0 : i32
+// PLACEMENT: task_name = "Task_3"
+// PLACEMENT: cgra_col = 2 : i32, cgra_count = 1 : i32, cgra_row = 2 : i32
+// PLACEMENT: task_name = "Task_4"
+// PLACEMENT: cgra_col = 3 : i32, cgra_count = 1 : i32, cgra_row = 2 : i32
