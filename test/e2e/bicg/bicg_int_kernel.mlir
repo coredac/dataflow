@@ -11,7 +11,7 @@
 // RUN: mlir-neura-opt %t-kernel.mlir \
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
-// RUN:   --promote-func-arg-to-const \
+// RUN:   --promote-input-arg-to-const \
 // RUN:   --fold-constant \
 // RUN:   --canonicalize-return \
 // RUN:   --canonicalize-live-in \
