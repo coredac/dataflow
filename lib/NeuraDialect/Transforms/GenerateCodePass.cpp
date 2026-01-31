@@ -267,7 +267,16 @@ struct Topology {
 
 static Topology getTopologyFromArchitecture(int per_cgra_rows, int per_cgra_columns) {
   Topology topo;
-  const Architecture &architecture = mlir::neura::getArchitecture();
+  mlir::neura::Architecture architecture(1,
+                                         1,
+                                         mlir::neura::BaseTopology::MESH,
+                                         per_cgra_rows,
+                                         per_cgra_columns,
+                                         mlir::neura::BaseTopology::MESH,
+                                         mlir::neura::TileDefaults{},
+                                         std::vector<mlir::neura::TileOverride>{},
+                                         mlir::neura::LinkDefaults{},
+                                         std::vector<mlir::neura::LinkOverride>{});
 
   for (auto *tile : architecture.getAllTiles()) {
     topo.tile_location[tile->getId()] = {tile->getX(), tile->getY()};
@@ -402,9 +411,7 @@ struct GenerateCodePass
   }
 
   std::pair<int, int> getArrayDimensions(func::FuncOp function) {
-    const Architecture &architecture = mlir::neura::getArchitecture();
-    int columns = architecture.getPerCgraColumns();
-    int rows = architecture.getPerCgraRows();
+    int columns = 4, rows = 4; // default 4x4 CGRA.
     if (auto mapping_info = function->getAttrOfType<DictionaryAttr>(attr::kMappingInfo)) {
       if (auto x_tiles = dyn_cast_or_null<IntegerAttr>(mapping_info.get(attr::kXTiles))) columns = x_tiles.getInt();
       if (auto y_tiles = dyn_cast_or_null<IntegerAttr>(mapping_info.get(attr::kYTiles))) rows   = y_tiles.getInt();

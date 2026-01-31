@@ -9,7 +9,6 @@
 #include "NeuraDialect/NeuraOps.h"
 #include "NeuraDialect/NeuraPasses.h"
 #include "NeuraDialect/NeuraTypes.h"
-#include "mlir/Transforms/ViewOpGraph.h"
 
 std::string filename = "opgraph.dot";
 std::error_code EC;
@@ -21,11 +20,8 @@ void mlir::neura::registerNeuraConversionPassPipeline() {
       "neura-conversion", "Convert all dialects to Neura dialect",
       [](OpPassManager &pm) {
         pm.addPass(mlir::neura::createAssignAcceleratorPass());
-
-        pm.addPass(mlir::createLowerAffineToNeuraPass());
+        // Convert all the other dialects into the Neura dialect
         pm.addPass(mlir::createLowerArithToNeuraPass());
-        pm.addPass(mlir::createLowerMemRefToNeuraPass());
-        pm.addPass(mlir::createLowerBuiltinToNeuraPass());
         pm.addPass(mlir::createLowerLlvmToNeuraPass());
         pm.addPass(mlir::createPrintOpGraphPass(os));
 
@@ -42,8 +38,5 @@ void mlir::neura::registerNeuraConversionPassPipeline() {
         pm.addPass(mlir::neura::createFusePatternPass());
         pm.addPass(mlir::neura::createInsertDataMovPass());
         pm.addPass(mlir::createPrintOpGraphPass(os));
-
-        pm.addPass(mlir::neura::createMapToAcceleratorPass());
-        pm.addPass(mlir::neura::createGenerateCodePass());
       });
 }
