@@ -21,14 +21,6 @@ def AffineLoopTreeSerialization : Pass<"affine-loop-tree-serialization", "Module
     "mlir::func::FuncDialect"];
 }
 
-def CanonicalizeTask : Pass<"canonicalize-task", "func::FuncOp"> {
-  let summary = "Canonicalizes Taskflow tasks";
-  let description = [{
-    This pass canonicalizes Taskflow tasks.
-  }];
-  let constructor = "taskflow::createCanonicalizeTaskPass()";
-}
-
 def ConstructHyperblockFromTask : Pass<"construct-hyperblock-from-task", "func::FuncOp"> {
   let summary = "Constructs hyperblocks and counter chain from Taskflow tasks";
   let description = [{
