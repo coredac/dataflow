@@ -55,7 +55,7 @@
 module {
   func.func @_Z6kernelPiS_S_(%arg0: memref<?xi32>, %arg1: memref<?xi32>, %arg2: memref<?xi32>) -> i32 attributes {llvm.linkage = #llvm.linkage<external>} {
     %c0_i32 = arith.constant 0 : i32
-    %value_outputs = "taskflow.task"(%arg0, %arg2, %c0_i32) <{operandSegmentSizes = array<i32: 2, 1>, resultSegmentSizes = array<i32: 0, 1>, task_name = "Task_0"}> ({
+    %value_outputs = taskflow.task @Task_o read_memrefs(%arg0, %arg2 : memref<?xi32>, memref<?xi32>) value_inputs(%c0_i32 : i32) : (memref<?xi32>, memref<?xi32>, i32) -> (i32) {
     ^bb0(%arg3: memref<?xi32>, %arg4: memref<?xi32>, %arg5: i32):
       %1 = neura.kernel inputs(%arg3, %arg4, %arg5 : memref<?xi32>, memref<?xi32>, i32) {
       ^bb0(%arg6: memref<?xi32>, %arg7: memref<?xi32>, %arg8: i32):
@@ -68,8 +68,8 @@ module {
         }
         neura.yield results(%0 : i32)
       } : i32
-      "taskflow.yield"(%1) <{operandSegmentSizes = array<i32: 0, 1>}> : (i32) -> ()
-    }) : (memref<?xi32>, memref<?xi32>, i32) -> i32
+      taskflow.yield values(%1 : i32)
+    }
     return %value_outputs : i32
   }
 }
@@ -77,7 +77,7 @@ module {
 // NEURA:      module {
 // NEURA-NEXT:   func.func @_Z6kernelPiS_S_(%arg0: memref<?xi32>, %arg1: memref<?xi32>, %arg2: memref<?xi32>) -> i32 attributes {llvm.linkage = #llvm.linkage<external>} {
 // NEURA-NEXT:     %c0_i32 = arith.constant 0 : i32
-// NEURA-NEXT:     %value_outputs = "taskflow.task"(%arg0, %arg2, %c0_i32) <{operandSegmentSizes = array<i32: 2, 1>, resultSegmentSizes = array<i32: 0, 1>, task_name = "Task_0"}> ({
+// NEURA-NEXT:     %value_outputs = taskflow.task @Task_o read_memrefs(%arg0, %arg2 : memref<?xi32>, memref<?xi32>) value_inputs(%c0_i32 : i32) : (memref<?xi32>, memref<?xi32>, i32) -> (i32) {
 // NEURA-NEXT:     ^bb0(%arg3: memref<?xi32>, %arg4: memref<?xi32>, %arg5: i32):
 // NEURA-NEXT:       %0 = neura.kernel inputs(%arg3, %arg4, %arg5 : memref<?xi32>, memref<?xi32>, i32) attributes {accelerator = "neura"} {
 // NEURA-NEXT:       ^bb0(%arg6: memref<?xi32>, %arg7: memref<?xi32>, %arg8: i32):
@@ -101,56 +101,56 @@ module {
 // NEURA-NEXT:       ^bb3:  // pred: ^bb1
 // NEURA-NEXT:         neura.yield results(%6 : i32)
 // NEURA-NEXT:       } : i32
-// NEURA-NEXT:       "taskflow.yield"(%0) <{operandSegmentSizes = array<i32: 0, 1>}> : (i32) -> ()
-// NEURA-NEXT:     }) : (memref<?xi32>, memref<?xi32>, i32) -> i32
+// NEURA-NEXT:       taskflow.yield values(%0 : i32)
+// NEURA-NEXT:     }
 // NEURA-NEXT:     return %value_outputs : i32
 // NEURA-NEXT:   }
 // NEURA-NEXT: }
 
 
-// DATAFLOW:     module {
-// DATAFLOW-NEXT:  func.func @_Z6kernelPiS_S_(%arg0: memref<?xi32>, %arg1: memref<?xi32>, %arg2: memref<?xi32>) -> i32 attributes {llvm.linkage = #llvm.linkage<external>} {
-// DATAFLOW-NEXT:    %c0_i32 = arith.constant 0 : i32
-// DATAFLOW-NEXT:    %value_outputs = "taskflow.task"(%arg0, %arg2, %c0_i32) <{operandSegmentSizes = array<i32: 2, 1>, resultSegmentSizes = array<i32: 0, 1>, task_name = "Task_0"}> ({
-// DATAFLOW-NEXT:    ^bb0(%arg3: memref<?xi32>, %arg4: memref<?xi32>, %arg5: i32):
-// DATAFLOW-NEXT:      %0 = neura.kernel inputs(%arg3, %arg4, %arg5 : memref<?xi32>, memref<?xi32>, i32) attributes {accelerator = "neura", dataflow_mode = "predicate"} {
-// DATAFLOW-NEXT:      ^bb0(%arg6: memref<?xi32>, %arg7: memref<?xi32>, %arg8: i32):
-// DATAFLOW-NEXT:        %1 = "neura.grant_once"() <{constant_value = "%input2"}> : () -> !neura.data<i32, i1>
-// DATAFLOW-NEXT:        %2 = "neura.constant"() <{value = 0 : index}> : () -> !neura.data<index, i1>
-// DATAFLOW-NEXT:        %3 = "neura.cast"(%2) <{cast_type = "index_to_int"}> : (!neura.data<index, i1>) -> !neura.data<i64, i1>
-// DATAFLOW-NEXT:        %4 = "neura.grant_once"(%3) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
-// DATAFLOW-NEXT:        %5 = neura.reserve : !neura.data<i32, i1>
-// DATAFLOW-NEXT:        %6 = neura.phi_start %1, %5 : !neura.data<i32, i1>, !neura.data<i32, i1> -> !neura.data<i32, i1>
-// DATAFLOW-NEXT:        %7 = neura.reserve : !neura.data<i64, i1>
-// DATAFLOW-NEXT:        %8 = neura.phi_start %4, %7 : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
-// DATAFLOW-NEXT:        %9 = "neura.cast"(%8) <{cast_type = "int_to_index"}> : (!neura.data<i64, i1>) -> !neura.data<index, i1>
-// DATAFLOW-NEXT:        %10 = "neura.icmp"(%9) <{cmpType = "slt"}> {rhs_value = 32 : index} : (!neura.data<index, i1>) -> !neura.data<i1, i1>
-// DATAFLOW-NEXT:        %11 = neura.grant_predicate %9, %10 : !neura.data<index, i1>, !neura.data<i1, i1> -> !neura.data<index, i1>
-// DATAFLOW-NEXT:        %12 = neura.grant_predicate %6, %10 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
-// DATAFLOW-NEXT:        %13 = "neura.not"(%10) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
-// DATAFLOW-NEXT:        %14 = neura.grant_predicate %6, %13 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
-// DATAFLOW-NEXT:        neura.return_value %14 : !neura.data<i32, i1>
-// DATAFLOW-NEXT:        %15 = neura.load_indexed [%11 : !neura.data<index, i1>]  {lhs_value = "%input0"} : !neura.data<i32, i1>
-// DATAFLOW-NEXT:        %16 = neura.load_indexed [%11 : !neura.data<index, i1>]  {lhs_value = "%input1"} : !neura.data<i32, i1>
-// DATAFLOW-NEXT:        %17 = "neura.mul"(%15, %16) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
-// DATAFLOW-NEXT:        %18 = "neura.add"(%12, %17) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
-// DATAFLOW-NEXT:        %19 = "neura.add"(%11) {rhs_value = 1 : index} : (!neura.data<index, i1>) -> !neura.data<index, i1>
-// DATAFLOW-NEXT:        %20 = "neura.cast"(%19) <{cast_type = "index_to_int"}> : (!neura.data<index, i1>) -> !neura.data<i64, i1>
-// DATAFLOW-NEXT:        neura.ctrl_mov %20 -> %7 : !neura.data<i64, i1> !neura.data<i64, i1>
-// DATAFLOW-NEXT:        neura.ctrl_mov %18 -> %5 : !neura.data<i32, i1> !neura.data<i32, i1>
-// DATAFLOW-NEXT:        neura.yield
-// DATAFLOW-NEXT:      } : i32
-// DATAFLOW-NEXT:      "taskflow.yield"(%0) <{operandSegmentSizes = array<i32: 0, 1>}> : (i32) -> ()
-// DATAFLOW-NEXT:    }) : (memref<?xi32>, memref<?xi32>, i32) -> i32
-// DATAFLOW-NEXT:    return %value_outputs : i32
-// DATAFLOW-NEXT:  }
-// DATAFLOW-NEXT:}
+// DATAFLOW:      module {
+// DATAFLOW-NEXT:   func.func @_Z6kernelPiS_S_(%arg0: memref<?xi32>, %arg1: memref<?xi32>, %arg2: memref<?xi32>) -> i32 attributes {llvm.linkage = #llvm.linkage<external>} {
+// DATAFLOW-NEXT:     %c0_i32 = arith.constant 0 : i32
+// DATAFLOW-NEXT:     %value_outputs = taskflow.task @Task_o read_memrefs(%arg0, %arg2 : memref<?xi32>, memref<?xi32>) value_inputs(%c0_i32 : i32) : (memref<?xi32>, memref<?xi32>, i32) -> (i32) {
+// DATAFLOW-NEXT:     ^bb0(%arg3: memref<?xi32>, %arg4: memref<?xi32>, %arg5: i32):
+// DATAFLOW-NEXT:       %0 = neura.kernel inputs(%arg3, %arg4, %arg5 : memref<?xi32>, memref<?xi32>, i32) attributes {accelerator = "neura", dataflow_mode = "predicate"} {
+// DATAFLOW-NEXT:       ^bb0(%arg6: memref<?xi32>, %arg7: memref<?xi32>, %arg8: i32):
+// DATAFLOW-NEXT:         %1 = "neura.grant_once"() <{constant_value = "%input2"}> : () -> !neura.data<i32, i1>
+// DATAFLOW-NEXT:         %2 = "neura.constant"() <{value = 0 : index}> : () -> !neura.data<index, i1>
+// DATAFLOW-NEXT:         %3 = "neura.cast"(%2) <{cast_type = "index_to_int"}> : (!neura.data<index, i1>) -> !neura.data<i64, i1>
+// DATAFLOW-NEXT:         %4 = "neura.grant_once"(%3) : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
+// DATAFLOW-NEXT:         %5 = neura.reserve : !neura.data<i32, i1>
+// DATAFLOW-NEXT:         %6 = neura.phi_start %1, %5 : !neura.data<i32, i1>, !neura.data<i32, i1> -> !neura.data<i32, i1>
+// DATAFLOW-NEXT:         %7 = neura.reserve : !neura.data<i64, i1>
+// DATAFLOW-NEXT:         %8 = neura.phi_start %4, %7 : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
+// DATAFLOW-NEXT:         %9 = "neura.cast"(%8) <{cast_type = "int_to_index"}> : (!neura.data<i64, i1>) -> !neura.data<index, i1>
+// DATAFLOW-NEXT:         %10 = "neura.icmp"(%9) <{cmpType = "slt"}> {rhs_value = 32 : index} : (!neura.data<index, i1>) -> !neura.data<i1, i1>
+// DATAFLOW-NEXT:         %11 = neura.grant_predicate %9, %10 : !neura.data<index, i1>, !neura.data<i1, i1> -> !neura.data<index, i1>
+// DATAFLOW-NEXT:         %12 = neura.grant_predicate %6, %10 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
+// DATAFLOW-NEXT:         %13 = "neura.not"(%10) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
+// DATAFLOW-NEXT:         %14 = neura.grant_predicate %6, %13 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
+// DATAFLOW-NEXT:         neura.return_value %14 : !neura.data<i32, i1>
+// DATAFLOW-NEXT:         %15 = neura.load_indexed [%11 : !neura.data<index, i1>]  {lhs_value = "%input0"} : !neura.data<i32, i1>
+// DATAFLOW-NEXT:         %16 = neura.load_indexed [%11 : !neura.data<index, i1>]  {lhs_value = "%input1"} : !neura.data<i32, i1>
+// DATAFLOW-NEXT:         %17 = "neura.mul"(%15, %16) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
+// DATAFLOW-NEXT:         %18 = "neura.add"(%12, %17) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
+// DATAFLOW-NEXT:         %19 = "neura.add"(%11) {rhs_value = 1 : index} : (!neura.data<index, i1>) -> !neura.data<index, i1>
+// DATAFLOW-NEXT:         %20 = "neura.cast"(%19) <{cast_type = "index_to_int"}> : (!neura.data<index, i1>) -> !neura.data<i64, i1>
+// DATAFLOW-NEXT:         neura.ctrl_mov %20 -> %7 : !neura.data<i64, i1> !neura.data<i64, i1>
+// DATAFLOW-NEXT:         neura.ctrl_mov %18 -> %5 : !neura.data<i32, i1> !neura.data<i32, i1>
+// DATAFLOW-NEXT:         neura.yield
+// DATAFLOW-NEXT:       } : i32
+// DATAFLOW-NEXT:       taskflow.yield values(%0 : i32)
+// DATAFLOW-NEXT:     }
+// DATAFLOW-NEXT:     return %value_outputs : i32
+// DATAFLOW-NEXT:   }
+// DATAFLOW-NEXT: }
 
 
 // MAPPED:      module {
 // MAPPED-NEXT:   func.func @_Z6kernelPiS_S_(%arg0: memref<?xi32>, %arg1: memref<?xi32>, %arg2: memref<?xi32>) -> i32 attributes {llvm.linkage = #llvm.linkage<external>} {
 // MAPPED-NEXT:     %c0_i32 = arith.constant 0 : i32
-// MAPPED-NEXT:     %value_outputs = "taskflow.task"(%arg0, %arg2, %c0_i32) <{operandSegmentSizes = array<i32: 2, 1>, resultSegmentSizes = array<i32: 0, 1>, task_name = "Task_0"}> ({
+// MAPPED-NEXT:     %value_outputs = taskflow.task @Task_o read_memrefs(%arg0, %arg2 : memref<?xi32>, memref<?xi32>) value_inputs(%c0_i32 : i32) : (memref<?xi32>, memref<?xi32>, i32) -> (i32) {
 // MAPPED-NEXT:     ^bb0(%arg3: memref<?xi32>, %arg4: memref<?xi32>, %arg5: i32):
 // MAPPED-NEXT:       %0 = neura.kernel inputs(%arg3, %arg4, %arg5 : memref<?xi32>, memref<?xi32>, i32) attributes {accelerator = "neura", dataflow_mode = "predicate", mapping_info = {compiled_ii = 4 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 4 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {
 // MAPPED-NEXT:       ^bb0(%arg6: memref<?xi32>, %arg7: memref<?xi32>, %arg8: i32):
@@ -193,11 +193,13 @@ module {
 // MAPPED-NEXT:         neura.ctrl_mov %32 -> %3 {dfg_id = 37 : i32, mapping_locs = [{id = 13 : i32, index_per_ii = 3 : i32, invalid_iterations = 1 : i32, resource = "link", time_step = 7 : i32}]} : !neura.data<i32, i1> !neura.data<i32, i1>
 // MAPPED-NEXT:         neura.yield {dfg_id = 4 : i32}
 // MAPPED-NEXT:       } : i32
-// MAPPED-NEXT:       "taskflow.yield"(%0) <{operandSegmentSizes = array<i32: 0, 1>}> : (i32) -> ()
-// MAPPED-NEXT:     }) : (memref<?xi32>, memref<?xi32>, i32) -> i32
+// MAPPED-NEXT:       taskflow.yield values(%0 : i32)
+// MAPPED-NEXT:     }
 // MAPPED-NEXT:     return %value_outputs : i32
 // MAPPED-NEXT:   }
 // MAPPED-NEXT: }
+
+
 
 
 

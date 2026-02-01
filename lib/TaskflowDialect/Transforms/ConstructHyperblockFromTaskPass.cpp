@@ -25,7 +25,7 @@ using namespace mlir::taskflow;
 
 namespace {
 //---------------------------------------------------------------------------
-// Loop Info Structure
+// Loop Info Structure.
 //----------------------------------------------------------------------------
 struct LoopInfo {
   affine::AffineForOp for_op;
@@ -42,7 +42,7 @@ struct LoopInfo {
 };
 
 //---------------------------------------------------------------------------
-// Hyperblock Info Structure
+// Hyperblock Info Structure.
 //----------------------------------------------------------------------------
 // Represents a code block that should become a hyperblock.
 struct HyperblockInfo {
@@ -64,7 +64,7 @@ struct HyperblockInfo {
 };
 
 //----------------------------------------------------------------------------
-// Helper Functions
+// Helper Functions.
 //----------------------------------------------------------------------------
 // Extracts loop parameters from affine.for operation.
 static std::optional<LoopInfo> extractLoopBound(affine::AffineForOp for_op) {
@@ -123,7 +123,7 @@ static SmallVector<LoopInfo> collectLoopInfo(TaskflowTaskOp task_op) {
 }
 
 //----------------------------------------------------------------------------
-// Counter Chain Creation
+// Counter Chain Creation.
 //----------------------------------------------------------------------------
 // Recursively creates counter chain for each top-level loop.
 static void createCounterChainRecursivly(OpBuilder &builder, Location loc,
