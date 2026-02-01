@@ -4,7 +4,6 @@
 
 // RUN: mlir-neura-opt %s --convert-affine-to-taskflow \
 // RUN: --construct-hyperblock-from-task \
-// RUN: --canonicalize-task \
 // RUN: -o %t.canonicalized.mlir
 // RUN: FileCheck %s --input-file=%t.canonicalized.mlir --check-prefixes=CANONICALIZE
 
@@ -100,7 +99,7 @@ module attributes {} {
 // TASKFLOW:      module {
 // TASKFLOW-NEXT:   func.func @_Z6kernelPiS_S_(%arg0: memref<?xi32>, %arg1: memref<?xi32>, %arg2: memref<?xi32>) -> i32 attributes {llvm.linkage = #llvm.linkage<external>} {
 // TASKFLOW-NEXT:     %c0_i32 = arith.constant 0 : i32
-// TASKFLOW-NEXT:     %value_outputs = "taskflow.task"(%arg0, %arg2, %c0_i32) <{operandSegmentSizes = array<i32: 2, 1>, resultSegmentSizes = array<i32: 0, 1>, task_name = "Task_0"}> ({
+// TASKFLOW-NEXT:     %value_outputs = taskflow.task @Task_0 read_inputs(%arg0, %arg2 : memref<?xi32>, memref<?xi32>) value_inputs(%c0_i32 : i32) [original_read_memrefs(%arg0, %arg2)] : (memref<?xi32>, memref<?xi32>, i32) -> (i32) {
 // TASKFLOW-NEXT:     ^bb0(%arg3: memref<?xi32>, %arg4: memref<?xi32>, %arg5: i32):
 // TASKFLOW-NEXT:       %0 = affine.for %arg6 = 0 to 32 iter_args(%arg7 = %arg5) -> (i32) {
 // TASKFLOW-NEXT:         %1 = affine.load %arg3[%arg6] : memref<?xi32>
@@ -109,8 +108,8 @@ module attributes {} {
 // TASKFLOW-NEXT:         %4 = arith.addi %arg7, %3 : i32
 // TASKFLOW-NEXT:         affine.yield %4 : i32
 // TASKFLOW-NEXT:       }
-// TASKFLOW-NEXT:       "taskflow.yield"(%0) <{operandSegmentSizes = array<i32: 0, 1>}> : (i32) -> ()
-// TASKFLOW-NEXT:     }) : (memref<?xi32>, memref<?xi32>, i32) -> i32
+// TASKFLOW-NEXT:       taskflow.yield values(%0 : i32)
+// TASKFLOW-NEXT:     }
 // TASKFLOW-NEXT:     return %value_outputs : i32
 // TASKFLOW-NEXT:   }
 // TASKFLOW-NEXT: }

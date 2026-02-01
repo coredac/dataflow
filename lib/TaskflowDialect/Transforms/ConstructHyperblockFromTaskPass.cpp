@@ -206,6 +206,7 @@ struct LECPattern {
 // Detects Loop-Epilogue Code pattern in the task.
 static LECPattern detectLECPattern(affine::AffineForOp outer_loop) {
   LECPattern pattern;
+  pattern.has_lec_pattern = false;
   pattern.outer_loop = outer_loop;
 
   Block &body = outer_loop.getRegion().front();
@@ -220,7 +221,6 @@ static LECPattern detectLECPattern(affine::AffineForOp outer_loop) {
     } else if (!(isa<affine::AffineYieldOp>(&op) && op.getOperands().empty())) {
       if (!found_nested_loop) {
         pattern.prologue_code.push_back(&op);
-        pattern.has_lec_pattern = true;
       } else {
         pattern.epilogue_code.push_back(&op);
         pattern.has_lec_pattern = true;
