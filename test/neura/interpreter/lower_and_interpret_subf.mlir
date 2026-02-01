@@ -19,7 +19,7 @@
 
 // RUN: %t-out.bin > %t-dumped_output.txt
 
-// RUN: mlir-neura-opt --lower-arith-to-neura --insert-data-mov %s \
+// RUN: mlir-neura-opt --assign-accelerator --lower-arith-to-neura --insert-data-mov %s \
 // RUN:   -o %t-neura.mlir
 
 // RUN: neura-interpreter %t-neura.mlir >> %t-dumped_output.txt

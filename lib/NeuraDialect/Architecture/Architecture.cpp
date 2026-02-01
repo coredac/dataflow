@@ -1,5 +1,4 @@
 #include "NeuraDialect/Architecture/Architecture.h"
-#include "NeuraDialect/Architecture/ArchitectureSpec.h"
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
 #include <cassert>
@@ -389,7 +388,8 @@ void Architecture::createLinkIfValid(int &link_id, Tile *src_tile, int dst_x,
                                      const LinkDefaults &link_defaults) {
   if (dst_x >= 0 && dst_x < getPerCgraColumns() && dst_y >= 0 &&
       dst_y < getPerCgraRows()) {
-    // Checks if the destination tile actually exists (not removed by tile_overrides).
+    // Checks if the destination tile actually exists (not removed by
+    // tile_overrides).
     auto it = coord_to_tile_.find({dst_x, dst_y});
     if (it != coord_to_tile_.end()) {
       createSingleLink(link_id, src_tile, it->second, link_defaults);
@@ -553,6 +553,7 @@ void Architecture::applyLinkOverrides(
 Architecture::Architecture(int multi_cgra_rows, int multi_cgra_columns,
                            BaseTopology multi_cgra_base_topology,
                            int per_cgra_rows, int per_cgra_columns,
+                           int max_ctrl_mem_items,
                            BaseTopology per_cgra_base_topology,
                            const TileDefaults &tile_defaults,
                            const std::vector<TileOverride> &tile_overrides,
@@ -565,6 +566,7 @@ Architecture::Architecture(int multi_cgra_rows, int multi_cgra_columns,
   // this->multi_cgra_base_topology_ = multi_cgra_base_topology;
   this->per_cgra_rows_ = per_cgra_rows;
   this->per_cgra_columns_ = per_cgra_columns;
+  this->max_ctrl_mem_items_ = max_ctrl_mem_items;
 
   // Initializes architecture components using helper methods.
   initializeTiles(per_cgra_rows, per_cgra_columns);

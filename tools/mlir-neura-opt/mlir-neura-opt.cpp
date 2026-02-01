@@ -6,32 +6,44 @@
 #include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/Tosa/IR/TosaOps.h"
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllPasses.h"
+#include "mlir/InitAllExtensions.h"
+#include "mlir/Dialect/Linalg/Transforms/BufferizableOpInterfaceImpl.h"
+#include "mlir/Dialect/Tensor/Transforms/BufferizableOpInterfaceImpl.h"
+#include "mlir/Dialect/Arith/Transforms/BufferizableOpInterfaceImpl.h"
+#include "mlir/Dialect/SCF/Transforms/BufferizableOpInterfaceImpl.h"
+#include "mlir/Dialect/Bufferization/Transforms/FuncBufferizableOpInterfaceImpl.h"
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "llvm/Support/CommandLine.h"
 
 #include "Conversion/ConversionPasses.h"
-#include "NeuraDialect/Architecture/ArchitectureSpec.h"
+#include "NeuraDialect/Architecture/Architecture.h"
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraPasses.h"
+#include "NeuraDialect/Util/ArchParser.h"
 #include "TaskflowDialect/TaskflowDialect.h"
 #include "TaskflowDialect/TaskflowPasses.h"
+using mlir::neura::Architecture;
+using mlir::neura::util::ArchParser;
 
 // Global variable to store architecture spec file path
 static std::string architecture_spec_file;
-static mlir::neura::TileDefaults tile_defaults;
 
-// Function to get the architecture spec file path
-std::string mlir::neura::getArchitectureSpecFile() {
-  return architecture_spec_file;
-}
-
-// Function to get tile defaults configuration
-mlir::neura::TileDefaults mlir::neura::getTileDefaults() {
-  return tile_defaults;
+const Architecture &mlir::neura::getArchitecture() {
+  static Architecture instance = []() {
+    auto arch_parser = ArchParser(architecture_spec_file);
+    auto architecture_result = arch_parser.getArchitecture();
+    if (failed(architecture_result)) {
+      llvm::report_fatal_error("[neura-compiler] Failed to get architecture.");
+    }
+    return std::move(architecture_result.value());
+  }();
+  return instance;
 }
 
 int main(int argc, char **argv) {
@@ -47,6 +59,10 @@ int main(int argc, char **argv) {
         architecture_spec_file = argv[i + 1];
         ++i; // skip value
         continue;
+      } else {
+        llvm::errs() << "[mlir-neura-opt] Error: --architecture-spec option "
+                        "requires a value\n";
+        return EXIT_FAILURE;
       }
     } else if (arg_ref.starts_with("--architecture-spec=")) {
       architecture_spec_file =
@@ -73,9 +89,18 @@ int main(int argc, char **argv) {
   registry.insert<mlir::ml_program::MLProgramDialect>();
   registry.insert<mlir::tensor::TensorDialect>();
   registry.insert<mlir::linalg::LinalgDialect>();
+  registry.insert<mlir::tosa::TosaDialect>();
+  registry.insert<mlir::bufferization::BufferizationDialect>();
   registry.insert<mlir::taskflow::TaskflowDialect>();
+  mlir::registerAllExtensions(registry);
+  mlir::linalg::registerBufferizableOpInterfaceExternalModels(registry);
+  mlir::tensor::registerBufferizableOpInterfaceExternalModels(registry);
+  mlir::arith::registerBufferizableOpInterfaceExternalModels(registry);
+  mlir::scf::registerBufferizableOpInterfaceExternalModels(registry);
+  mlir::bufferization::func_ext::registerBufferizableOpInterfaceExternalModels(registry);
 
   mlir::neura::registerPasses();
+  mlir::registerAllPasses();
   mlir::registerPasses();
   mlir::registerViewOpGraphPass();
   mlir::taskflow::registerPasses();

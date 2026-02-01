@@ -9,6 +9,16 @@ set(LIBS
         MLIRConversion
         MLIRNeura
         MLIRTaskflow
+        MLIRTosaDialect
+        MLIRTosaTransforms
+        MLIRLinalgTransforms
+        MLIRArithTransforms
+        MLIRSCFTransforms
+        MLIRTensorTransforms
+        MLIRBufferizationDialect
+        MLIRBufferizationTransforms
+        MLIRFuncAllExtensions
+        MLIRTensorAllExtensions
         MLIRTransforms
         MLIROptLib
         MLIRPass

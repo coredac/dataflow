@@ -1,3 +1,4 @@
+#include "NeuraDialect/NeuraAttributes.h"
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraOps.h"
 #include "NeuraDialect/NeuraPasses.h"
@@ -729,15 +730,18 @@ struct TransformToSteerControlPass
     }
 
     // Checks if the function is now in predicate mode.
-    auto dataflow_mode_attr = func->getAttrOfType<StringAttr>("dataflow_mode");
-    if (!dataflow_mode_attr || dataflow_mode_attr.getValue() != "predicate") {
+    auto dataflow_mode_attr =
+        func->getAttrOfType<StringAttr>(neura::attr::kDataflowMode);
+    if (!dataflow_mode_attr ||
+        dataflow_mode_attr.getValue() != neura::attr::val::kModePredicate) {
       func.emitError("transform-to-steer-control requires function to be in "
                      "predicate mode");
       signalPassFailure();
       return;
     }
     // Changes the dataflow_mode attribute to "steering".
-    func->setAttr("dataflow_mode", StringAttr::get(&context, "steering"));
+    func->setAttr(neura::attr::kDataflowMode,
+                  StringAttr::get(&context, neura::attr::val::kModeSteering));
     llvm::errs()
         << "[ctrl2steer] Changed dataflow mode from predicate to steering "
            "for function: "

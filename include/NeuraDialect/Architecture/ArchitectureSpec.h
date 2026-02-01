@@ -21,11 +21,12 @@ struct TileDefaults {
   // Default function unit types - include all supported function units
   // types for newbie convenience.
   std::vector<std::string> function_units = {
-      "add",          "mul",   "div",       "fadd",      "fmul",
-      "fdiv",         "logic", "cmp",       "sel",       "type_conv",
-      "shift",        "vfmul", "fadd_fadd", "fmul_fadd", "grant",
-      "loop_control", "phi",   "constant",  "mem",       "return",
-      "mem_indexed",  "alloca"};
+      "add",         "mul",       "div",     "fadd",
+      "fmul",        "fdiv",      "logic",   "cmp",
+      "sel",         "type_conv", "shift",   "vfmul",
+      "fadd_fadd",   "fmul_fadd", "grant",   "loop_control",
+      "phi",         "constant",  "mem",     "return",
+      "mem_indexed", "alloca",    "counter", "extract_predicate"};
 };
 
 // Structure for holding memory configuration.
@@ -67,13 +68,6 @@ struct LinkOverride {
   int dst_tile_y = -1;
   bool existence = true;
 };
-
-// Function for getting the architecture specification file path.
-// This is set by the command line tool when a YAML file is provided.
-std::string getArchitectureSpecFile();
-
-// Function for getting tile defaults configuration.
-TileDefaults getTileDefaults();
 
 } // namespace neura
 } // namespace mlir

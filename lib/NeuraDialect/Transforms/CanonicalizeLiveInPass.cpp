@@ -1,3 +1,4 @@
+#include "Common/AcceleratorAttrs.h"
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -793,17 +794,21 @@ struct CanonicalizeLiveInPass
 
   void runOnOperation() override {
     ModuleOp module_op = getOperation();
+
+    // Processes functions.
     module_op.walk([&](Operation *op) {
       Region *region = nullptr;
       if (auto func_op = dyn_cast<func::FuncOp>(op)) {
-        auto accel_attr = func_op->getAttrOfType<StringAttr>("accelerator");
-        if (!accel_attr || accel_attr.getValue() != "neura") {
+        auto accel_attr =
+            func_op->getAttrOfType<StringAttr>(accel::kAcceleratorAttr);
+        if (!accel_attr || accel_attr.getValue() != accel::kNeuraTarget) {
           return;
         }
         region = &func_op.getBody();
       } else if (auto llvm_func = dyn_cast<LLVM::LLVMFuncOp>(op)) {
-        auto accel_attr = llvm_func->getAttrOfType<StringAttr>("accelerator");
-        if (!accel_attr || accel_attr.getValue() != "neura") {
+        auto accel_attr =
+            llvm_func->getAttrOfType<StringAttr>(accel::kAcceleratorAttr);
+        if (!accel_attr || accel_attr.getValue() != accel::kNeuraTarget) {
           return;
         }
         region = &llvm_func.getBody();
@@ -819,6 +824,30 @@ struct CanonicalizeLiveInPass
       PostDominanceInfo post_dom_info(op);
 
       if (failed(promoteLiveInValuesToBlockArgs(*region, dom_info,
+                                                post_dom_info))) {
+        signalPassFailure();
+        return;
+      }
+    });
+
+    // Processes neura.kernel operations.
+    module_op.walk([&](neura::KernelOp kernel_op) {
+      auto accel_attr =
+          kernel_op->getAttrOfType<StringAttr>(accel::kAcceleratorAttr);
+      if (!accel_attr || accel_attr.getValue() != accel::kNeuraTarget) {
+        return;
+      }
+
+      Region &kernel_region = kernel_op.getBody();
+      if (kernel_region.empty()) {
+        return;
+      }
+
+      // Creates dominance info for the kernel region.
+      DominanceInfo dom_info(kernel_op);
+      PostDominanceInfo post_dom_info(kernel_op);
+
+      if (failed(promoteLiveInValuesToBlockArgs(kernel_region, dom_info,
                                                 post_dom_info))) {
         signalPassFailure();
         return;

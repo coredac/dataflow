@@ -1,6 +1,6 @@
 // RUN: mlir-neura-opt %s --lower-affine | FileCheck %s --check-prefix=CHECK-SCF
 // RUN: mlir-neura-opt %s --lower-affine --convert-scf-to-cf --convert-cf-to-llvm --convert-arith-to-llvm --convert-func-to-llvm | FileCheck %s --check-prefix=CHECK-LLVM
-// RUN: mlir-neura-opt %s --lower-affine --convert-scf-to-cf --convert-cf-to-llvm --convert-arith-to-llvm --convert-func-to-llvm --lower-llvm-to-neura | FileCheck %s --check-prefix=CHECK-NEURA-BR
+// RUN: mlir-neura-opt %s --lower-affine --convert-scf-to-cf --convert-cf-to-llvm --convert-arith-to-llvm --assign-accelerator --convert-func-to-llvm --lower-llvm-to-neura | FileCheck %s --check-prefix=CHECK-NEURA-BR
 
 // This test demonstrates the complete multi-stage lowering chain for conditionals.
 // Note: Direct lowering affine.if to Neura is not supported.
@@ -54,7 +54,7 @@ module {
 // CHECK-LLVM: %{{.*}} = llvm.icmp "sge" %{{.*}}, %{{.*}} : i64
 // CHECK-LLVM: llvm.cond_br %{{.*}}, ^bb3, ^bb4
 
-// CHECK-NEURA-BR-LABEL: llvm.func @affine_if_example
+// CHECK-NEURA-BR-LABEL: func.func @affine_if_example
 // CHECK-NEURA-BR: %{{.*}} = "neura.constant"() <{value = -5 : index}> : () -> i64
 // CHECK-NEURA-BR: %{{.*}} = "neura.constant"() <{value = 1 : index}> : () -> i64
 // CHECK-NEURA-BR: %{{.*}} = "neura.constant"() <{value = 10 : index}> : () -> i64

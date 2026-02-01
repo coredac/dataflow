@@ -1,3 +1,4 @@
+#include "Common/AcceleratorAttrs.h"
 #include "NeuraDialect/NeuraOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -110,29 +111,39 @@ struct CanonicalizeCastPass
   void runOnOperation() override {
     auto module_op = getOperation();
 
-    module_op.walk([&](Operation *op) {
-      Region *region = nullptr;
-      if (auto func_op = dyn_cast<func::FuncOp>(op)) {
-        auto accel_attr = func_op->getAttrOfType<StringAttr>("accelerator");
-        if (!accel_attr || accel_attr.getValue() != "neura") {
-          return;
-        }
-        region = &func_op.getBody();
-      } else if (auto llvm_func = dyn_cast<LLVM::LLVMFuncOp>(op)) {
-        auto accel_attr = llvm_func->getAttrOfType<StringAttr>("accelerator");
-        if (!accel_attr || accel_attr.getValue() != "neura") {
-          return;
-        }
-        region = &llvm_func.getBody();
-      } else {
+    // Proceeses function.
+    module_op.walk([&](func::FuncOp func_op) {
+      auto accel_attr =
+          func_op->getAttrOfType<StringAttr>(accel::kAcceleratorAttr);
+      if (!accel_attr || accel_attr.getValue() != accel::kNeuraTarget) {
+        return;
+      }
+      Region &func_region = func_op.getBody();
+
+      if (func_region.empty()) {
         return;
       }
 
-      if (!region || region->empty()) {
+      if (failed(canonicalizeCast(func_region))) {
+        signalPassFailure();
+        return;
+      }
+    });
+
+    // Processes neura.kernel.
+    module_op.walk([&](neura::KernelOp kernel_op) {
+      auto accel_attr =
+          kernel_op->getAttrOfType<StringAttr>(accel::kAcceleratorAttr);
+      if (!accel_attr || accel_attr.getValue() != accel::kNeuraTarget) {
+        return;
+      }
+      Region &kernel_region = kernel_op.getBody();
+
+      if (kernel_region.empty()) {
         return;
       }
 
-      if (failed(canonicalizeCast(*region))) {
+      if (failed(canonicalizeCast(kernel_region))) {
         signalPassFailure();
         return;
       }
