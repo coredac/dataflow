@@ -1,0 +1,74 @@
+-- Testing: 1 tests, 1 workers --
+PASS: Neura Dialect Tests :: Conversion/AssignTaskTarget/assign-task-target.mlir (1 of 1)
+Exit Code: 0
+
+Command Output (stderr):
+--
+RUN: at line 1: /workspace/dataflow/build/tools/mlir-neura-opt/mlir-neura-opt /workspace/dataflow/test/Conversion/AssignTaskTarget/assign-task-target.mlir --assign-task-target -o /workspace/dataflow/test/Conversion/AssignTaskTarget/Output/assign-task-target.mlir.tmp
++ /workspace/dataflow/build/tools/mlir-neura-opt/mlir-neura-opt /workspace/dataflow/test/Conversion/AssignTaskTarget/assign-task-target.mlir --assign-task-target -o /workspace/dataflow/test/Conversion/AssignTaskTarget/Output/assign-task-target.mlir.tmp
+[mlir-neura-opt] No architecture specification file provided, using default configuration
+
+========================================
+AssignTaskTarget Pass
+========================================
+
+  [ASSIGN] ray_sampler_func -> cpu
+  [ASSIGN] hash_encoder_func -> doe
+  [ASSIGN] nerf_mlp_func -> cgra
+  [ASSIGN] nerf_forward -> cpu
+  [ASSIGN] generic_sampler -> cpu
+  [ASSIGN] custom_encoder -> doe
+  [ASSIGN] some_mlp -> cgra
+  [ASSIGN] unknown_function -> cpu
+
+========================================
+Summary
+========================================
+Total functions:    8
+Assigned functions: 8
+
+Target distribution:
+  doe: 2 function(s)
+  cpu: 4 function(s)
+  cgra: 2 function(s)
+========================================
+
+RUN: at line 2: /workspace/dataflow/build/tools/mlir-neura-opt/mlir-neura-opt /workspace/dataflow/test/Conversion/AssignTaskTarget/assign-task-target.mlir --assign-task-target | /workspace/llvm-project/build/./bin/FileCheck /workspace/dataflow/test/Conversion/AssignTaskTarget/assign-task-target.mlir
++ /workspace/dataflow/build/tools/mlir-neura-opt/mlir-neura-opt /workspace/dataflow/test/Conversion/AssignTaskTarget/assign-task-target.mlir --assign-task-target
++ /workspace/llvm-project/build/./bin/FileCheck /workspace/dataflow/test/Conversion/AssignTaskTarget/assign-task-target.mlir
+[mlir-neura-opt] No architecture specification file provided, using default configuration
+
+========================================
+AssignTaskTarget Pass
+========================================
+
+  [ASSIGN] ray_sampler_func -> cpu
+  [ASSIGN] hash_encoder_func -> doe
+  [ASSIGN] nerf_mlp_func -> cgra
+  [ASSIGN] nerf_forward -> cpu
+  [ASSIGN] generic_sampler -> cpu
+  [ASSIGN] custom_encoder -> doe
+  [ASSIGN] some_mlp -> cgra
+  [ASSIGN] unknown_function -> cpu
+
+========================================
+Summary
+========================================
+Total functions:    8
+Assigned functions: 8
+
+Target distribution:
+  doe: 2 function(s)
+  cpu: 4 function(s)
+  cgra: 2 function(s)
+========================================
+
+
+--
+
+********************
+
+Testing Time: 0.22s
+
+Total Discovered Tests: 1
+  Passed: 1 (100.00%)
