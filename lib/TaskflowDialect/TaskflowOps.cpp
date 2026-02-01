@@ -19,20 +19,20 @@ ParseResult TaskflowTaskOp::parse(OpAsmParser &parser, OperationState &result) {
     return failure();
   result.addAttribute("task_name", task_name);
 
-  // Parses read_inputs: read_inputs(%arg0, %arg1 : memref<?xi32>,
+  // Parses read_memrefs: read_memrefs(%arg0, %arg1 : memref<?xi32>,
   // memref<?xi32>).
   SmallVector<OpAsmParser::UnresolvedOperand> read_operands;
   SmallVector<Type> read_types;
-  if (succeeded(parser.parseOptionalKeyword("read_inputs"))) {
+  if (succeeded(parser.parseOptionalKeyword("read_memrefs"))) {
     if (parser.parseLParen() || parser.parseOperandList(read_operands) ||
         parser.parseColonTypeList(read_types) || parser.parseRParen())
       return failure();
   }
 
-  // Parses write_inputs: write_inputs(%arg5 : memref<?xi32>).
+  // Parses write_memrefs: write_memrefs(%arg5 : memref<?xi32>).
   SmallVector<OpAsmParser::UnresolvedOperand> write_operands;
   SmallVector<Type> write_types;
-  if (succeeded(parser.parseOptionalKeyword("write_inputs"))) {
+  if (succeeded(parser.parseOptionalKeyword("write_memrefs"))) {
     if (parser.parseLParen() || parser.parseOperandList(write_operands) ||
         parser.parseColonTypeList(write_types) || parser.parseRParen())
       return failure();
@@ -151,21 +151,21 @@ void TaskflowTaskOp::print(OpAsmPrinter &printer) {
   // Prints task name.
   printer << " @" << getTaskName();
 
-  // Prints read_inputs.
-  if (!getReadInputs().empty()) {
-    printer << " read_inputs(";
-    llvm::interleaveComma(getReadInputs(), printer);
+  // Prints read_memrefs.
+  if (!getReadMemrefs().empty()) {
+    printer << " read_memrefs(";
+    llvm::interleaveComma(getReadMemrefs(), printer);
     printer << " : ";
-    llvm::interleaveComma(getReadInputs().getTypes(), printer);
+    llvm::interleaveComma(getReadMemrefs().getTypes(), printer);
     printer << ")";
   }
 
-  // Prints write_inputs.
-  if (!getWriteInputs().empty()) {
-    printer << " write_inputs(";
-    llvm::interleaveComma(getWriteInputs(), printer);
+  // Prints write_memrefs.
+  if (!getWriteMemrefs().empty()) {
+    printer << " write_memrefs(";
+    llvm::interleaveComma(getWriteMemrefs(), printer);
     printer << " : ";
-    llvm::interleaveComma(getWriteInputs().getTypes(), printer);
+    llvm::interleaveComma(getWriteMemrefs().getTypes(), printer);
     printer << ")";
   }
 
@@ -208,8 +208,8 @@ void TaskflowTaskOp::print(OpAsmPrinter &printer) {
 
   // Prints function type.
   printer << " : (";
-  llvm::interleaveComma(llvm::concat<const Type>(getReadInputs().getTypes(),
-                                                 getWriteInputs().getTypes(),
+  llvm::interleaveComma(llvm::concat<const Type>(getReadMemrefs().getTypes(),
+                                                 getWriteMemrefs().getTypes(),
                                                  getValueInputs().getTypes()),
                         printer);
   printer << ") -> (";

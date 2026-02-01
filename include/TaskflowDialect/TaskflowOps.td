@@ -61,8 +61,8 @@ def TaskflowTaskOp : TaskflowOpBase<"task", [
   }];
 
   let arguments = (ins
-    Variadic<AnyMemRef>:$read_inputs,
-    Variadic<AnyType>:$write_inputs,
+    Variadic<AnyMemRef>:$read_memrefs,
+    Variadic<AnyMemRef>:$write_memrefs,
     Variadic<AnyType>:$value_inputs,
     StrAttr:$task_name,
     Variadic<AnyMemRef>:$original_read_memrefs,

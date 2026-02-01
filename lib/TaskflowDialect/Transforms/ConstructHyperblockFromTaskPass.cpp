@@ -59,8 +59,8 @@ struct HyperblockInfo {
   // The corresponding loop.
   affine::AffineForOp loop_op = nullptr;
 
-  // Marks if this hyperblock follows the LEC pattern.
-  bool is_lec_pattern = false;
+  // Marks if this hyperblock follows the PLE pattern.
+  bool is_ple_pattern = false;
 };
 
 //----------------------------------------------------------------------------
@@ -180,33 +180,33 @@ getTopLevelLoopsInfo(SmallVector<LoopInfo> &loops_info) {
 }
 
 //----------------------------------------------------------------------------
-// Loop-Epilogue Code (LEC) Pattern Detection
+// Prologue-Loop-Epilogue Code (PLE) Pattern Detection
 //----------------------------------------------------------------------------
-// Loop-Epilogue Code means code that appears after an inner loop.
-// Example:
-// for %i (outer loop) {
+// Prologue-Loop-Epilogue Code means code that appears before and after an inner
+// loop. Example: for %i (outer loop) {
+//   <prologue code>
 //   for %j (nested loop) {
 //     <loop body>
 //   }
 //   <epilogue code>  ← Loop-Epilogue Code
 // }
-// For this pattern, we need to wrap the inner loop and the epilogue code into
-// a hyperblock. Only by doing this can we maintain the hyperblock as a pure
-// data-driven code block.
-struct LECPattern {
+// For this pattern, we need to wrap the inner loop and the prologue-epilogue
+// code into a hyperblock. Only by doing this can we maintain the hyperblock as
+// a pure data-driven code block.
+struct PLEPattern {
   affine::AffineForOp outer_loop;
   affine::AffineForOp inner_loop;
 
   SmallVector<Operation *> prologue_code;
   SmallVector<Operation *> epilogue_code;
 
-  bool has_lec_pattern = false;
+  bool has_ple_pattern = false;
 };
 
-// Detects Loop-Epilogue Code pattern in the task.
-static LECPattern detectLECPattern(affine::AffineForOp outer_loop) {
-  LECPattern pattern;
-  pattern.has_lec_pattern = false;
+// Detects Prologue-Loop-Epilogue Code pattern in the task.
+static PLEPattern detectPLEPattern(affine::AffineForOp outer_loop) {
+  PLEPattern pattern;
+  pattern.has_ple_pattern = false;
   pattern.outer_loop = outer_loop;
 
   Block &body = outer_loop.getRegion().front();
@@ -223,9 +223,13 @@ static LECPattern detectLECPattern(affine::AffineForOp outer_loop) {
         pattern.prologue_code.push_back(&op);
       } else {
         pattern.epilogue_code.push_back(&op);
-        pattern.has_lec_pattern = true;
+        pattern.has_ple_pattern = true;
       }
     }
+  }
+
+  if (found_nested_loop && (!pattern.prologue_code.empty())) {
+    pattern.has_ple_pattern = true;
   }
 
   return pattern;
@@ -252,7 +256,7 @@ static void extractHyperblocksInfoFromRegion(
   for (Operation &op : block.getOperations()) {
     if (auto for_op = dyn_cast<affine::AffineForOp>(&op)) {
 
-      LECPattern lec_pattern = detectLECPattern(for_op);
+      PLEPattern ple_pattern = detectPLEPattern(for_op);
 
       // Gets the loop info.
       LoopInfo *loop_info = loop_info_map.lookup(for_op);
@@ -263,8 +267,8 @@ static void extractHyperblocksInfoFromRegion(
       SmallVector<Value> loop_indices = parent_indices;
       loop_indices.push_back(loop_info->counter_index);
 
-      // Handles the LEC pattern.
-      if (lec_pattern.has_lec_pattern) {
+      // Handles the PLE pattern.
+      if (ple_pattern.has_ple_pattern) {
         // 1. Emits any accumulated operations as a hyperblock.
         if (!current_block_ops.empty()) {
           HyperblockInfo info;
@@ -278,22 +282,22 @@ static void extractHyperblocksInfoFromRegion(
 
         // 2. Creates a hyperblock for the prologue + inner loop + epilogue.
         HyperblockInfo info;
-        if (!lec_pattern.prologue_code.empty()) {
-          info.operations.append(lec_pattern.prologue_code.begin(),
-                                 lec_pattern.prologue_code.end());
+        if (!ple_pattern.prologue_code.empty()) {
+          info.operations.append(ple_pattern.prologue_code.begin(),
+                                 ple_pattern.prologue_code.end());
         }
 
-        info.operations.push_back(lec_pattern.inner_loop);
+        info.operations.push_back(ple_pattern.inner_loop);
 
-        if (!lec_pattern.epilogue_code.empty()) {
-          info.operations.append(lec_pattern.epilogue_code.begin(),
-                                 lec_pattern.epilogue_code.end());
+        if (!ple_pattern.epilogue_code.empty()) {
+          info.operations.append(ple_pattern.epilogue_code.begin(),
+                                 ple_pattern.epilogue_code.end());
         }
 
         info.trigger_indices = loop_indices;
         info.is_loop_body = true;
         info.loop_op = for_op;
-        info.is_lec_pattern = true;
+        info.is_ple_pattern = true;
         hyperblocks_info.push_back(info);
 
         // No need for further processing of this loop. Since we have already
