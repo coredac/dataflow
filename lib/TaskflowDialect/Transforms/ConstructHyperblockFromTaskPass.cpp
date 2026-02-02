@@ -182,53 +182,94 @@ getTopLevelLoopsInfo(SmallVector<LoopInfo> &loops_info) {
 //----------------------------------------------------------------------------
 // Prologue-Loop-Epilogue Code (PLE) Pattern Detection
 //----------------------------------------------------------------------------
-// Prologue-Loop-Epilogue Code means code that appears before and after an inner
-// loop. Example: for %i (outer loop) {
-//   <prologue code>
-//   for %j (nested loop) {
-//     <loop body>
+// Extended PLE Pattern: Also handles sibling loops without prologue/epilogue.
+// Pattern 1: Prologue/Epilogue exists
+//   for %i {
+//     <prologue>
+//     for %j { }
+//     <epilogue>
 //   }
-//   <epilogue code>  ← Loop-Epilogue Code
-// }
+//
+// Pattern 2: Sibling loops (no prologue/epilogue)
+//   for %i {
+//     for %j { }
+//     for %k { }  ← Sibling loop
+//   }
 // For this pattern, we need to wrap the inner loop and the prologue-epilogue
 // code into a hyperblock. Only by doing this can we maintain the hyperblock as
 // a pure data-driven code block.
 struct PLEPattern {
   affine::AffineForOp outer_loop;
-  affine::AffineForOp inner_loop;
+  // Supports multiple sibling loops.
+  SmallVector<affine::AffineForOp> inner_loops;
 
   SmallVector<Operation *> prologue_code;
   SmallVector<Operation *> epilogue_code;
+  // Code between sibling loops.
+  SmallVector<SmallVector<Operation *>> inter_loop_code;
 
   bool has_ple_pattern = false;
+  bool has_sibling_loops = false;
 };
 
 // Detects Prologue-Loop-Epilogue Code pattern in the task.
 static PLEPattern detectPLEPattern(affine::AffineForOp outer_loop) {
   PLEPattern pattern;
   pattern.has_ple_pattern = false;
+  pattern.has_sibling_loops = false;
   pattern.outer_loop = outer_loop;
 
   Block &body = outer_loop.getRegion().front();
-  bool found_nested_loop = false;
+  SmallVector<Operation *> current_segment;
 
   for (Operation &op : body.getOperations()) {
     if (auto nested_for = dyn_cast<affine::AffineForOp>(&op)) {
-      found_nested_loop = true;
-      if (!pattern.inner_loop) {
-        pattern.inner_loop = nested_for;
-      }
-    } else if (!(isa<affine::AffineYieldOp>(&op) && op.getOperands().empty())) {
-      if (!found_nested_loop) {
-        pattern.prologue_code.push_back(&op);
+      // Finds a nested loop.
+      if (pattern.inner_loops.empty()) {
+        // First nested loop - everything before is prologue.
+        if (!current_segment.empty()) {
+          pattern.prologue_code = current_segment;
+          pattern.has_ple_pattern = true;
+          current_segment.clear();
+        }
       } else {
-        pattern.epilogue_code.push_back(&op);
+        // Second or later nested loop - everything before is inter-loop code.
+        pattern.has_sibling_loops = true;
         pattern.has_ple_pattern = true;
+
+        if (!current_segment.empty()) {
+          pattern.inter_loop_code.push_back(current_segment);
+          current_segment.clear();
+        } else {
+          // No operations between loops, add empty segment
+          pattern.inter_loop_code.push_back({});
+        }
       }
+
+      pattern.inner_loops.push_back(nested_for);
+
+    } else if (!(isa<affine::AffineYieldOp>(&op) && op.getOperands().empty())) {
+      // Regular operation - add to current segment.
+      current_segment.push_back(&op);
     }
   }
 
-  if (found_nested_loop && (!pattern.prologue_code.empty())) {
+  // Any remaining operations after all loops are epilogue.
+  if (!current_segment.empty() && !pattern.inner_loops.empty()) {
+    pattern.epilogue_code = current_segment;
+    pattern.has_ple_pattern = true;
+  }
+
+  // If we have sibling loops (even without prologue/epilogue),
+  // it's still a PLE pattern that needs special handling.
+  if (pattern.inner_loops.size() > 1) {
+    pattern.has_ple_pattern = true;
+    pattern.has_sibling_loops = true;
+  }
+
+  // If we have prologue/epilogue with at least one loop, it's a PLE pattern.
+  if (!pattern.inner_loops.empty() &&
+      (!pattern.prologue_code.empty() || !pattern.epilogue_code.empty())) {
     pattern.has_ple_pattern = true;
   }
 
@@ -280,15 +321,30 @@ static void extractHyperblocksInfoFromRegion(
           current_block_ops.clear();
         }
 
-        // 2. Creates a hyperblock for the prologue + inner loop + epilogue.
+        // 2. Creates a hyperblock for:
+        // //    prologue + loop1 + inter_code1 + loop2 + inter_code2 + ... +
+        // epilogue.
         HyperblockInfo info;
+
+        // Adds prologue code.
         if (!ple_pattern.prologue_code.empty()) {
           info.operations.append(ple_pattern.prologue_code.begin(),
                                  ple_pattern.prologue_code.end());
         }
 
-        info.operations.push_back(ple_pattern.inner_loop);
+        // Adds loops and inter-loop code.
+        for (size_t i = 0; i < ple_pattern.inner_loops.size(); ++i) {
+          info.operations.push_back(ple_pattern.inner_loops[i]);
 
+          // Adds inter-loop code if exists.
+          if (i < ple_pattern.inter_loop_code.size() &&
+              !ple_pattern.inter_loop_code[i].empty()) {
+            info.operations.append(ple_pattern.inter_loop_code[i].begin(),
+                                   ple_pattern.inter_loop_code[i].end());
+          }
+        }
+
+        // Adds epilogue code.
         if (!ple_pattern.epilogue_code.empty()) {
           info.operations.append(ple_pattern.epilogue_code.begin(),
                                  ple_pattern.epilogue_code.end());
@@ -608,6 +664,9 @@ static LogicalResult transformTask(TaskflowTaskOp task_op) {
   // Step 4: Creates taskflow.hyperblock operations for each hyperblock.
   builder.setInsertionPoint(first_loop_op);
 
+  // Stores mappings from loop results to hyperblock outputs.
+  DenseMap<Value, Value> loop_result_to_hyperblock_output;
+
   // Creates hyperblock ops.
   for (auto &info : hyperblocks_info) {
     TaskflowHyperblockOp hyperblock_op =
@@ -622,23 +681,49 @@ static LogicalResult transformTask(TaskflowTaskOp task_op) {
 
       for (auto [loop_result, hb_result] :
            llvm::zip(loop_results, hyperblock_results)) {
-        loop_result.replaceAllUsesWith(hb_result);
+        loop_result_to_hyperblock_output[loop_result] = hb_result;
       }
     }
+  }
+
+  // Step 5: Replaces loop results with hyperblock outputs BEFORE erasing loops.
+  for (auto [loop_result, hb_output] : loop_result_to_hyperblock_output) {
+    loop_result.replaceAllUsesWith(hb_output);
   }
 
   // Step 6: Collects and erases original loop operations.
   // Collects all operations to erase.
   SmallVector<Operation *> ops_to_erase;
+  // First pass: collects all affine.for operations recursively.
+  // We need to erase them in reverse order (inner loops first).
+  SmallVector<affine::AffineForOp> loops_to_erase;
+  task_op.walk(
+      [&](affine::AffineForOp loop) { loops_to_erase.push_back(loop); });
+
+  // Reverses the order so we erase innermost loops first.
+  std::reverse(loops_to_erase.begin(), loops_to_erase.end());
+
+  // Second pass: collects non-loop, non-taskflow operations.
   for (Operation &op : llvm::make_early_inc_range(task_body->getOperations())) {
-    if (!isa<TaskflowYieldOp, TaskflowCounterOp, TaskflowHyperblockOp>(&op)) {
+    if (!isa<TaskflowYieldOp, TaskflowCounterOp, TaskflowHyperblockOp,
+             affine::AffineForOp>(&op)) {
       ops_to_erase.push_back(&op);
     }
   }
 
-  // Erases original operations.
+  // Step 7: Erases operations.
+  // First erases non-loop operations.
   for (Operation *op : ops_to_erase) {
+    // Makes sure all uses are replaced before erasing.
+    assert(op->use_empty() && "Operation still has uses before erasing");
     op->erase();
+  }
+
+  // Then erases loops (innermost first).
+  for (affine::AffineForOp loop : loops_to_erase) {
+    // Makes sure the loop results have been replaced before erasing.
+    assert(loop->use_empty() && "Loop still has uses before erasing");
+    loop->erase();
   }
 
   return success();
