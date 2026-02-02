@@ -140,77 +140,76 @@ module attributes {} {
 // TASKFLOW-NEXT:   }
 // TASKFLOW-NEXT: }
 
-// HYPERBLOCK:     module {
-// HYPERBLOCK-NEXT:  func.func @_Z21irregularLoopExample1v() -> i32 attributes {llvm.linkage = #llvm.linkage<external>} {
-// HYPERBLOCK-NEXT:    %c2_i32 = arith.constant 2 : i32
-// HYPERBLOCK-NEXT:    %c8_i32 = arith.constant 8 : i32
-// HYPERBLOCK-NEXT:    %c0_i32 = arith.constant 0 : i32
-// HYPERBLOCK-NEXT:    %alloca = memref.alloca() : memref<i32>
-// HYPERBLOCK-NEXT:    %alloca_0 = memref.alloca() : memref<4x8xi32>
-// HYPERBLOCK-NEXT:    %value_outputs = taskflow.task @Task_0 value_inputs(%c0_i32 : i32) : (i32) -> (i32) {
-// HYPERBLOCK-NEXT:    ^bb0(%arg0: i32):
-// HYPERBLOCK-NEXT:      %1 = taskflow.counter attributes {lower_bound = 0 : index, step = 1 : index, upper_bound = 5 : index} : index
-// HYPERBLOCK-NEXT:      %2 = "taskflow.hyperblock"(%1, %arg0) <{operandSegmentSizes = array<i32: 1, 1>}> ({
-// HYPERBLOCK-NEXT:      ^bb0(%arg1: index, %arg2: i32):
-// HYPERBLOCK-NEXT:        %3 = arith.index_cast %arg1 : index to i32
-// HYPERBLOCK-NEXT:        %4 = arith.addi %arg2, %3 : i32
-// HYPERBLOCK-NEXT:        taskflow.hyperblock.yield iter_args_next(%4 : i32) results(%4 : i32)
-// HYPERBLOCK-NEXT:      }) : (index, i32) -> i32
-// HYPERBLOCK-NEXT:      taskflow.yield values(%2 : i32)
-// HYPERBLOCK-NEXT:    }
-// HYPERBLOCK-NEXT:    %write_outputs = taskflow.task @Task_1 write_memrefs(%alloca_0 : memref<4x8xi32>) value_inputs(%c8_i32 : i32) [original_write_memrefs(%alloca_0)] : (memref<4x8xi32>, i32) -> (memref<4x8xi32>) {
-// HYPERBLOCK-NEXT:    ^bb0(%arg0: memref<4x8xi32>, %arg1: i32):
-// HYPERBLOCK-NEXT:      %1 = taskflow.counter attributes {lower_bound = 0 : index, step = 1 : index, upper_bound = 4 : index} : index
-// HYPERBLOCK-NEXT:      %2 = taskflow.counter parent(%1 : index) attributes {lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
-// HYPERBLOCK-NEXT:      "taskflow.hyperblock"(%1) <{operandSegmentSizes = array<i32: 1, 0>}> ({
-// HYPERBLOCK-NEXT:      ^bb0(%arg2: index):
-// HYPERBLOCK-NEXT:        %3 = arith.index_cast %arg2 : index to i32
-// HYPERBLOCK-NEXT:        %4 = arith.muli %3, %arg1 : i32
-// HYPERBLOCK-NEXT:        %c0 = arith.constant 0 : index
-// HYPERBLOCK-NEXT:        %c8 = arith.constant 8 : index
-// HYPERBLOCK-NEXT:        %c1 = arith.constant 1 : index
-// HYPERBLOCK-NEXT:        scf.for %arg3 = %c0 to %c8 step %c1 {
-// HYPERBLOCK-NEXT:          %5 = arith.index_cast %arg3 : index to i32
-// HYPERBLOCK-NEXT:          %6 = arith.addi %4, %5 : i32
-// HYPERBLOCK-NEXT:          memref.store %6, %arg0[%arg2, %arg3] : memref<4x8xi32>
-// HYPERBLOCK-NEXT:        }
-// HYPERBLOCK-NEXT:        taskflow.hyperblock.yield
-// HYPERBLOCK-NEXT:      }) : (index) -> ()
-// HYPERBLOCK-NEXT:      taskflow.yield writes(%arg0 : memref<4x8xi32>)
-// HYPERBLOCK-NEXT:    }
-// HYPERBLOCK-NEXT:    %write_outputs_1 = taskflow.task @Task_2 read_memrefs(%write_outputs : memref<4x8xi32>) write_memrefs(%alloca : memref<i32>) value_inputs(%c8_i32, %value_outputs, %c2_i32 : i32, i32, i32) [original_read_memrefs(%alloca_0), original_write_memrefs(%alloca)] : (memref<4x8xi32>, memref<i32>, i32, i32, i32) -> (memref<i32>) {
-// HYPERBLOCK-NEXT:    ^bb0(%arg0: memref<4x8xi32>, %arg1: memref<i32>, %arg2: i32, %arg3: i32, %arg4: i32):
-// HYPERBLOCK-NEXT:      %1 = taskflow.counter attributes {lower_bound = 0 : index, step = 1 : index, upper_bound = 4 : index} : index
-// HYPERBLOCK-NEXT:      %2 = taskflow.counter parent(%1 : index) attributes {lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
-// HYPERBLOCK-NEXT:      "taskflow.hyperblock"(%1) <{operandSegmentSizes = array<i32: 1, 0>}> ({
-// HYPERBLOCK-NEXT:      ^bb0(%arg5: index):
-// HYPERBLOCK-NEXT:        %3 = arith.index_cast %arg5 : index to i32
-// HYPERBLOCK-NEXT:        %4 = arith.muli %3, %arg2 : i32
-// HYPERBLOCK-NEXT:        %c0 = arith.constant 0 : index
-// HYPERBLOCK-NEXT:        %c8 = arith.constant 8 : index
-// HYPERBLOCK-NEXT:        %c1 = arith.constant 1 : index
-// HYPERBLOCK-NEXT:        scf.for %arg6 = %c0 to %c8 step %c1 {
-// HYPERBLOCK-NEXT:          %5 = memref.load %arg0[%arg5, %arg6] : memref<4x8xi32>
-// HYPERBLOCK-NEXT:          %6 = arith.addi %5, %arg3 : i32
-// HYPERBLOCK-NEXT:          %c0_2 = arith.constant 0 : index
-// HYPERBLOCK-NEXT:          %c-3 = arith.constant -3 : index
-// HYPERBLOCK-NEXT:          %7 = arith.addi %arg5, %c-3 : index
-// HYPERBLOCK-NEXT:          %8 = arith.cmpi eq, %7, %c0_2 : index
-// HYPERBLOCK-NEXT:          %c-7 = arith.constant -7 : index
-// HYPERBLOCK-NEXT:          %9 = arith.addi %arg6, %c-7 : index
-// HYPERBLOCK-NEXT:          %10 = arith.cmpi eq, %9, %c0_2 : index
-// HYPERBLOCK-NEXT:          %11 = arith.andi %8, %10 : i1
-// HYPERBLOCK-NEXT:          scf.if %11 {
-// HYPERBLOCK-NEXT:            memref.store %6, %arg1[] : memref<i32>
-// HYPERBLOCK-NEXT:            %12 = arith.muli %6, %arg4 : i32
-// HYPERBLOCK-NEXT:            memref.store %12, %arg1[] : memref<i32>
-// HYPERBLOCK-NEXT:          }
-// HYPERBLOCK-NEXT:        }
-// HYPERBLOCK-NEXT:        taskflow.hyperblock.yield
-// HYPERBLOCK-NEXT:      }) : (index) -> ()
-// HYPERBLOCK-NEXT:      taskflow.yield writes(%arg1 : memref<i32>)
-// HYPERBLOCK-NEXT:    }
-// HYPERBLOCK-NEXT:    %0 = affine.load %write_outputs_1[] : memref<i32>
-// HYPERBLOCK-NEXT:    return %0 : i32
-// HYPERBLOCK-NEXT:  }
-// HYPERBLOCK-NEXT:}
+// HYPERBLOCK:      module {
+// HYPERBLOCK-NEXT:   func.func @_Z21irregularLoopExample1v() -> i32 attributes {llvm.linkage = #llvm.linkage<external>} {
+// HYPERBLOCK-NEXT:     %c2_i32 = arith.constant 2 : i32
+// HYPERBLOCK-NEXT:     %c8_i32 = arith.constant 8 : i32
+// HYPERBLOCK-NEXT:     %c0_i32 = arith.constant 0 : i32
+// HYPERBLOCK-NEXT:     %alloca = memref.alloca() : memref<i32>
+// HYPERBLOCK-NEXT:     %alloca_0 = memref.alloca() : memref<4x8xi32>
+// HYPERBLOCK-NEXT:     %value_outputs = taskflow.task @Task_0 value_inputs(%c0_i32 : i32) : (i32) -> (i32) {
+// HYPERBLOCK-NEXT:     ^bb0(%arg0: i32):
+// HYPERBLOCK-NEXT:       %1 = taskflow.counter attributes {lower_bound = 0 : index, step = 1 : index, upper_bound = 5 : index} : index
+// HYPERBLOCK-NEXT:       %2 = "taskflow.hyperblock"(%1, %arg0) <{operandSegmentSizes = array<i32: 1, 1>}> ({
+// HYPERBLOCK-NEXT:       ^bb0(%arg1: index, %arg2: i32):
+// HYPERBLOCK-NEXT:         %3 = arith.index_cast %arg1 : index to i32
+// HYPERBLOCK-NEXT:         %4 = arith.addi %arg2, %3 : i32
+// HYPERBLOCK-NEXT:         taskflow.hyperblock.yield iter_args_next(%4 : i32) results(%4 : i32)
+// HYPERBLOCK-NEXT:       }) : (index, i32) -> i32
+// HYPERBLOCK-NEXT:       taskflow.yield values(%2 : i32)
+// HYPERBLOCK-NEXT:     }
+// HYPERBLOCK-NEXT:     %write_outputs = taskflow.task @Task_1 write_memrefs(%alloca_0 : memref<4x8xi32>) value_inputs(%c8_i32 : i32) [original_write_memrefs(%alloca_0)] : (memref<4x8xi32>, i32) -> (memref<4x8xi32>) {
+// HYPERBLOCK-NEXT:     ^bb0(%arg0: memref<4x8xi32>, %arg1: i32):
+// HYPERBLOCK-NEXT:       %1 = taskflow.counter attributes {lower_bound = 0 : index, step = 1 : index, upper_bound = 4 : index} : index
+// HYPERBLOCK-NEXT:       "taskflow.hyperblock"(%1) <{operandSegmentSizes = array<i32: 1, 0>}> ({
+// HYPERBLOCK-NEXT:       ^bb0(%arg2: index):
+// HYPERBLOCK-NEXT:         %2 = arith.index_cast %arg2 : index to i32
+// HYPERBLOCK-NEXT:         %3 = arith.muli %2, %arg1 : i32
+// HYPERBLOCK-NEXT:         %c0 = arith.constant 0 : index
+// HYPERBLOCK-NEXT:         %c8 = arith.constant 8 : index
+// HYPERBLOCK-NEXT:         %c1 = arith.constant 1 : index
+// HYPERBLOCK-NEXT:         scf.for %arg3 = %c0 to %c8 step %c1 {
+// HYPERBLOCK-NEXT:           %4 = arith.index_cast %arg3 : index to i32
+// HYPERBLOCK-NEXT:           %5 = arith.addi %3, %4 : i32
+// HYPERBLOCK-NEXT:           memref.store %5, %arg0[%arg2, %arg3] : memref<4x8xi32>
+// HYPERBLOCK-NEXT:         }
+// HYPERBLOCK-NEXT:         taskflow.hyperblock.yield
+// HYPERBLOCK-NEXT:       }) : (index) -> ()
+// HYPERBLOCK-NEXT:       taskflow.yield writes(%arg0 : memref<4x8xi32>)
+// HYPERBLOCK-NEXT:     }
+// HYPERBLOCK-NEXT:     %write_outputs_1 = taskflow.task @Task_2 read_memrefs(%write_outputs : memref<4x8xi32>) write_memrefs(%alloca : memref<i32>) value_inputs(%c8_i32, %value_outputs, %c2_i32 : i32, i32, i32) [original_read_memrefs(%alloca_0), original_write_memrefs(%alloca)] : (memref<4x8xi32>, memref<i32>, i32, i32, i32) -> (memref<i32>) {
+// HYPERBLOCK-NEXT:     ^bb0(%arg0: memref<4x8xi32>, %arg1: memref<i32>, %arg2: i32, %arg3: i32, %arg4: i32):
+// HYPERBLOCK-NEXT:       %1 = taskflow.counter attributes {lower_bound = 0 : index, step = 1 : index, upper_bound = 4 : index} : index
+// HYPERBLOCK-NEXT:       "taskflow.hyperblock"(%1) <{operandSegmentSizes = array<i32: 1, 0>}> ({
+// HYPERBLOCK-NEXT:       ^bb0(%arg5: index):
+// HYPERBLOCK-NEXT:         %2 = arith.index_cast %arg5 : index to i32
+// HYPERBLOCK-NEXT:         %3 = arith.muli %2, %arg2 : i32
+// HYPERBLOCK-NEXT:         %c0 = arith.constant 0 : index
+// HYPERBLOCK-NEXT:         %c8 = arith.constant 8 : index
+// HYPERBLOCK-NEXT:         %c1 = arith.constant 1 : index
+// HYPERBLOCK-NEXT:         scf.for %arg6 = %c0 to %c8 step %c1 {
+// HYPERBLOCK-NEXT:           %4 = memref.load %arg0[%arg5, %arg6] : memref<4x8xi32>
+// HYPERBLOCK-NEXT:           %5 = arith.addi %4, %arg3 : i32
+// HYPERBLOCK-NEXT:           %c0_2 = arith.constant 0 : index
+// HYPERBLOCK-NEXT:           %c-3 = arith.constant -3 : index
+// HYPERBLOCK-NEXT:           %6 = arith.addi %arg5, %c-3 : index
+// HYPERBLOCK-NEXT:           %7 = arith.cmpi eq, %6, %c0_2 : index
+// HYPERBLOCK-NEXT:           %c-7 = arith.constant -7 : index
+// HYPERBLOCK-NEXT:           %8 = arith.addi %arg6, %c-7 : index
+// HYPERBLOCK-NEXT:           %9 = arith.cmpi eq, %8, %c0_2 : index
+// HYPERBLOCK-NEXT:           %10 = arith.andi %7, %9 : i1
+// HYPERBLOCK-NEXT:           scf.if %10 {
+// HYPERBLOCK-NEXT:             memref.store %5, %arg1[] : memref<i32>
+// HYPERBLOCK-NEXT:             %11 = arith.muli %5, %arg4 : i32
+// HYPERBLOCK-NEXT:             memref.store %11, %arg1[] : memref<i32>
+// HYPERBLOCK-NEXT:           }
+// HYPERBLOCK-NEXT:         }
+// HYPERBLOCK-NEXT:         taskflow.hyperblock.yield
+// HYPERBLOCK-NEXT:       }) : (index) -> ()
+// HYPERBLOCK-NEXT:       taskflow.yield writes(%arg1 : memref<i32>)
+// HYPERBLOCK-NEXT:     }
+// HYPERBLOCK-NEXT:     %0 = affine.load %write_outputs_1[] : memref<i32>
+// HYPERBLOCK-NEXT:     return %0 : i32
+// HYPERBLOCK-NEXT:   }
+// HYPERBLOCK-NEXT: }
+
