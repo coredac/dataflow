@@ -8,536 +8,387 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/IRMapping.h"
-#include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/LogicalResult.h"
-#include "llvm/Support/raw_ostream.h"
-#include <cassert>
-#include <memory>
-#include <optional>
-
+#include <cstddef>
 using namespace mlir;
 using namespace mlir::taskflow;
 
 namespace {
-//---------------------------------------------------------------------------
-// Loop Info Structure
-//----------------------------------------------------------------------------
-struct LoopInfo {
-  affine::AffineForOp for_op;
-  int lower_bound;
-  int upper_bound;
-  int step;
 
-  // For nested loops.
-  LoopInfo *parent_loop_info = nullptr;
-  SmallVector<LoopInfo *> child_loops;
+//==============================================================================
+// Perfect Loop Band Detection.
+//==============================================================================
 
-  // Generated counter index.
+// A perfect loop band is a sequence of perfectly nested loops where each loop
+// (except the innermost) has exactly one child loop and no other operations
+// (no prologue/epilogue).
+struct PerfectLoopBand {
+  // Outer to inner loop order.
+  SmallVector<affine::AffineForOp> loops;
+
+  bool isEmpty() const { return loops.empty(); }
+  size_t getDepth() const { return loops.size(); }
+};
+
+// Detects the maximal perfect loop band starting from the given loop.
+// Returns the sequence of perfectly nested loops.
+static PerfectLoopBand detectPerfectLoopBand(affine::AffineForOp start_loop) {
+  PerfectLoopBand band;
+  affine::AffineForOp current_loop = start_loop;
+
+  while (current_loop) {
+    band.loops.push_back(current_loop);
+
+    // Checks the body of current loop.
+    Block &body = current_loop.getRegion().front();
+
+    // Counts non-trivial operations (excluding yield).
+    affine::AffineForOp nested_loop = nullptr;
+    size_t num_loops = 0;
+    size_t num_other_ops = 0;
+
+    for (Operation &op : body) {
+      if (auto for_op = dyn_cast<affine::AffineForOp>(&op)) {
+        nested_loop = for_op;
+        num_loops++;
+      } else if (!(isa<affine::AffineYieldOp>(&op) &&
+                   op.getNumOperands() == 0)) {
+        num_other_ops++;
+      }
+    }
+
+    // Perfect nesting condition: exactly 1 nested loop, no other operations.
+    if (num_loops == 1 && num_other_ops == 0) {
+      // Continues to next level.
+      current_loop = nested_loop;
+    } else {
+      break; // Not perfect anymore.
+    }
+  }
+
+  return band;
+}
+
+//==============================================================================
+// Counter Creation.
+//==============================================================================
+
+struct CounterInfo {
+  affine::AffineForOp loop;
+  // The index value from taskflow.counter
   Value counter_index;
 };
 
-//---------------------------------------------------------------------------
-// Hyperblock Info Structure
-//----------------------------------------------------------------------------
-// Represents a code block that should become a hyperblock.
-struct HyperblockInfo {
-  // The operations that belong to this hyperblock.
-  SmallVector<Operation *> operations;
+// Creates a chain of taskflow.counter operations for a perfect loop band.
+// Returns counter info for each loop level.
+static SmallVector<CounterInfo>
+createCounterChain(OpBuilder &builder, Location loc,
+                   const PerfectLoopBand &band) {
+  SmallVector<CounterInfo> counters;
+  Value parent_counter = nullptr;
 
-  // The counter indices that trigger this hyperblock (empty for top-level
-  // operations before any loops).
-  SmallVector<Value> trigger_indices;
+  for (affine::AffineForOp loop : band.loops) {
+    CounterInfo info;
+    info.loop = loop;
 
-  // Whether this hyperblock is nested within loops.
-  bool is_loop_body = false;
-
-  // The corresponding loop.
-  affine::AffineForOp loop_op = nullptr;
-};
-
-//----------------------------------------------------------------------------
-// Helper Functions
-//----------------------------------------------------------------------------
-// Extracts loop parameters from affine.for operation.
-static std::optional<LoopInfo> extractLoopBound(affine::AffineForOp for_op) {
-  LoopInfo loop_info;
-  loop_info.for_op = for_op;
-
-  // Gets lower bound.
-  if (for_op.hasConstantLowerBound()) {
-    loop_info.lower_bound = for_op.getConstantLowerBound();
-  } else {
-    return std::nullopt;
-  }
-
-  // Gets upper bound.
-  if (for_op.hasConstantUpperBound()) {
-    loop_info.upper_bound = for_op.getConstantUpperBound();
-  } else {
-    return std::nullopt;
-  }
-
-  // Gets step.
-  loop_info.step = for_op.getStepAsInt();
-
-  return loop_info;
-}
-
-// Collects all affine.for loops and builds loop hierarchy.
-static SmallVector<LoopInfo> collectLoopInfo(TaskflowTaskOp task_op) {
-  SmallVector<LoopInfo> loops_info;
-  DenseMap<Operation *, LoopInfo *> op_to_loopinfo;
-
-  // Step 1: Collects all loops with its parameter.
-  task_op.walk([&](affine::AffineForOp for_op) {
-    auto info = extractLoopBound(for_op);
-    if (!info) {
-      assert(false && "Non-constant loop bounds are not supported.");
+    // Gets loop bounds.
+    int32_t lb = 0, ub = 0, step = 0;
+    if (loop.hasConstantLowerBound() && loop.hasConstantUpperBound()) {
+      lb = loop.getConstantLowerBound();
+      ub = loop.getConstantUpperBound();
+      step = loop.getStepAsInt();
+    } else {
+      llvm::errs() << "Warning: Non-constant loop bounds not supported yet\n";
+      continue;
     }
 
-    loops_info.push_back(*info);
-    op_to_loopinfo[for_op.getOperation()] = &loops_info.back();
+    // Creates counter.
+    if (parent_counter) {
+      // Creates nested counter with parent.
+      TaskflowCounterOp counter_op = builder.create<TaskflowCounterOp>(
+          loc,
+          /*counter_index*/ builder.getIndexType(),
+          /*parent_index*/ parent_counter,
+          /*lower_bound*/ builder.getIndexAttr(lb),
+          /*upper_bound*/ builder.getIndexAttr(ub),
+          /*step*/ builder.getIndexAttr(step),
+          /*counter_type*/ nullptr,
+          /*counter_id*/ nullptr);
+      info.counter_index = counter_op.getCounterIndex();
+    } else {
+      // Creates the top-level counter (no parent).
+      TaskflowCounterOp counter_op = builder.create<TaskflowCounterOp>(
+          loc,
+          /*counter_index*/ builder.getIndexType(),
+          /*parent_index*/ nullptr,
+          /*lower_bound*/ builder.getIndexAttr(lb),
+          /*upper_bound*/ builder.getIndexAttr(ub),
+          /*step*/ builder.getIndexAttr(step),
+          /*counter_type*/ nullptr,
+          /*counter_id*/ nullptr);
+      info.counter_index = counter_op.getCounterIndex();
+    }
+
+    parent_counter = info.counter_index;
+    counters.push_back(info);
+  }
+
+  return counters;
+}
+
+//==============================================================================
+// Hyperblock Creation.
+//==============================================================================
+
+// Analyzes which loop induction variables are actually used in the loop body.
+// Returns indices of loops whose induction variables are used.
+static SmallVector<size_t> analyzeUsedLoopIndices(const PerfectLoopBand &band) {
+  SmallVector<size_t> used_indices;
+
+  // Gets the deepest perfect loop's body.
+  affine::AffineForOp deepest_loop = band.loops.back();
+  Block &body = deepest_loop.getRegion().front();
+
+  // Collects all values used in the body.
+  DenseSet<Value> used_values;
+  body.walk([&](Operation *op) {
+    for (Value operand : op->getOperands()) {
+      used_values.insert(operand);
+    }
   });
 
-  // Step 2: Builds parent-child relationships among loops.
-  for (auto &loop_info : loops_info) {
-    Operation *parent_op = loop_info.for_op->getParentOp();
-    if (auto parent_for = dyn_cast<affine::AffineForOp>(parent_op)) {
-      if (op_to_loopinfo.count(parent_for.getOperation())) {
-        LoopInfo *parent_loop_info = op_to_loopinfo[parent_for.getOperation()];
-        loop_info.parent_loop_info = parent_loop_info;
-        parent_loop_info->child_loops.push_back(&loop_info);
-      }
+  // Checks which loop induction variables are used.
+  for (size_t i = 0; i < band.loops.size(); ++i) {
+    affine::AffineForOp loop = band.loops[i];
+    Value induction_var = loop.getInductionVar();
+    if (used_values.contains(induction_var)) {
+      used_indices.push_back(i);
     }
   }
 
-  return loops_info;
+  return used_indices;
 }
 
-//----------------------------------------------------------------------------
-// Counter Chain Creation
-//----------------------------------------------------------------------------
-// Recursively creates counter chain for each top-level loop.
-static void createCounterChainRecursivly(OpBuilder &builder, Location loc,
-                                         LoopInfo *loop_info,
-                                         Value parent_counter) {
-  // Creates counter for this loop.
-  Value counter_index;
-  if (parent_counter) {
-    // Nested counter.
-    auto counter_op = builder.create<TaskflowCounterOp>(
-        loc, builder.getIndexType(), parent_counter,
-        builder.getIndexAttr(loop_info->lower_bound),
-        builder.getIndexAttr(loop_info->upper_bound),
-        builder.getIndexAttr(loop_info->step),
-        /*Counter Type*/ nullptr, /*Counter ID*/ nullptr);
-    counter_index = counter_op.getCounterIndex();
-  } else {
-    // Top-level counter.
-    auto counter_op = builder.create<TaskflowCounterOp>(
-        loc, builder.getIndexType(), /*parent_index=*/nullptr,
-        builder.getIndexAttr(loop_info->lower_bound),
-        builder.getIndexAttr(loop_info->upper_bound),
-        builder.getIndexAttr(loop_info->step),
-        /*Counter Type*/ nullptr, /*Counter ID*/ nullptr);
-    counter_index = counter_op.getCounterIndex();
-  }
+// Clones the body of the deepest perfect loop in the perfect band into a
+// hyperblock. Handles iter_args (reduction variables) by:
+// 1. Adding iter_args initial values as hyperblock inputs
+// 2. Mapping iter_args to hyperblock block arguments
+// 3. Returning reduction results as hyperblock outputs
+static TaskflowHyperblockOp
+createHyperblockFromLoopBody(OpBuilder &builder, Location loc,
+                             const PerfectLoopBand &band,
+                             const SmallVector<CounterInfo> &counters) {
+  // Gets the deepest perfect loop in the perfect nested band.
+  affine::AffineForOp deepest_perfect_loop = band.loops.back();
+  Block &loop_body = deepest_perfect_loop.getRegion().front();
 
-  loop_info->counter_index = counter_index;
+  // Analyzes which loop indices are actually used.
+  SmallVector<size_t> used_loop_indices = analyzeUsedLoopIndices(band);
 
-  // Recursively creates counters for child loops.
-  for (LoopInfo *child : loop_info->child_loops) {
-    createCounterChainRecursivly(builder, loc, child, counter_index);
-  }
-}
+  // Checks if the deepest loop has iter_args (reduction variables).
+  bool has_iter_args = deepest_perfect_loop.getNumIterOperands() > 0;
+  SmallVector<Value> iter_args_init_values = {};
+  SmallVector<Type> iter_args_types = {};
 
-// Creates counter chain for all top-level loops.
-static void createCounterChain(OpBuilder &builder, Location loc,
-                               SmallVector<LoopInfo *> &top_level_loops_info) {
-  for (LoopInfo *loop_info : top_level_loops_info) {
-    createCounterChainRecursivly(builder, loc, loop_info, nullptr);
-  }
-}
-
-// Gets top-level loops' info (loops without parents).
-static SmallVector<LoopInfo *>
-getTopLevelLoopsInfo(SmallVector<LoopInfo> &loops_info) {
-  SmallVector<LoopInfo *> top_level_loops_info;
-  for (auto &loop_info : loops_info) {
-    if (!loop_info.parent_loop_info) {
-      top_level_loops_info.push_back(&loop_info);
+  if (has_iter_args) {
+    for (Value init_val : deepest_perfect_loop.getInits()) {
+      iter_args_init_values.push_back(init_val);
+      iter_args_types.push_back(init_val.getType());
     }
   }
-  return top_level_loops_info;
-}
 
-//----------------------------------------------------------------------------
-// Hyperblock Creation
-//----------------------------------------------------------------------------
-// Recursively extracts hyperblocks from a region.
-// Key insight: Operations in a loop body that are used by nested loops should
-// be inlined into the nested loop's hyperblock.
-static void extractHyperblocksInfoFromRegion(
-    Region &region,
-    const DenseMap<affine::AffineForOp, LoopInfo *> &loop_info_map,
-    SmallVector<Value> parent_indices,
-    SmallVector<HyperblockInfo> &hyperblocks_info,
-    affine::AffineForOp enclosing_loop = nullptr,
-    SmallVector<Operation *> inherited_ops = {}) {
-  Block &block = region.front();
-  SmallVector<Operation *> current_block_ops;
+  // Builds trigger values (only for USED counter indices)
+  SmallVector<Value> trigger_values;
+  for (size_t idx : used_loop_indices) {
+    trigger_values.push_back(counters[idx].counter_index);
+  }
 
-  current_block_ops.append(inherited_ops.begin(), inherited_ops.end());
+  // Determines hyperblock result types (from iter_args if present).
+  SmallVector<Type> result_types = {};
+  if (has_iter_args) {
+    result_types = iter_args_types;
+  }
 
-  for (Operation &op : block.getOperations()) {
-    if (auto for_op = dyn_cast<affine::AffineForOp>(&op)) {
-      // Gets the loop info.
-      LoopInfo *loop_info = loop_info_map.lookup(for_op);
-      assert(loop_info && "Loop not found in loop_info_map");
+  // Creates hyperblock operation with iter_args as inputs.
+  auto hyperblock_op = builder.create<TaskflowHyperblockOp>(
+      loc, result_types, trigger_values, iter_args_init_values);
 
-      // Builds trigger indices fro this loop (parent indices + this loop's
-      // index).
-      SmallVector<Value> loop_indices = parent_indices;
-      loop_indices.push_back(loop_info->counter_index);
+  // Builds block arguments:
+  // 1. Counter indices (only for USED loop levels).
+  // 2. Iter args values (passed through hyperblock invocation).
+  SmallVector<Type> arg_types;
+  SmallVector<Location> arg_locs;
 
-      // Analyzes which of the current_ops are used by this loop.
-      DenseSet<Value> values_used_in_loop;
-      for_op.walk([&](Operation *nested_op) {
-        for (Value operand : nested_op->getOperands()) {
-          values_used_in_loop.insert(operand);
-        }
-      });
+  // Adds counter index arguments (only for used indices).
+  for (size_t i = 0; i < used_loop_indices.size(); ++i) {
+    arg_types.push_back(builder.getIndexType());
+    arg_locs.push_back(loc);
+  }
 
-      SmallVector<Operation *> ops_for_nested_loop;
-      SmallVector<Operation *> ops_not_used;
-      bool used_by_loop = false;
-      for (Operation *current_op : current_block_ops) {
-        for (Value result : current_op->getResults()) {
-          if (values_used_in_loop.contains(result)) {
-            used_by_loop = true;
-            break;
-          }
+  // Adds iter_args as hyperblock block arguments.
+  if (has_iter_args) {
+    for (Type ty : iter_args_types) {
+      arg_types.push_back(ty);
+      arg_locs.push_back(loc);
+    }
+  }
+
+  Block *hyperblock_body = &hyperblock_op.getBody().emplaceBlock();
+  hyperblock_body->addArguments(arg_types, arg_locs);
+
+  OpBuilder body_builder = OpBuilder::atBlockBegin(hyperblock_body);
+  IRMapping mapper;
+
+  // Maps USED loop induction variables to hyperblock arguments.
+  for (size_t i = 0; i < used_loop_indices.size(); ++i) {
+    size_t loop_idx = used_loop_indices[i];
+    affine::AffineForOp loop = band.loops[loop_idx];
+    mapper.map(loop.getInductionVar(), hyperblock_body->getArgument(i));
+  }
+
+  // Maps iter_args to hyperblock block arguments (after counter indices).
+  if (has_iter_args) {
+    for (size_t i = 0; i < iter_args_types.size(); ++i) {
+      size_t arg_idx = used_loop_indices.size() + i;
+      mapper.map(deepest_perfect_loop.getRegionIterArgs()[i],
+                 hyperblock_body->getArgument(arg_idx));
+    }
+  }
+
+  // Clones all operations from the deepest perfect loop's body.
+  SmallVector<Value> yield_operands;
+
+  for (Operation &op : loop_body) {
+    // Handles affine.yield with operands (reduction results).
+    if (auto yield_op = dyn_cast<affine::AffineYieldOp>(&op)) {
+      if (yield_op.getNumOperands() > 0) {
+        // Maps the yielded values for hyperblock's return.
+        for (Value yielded : yield_op.getOperands()) {
+          Value mapped = mapper.lookupOrDefault(yielded);
+          yield_operands.push_back(mapped);
         }
       }
-      if (used_by_loop) {
-        ops_for_nested_loop.append(current_block_ops.begin(),
-                                   current_block_ops.end());
-      } else {
-        ops_not_used.append(current_block_ops.begin(), current_block_ops.end());
-      }
+      continue; // Skips the yield itself.
+    }
 
-      // Before processing the loop, emits any accumulated operations as a
-      // hyperblock.
-      if (!ops_not_used.empty()) {
-        HyperblockInfo info;
-        info.operations = ops_not_used;
-        info.trigger_indices = parent_indices;
-        info.is_loop_body = !parent_indices.empty();
-        info.loop_op = enclosing_loop;
-        hyperblocks_info.push_back(info);
-      }
+    // Clones operation (including nested affine.for with iter_args).
+    Operation *cloned = body_builder.clone(op, mapper);
 
-      // Recursively extracts hyperblocks from the loop body.
-      extractHyperblocksInfoFromRegion(for_op.getRegion(), loop_info_map,
-                                       loop_indices, hyperblocks_info, for_op,
-                                       ops_for_nested_loop);
-      current_block_ops.clear();
-    } else if (isa<TaskflowYieldOp, TaskflowCounterOp>(&op) ||
-               (isa<affine::AffineYieldOp>(&op) && op.getOperands().empty())) {
-      // Skips TaskflowYieldOp, TaskflowCounterOp, and empty affine.yield.
-      continue;
-    } else {
-      // Regular operation, accumulates it.
-      current_block_ops.push_back(&op);
+    // Updates mapper with cloned operation results.
+    for (size_t i = 0; i < op.getNumResults(); ++i) {
+      mapper.map(op.getResult(i), cloned->getResult(i));
     }
   }
 
-  // Emits any remaining operations as a hyperblock.
-  if (!current_block_ops.empty()) {
-    HyperblockInfo info;
-    info.operations = current_block_ops;
-    info.trigger_indices = parent_indices;
-    info.is_loop_body = !parent_indices.empty();
-    info.loop_op = enclosing_loop;
-    hyperblocks_info.push_back(info);
-    current_block_ops.clear();
-  }
-}
-
-// Extracts all hyperblocks from a task.
-static SmallVector<HyperblockInfo> extractHyperblocksInfo(
-    TaskflowTaskOp task_op,
-    const DenseMap<affine::AffineForOp, LoopInfo *> &loop_info_map) {
-  SmallVector<HyperblockInfo> hyperblocks_info;
-  // No parent indices for top-level hyperblocks (Not nested in a loop).
-  SmallVector<Value> empty_indices;
-
-  extractHyperblocksInfoFromRegion(task_op.getBody(), loop_info_map,
-                                   empty_indices, hyperblocks_info);
-
-  return hyperblocks_info;
-}
-
-// Collects all indices that are actually used by operations in the hyperblock.
-static SmallVector<Value> collectUsedIndices(
-    const SmallVector<Operation *> &operations,
-    const SmallVector<Value> &candidate_indices,
-    const DenseMap<affine::AffineForOp, LoopInfo *> &loop_info_map) {
-  // Builds reverse mapping: counter -> induction variable.
-  DenseMap<Value, Value> counter_to_indvar;
-  for (auto [loop_op, loop_info] : loop_info_map) {
-    counter_to_indvar[loop_info->counter_index] = loop_op.getInductionVar();
-  }
-
-  // Collects all values used by operations.
-  SetVector<Value> used_indvars_set;
-  for (Operation *op : operations) {
-    for (Value operand : op->getOperands()) {
-      used_indvars_set.insert(operand);
-    }
-  }
-
-  // Returns in the same order as candidate_indices to maintain parent->child
-  // order.
-  SmallVector<Value> used_counters;
-  for (Value counter : candidate_indices) {
-    if (counter_to_indvar.count(counter)) {
-      Value indvar = counter_to_indvar[counter];
-      if (used_indvars_set.contains(indvar)) {
-        used_counters.push_back(counter);
-      }
-    }
-  }
-
-  return used_counters;
-}
-
-// Determines output types for the hyperblock based on operations.
-static SmallVector<Type>
-determineHyperblockOutputTypes(const SmallVector<Operation *> &operations) {
-  SmallVector<Type> output_types = {};
-
-  // Checks if there's an affine.yield operation.
-  for (Operation *op : operations) {
-    if (auto affine_yield = dyn_cast<affine::AffineYieldOp>(op)) {
-      // Uses the operand types of affine.yield as output types.
-      for (Value operand : affine_yield.getOperands()) {
-        output_types.push_back(operand.getType());
-      }
-      return output_types;
-    }
-  }
-
-  // No affine.yield found, no output types needed.
-  return output_types;
-}
-
-// Creates a taskflow.hyperblock operation from HyperblockInfo.
-static TaskflowHyperblockOp createHyperblock(
-    OpBuilder &builder, Location loc, HyperblockInfo &info, Block *task_body,
-    const DenseMap<affine::AffineForOp, LoopInfo *> &loop_info_map) {
-  // Collects only the indices that are actually used in the hyperblock.
-  SmallVector<Value> used_indices =
-      collectUsedIndices(info.operations, info.trigger_indices, loop_info_map);
-
-  // Determines output types for the hyperblock based on operations.
-  SmallVector<Type> output_types =
-      determineHyperblockOutputTypes(info.operations);
-
-  // Checks if there is a reduction in the hyperblock (with iter_args).
-  SmallVector<Value> iter_args_init_values;
-  bool is_reduction = false;
-  if (info.loop_op && info.loop_op.getNumIterOperands() > 0) {
-    is_reduction = true;
-    for (Value init : info.loop_op.getInits()) {
-      iter_args_init_values.push_back(init);
-    }
-  }
-  // Creates the hyperblock operation.
-  TaskflowHyperblockOp hyperblock_op;
-  if (is_reduction) {
-    hyperblock_op = builder.create<TaskflowHyperblockOp>(
-        loc, output_types, used_indices, iter_args_init_values);
+  // Adds terminator with reduction results (if any).
+  if (has_iter_args) {
+    body_builder.create<TaskflowHyperblockYieldOp>(
+        loc,
+        /*iter_args_next=*/yield_operands, // No iter_args_next for final
+                                           // iteration
+        /*results=*/yield_operands);       // Reduction results
   } else {
-    hyperblock_op = builder.create<TaskflowHyperblockOp>(
-        loc, output_types, used_indices, /*iter_args=*/ValueRange{});
+    body_builder.create<TaskflowHyperblockYieldOp>(loc);
   }
 
-  Block *hyperblock_body = new Block();
-  hyperblock_op.getBody().push_back(hyperblock_body);
-
-  // Adds block arguments for the used indices.
-  for (Value idx : used_indices) {
-    hyperblock_body->addArgument(idx.getType(), loc);
-  }
-
-  SmallVector<Value> iter_args_block_args;
-  if (is_reduction) {
-    for (Value init : iter_args_init_values) {
-      BlockArgument arg = hyperblock_body->addArgument(init.getType(), loc);
-      iter_args_block_args.push_back(arg);
-    }
-  }
-
-  // Clone operations into the hyperblock body.
-  OpBuilder hyperblock_builder(hyperblock_body, hyperblock_body->begin());
-  IRMapping mapping;
-
-  // Maps used indices to block arguments
-  for (auto [idx, arg] :
-       llvm::zip(used_indices, hyperblock_body->getArguments())) {
-    mapping.map(idx, arg);
-  }
-
-  // Creates a mapping from loop counters to loop induction variables.
-  DenseMap<Value, Value> counter_to_indvar;
-  for (auto [loop_op, loop_info] : loop_info_map) {
-    counter_to_indvar[loop_info->counter_index] = loop_op.getInductionVar();
-  }
-
-  // Maps loop induction variables to hyperblock block arguments.
-  for (auto [idx, arg] :
-       llvm::zip(used_indices, hyperblock_body->getArguments())) {
-    if (counter_to_indvar.count(idx)) {
-      Value indvar = counter_to_indvar[idx];
-      mapping.map(indvar, arg);
-    }
-  }
-
-  // If this hyperblock comes from a loop with iter_args, maps them.
-  if (is_reduction) {
-    Block &loop_body = info.loop_op.getRegion().front();
-    auto loop_iter_args = loop_body.getArguments().drop_front(1);
-
-    for (auto [loop_iter_arg, hb_iter_arg] :
-         llvm::zip(loop_iter_args, iter_args_block_args)) {
-      mapping.map(loop_iter_arg, hb_iter_arg);
-    }
-  }
-
-  // Clones all operations and handle terminators.
-  bool has_terminator = false;
-  for (Operation *op : info.operations) {
-    // Handles affine.yield specially - convert to hyperblock.yield.
-    if (auto affine_yield = dyn_cast<affine::AffineYieldOp>(op)) {
-      // Maps the yield operands through the IRMapping.
-      SmallVector<Value> yield_operands;
-      for (Value operand : affine_yield.getOperands()) {
-        Value mapped_operand = mapping.lookupOrDefault(operand);
-        yield_operands.push_back(mapped_operand);
-      }
-
-      // Creates hyperblock.yield with the mapped operands.
-      hyperblock_builder.create<TaskflowHyperblockYieldOp>(loc, yield_operands,
-                                                           yield_operands);
-      has_terminator = true;
-      continue;
-    }
-
-    // Clones regular operations.
-    hyperblock_builder.clone(*op, mapping);
-  }
-
-  // Adds terminator if the last operation wasn't already a yield.
-  if (!has_terminator) {
-    hyperblock_builder.setInsertionPointToEnd(hyperblock_body);
-    hyperblock_builder.create<TaskflowHyperblockYieldOp>(loc);
-  }
-
+  // Converts affine operations to standard/scf operations.
   MLIRContext *context = hyperblock_op.getContext();
   RewritePatternSet patterns(context);
   populateAffineToStdConversionPatterns(patterns);
+
   ConversionTarget target(*context);
   target.addLegalDialect<arith::ArithDialect, memref::MemRefDialect,
-                         func::FuncDialect, taskflow::TaskflowDialect,
-                         scf::SCFDialect>();
+                         func::FuncDialect, TaskflowDialect, scf::SCFDialect>();
   target.addIllegalOp<affine::AffineLoadOp, affine::AffineStoreOp,
-                      affine::AffineIfOp>();
+                      affine::AffineForOp, affine::AffineIfOp,
+                      affine::AffineYieldOp>();
+
   if (failed(
           applyPartialConversion(hyperblock_op, target, std::move(patterns)))) {
-    assert(false && "Affine to Standard conversion failed.");
+    llvm::errs()
+        << "Error: Failed to convert affine operations to standard/scf\n";
+    return nullptr;
   }
 
   return hyperblock_op;
 }
 
-//----------------------------------------------------------------------------
-// Task Transformation
-//----------------------------------------------------------------------------
-// The main transformation function for TaskflowTaskOp.
+//============================================================================
+// Task Transformation.
+//===========================================================================
 static LogicalResult transformTask(TaskflowTaskOp task_op) {
   Location loc = task_op.getLoc();
+  Block &task_body = task_op.getBody().front();
 
-  // Step 1: Collects loop information.
-  DenseMap<affine::AffineForOp, LoopInfo *> loop_info_map;
-  SmallVector<LoopInfo> loops_info = collectLoopInfo(task_op);
-  for (auto &loop_info : loops_info) {
-    loop_info_map[loop_info.for_op] = &loop_info;
-  }
-
-  // Gets the body block of the task.
-  Block *task_body = &task_op.getBody().front();
-
-  // Finds the first loop in the task body.
-  affine::AffineForOp first_loop_op = nullptr;
-  for (Operation &op : task_body->getOperations()) {
+  // Finds all top-level loops in the task.
+  SmallVector<affine::AffineForOp> top_level_loops;
+  for (Operation &op : task_body) {
     if (auto for_op = dyn_cast<affine::AffineForOp>(&op)) {
-      first_loop_op = for_op;
-      break;
+      top_level_loops.push_back(for_op);
     }
   }
 
-  assert(first_loop_op && "No loops found in the task body.");
+  if (top_level_loops.empty()) {
+    llvm::errs() << "No loops found in task " << task_op.getTaskName() << "\n";
+    return success();
+  }
 
-  // Step 2: Creates counter chain before the first loop.
-  OpBuilder builder(first_loop_op);
-  SmallVector<LoopInfo *> top_level_loops_info =
-      getTopLevelLoopsInfo(loops_info);
-  createCounterChain(builder, loc, top_level_loops_info);
+  assert(top_level_loops.size() == 1 &&
+         "Expected exactly one top-level loop in each task.");
 
-  // Step 3: Extracts hyperblocks from task.
-  SmallVector<HyperblockInfo> hyperblocks_info =
-      extractHyperblocksInfo(task_op, loop_info_map);
+  OpBuilder builder(&task_body, task_body.begin());
 
-  // Step 4: Creates taskflow.hyperblock operations for each hyperblock.
-  builder.setInsertionPoint(first_loop_op);
+  // Stores mapping from loop results to hyperblock results.
+  DenseMap<Value, Value> loop_result_to_hyperblock_result;
 
-  // Creates hyperblock ops.
-  for (auto &info : hyperblocks_info) {
+  // Processes each top-level loop.
+  for (affine::AffineForOp top_loop : top_level_loops) {
+    llvm::errs() << "\n[ConstructHyperblock] Processing top-level loop\n";
+
+    // Step 1: Detects maximal perfect loop band.
+    PerfectLoopBand band = detectPerfectLoopBand(top_loop);
+    llvm::errs() << "  Detected perfect loop band of depth " << band.getDepth()
+                 << "\n";
+
+    // Step 2: Creates counter chain for the perfect band.
+    builder.setInsertionPoint(top_loop);
+    SmallVector<CounterInfo> counters = createCounterChain(builder, loc, band);
+    llvm::errs() << "  Created " << counters.size() << " counters\n";
+
+    // Step 3: Creates hyperblock from deepest loop's body.
     TaskflowHyperblockOp hyperblock_op =
-        createHyperblock(builder, loc, info, task_body, loop_info_map);
+        createHyperblockFromLoopBody(builder, loc, band, counters);
+    llvm::errs() << "  Created hyperblock with "
+                 << hyperblock_op.getBody().front().getOperations().size()
+                 << " operations\n";
 
-    // If this hyperblock has outputs and belongs to a loop with iter_args,
-    // replace the loop results with the hyperblock outputs.
-    if (info.loop_op && info.loop_op.getNumResults() > 0 &&
-        (hyperblock_op.getNumResults() == info.loop_op.getNumResults())) {
-      auto loop_results = info.loop_op.getResults();
-      auto hyperblock_results = hyperblock_op.getOutputs();
+    assert(hyperblock_op && "Hyperblock creation failed");
 
-      for (auto [loop_result, hb_result] :
-           llvm::zip(loop_results, hyperblock_results)) {
-        loop_result.replaceAllUsesWith(hb_result);
+    // If the loop has results (iter_args), map them to hyperblock results.
+    if (top_loop.getNumResults() > 0) {
+      llvm::errs() << "  Mapping " << top_loop.getNumResults()
+                   << " loop results to hyperblock outputs\n";
+
+      for (size_t i = 0; i < top_loop.getNumResults(); ++i) {
+        loop_result_to_hyperblock_result[top_loop.getResult(i)] =
+            hyperblock_op.getResult(i);
       }
     }
   }
 
-  // Step 6: Collects and erases original loop operations.
-  // Collects all operations to erase.
-  SmallVector<Operation *> ops_to_erase;
-  for (Operation &op : llvm::make_early_inc_range(task_body->getOperations())) {
-    if (!isa<TaskflowYieldOp, TaskflowCounterOp, TaskflowHyperblockOp>(&op)) {
-      ops_to_erase.push_back(&op);
-    }
+  // Replaces loop results with hyperblock results BEFORE erasing loops.
+  for (auto [loop_result, hb_result] : loop_result_to_hyperblock_result) {
+    loop_result.replaceAllUsesWith(hb_result);
   }
 
-  // Erases original operations.
-  for (Operation *op : ops_to_erase) {
-    op->erase();
+  // Step 4: Erases all original loops.
+  for (affine::AffineForOp loop : top_level_loops) {
+    // Ensures no uses remain.
+    assert(loop->use_empty() && "Loop still has uses before erasing");
+    loop->erase();
   }
 
   return success();
@@ -553,7 +404,8 @@ struct ConstructHyperblockFromTaskPass
   }
 
   StringRef getDescription() const final {
-    return "Constructs hyperblocks and counter chains from Taskflow tasks.";
+    return "Constructs hyperblocks from taskflow tasks by detecting perfect "
+           "nested loop bands.";
   }
 
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -564,17 +416,15 @@ struct ConstructHyperblockFromTaskPass
 
   void runOnOperation() override {
     func::FuncOp func_op = getOperation();
-    // Collects all tasks.
-    SmallVector<TaskflowTaskOp> tasks;
-    func_op.walk([&](TaskflowTaskOp task_op) { tasks.push_back(task_op); });
 
-    // Transforms each task.
-    for (TaskflowTaskOp task_op : tasks) {
+    // Walks through all TaskflowTaskOp in the function.
+    func_op.walk([&](TaskflowTaskOp task_op) {
       if (failed(transformTask(task_op))) {
         signalPassFailure();
-        return;
+        return WalkResult::interrupt();
       }
-    }
+      return WalkResult::advance();
+    });
   }
 };
 } // namespace
