@@ -9,6 +9,12 @@
 
 // RUN: mlir-neura-opt %s --affine-loop-tree-serialization \
 // RUN: --convert-affine-to-taskflow \
+// RUN: --convert-taskflow-to-neura="mode=innermost" \
+// RUN: -o %t.kernel.mlir
+// RUN: FileCheck %s --input-file=%t.kernel.mlir --check-prefixes=KERNEL
+
+// RUN: mlir-neura-opt %s --affine-loop-tree-serialization \
+// RUN: --convert-affine-to-taskflow \
 // RUN: --construct-hyperblock-from-task \
 // RUN: -o %t.hyperblock.mlir
 // RUN: FileCheck %s --input-file=%t.hyperblock.mlir --check-prefixes=HYPERBLOCK

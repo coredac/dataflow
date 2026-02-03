@@ -75,15 +75,34 @@ def ConvertAffineToTaskflow : Pass<"convert-affine-to-taskflow", "ModuleOp">{
 }
 
 def ConvertTaskflowToNeura : Pass<"convert-taskflow-to-neura", "ModuleOp">{
-  let summary = "Convert taskflow.hyperblock to neura.kernel";
+  let summary = "Convert taskflow operations to neura.kernel";
   let description = [{
-    Converts taskflow.hyperblock operations with leaf counters into neura.kernel
-    operations suitable for CGRA tile array mapping.
+    Converts taskflow operations into neura.kernel operations suitable for
+    CGRA tile array mapping.
+
+    Two conversion modes are supported:
+    1. hyperblock mode (default):
+       Converts the entire taskflow.hyperblock operations and corresponding counters ops
+       to neura.kernel.
+
+       Example:
+          mlir-neura-opt --convert-taskflow-to-neura input.mlir -o output.mlir
+          mlir-neura-opt --convert-taskflow-to-neura="mode=hyperblock" input.mlir -o output.mlir
+    2. innermost mode:
+       Only wraps the innermost affine.for loops within each task into a neura.kernel, leaving outer
+       loop structures in place.
+
+       Example:
+          mlir-neura-opt --convert-taskflow-to-neura="mode=innermost" input.mlir -o output.mlir
+    
+    The mode selection allows for different granularities of kernel extraction
+    depending on the target CGRA architecture and optimization goals.
   }];
   let constructor = "mlir::createConvertTaskflowToNeuraPass()";
   let dependentDialects = [
     "mlir::taskflow::TaskflowDialect",
     "mlir::neura::NeuraDialect"
+    "mlir::affine::AffineDialect"
   ];
 }
 

@@ -13,11 +13,11 @@ using namespace mlir::taskflow;
 //===----------------------------------------------------------------------===//
 
 ParseResult TaskflowTaskOp::parse(OpAsmParser &parser, OperationState &result) {
-  // Parses task name: @Task_0.
+  // Parses optional task name: @Task_0.
   StringAttr task_name;
-  if (parser.parseSymbolName(task_name))
-    return failure();
-  result.addAttribute("task_name", task_name);
+  if (succeeded(parser.parseOptionalSymbolName(task_name))) {
+    result.addAttribute("task_name", task_name);
+  }
 
   // Parses read_memrefs: read_memrefs(%arg0, %arg1 : memref<?xi32>,
   // memref<?xi32>).
@@ -47,29 +47,32 @@ ParseResult TaskflowTaskOp::parse(OpAsmParser &parser, OperationState &result) {
       return failure();
   }
 
-  // Parses original memrefs: [original_read_memrefs(%arg0),
-  // original_write_memrefs(%arg5)].
+  // Parses original memrefs with explicit types:
+  // [original_read_memrefs(%arg0, %arg1 : type1, type2),
+  // original_write_memrefs(%arg5 : type3)]
   SmallVector<OpAsmParser::UnresolvedOperand> original_read_operands;
   SmallVector<Type> original_read_types;
   SmallVector<OpAsmParser::UnresolvedOperand> original_write_operands;
   SmallVector<Type> original_write_types;
 
   if (succeeded(parser.parseOptionalLSquare())) {
-    // original_reads.
+    // original_read_memrefs with types
     if (succeeded(parser.parseOptionalKeyword("original_read_memrefs"))) {
       if (parser.parseLParen() ||
           parser.parseOperandList(original_read_operands) ||
+          parser.parseColonTypeList(original_read_types) ||
           parser.parseRParen())
         return failure();
     }
 
-    // optional comma.
+    // optional comma
     (void)parser.parseOptionalComma();
 
-    // original_writes.
+    // original_write_memrefs with types
     if (succeeded(parser.parseOptionalKeyword("original_write_memrefs"))) {
       if (parser.parseLParen() ||
           parser.parseOperandList(original_write_operands) ||
+          parser.parseColonTypeList(original_write_types) ||
           parser.parseRParen())
         return failure();
     }
@@ -78,26 +81,24 @@ ParseResult TaskflowTaskOp::parse(OpAsmParser &parser, OperationState &result) {
       return failure();
   }
 
-  // Resolves operands.
+  // Validates operand/type count match
+  if (read_operands.size() != read_types.size() ||
+      write_operands.size() != write_types.size() ||
+      value_operands.size() != value_types.size() ||
+      original_read_operands.size() != original_read_types.size() ||
+      original_write_operands.size() != original_write_types.size()) {
+    return parser.emitError(parser.getCurrentLocation(),
+                            "operand and type count mismatch");
+  }
+
+  // Resolves all operands
   if (parser.resolveOperands(read_operands, read_types,
                              parser.getCurrentLocation(), result.operands) ||
       parser.resolveOperands(write_operands, write_types,
                              parser.getCurrentLocation(), result.operands) ||
       parser.resolveOperands(value_operands, value_types,
-                             parser.getCurrentLocation(), result.operands))
-    return failure();
-
-  // Resolves original memrefs (infer types from read/write memrefs).
-  for (size_t i = 0; i < original_read_operands.size(); ++i) {
-    original_read_types.push_back(read_types.empty() ? write_types[0]
-                                                     : read_types[0]);
-  }
-  for (size_t i = 0; i < original_write_operands.size(); ++i) {
-    original_write_types.push_back(write_types.empty() ? read_types[0]
-                                                       : write_types[0]);
-  }
-
-  if (parser.resolveOperands(original_read_operands, original_read_types,
+                             parser.getCurrentLocation(), result.operands) ||
+      parser.resolveOperands(original_read_operands, original_read_types,
                              parser.getCurrentLocation(), result.operands) ||
       parser.resolveOperands(original_write_operands, original_write_types,
                              parser.getCurrentLocation(), result.operands))
@@ -178,13 +179,15 @@ void TaskflowTaskOp::print(OpAsmPrinter &printer) {
     printer << ")";
   }
 
-  // Prints original memrefs.
+  // Prints original memrefs with types.
   if (!getOriginalReadMemrefs().empty() || !getOriginalWriteMemrefs().empty()) {
     printer << " [";
 
     if (!getOriginalReadMemrefs().empty()) {
       printer << "original_read_memrefs(";
       llvm::interleaveComma(getOriginalReadMemrefs(), printer);
+      printer << " : ";
+      llvm::interleaveComma(getOriginalReadMemrefs().getTypes(), printer);
       printer << ")";
     }
 
@@ -194,6 +197,8 @@ void TaskflowTaskOp::print(OpAsmPrinter &printer) {
     if (!getOriginalWriteMemrefs().empty()) {
       printer << "original_write_memrefs(";
       llvm::interleaveComma(getOriginalWriteMemrefs(), printer);
+      printer << " : ";
+      llvm::interleaveComma(getOriginalWriteMemrefs().getTypes(), printer);
       printer << ")";
     }
 
