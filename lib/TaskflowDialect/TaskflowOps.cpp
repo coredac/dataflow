@@ -49,14 +49,14 @@ ParseResult TaskflowTaskOp::parse(OpAsmParser &parser, OperationState &result) {
 
   // Parses original memrefs with explicit types:
   // [original_read_memrefs(%arg0, %arg1 : type1, type2),
-  // original_write_memrefs(%arg5 : type3)]
+  // original_write_memrefs(%arg5 : type3)].
   SmallVector<OpAsmParser::UnresolvedOperand> original_read_operands;
   SmallVector<Type> original_read_types;
   SmallVector<OpAsmParser::UnresolvedOperand> original_write_operands;
   SmallVector<Type> original_write_types;
 
   if (succeeded(parser.parseOptionalLSquare())) {
-    // original_read_memrefs with types
+    // original_read_memrefs with types.
     if (succeeded(parser.parseOptionalKeyword("original_read_memrefs"))) {
       if (parser.parseLParen() ||
           parser.parseOperandList(original_read_operands) ||
@@ -65,10 +65,10 @@ ParseResult TaskflowTaskOp::parse(OpAsmParser &parser, OperationState &result) {
         return failure();
     }
 
-    // optional comma
+    // optional comma.
     (void)parser.parseOptionalComma();
 
-    // original_write_memrefs with types
+    // original_write_memrefs with types.
     if (succeeded(parser.parseOptionalKeyword("original_write_memrefs"))) {
       if (parser.parseLParen() ||
           parser.parseOperandList(original_write_operands) ||
@@ -81,7 +81,7 @@ ParseResult TaskflowTaskOp::parse(OpAsmParser &parser, OperationState &result) {
       return failure();
   }
 
-  // Validates operand/type count match
+  // Validates operand/type count match.
   if (read_operands.size() != read_types.size() ||
       write_operands.size() != write_types.size() ||
       value_operands.size() != value_types.size() ||
@@ -91,7 +91,7 @@ ParseResult TaskflowTaskOp::parse(OpAsmParser &parser, OperationState &result) {
                             "operand and type count mismatch");
   }
 
-  // Resolves all operands
+  // Resolves all operands.
   if (parser.resolveOperands(read_operands, read_types,
                              parser.getCurrentLocation(), result.operands) ||
       parser.resolveOperands(write_operands, write_types,
