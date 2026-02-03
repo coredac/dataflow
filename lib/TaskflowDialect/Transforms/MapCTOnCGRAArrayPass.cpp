@@ -183,47 +183,6 @@ private:
   }
 };
 
-/// Prints the Task-Memory graph in DOT format for visualization.
-void printGraphDOT(TaskMemoryGraph &graph, llvm::raw_ostream &os) {
-  os << "digraph TaskMemGraph {\n";
-  os << "  rankdir=TB;\n";
-  // Task nodes (circles).
-  for (auto &t : graph.task_nodes) {
-    std::string pos_str = "";
-    if (!t->placement.empty()) {
-        pos_str = "\\n(" + std::to_string(t->placement[0].row) + "," + std::to_string(t->placement[0].col) + ")";
-    }
-    os << "  T" << t->id << " [shape=circle, label=\"Task" << t->id << pos_str << "\"];\n";
-  }
-  // Memory nodes (rectangles).
-  for (size_t i = 0; i < graph.memory_nodes.size(); ++i) {
-    MemoryNode *m = graph.memory_nodes[i].get();
-    std::string sram_str = "";
-    if (m->assigned_sram_id != -1) {
-        int r = m->assigned_sram_id / 100;
-        int c = m->assigned_sram_id % 100;
-        sram_str = "\\nSRAM(" + std::to_string(r) + "," + std::to_string(c) + ")";
-    }
-    os << "  M" << i << " [shape=box, label=\"Mem" << i << sram_str << "\"];\n";
-  }
-  // Edges: Task -> Memory (write) and Memory -> Task (read).
-  for (auto &t : graph.task_nodes) {
-    for (size_t i = 0; i < graph.memory_nodes.size(); ++i) {
-      MemoryNode *m = graph.memory_nodes[i].get();
-      for (auto *writer : m->writers) {
-        if (writer == t.get()) {
-          os << "  T" << t->id << " -> M" << i << ";\n";
-        }
-      }
-      for (auto *reader : m->readers) {
-        if (reader == t.get()) {
-          os << "  M" << i << " -> T" << t->id << ";\n";
-        }
-      }
-    }
-  }
-  os << "}\n";
-}
 
 
 //===----------------------------------------------------------------------===//
@@ -256,11 +215,7 @@ public:
     TaskMemoryGraph graph;
     graph.build(func);
 
-    // Prints graph visualization to stderr for debugging.
-    // llvm::errs() << "\n=== Task-Memory Graph (DOT format) ===\n";
-    // printGraphDOT(graph, llvm::errs());
-    // llvm::errs() << "=== Graph Stats: " << graph.task_nodes.size() << " tasks, "
-    //              << graph.memory_nodes.size() << " memories ===\n\n";
+
 
     if (graph.task_nodes.empty()) {
       llvm::errs() << "No tasks to place.\n";
@@ -287,7 +242,7 @@ public:
     // Alternates between Task Placement (Phase 1) and SRAM Assignment (Phase 2).
     constexpr int kMaxIterations = 10;
     
-    llvm::errs() << "\n=== Starting Iterative Placement (Max " << kMaxIterations << ") ===\n";
+
 
     for (int iter = 0; iter < kMaxIterations; ++iter) {
         // Phase 1: Place Tasks (assuming fixed SRAMs).
@@ -319,20 +274,17 @@ public:
         // Phase 2: Assign SRAMs (assuming fixed Tasks).
         bool sram_moved = assignAllSRAMs(graph);
         
-        llvm::errs() << "Iter " << iter << ": SRAMs moved = " << (sram_moved ? "Yes" : "No") << "\n";
+
 
         // Convergence Check.
         // If SRAMs didn't move, it means task placement based on them likely won't change either.
         if (iter > 0 && !sram_moved) {
-            llvm::errs() << "Converged at iteration " << iter << ".\n";
+
             break; 
         }
     }
 
-    // Prints final graph visualization to stderr.
-    // llvm::errs() << "\n=== Final Task-Memory Mapping (DOT format) ===\n";
-    // printGraphDOT(graph, llvm::errs());
-    // llvm::errs() << "===============================================\n\n";
+
 
     // Annotates Result.
     OpBuilder builder(func.getContext());
