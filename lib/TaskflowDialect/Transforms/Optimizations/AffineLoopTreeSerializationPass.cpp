@@ -194,7 +194,7 @@ public:
         loop_builder = OpBuilder::atBlockEnd(current_insert_block);
       }
 
-      // Prepare iter_args for the new loop.
+      // Prepares iter_args for the new loop.
       SmallVector<Value> iter_args_init_values;
       if (node->loop_op.getNumIterOperands() > 0) {
         for (Value init : node->loop_op.getInits()) {
@@ -202,17 +202,17 @@ public:
         }
       }
 
-      // Create new loop with same bounds and iter_args.
+      // Creates new loop with same bounds and iter_args.
       auto new_loop = loop_builder.create<affine::AffineForOp>(
           loc, node->lower_bound, node->upper_bound, node->step,
           iter_args_init_values);
 
       created_loops.push_back(new_loop);
 
-      // Map the old induction variable to the new one.
+      // Maps the old induction variable to the new one.
       mapping.map(node->loop_op.getInductionVar(), new_loop.getInductionVar());
 
-      // Map the old iter_args (block args) to the new iter_args (block args).
+      // Maps the old iter_args (block args) to the new iter_args (block args).
       if (node->loop_op.getNumRegionIterArgs() > 0) {
         for (auto [old_arg, new_arg] :
              llvm::zip(node->loop_op.getRegionIterArgs(),
@@ -225,19 +225,19 @@ public:
         outer_loop = new_loop;
       }
 
-      // Update current insertion block to the body of the new loop.
+      // Updates current insertion block to the body of the new loop.
       current_insert_block = new_loop.getBody();
 
-      // Remove the default yield created by create<AffineForOp>.
+      // Removes the default yield created by create<AffineForOp>.
       if (!current_insert_block->empty() &&
           isa<affine::AffineYieldOp>(current_insert_block->back()))
         current_insert_block->back().erase();
 
-      // Clone body operations for THIS node.
+      // Clones body operations for THIS node.
       OpBuilder body_builder = OpBuilder::atBlockEnd(current_insert_block);
       for (Operation *op : node->body_operations) {
         Operation *new_op = body_builder.clone(*op, mapping);
-        // Update mapping with results of the new op.
+        // Updates mapping with results of the new op.
         for (auto [old_res, new_res] :
              llvm::zip(op->getResults(), new_op->getResults())) {
           mapping.map(old_res, new_res);
@@ -245,7 +245,7 @@ public:
       }
     }
 
-    // Fix up yields for non-leaf loops (bottom-up).
+    // Fixes up yields for non-leaf loops (bottom-up).
     for (int i = created_loops.size() - 2; i >= 0; --i) {
       affine::AffineForOp parent = created_loops[i];
       affine::AffineForOp child = created_loops[i + 1];
@@ -268,7 +268,7 @@ public:
     // We need to find what the original yield yielded, map it, and yield it
     // here.
 
-    // Wait, if SALT excludes Yield from body_operations, then we NEVER cloned
+    // If SALT excludes Yield from body_operations, then we NEVER cloned
     // the yield. So the leaf loop has no terminator. We must reconstruct the
     // yield for the leaf loop.
 
@@ -276,7 +276,7 @@ public:
       affine::AffineForOp new_leaf = created_loops.back();
       SALTNode *leaf_node = chain.getLeaf(); // or chain.nodes.back()
 
-      // Find the yield op in the original leaf node.
+      // Finds the yield op in the original leaf node.
       Operation *original_yield = nullptr;
       for (Operation &op : leaf_node->loop_op.getBody()->getOperations()) {
         if (isa<affine::AffineYieldOp>(&op)) {
@@ -294,10 +294,8 @@ public:
         }
         leaf_yield_builder.create<affine::AffineYieldOp>(loc, yielded_values);
       } else {
-        // Should not happen for valid AffineForOp
-        OpBuilder leaf_yield_builder =
-            OpBuilder::atBlockEnd(new_leaf.getBody());
-        leaf_yield_builder.create<affine::AffineYieldOp>(loc);
+        assert(false &&
+               "Original leaf loop must have a yield operation in its body.");
       }
     }
 
