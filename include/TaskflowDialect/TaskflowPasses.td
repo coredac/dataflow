@@ -6,28 +6,30 @@
 include "mlir/Pass/PassBase.td"
 
 //=========================================================//
-// Passes for the Taskflow dialect
+// Passes for Task Level Optimizations
 //=========================================================//
-def ConstructHyperblockFromTask : Pass<"construct-hyperblock-from-task", "func::FuncOp"> {
-  let summary = "Constructs hyperblocks and counter chain from Taskflow tasks";
+def AffineLoopTreeSerialization : Pass<"affine-loop-tree-serialization", "ModuleOp">{
+  let summary = "Serializes top-level affine.for loops into minimized task operations";
   let description = [{
-    This pass constructs hyperblocks and counter chain from Taskflow tasks.
+    This pass converts top-level affine.for loops in a function into
+    minimized and canonicalized task operations.
   }];
-  let constructor = "taskflow::createConstructHyperblockFromTaskPass()";
+  let constructor = "taskflow::createAffineLoopTreeSerializationPass()";
+  let dependentDialects = [
+    "mlir::taskflow::TaskflowDialect",
+    "mlir::affine::AffineDialect",
+    "mlir::func::FuncDialect"];
 }
 
-def CanonicalizeTask: Pass<"canonicalize-task", "func::FuncOp">{
-  let summary = "Canonicalizes tasks by splitting each hyperblock into a separate atomic task";
+//=========================================================//
+// Passes for the Taskflow dialect
+//=========================================================//
+def ConstructHyperblockFromTask : Pass<"construct-hyperblock-from-task", "func::FuncOp">{
+  let summary = "Constructs hyperblocks from Taskflow tasks by detecting perfect nested loop bands";
   let description = [{
-    This pass splits tasks so that each task contains exactly one hyperblock.
-    This creates atomic task units that can be analyzed and optimized independently.
-
-    Input: Task with N hyperblocks
-    Output: N atomic tasks, each containing one hyperblock
-
-    This is a prerequisite pass before fusion optimizations.
+    This pass constructs hyperblocks from Taskflow tasks by detecting perfect nested loop bands.
   }];
-  let constructor = "taskflow::createCanonicalizeTaskPass()";
+  let constructor = "taskflow::createConstructHyperblockFromTaskPass()";
 }
 
 def ClassifyCounters : Pass<"classify-counters", "ModuleOp">{

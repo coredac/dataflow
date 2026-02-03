@@ -54,6 +54,12 @@ struct HyperblockToKernelPattern
       return failure();
     }
 
+    // Asserts that each task contains only one hyperblock.
+    int hyperblock_count = 0;
+    task_op.walk([&](TaskflowHyperblockOp op) { hyperblock_count++; });
+    assert(hyperblock_count == 1 &&
+           "Each taskflow.task should contain only one hyperblock");
+
     Block &hb_block = hyperblock_op.getBody().front();
     Block &task_block = task_op.getBody().front();
 

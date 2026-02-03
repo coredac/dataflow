@@ -16,8 +16,12 @@ namespace taskflow {
 #define GEN_PASS_DECL
 #include "TaskflowDialect/TaskflowPasses.h.inc"
 std::unique_ptr<mlir::Pass> createConstructHyperblockFromTaskPass();
-std::unique_ptr<mlir::Pass> createCanonicalizeTaskPass();
 std::unique_ptr<mlir::Pass> createClassifyCountersPass();
+
+//=========================================================//
+// Optimization Passes
+//=========================================================//
+std::unique_ptr<mlir::Pass> createAffineLoopTreeSerializationPass();
 
 #define GEN_PASS_REGISTRATION
 #include "TaskflowDialect/TaskflowPasses.h.inc"
