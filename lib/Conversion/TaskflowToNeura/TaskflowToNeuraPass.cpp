@@ -4,8 +4,11 @@
 #include "NeuraDialect/NeuraOps.h"
 #include "TaskflowDialect/TaskflowDialect.h"
 #include "TaskflowDialect/TaskflowOps.h"
+#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/MLIRContext.h"
@@ -13,6 +16,7 @@
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
+#include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/RegionUtils.h"
 #include "llvm/ADT/StringRef.h"
@@ -37,6 +41,7 @@ static LogicalResult wrapInnermostLoopAsKernel(affine::AffineForOp for_op,
                                                OpBuilder &builder,
                                                unsigned &kernel_id) {
   Location loc = for_op.getLoc();
+  MLIRContext *context = for_op.getContext();
 
   // Collects values that need to be captured by the kernel.
   llvm::SetVector<Value> captured_values;
@@ -83,6 +88,25 @@ static LogicalResult wrapInnermostLoopAsKernel(affine::AffineForOp for_op,
     builder.create<neura::YieldOp>(loc, ValueRange{}, yield_operands);
   } else {
     builder.create<neura::YieldOp>(loc);
+  }
+
+  // Converts affine operations to standard/scf operations within the kernel.
+  RewritePatternSet patterns(context);
+  populateAffineToStdConversionPatterns(patterns);
+
+  ConversionTarget target(*context);
+  target.addLegalDialect<arith::ArithDialect, memref::MemRefDialect,
+                         func::FuncDialect, neura::NeuraDialect,
+                         scf::SCFDialect>();
+  target.addIllegalOp<affine::AffineLoadOp, affine::AffineStoreOp,
+                      affine::AffineForOp, affine::AffineIfOp,
+                      affine::AffineYieldOp>();
+
+  if (failed(applyPartialConversion(kernel_op, target, std::move(patterns)))) {
+    llvm::errs()
+        << "Error: Failed to convert affine operations to standard/scf in "
+           "kernel\n";
+    return failure();
   }
 
   // Replaces uses of the original loop's results with kernel results.
@@ -387,6 +411,9 @@ struct ConvertTaskflowToNeuraPass
     registry.insert<mlir::neura::NeuraDialect>();
     registry.insert<mlir::taskflow::TaskflowDialect>();
     registry.insert<mlir::affine::AffineDialect>();
+    registry.insert<mlir::func::FuncDialect>();
+    registry.insert<mlir::memref::MemRefDialect>();
+    registry.insert<mlir::scf::SCFDialect>();
   }
 
   void runOnOperation() override {
