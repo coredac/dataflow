@@ -136,31 +136,20 @@ public:
       task_nodes.push_back(std::move(node));
     });
 
-    // 2. Creates MemoryNodes and defines Edges.
+    // 2. Creates MemoryNodes using ORIGINAL memrefs (canonical identity).
+    // Uses original_read_memrefs/original_write_memrefs to ensure aliased
+    // memories share the same MemoryNode.
     for (auto &t_node : task_nodes) {
-      // Memory Inputs (dependency for readiness)
-      for (Value input : t_node->op.getMemoryInputs()) {
-        MemoryNode *m_node = getOrCreateMemoryNode(input);
+      // Uses original_read_memrefs for canonical memory identity.
+      for (Value orig_memref : t_node->op.getOriginalReadMemrefs()) {
+        MemoryNode *m_node = getOrCreateMemoryNode(orig_memref);
         t_node->read_memrefs.push_back(m_node);
         m_node->readers.push_back(t_node.get());
       }
 
-      // Memory Outputs (produced readiness)
-      Operation *terminator = t_node->op.getBody().front().getTerminator();
-      for (Value output : t_node->op.getMemoryOutputs()) {
-        unsigned res_idx = mlir::cast<OpResult>(output).getResultNumber();
-        MemoryNode *m_node = nullptr;
-
-        // Ensures the output corresponds to a yield operand.
-        assert(res_idx < terminator->getNumOperands() && "Invalid yield operand index");
-        
-        Value source = terminator->getOperand(res_idx);
-        // Gets (or create if alloc inside) the node for the source value.
-        m_node = getOrCreateMemoryNode(source);
-        
-        // Maps the Output Result to the SAME node.
-        memref_to_node[output] = m_node;
-
+      // Uses original_write_memrefs for canonical memory identity.
+      for (Value orig_memref : t_node->op.getOriginalWriteMemrefs()) {
+        MemoryNode *m_node = getOrCreateMemoryNode(orig_memref);
         t_node->write_memrefs.push_back(m_node);
         m_node->writers.push_back(t_node.get());
       }
@@ -194,6 +183,37 @@ private:
   }
 };
 
+/// Prints the Task-Memory graph in DOT format for visualization.
+void printGraphDOT(TaskMemoryGraph &graph, llvm::raw_ostream &os) {
+  os << "digraph TaskMemGraph {\n";
+  os << "  rankdir=TB;\n";
+  // Task nodes (circles).
+  for (auto &t : graph.task_nodes) {
+    os << "  T" << t->id << " [shape=circle, label=\"" << t->id << "\"];\n";
+  }
+  // Memory nodes (rectangles).
+  for (size_t i = 0; i < graph.memory_nodes.size(); ++i) {
+    os << "  M" << i << " [shape=box, label=\"mem" << i << "\"];\n";
+  }
+  // Edges: Task -> Memory (write) and Memory -> Task (read).
+  for (auto &t : graph.task_nodes) {
+    for (size_t i = 0; i < graph.memory_nodes.size(); ++i) {
+      MemoryNode *m = graph.memory_nodes[i].get();
+      for (auto *writer : m->writers) {
+        if (writer == t.get()) {
+          os << "  T" << t->id << " -> M" << i << ";\n";
+        }
+      }
+      for (auto *reader : m->readers) {
+        if (reader == t.get()) {
+          os << "  M" << i << " -> T" << t->id << ";\n";
+        }
+      }
+    }
+  }
+  os << "}\n";
+}
+
 
 //===----------------------------------------------------------------------===//
 // CGRA Placer
@@ -225,6 +245,12 @@ public:
     TaskMemoryGraph graph;
     graph.build(func);
 
+    // Prints graph visualization to stderr for debugging.
+    // llvm::errs() << "\n=== Task-Memory Graph (DOT format) ===\n";
+    // printGraphDOT(graph, llvm::errs());
+    // llvm::errs() << "=== Graph Stats: " << graph.task_nodes.size() << " tasks, "
+    //              << graph.memory_nodes.size() << " memories ===\n\n";
+
     if (graph.task_nodes.empty()) {
       llvm::errs() << "No tasks to place.\n";
       return;
@@ -246,44 +272,50 @@ public:
     // 1. Computes ALAP level for each task (longest path to sink).
     // 2. Sorts tasks by: (a) ALAP level, (b) criticality, (c) degree.
     // 3. Places tasks in sorted order with heuristic scoring.
-    // Placement Loop.
-    for (TaskNode *task_node : sorted_tasks) {
-      int cgra_count = 1;
-      if (auto attr = task_node->op->getAttrOfType<IntegerAttr>("cgra_count")) {
-        cgra_count = attr.getInt();
-      }
+    // Iterative Refinement Loop (Coordinate Descent).
+    // Alternates between Task Placement (Phase 1) and SRAM Assignment (Phase 2).
+    constexpr int kMaxIterations = 10;
+    
+    llvm::errs() << "\n=== Starting Iterative Placement (Max " << kMaxIterations << ") ===\n";
 
-      // Finds Best Placement.
-      // Heuristic: Minimizes distance to:
-      // 1. SSA Producers (that are already placed).
-      // 2. SRAMs of Input MemRefs (if already assigned).
-      TaskPlacement placement = findBestPlacement(task_node, cgra_count, graph);
-      
-      // Commits Placement.
-      task_node->placement.push_back(placement.primary());
-      // Handles multi-cgra if needed.
-      for (size_t i = 1; i < placement.cgra_positions.size(); ++i) {
-         task_node->placement.push_back(placement.cgra_positions[i]);
-      }
+    for (int iter = 0; iter < kMaxIterations; ++iter) {
+        // Phase 1: Place Tasks (assuming fixed SRAMs).
+        if (iter > 0) resetTaskPlacements(graph);
 
-      // Marks Occupied.
-      for (const auto &pos : placement.cgra_positions) {
-        if (pos.row >= 0 && pos.row < grid_rows_ && pos.col >= 0 && pos.col < grid_cols_)
-            occupied_[pos.row][pos.col] = true;
-      }
+        for (TaskNode *task_node : sorted_tasks) {
+          int cgra_count = 1;
+          if (auto attr = task_node->op->getAttrOfType<IntegerAttr>("cgra_count")) {
+            cgra_count = attr.getInt();
+          }
 
-      // Maps Associated Memory Nodes.
-      // For each MemRef this task touches, if not yet assigned to SRAM, assign to nearest.
-      for (MemoryNode *mem_node : task_node->read_memrefs) {
-        if (mem_node->assigned_sram_id == -1) {
-            mem_node->assigned_sram_id = assignSRAM(mem_node, placement);
+          // Finds Best Placement using SRAM positions from previous iter (or -1/default).
+          TaskPlacement placement = findBestPlacement(task_node, cgra_count, graph);
+          
+          // Commits Placement.
+          task_node->placement.push_back(placement.primary());
+          // Handles multi-cgra if needed.
+          for (size_t i = 1; i < placement.cgra_positions.size(); ++i) {
+             task_node->placement.push_back(placement.cgra_positions[i]);
+          }
+
+          // Marks Occupied.
+          for (const auto &pos : placement.cgra_positions) {
+            if (pos.row >= 0 && pos.row < grid_rows_ && pos.col >= 0 && pos.col < grid_cols_)
+                occupied_[pos.row][pos.col] = true;
+          }
         }
-      }
-      for (MemoryNode *mem_node : task_node->write_memrefs) {
-        if (mem_node->assigned_sram_id == -1) {
-            mem_node->assigned_sram_id = assignSRAM(mem_node, placement);
+
+        // Phase 2: Assign SRAMs (assuming fixed Tasks).
+        bool sram_moved = assignAllSRAMs(graph);
+        
+        llvm::errs() << "Iter " << iter << ": SRAMs moved = " << (sram_moved ? "Yes" : "No") << "\n";
+
+        // Convergence Check.
+        // If SRAMs didn't move, it means task placement based on them likely won't change either.
+        if (iter > 0 && !sram_moved) {
+            llvm::errs() << "Converged at iteration " << iter << ".\n";
+            break; 
         }
-      }
     }
 
     // Annotates Result.
@@ -298,18 +330,55 @@ public:
   }
 
 private:
-  /// Assigns a memref to the closest SRAM near the given task position.
-  /// TODO: Integrate with Arch Spec to map logical SRAM IDs (row*100 + col) to
-  /// physical hardware Block IDs, especially for shared or asymmetric SRAMs.
-  int assignSRAM(MemoryNode *mem_node, const TaskPlacement &placement) {
-    if (mem_node->assigned_sram_id != -1)
-      return mem_node->assigned_sram_id;
+  /// Clears task placement and occupied grid.
+  void resetTaskPlacements(TaskMemoryGraph &graph) {
+    for (auto &task : graph.task_nodes) {
+        task->placement.clear();
+    }
+    // Clears grid.
+    for (int r = 0; r < grid_rows_; ++r) {
+        std::fill(occupied_[r].begin(), occupied_[r].end(), false);
+    }
+  }
 
-    // Assigns to a new SRAM near the task's primary CGRA.
-    CGRAPosition pos = placement.primary();
-    int sram_id = pos.row * 100 + pos.col; // Simple encoding: row*100 + col.
-    mem_node->assigned_sram_id = sram_id;
-    return sram_id;
+  /// Assigns all memory nodes to SRAMs based on centroid of accessing tasks.
+  /// Returns true if any SRAM assignment changed.
+  bool assignAllSRAMs(TaskMemoryGraph &graph) {
+    bool changed = false;
+    for (auto &mem_node : graph.memory_nodes) {
+      // Computes centroid of all tasks that access this memory.
+      int total_row = 0, total_col = 0, count = 0;
+      for (TaskNode *reader : mem_node->readers) {
+        if (!reader->placement.empty()) {
+          total_row += reader->placement[0].row;
+          total_col += reader->placement[0].col;
+          count++;
+        }
+      }
+      for (TaskNode *writer : mem_node->writers) {
+        if (!writer->placement.empty()) {
+          total_row += writer->placement[0].row;
+          total_col += writer->placement[0].col;
+          count++;
+        }
+      }
+      
+      int new_sram_id = 0;
+      if (count > 0) {
+        // Rounds to the nearest integer.
+        int avg_row = (total_row + count / 2) / count;
+        int avg_col = (total_col + count / 2) / count;
+        new_sram_id = avg_row * 100 + avg_col;
+      } else {
+        new_sram_id = 0; // Default fallback
+      }
+
+      if (mem_node->assigned_sram_id != new_sram_id) {
+        mem_node->assigned_sram_id = new_sram_id;
+        changed = true;
+      }
+    }
+    return changed;
   }
 
 
@@ -470,8 +539,8 @@ struct MapCTOnCGRAArrayPass
 
   void runOnOperation() override {
     func::FuncOp func = getOperation();
-    constexpr int kDefaultGridRows = 4;
-    constexpr int kDefaultGridCols = 4;
+    constexpr int kDefaultGridRows = 3;
+    constexpr int kDefaultGridCols = 3;
     CGRAPlacer placer(kDefaultGridRows, kDefaultGridCols);
     placer.place(func);
   }
