@@ -45,7 +45,19 @@ static LogicalResult wrapInnermostLoopAsKernel(affine::AffineForOp for_op,
 
   // Collects values that need to be captured by the kernel.
   llvm::SetVector<Value> captured_values;
+
+  // 1. Values used in the loop body (loads, stores, computations).
   getUsedValuesDefinedAbove(for_op.getRegion(), captured_values);
+
+  // 2. Explicitly collect loop operands (iter_args init values, bounds if
+  // dynamic). For affine.for, bounds are usually constant, but iter_args init
+  // values are operands.
+  for (Value operand : for_op.getInits()) {
+    // Only adds if defined outside (not a constant or in the loop itself).
+    if (operand.getParentRegion() != &for_op.getRegion()) {
+      captured_values.insert(operand);
+    }
+  }
 
   // Checks if the loop has output values.
   bool has_outputs = !for_op.getResults().empty();
