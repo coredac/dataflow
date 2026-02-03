@@ -189,11 +189,22 @@ void printGraphDOT(TaskMemoryGraph &graph, llvm::raw_ostream &os) {
   os << "  rankdir=TB;\n";
   // Task nodes (circles).
   for (auto &t : graph.task_nodes) {
-    os << "  T" << t->id << " [shape=circle, label=\"" << t->id << "\"];\n";
+    std::string pos_str = "";
+    if (!t->placement.empty()) {
+        pos_str = "\\n(" + std::to_string(t->placement[0].row) + "," + std::to_string(t->placement[0].col) + ")";
+    }
+    os << "  T" << t->id << " [shape=circle, label=\"Task" << t->id << pos_str << "\"];\n";
   }
   // Memory nodes (rectangles).
   for (size_t i = 0; i < graph.memory_nodes.size(); ++i) {
-    os << "  M" << i << " [shape=box, label=\"mem" << i << "\"];\n";
+    MemoryNode *m = graph.memory_nodes[i].get();
+    std::string sram_str = "";
+    if (m->assigned_sram_id != -1) {
+        int r = m->assigned_sram_id / 100;
+        int c = m->assigned_sram_id % 100;
+        sram_str = "\\nSRAM(" + std::to_string(r) + "," + std::to_string(c) + ")";
+    }
+    os << "  M" << i << " [shape=box, label=\"Mem" << i << sram_str << "\"];\n";
   }
   // Edges: Task -> Memory (write) and Memory -> Task (read).
   for (auto &t : graph.task_nodes) {
@@ -317,6 +328,11 @@ public:
             break; 
         }
     }
+
+    // Prints final graph visualization to stderr.
+    // llvm::errs() << "\n=== Final Task-Memory Mapping (DOT format) ===\n";
+    // printGraphDOT(graph, llvm::errs());
+    // llvm::errs() << "===============================================\n\n";
 
     // Annotates Result.
     OpBuilder builder(func.getContext());
