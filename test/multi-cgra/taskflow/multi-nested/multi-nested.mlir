@@ -19,6 +19,13 @@
 // RUN: -o %t.hyperblock.mlir
 // RUN: FileCheck %s --input-file=%t.hyperblock.mlir --check-prefixes=HYPERBLOCK
 
+// RUN: mlir-neura-opt %s --affine-loop-tree-serialization \
+// RUN: --convert-affine-to-taskflow \
+// RUN: --construct-hyperblock-from-task \
+// RUN: --map-ct-on-cgra-array \
+// RUN: -o %t.placement.mlir
+// RUN: FileCheck %s --input-file=%t.placement.mlir --check-prefixes=PLACEMENT
+
 module attributes {} {
   func.func @_Z21pureNestedLoopExamplePA8_A6_iPA8_A5_iS4_PA7_iPA9_iPiS9_S9_S9_S9_(%arg0: memref<?x8x6xi32>, %arg1: memref<?x8x5xi32>, %arg2: memref<?x8x5xi32>, %arg3: memref<?x7xi32>, %arg4: memref<?x9xi32>, %arg5: memref<?xi32>, %arg6: memref<?xi32>, %arg7: memref<?xi32>, %arg8: memref<?xi32>, %arg9: memref<?xi32>) -> i32 attributes {llvm.linkage = #llvm.linkage<external>} {
     affine.for %arg10 = 0 to 4 {
@@ -366,4 +373,16 @@ module attributes {} {
 // HYPERBLOCK-NEXT:    %0 = affine.load %write_outputs_1[0] : memref<?xi32>
 // HYPERBLOCK-NEXT:    return %0 : i32
 // HYPERBLOCK-NEXT:  }
+
 // HYPERBLOCK-NEXT:}
+
+// PLACEMENT:      taskflow.task @Task_0
+// PLACEMENT-SAME: cgra_col = 0 : i32, cgra_count = 1 : i32, cgra_row = 0 : i32
+// PLACEMENT:      taskflow.task @Task_1
+// PLACEMENT-SAME: cgra_col = 1 : i32, cgra_count = 1 : i32, cgra_row = 1 : i32
+// PLACEMENT:      taskflow.task @Task_2
+// PLACEMENT-SAME: cgra_col = 1 : i32, cgra_count = 1 : i32, cgra_row = 0 : i32
+// PLACEMENT:      taskflow.task @Task_3
+// PLACEMENT-SAME: cgra_col = 2 : i32, cgra_count = 1 : i32, cgra_row = 2 : i32
+// PLACEMENT:      taskflow.task @Task_4
+// PLACEMENT-SAME: cgra_col = 2 : i32, cgra_count = 1 : i32, cgra_row = 1 : i32
