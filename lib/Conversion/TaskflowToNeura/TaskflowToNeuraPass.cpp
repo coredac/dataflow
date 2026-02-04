@@ -10,6 +10,7 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
@@ -19,6 +20,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/RegionUtils.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -194,7 +196,14 @@ struct HyperblockToKernelPattern
     llvm::DenseSet<Value> live_in_set;
     SmallVector<Value> live_in_values;
 
+    // Collects constants that should be internalized in the kernel.
+    SmallVector<Operation *> constant_ops_to_internalize;
+
     hyperblock_op.walk([&](Operation *op) {
+      if (op == hyperblock_op.getOperation()) {
+        // Skips the hyperblock op itself.
+        return;
+      }
       for (Value operand : op->getOperands()) {
         if (auto blockArg = dyn_cast<BlockArgument>(operand)) {
           if (blockArg.getOwner() == &task_block) {
@@ -214,9 +223,27 @@ struct HyperblockToKernelPattern
           Operation *def_op = operand.getDefiningOp();
           llvm::errs() << "[taskflow2neura] Operand from op: "
                        << *(operand.getDefiningOp()) << "\n";
-          assert(((isa<TaskflowCounterOp>(def_op) &&
-                   def_op->getParentOp() == task_op) ||
-                  (hyperblock_op->isProperAncestor(def_op))) &&
+          bool is_in_hyperblock =
+              (def_op->getParentRegion() == &hyperblock_op.getBody());
+
+          bool is_in_task_body =
+              (def_op->getParentRegion() == &task_op.getBody());
+
+          // If it is a constant in task body, marks it for internalization.
+          if (is_in_task_body && !is_in_hyperblock) {
+            if (def_op->hasTrait<OpTrait::ConstantLike>()) {
+              // Don't add to live_in.
+              constant_ops_to_internalize.push_back(def_op);
+              continue;
+            } else {
+              // Non-constant task body value should not be used in hyperblock.
+              assert(
+                  false &&
+                  "Non-constant task body should not be used in hyperblock.");
+            }
+          }
+
+          assert((is_in_hyperblock || is_in_task_body) &&
                  "Unexpected non-block-arg operand in hyperblock");
         }
       }
@@ -268,6 +295,16 @@ struct HyperblockToKernelPattern
           entry_block->addArgument(iter_args_init[i].getType(), loc);
       BlockArgument hb_arg = hb_block.getArgument(num_indices + i);
       mapping.map(hb_arg, kernel_iter_arg);
+    }
+
+    // Clones constants into kernel.
+    rewriter.setInsertionPointToStart(entry_block);
+    for (Operation *const_op : constant_ops_to_internalize) {
+      Operation *cloned = rewriter.clone(*const_op);
+      // Maps the original constant to the cloned one.
+      for (size_t i = 0; i < const_op->getNumResults(); ++i) {
+        mapping.map(const_op->getResult(i), cloned->getResult(i));
+      }
     }
 
     // Clones hyperblock body into kernel.
