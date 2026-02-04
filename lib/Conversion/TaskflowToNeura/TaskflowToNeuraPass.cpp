@@ -147,32 +147,43 @@ struct HyperblockToKernelPattern
           }
         } else if (operand.getDefiningOp()) {
           Operation *def_op = operand.getDefiningOp();
+
+          // Checks three regions:
+          // 1. Inside hyperblock
+          // 2. Inside task body (but outside hyperblock)
+          // 3. Outside task body (error)
           llvm::errs() << "[taskflow2neura] Operand from op: "
                        << *(operand.getDefiningOp()) << "\n";
           bool is_in_hyperblock = hyperblock_op->isProperAncestor(def_op);
+          bool is_in_task_body = task_op->isProperAncestor(def_op);
 
-          bool is_in_task_body =
-              (def_op->getParentRegion() == &task_op.getBody());
-
-          // If it is a constant in task body, marks it for internalization.
-          if (is_in_task_body && !is_in_hyperblock) {
+          if (is_in_hyperblock) {
+            // Defined inside hyperblock - do nothing.
+            continue;
+          } else if (is_in_task_body && !is_in_hyperblock) {
+            // If it is a constant in task body, marks it for internalization.
             if (def_op->hasTrait<OpTrait::ConstantLike>()) {
               // Don't add to live_in.
               constant_ops_to_internalize.push_back(def_op);
               continue;
             } else {
-              llvm::errs() << "ERROR: Non-constant task body value\n";
-              llvm::errs() << "  Operand: " << operand << "\n";
-              llvm::errs() << "  Defining op: " << *def_op << "\n";
-              // Non-constant task body value should not be used in hyperblock.
-              assert(
-                  false &&
-                  "Non-constant task body should not be used in hyperblock.");
+              // Non-constant value from outer loop body.
+              // Adds as live-in (will be passed from outer scope).
+              if (live_in_set.insert(operand).second) {
+                live_in_values.push_back(operand);
+                llvm::errs()
+                    << "[taskflow2neura] Added live-in from outer loop body: "
+                    << operand << " from op: " << *def_op << "\n";
+              }
+              continue;
             }
+          } else {
+            // Defined outside task - ERROR.
+            llvm::errs() << "ERROR: Value from outside task\n";
+            llvm::errs() << "  Operand: " << operand << "\n";
+            llvm::errs() << "  Defining op: " << *def_op << "\n";
+            assert(false && "Operand defined outside task");
           }
-
-          assert((is_in_hyperblock || is_in_task_body) &&
-                 "Unexpected non-block-arg operand in hyperblock");
         }
       }
     });
