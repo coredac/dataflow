@@ -263,7 +263,8 @@ public:
           
           // Commits Placement.
           task_node->placement.push_back(placement.primary());
-          // Handles multi-cgra if needed.
+          // Handles mapping one task on multi-CGRAs.
+          // TODO: Introduce explicit multi-CGRA binding logic.
           for (size_t i = 1; i < placement.cgra_positions.size(); ++i) {
              task_node->placement.push_back(placement.cgra_positions[i]);
           }
@@ -294,10 +295,45 @@ public:
     OpBuilder builder(func.getContext());
     for (auto &task_node : graph.task_nodes) {
         if (task_node->placement.empty()) continue;
-        CGRAPosition pos = task_node->placement[0];
-        task_node->op->setAttr("cgra_row", builder.getI32IntegerAttr(pos.row));
-        task_node->op->setAttr("cgra_col", builder.getI32IntegerAttr(pos.col));
-        task_node->op->setAttr("cgra_count", builder.getI32IntegerAttr(task_node->placement.size()));
+        
+        SmallVector<NamedAttribute, 4> mapping_attrs;
+
+        // 1. CGRA Positions
+        SmallVector<Attribute> pos_attrs;
+        for (const auto &pos : task_node->placement) {
+            SmallVector<NamedAttribute, 2> coord_attrs;
+            coord_attrs.push_back(NamedAttribute(
+                StringAttr::get(func.getContext(), "row"),
+                builder.getI32IntegerAttr(pos.row)));
+            coord_attrs.push_back(NamedAttribute(
+                StringAttr::get(func.getContext(), "col"),
+                builder.getI32IntegerAttr(pos.col)));
+            pos_attrs.push_back(DictionaryAttr::get(func.getContext(), coord_attrs));
+        }
+        mapping_attrs.push_back(NamedAttribute(
+            StringAttr::get(func.getContext(), "cgra_positions"),
+            builder.getArrayAttr(pos_attrs)));
+
+        // 2. Read SRAM IDs
+        SmallVector<Attribute> read_sram_attrs;
+        for (MemoryNode *mem : task_node->read_memrefs) {
+            read_sram_attrs.push_back(builder.getI32IntegerAttr(mem->assigned_sram_id));
+        }
+        mapping_attrs.push_back(NamedAttribute(
+            StringAttr::get(func.getContext(), "read_sram_ids"),
+            builder.getArrayAttr(read_sram_attrs)));
+
+        // 3. Write SRAM IDs
+        SmallVector<Attribute> write_sram_attrs;
+        for (MemoryNode *mem : task_node->write_memrefs) {
+            write_sram_attrs.push_back(builder.getI32IntegerAttr(mem->assigned_sram_id));
+        }
+        mapping_attrs.push_back(NamedAttribute(
+            StringAttr::get(func.getContext(), "write_sram_ids"),
+            builder.getArrayAttr(write_sram_attrs)));
+
+        // Set Attribute
+        task_node->op->setAttr("mapping_info", DictionaryAttr::get(func.getContext(), mapping_attrs));
     }
   }
 

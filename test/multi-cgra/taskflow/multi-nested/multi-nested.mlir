@@ -377,12 +377,12 @@ module attributes {} {
 // HYPERBLOCK-NEXT:}
 
 // PLACEMENT:      taskflow.task @Task_0
-// PLACEMENT-SAME: cgra_col = 0 : i32, cgra_count = 1 : i32, cgra_row = 0 : i32
+// PLACEMENT-SAME: mapping_info = {cgra_positions = [{col = 0 : i32, row = 0 : i32}], read_sram_ids = [0 : i32], write_sram_ids = [65536 : i32]}
 // PLACEMENT:      taskflow.task @Task_1
-// PLACEMENT-SAME: cgra_col = 1 : i32, cgra_count = 1 : i32, cgra_row = 0 : i32
+// PLACEMENT-SAME: mapping_info = {cgra_positions = [{col = 1 : i32, row = 0 : i32}], read_sram_ids = [1 : i32, 1 : i32], write_sram_ids = [65537 : i32]}
 // PLACEMENT:      taskflow.task @Task_2
-// PLACEMENT-SAME: cgra_col = 0 : i32, cgra_count = 1 : i32, cgra_row = 1 : i32
+// PLACEMENT-SAME: mapping_info = {cgra_positions = [{col = 0 : i32, row = 1 : i32}], read_sram_ids = [65536 : i32, 65537 : i32, 65536 : i32], write_sram_ids = [65536 : i32]}
 // PLACEMENT:      taskflow.task @Task_3
-// PLACEMENT-SAME: cgra_col = 2 : i32, cgra_count = 1 : i32, cgra_row = 0 : i32
+// PLACEMENT-SAME: mapping_info = {cgra_positions = [{col = 2 : i32, row = 0 : i32}], read_sram_ids = [2 : i32], write_sram_ids = [65538 : i32]}
 // PLACEMENT:      taskflow.task @Task_4
-// PLACEMENT-SAME: cgra_col = 1 : i32, cgra_count = 1 : i32, cgra_row = 1 : i32
+// PLACEMENT-SAME: mapping_info = {cgra_positions = [{col = 1 : i32, row = 1 : i32}], read_sram_ids = [65537 : i32, 65538 : i32], write_sram_ids = [65537 : i32]}

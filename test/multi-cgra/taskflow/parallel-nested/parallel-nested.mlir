@@ -130,6 +130,6 @@ module {
 // HYPERBLOCK-NEXT: }
 
 // PLACEMENT:      taskflow.task @Task_0
-// PLACEMENT-SAME: cgra_col = 0 : i32, cgra_count = 1 : i32, cgra_row = 0 : i32
+// PLACEMENT-SAME: mapping_info = {cgra_positions = [{col = 0 : i32, row = 0 : i32}], read_sram_ids = [0 : i32], write_sram_ids = [0 : i32]}
 // PLACEMENT:      taskflow.task @Task_1
-// PLACEMENT-SAME: cgra_col = 1 : i32, cgra_count = 1 : i32, cgra_row = 0 : i32
+// PLACEMENT-SAME: mapping_info = {cgra_positions = [{col = 1 : i32, row = 0 : i32}], read_sram_ids = [1 : i32, 1 : i32], write_sram_ids = [1 : i32]}
