@@ -11,7 +11,7 @@
 // RUN: --convert-affine-to-taskflow \
 // RUN: --construct-hyperblock-from-task \
 // RUN: --convert-taskflow-to-neura \
-// RUN: --architecture-spec=%S/../../../arch_spec/architecture-no-counter.yaml \
+// RUN: --architecture-spec=%S/../../../arch_spec/architecture_no_counter.yaml \
 // RUN: -o %t.kernel.mlir
 // RUN: FileCheck %s --input-file=%t.kernel.mlir --check-prefixes=KERNEL
 
