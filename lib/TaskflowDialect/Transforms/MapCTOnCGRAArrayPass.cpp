@@ -93,9 +93,9 @@ struct TaskNode {
   TaskflowTaskOp op;
   int alap_level = 0;
   
-  // Edges (Note: read/write naming refers to taskflow memory_inputs/outputs)
-  SmallVector<MemoryNode *> read_memrefs;  // taskflow.task memory_inputs (readiness triggers)
-  SmallVector<MemoryNode *> write_memrefs; // taskflow.task memory_outputs (produce readiness)
+  // Edges based on original memory access.
+  SmallVector<MemoryNode *> read_memrefs;  // original_read_memrefs
+  SmallVector<MemoryNode *> write_memrefs; // original_write_memrefs
   SmallVector<TaskNode *> ssa_users;
   SmallVector<TaskNode *> ssa_operands;
 
@@ -159,7 +159,7 @@ public:
     // Identifies if a task uses a value produced by another task.
     for (auto &consumer_node : task_nodes) {
         // Interates all operands for now to be safe.
-        for (Value operand : consumer_node->op->getOperands()) {
+        for (Value operand : consumer_node->op.getValueInputs()) {
             if (auto producer_op = operand.getDefiningOp<TaskflowTaskOp>()) {
                 if (auto *producer_node = op_to_node[producer_op]) {
                     producer_node->ssa_users.push_back(consumer_node.get());
@@ -172,8 +172,9 @@ public:
 
 private:
   MemoryNode *getOrCreateMemoryNode(Value memref) {
-    if (memref_to_node.count(memref))
+    if (memref_to_node.count(memref)){
       return memref_to_node[memref];
+    }
     
     auto node = std::make_unique<MemoryNode>(memref);
     MemoryNode *ptr = node.get();
@@ -186,9 +187,10 @@ private:
 
 
 //===----------------------------------------------------------------------===//
-// CGRA Placer
+// Task Mapper
 //===----------------------------------------------------------------------===//
-/// Places ACTs onto a 2D CGRA grid with memory mapping.
+/// Maps a task-memory graph onto a 2D CGRA grid.
+
 class CGRAPlacer {
 public:
   CGRAPlacer(int grid_rows, int grid_cols)
@@ -210,7 +212,6 @@ public:
     }
 
 
-    // Extracts counter chains and builds dependency graph.
     // Builds Task-Memory Graph.
     TaskMemoryGraph graph;
     graph.build(func);
@@ -223,6 +224,9 @@ public:
     }
 
     // Computes ALAP Levels on the Task Graph.
+    // We use ALAP (As Late As Possible) to identify the critical path and
+    // prioritize tasks that are closer to the sink, which helps in minimizing
+    // the overall dependency latency during placement.
     computeALAP(graph);
 
     // Sorts tasks by ALAP level (Critical Path First).
@@ -336,7 +340,8 @@ private:
         // Rounds to the nearest integer.
         int avg_row = (total_row + count / 2) / count;
         int avg_col = (total_col + count / 2) / count;
-        new_sram_id = avg_row * 100 + avg_col;
+        // SRAM ID encoding: (row << 16) | col
+        new_sram_id = (avg_row << 16) | (avg_col & 0xFFFF);
       } else {
         new_sram_id = 0; // Default fallback
       }
@@ -378,11 +383,7 @@ private:
 
     // Error handling: No available position found (grid over-subscribed).
     if (best_placement.cgra_positions.empty()) {
-      llvm::errs() << "Warning: No available CGRA position for task "
-                   << task_node->id << ". Grid is over-subscribed (" << grid_rows_
-                   << "x" << grid_cols_ << " grid with all cells occupied).\n";
-      // Fallback: Assign to position (0,0) with a warning.
-      best_placement.cgra_positions.push_back({0, 0});
+      assert(false && "No available CGRA position found (grid over-subscribed).");
     }
 
     return best_placement;
@@ -393,7 +394,7 @@ private:
   /// downstream hardware generators to configure fast bypass paths between
   /// adjacent PEs with dependencies.
   ///
-  /// Score = α·SSA_Dist + β·Mem_Dist + γ·Balance
+  /// Score = α·SSA_Dist + β·Mem_Dist
   ///
   /// SSA_Dist: Minimize distance to placed SSA predecessors (ssa_operands).
   /// Mem_Dist: Minimize distance to assigned SRAMs for read/write memrefs.
@@ -402,19 +403,23 @@ private:
     // Weight constants (tunable).
     constexpr int kAlpha = 10;   // SSA proximity weight
     constexpr int kBeta = 50;    // Memory proximity weight (High priority)
-    constexpr int kGamma = 20;   // Load balance weight
 
     int ssa_score = 0;
     int mem_score = 0;
-    int bal_score = 0;
     
     CGRAPosition current_pos = placement.primary();
 
-    // 1. SSA Proximity (Predecessors)
+    // 1. SSA Proximity (Predecessors & Successors)
     for (TaskNode *producer : task_node->ssa_operands) {
         if (!producer->placement.empty()) {
             int dist = current_pos.manhattanDistance(producer->placement[0]);
             // Uses negative distance to penalize far-away placements.
+            ssa_score -= dist;
+        }
+    }
+    for (TaskNode *consumer : task_node->ssa_users) {
+        if (!consumer->placement.empty()) {
+            int dist = current_pos.manhattanDistance(consumer->placement[0]);
             ssa_score -= dist;
         }
     }
@@ -423,9 +428,9 @@ private:
     // For Read MemRefs
     for (MemoryNode *mem : task_node->read_memrefs) {
         if (mem->assigned_sram_id != -1) {
-            // SRAM ID encoding: row*100 + col
-            int sram_r = mem->assigned_sram_id / 100;
-            int sram_c = mem->assigned_sram_id % 100;
+            // SRAM ID encoding: (row << 16) | col
+            int sram_r = mem->assigned_sram_id >> 16;
+            int sram_c = mem->assigned_sram_id & 0xFFFF;
             CGRAPosition sram_pos{sram_r, sram_c};
             int dist = current_pos.manhattanDistance(sram_pos);
             mem_score -= dist;
@@ -436,50 +441,44 @@ private:
     // we want to be close to it too.
     for (MemoryNode *mem : task_node->write_memrefs) {
          if (mem->assigned_sram_id != -1) {
-            int sram_r = mem->assigned_sram_id / 100;
-            int sram_c = mem->assigned_sram_id % 100;
+            // SRAM ID encoding: (row << 16) | col
+            int sram_r = mem->assigned_sram_id >> 16;
+            int sram_c = mem->assigned_sram_id & 0xFFFF;
             CGRAPosition sram_pos{sram_r, sram_c};
             int dist = current_pos.manhattanDistance(sram_pos);
             mem_score -= dist;
         }
     }
 
-    // 3. Load Balance
-    // Prefers less crowded rows/cols.
-    int row_count = 0, col_count = 0;
-    for (int c = 0; c < grid_cols_; ++c) { if (occupied_[current_pos.row][c]) row_count++; }
-    for (int r = 0; r < grid_rows_; ++r) { if (occupied_[r][current_pos.col]) col_count++; }
-    bal_score = (grid_cols_ - row_count) + (grid_rows_ - col_count);
-
-    return kAlpha * ssa_score + kBeta * mem_score + kGamma * bal_score;
+    return kAlpha * ssa_score + kBeta * mem_score;
   }
 
   /// Computes ALAP levels considering both SSA and memory dependencies.
   void computeALAP(TaskMemoryGraph &graph) {
     // DFS for longest path from node to any sink (ALAP Level).
-    DenseMap<TaskNode*, int> memo;
+    DenseMap<TaskNode*, int> node_alap_cache;
     for (auto &node : graph.task_nodes) {
-        node->alap_level = calculateLevel(node.get(), memo);
+        node->alap_level = calculateLevel(node.get(), node_alap_cache);
     }
   }
 
-  int calculateLevel(TaskNode *node, DenseMap<TaskNode*, int> &memo) {
-    if (memo.count(node)) return memo[node];
+  int calculateLevel(TaskNode *node, DenseMap<TaskNode*, int> &node_alap_cache) {
+    if (node_alap_cache.count(node)) return node_alap_cache[node];
 
     int max_child_level = 0;
     for (TaskNode *child : node->ssa_users) {
-        max_child_level = std::max(max_child_level, calculateLevel(child, memo) + 1);
+        max_child_level = std::max(max_child_level, calculateLevel(child, node_alap_cache) + 1);
     }
 
     // Checks memory dependencies too (Producer -> Mem -> Consumer).
     for (MemoryNode *mem : node->write_memrefs) {
         for (TaskNode *reader : mem->readers) {
             if (reader != node)
-                max_child_level = std::max(max_child_level, calculateLevel(reader, memo) + 1);
+                max_child_level = std::max(max_child_level, calculateLevel(reader, node_alap_cache) + 1);
         }
     }
 
-    return memo[node] = max_child_level;
+    return node_alap_cache[node] = max_child_level;
   }
 
 

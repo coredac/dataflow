@@ -379,10 +379,10 @@ module attributes {} {
 // PLACEMENT:      taskflow.task @Task_0
 // PLACEMENT-SAME: cgra_col = 0 : i32, cgra_count = 1 : i32, cgra_row = 0 : i32
 // PLACEMENT:      taskflow.task @Task_1
-// PLACEMENT-SAME: cgra_col = 1 : i32, cgra_count = 1 : i32, cgra_row = 1 : i32
-// PLACEMENT:      taskflow.task @Task_2
 // PLACEMENT-SAME: cgra_col = 1 : i32, cgra_count = 1 : i32, cgra_row = 0 : i32
+// PLACEMENT:      taskflow.task @Task_2
+// PLACEMENT-SAME: cgra_col = 0 : i32, cgra_count = 1 : i32, cgra_row = 1 : i32
 // PLACEMENT:      taskflow.task @Task_3
-// PLACEMENT-SAME: cgra_col = 2 : i32, cgra_count = 1 : i32, cgra_row = 2 : i32
+// PLACEMENT-SAME: cgra_col = 2 : i32, cgra_count = 1 : i32, cgra_row = 0 : i32
 // PLACEMENT:      taskflow.task @Task_4
-// PLACEMENT-SAME: cgra_col = 2 : i32, cgra_count = 1 : i32, cgra_row = 1 : i32
+// PLACEMENT-SAME: cgra_col = 1 : i32, cgra_count = 1 : i32, cgra_row = 1 : i32
