@@ -157,11 +157,18 @@ module attributes {} {
 // KERNEL-NEXT:     %alloca_0 = memref.alloca() : memref<4x8xi32>
 // KERNEL-NEXT:     %value_outputs = taskflow.task @Task_0 value_inputs(%c0_i32 : i32) : (i32) -> (i32) {
 // KERNEL-NEXT:     ^bb0(%arg0: i32):
-// KERNEL-NEXT:       %1 = affine.for %arg1 = 0 to 5 iter_args(%arg2 = %arg0) -> (i32) {
-// KERNEL-NEXT:         %2 = arith.index_cast %arg1 : index to i32
-// KERNEL-NEXT:         %3 = arith.addi %arg2, %2 : i32
-// KERNEL-NEXT:         affine.yield %3 : i32
-// KERNEL-NEXT:       }
+// KERNEL-NEXT:       %1 = neura.kernel inputs(%arg0 : i32) {
+// KERNEL-NEXT:       ^bb0(%arg1: i32):
+// KERNEL-NEXT:         %c0 = arith.constant 0 : index
+// KERNEL-NEXT:         %c5 = arith.constant 5 : index
+// KERNEL-NEXT:         %c1 = arith.constant 1 : index
+// KERNEL-NEXT:         %2 = scf.for %arg2 = %c0 to %c5 step %c1 iter_args(%arg3 = %arg1) -> (i32) {
+// KERNEL-NEXT:           %3 = arith.index_cast %arg2 : index to i32
+// KERNEL-NEXT:           %4 = arith.addi %arg3, %3 : i32
+// KERNEL-NEXT:           scf.yield %4 : i32
+// KERNEL-NEXT:         }
+// KERNEL-NEXT:         neura.yield results(%2 : i32)
+// KERNEL-NEXT:       } : i32
 // KERNEL-NEXT:       taskflow.yield values(%1 : i32)
 // KERNEL-NEXT:     }
 // KERNEL-NEXT:     %write_outputs = taskflow.task @Task_1 write_memrefs(%alloca_0 : memref<4x8xi32>) value_inputs(%c8_i32 : i32) [original_write_memrefs(%alloca_0 : memref<4x8xi32>)] : (memref<4x8xi32>, i32) -> (memref<4x8xi32>) {
@@ -169,10 +176,17 @@ module attributes {} {
 // KERNEL-NEXT:       affine.for %arg2 = 0 to 4 {
 // KERNEL-NEXT:         %1 = arith.index_cast %arg2 : index to i32
 // KERNEL-NEXT:         %2 = arith.muli %1, %arg1 : i32
-// KERNEL-NEXT:         affine.for %arg3 = 0 to 8 {
-// KERNEL-NEXT:           %3 = arith.index_cast %arg3 : index to i32
-// KERNEL-NEXT:           %4 = arith.addi %2, %3 : i32
-// KERNEL-NEXT:           affine.store %4, %arg0[%arg2, %arg3] : memref<4x8xi32>
+// KERNEL-NEXT:         neura.kernel inputs(%2, %arg0, %arg2 : i32, memref<4x8xi32>, index) {
+// KERNEL-NEXT:         ^bb0(%arg3: i32, %arg4: memref<4x8xi32>, %arg5: index):
+// KERNEL-NEXT:           %c0 = arith.constant 0 : index
+// KERNEL-NEXT:           %c8 = arith.constant 8 : index
+// KERNEL-NEXT:           %c1 = arith.constant 1 : index
+// KERNEL-NEXT:           scf.for %arg6 = %c0 to %c8 step %c1 {
+// KERNEL-NEXT:             %3 = arith.index_cast %arg6 : index to i32
+// KERNEL-NEXT:             %4 = arith.addi %arg3, %3 : i32
+// KERNEL-NEXT:             memref.store %4, %arg4[%arg5, %arg6] : memref<4x8xi32>
+// KERNEL-NEXT:           }
+// KERNEL-NEXT:           neura.yield
 // KERNEL-NEXT:         }
 // KERNEL-NEXT:       }
 // KERNEL-NEXT:       taskflow.yield writes(%arg0 : memref<4x8xi32>)
@@ -180,14 +194,28 @@ module attributes {} {
 // KERNEL-NEXT:     %write_outputs_1 = taskflow.task @Task_2 read_memrefs(%write_outputs : memref<4x8xi32>) write_memrefs(%alloca : memref<i32>) value_inputs(%c8_i32, %value_outputs, %c2_i32 : i32, i32, i32) [original_read_memrefs(%alloca_0 : memref<4x8xi32>), original_write_memrefs(%alloca : memref<i32>)] : (memref<4x8xi32>, memref<i32>, i32, i32, i32) -> (memref<i32>) {
 // KERNEL-NEXT:     ^bb0(%arg0: memref<4x8xi32>, %arg1: memref<i32>, %arg2: i32, %arg3: i32, %arg4: i32):
 // KERNEL-NEXT:       affine.for %arg5 = 0 to 4 {
-// KERNEL-NEXT:         affine.for %arg6 = 0 to 8 {
-// KERNEL-NEXT:           %1 = affine.load %arg0[%arg5, %arg6] : memref<4x8xi32>
-// KERNEL-NEXT:           %2 = arith.addi %1, %arg3 : i32
-// KERNEL-NEXT:           affine.if #set(%arg5, %arg6) {
-// KERNEL-NEXT:             affine.store %2, %arg1[] : memref<i32>
-// KERNEL-NEXT:             %3 = arith.muli %2, %arg4 : i32
-// KERNEL-NEXT:             affine.store %3, %arg1[] : memref<i32>
+// KERNEL-NEXT:         neura.kernel inputs(%arg0, %arg5, %arg3, %arg1, %arg4 : memref<4x8xi32>, index, i32, memref<i32>, i32) {
+// KERNEL-NEXT:         ^bb0(%arg6: memref<4x8xi32>, %arg7: index, %arg8: i32, %arg9: memref<i32>, %arg10: i32):
+// KERNEL-NEXT:           %c-3 = arith.constant -3 : index
+// KERNEL-NEXT:           %c-7 = arith.constant -7 : index
+// KERNEL-NEXT:           %c0 = arith.constant 0 : index
+// KERNEL-NEXT:           %c8 = arith.constant 8 : index
+// KERNEL-NEXT:           %c1 = arith.constant 1 : index
+// KERNEL-NEXT:           scf.for %arg11 = %c0 to %c8 step %c1 {
+// KERNEL-NEXT:             %1 = memref.load %arg6[%arg7, %arg11] : memref<4x8xi32>
+// KERNEL-NEXT:             %2 = arith.addi %1, %arg8 : i32
+// KERNEL-NEXT:             %3 = arith.addi %arg7, %c-3 : index
+// KERNEL-NEXT:             %4 = arith.cmpi eq, %3, %c0 : index
+// KERNEL-NEXT:             %5 = arith.addi %arg11, %c-7 : index
+// KERNEL-NEXT:             %6 = arith.cmpi eq, %5, %c0 : index
+// KERNEL-NEXT:             %7 = arith.andi %4, %6 : i1
+// KERNEL-NEXT:             scf.if %7 {
+// KERNEL-NEXT:               memref.store %2, %arg9[] : memref<i32>
+// KERNEL-NEXT:               %8 = arith.muli %2, %arg10 : i32
+// KERNEL-NEXT:               memref.store %8, %arg9[] : memref<i32>
+// KERNEL-NEXT:             }
 // KERNEL-NEXT:           }
+// KERNEL-NEXT:           neura.yield
 // KERNEL-NEXT:         }
 // KERNEL-NEXT:       }
 // KERNEL-NEXT:       taskflow.yield writes(%arg1 : memref<i32>)
