@@ -223,8 +223,7 @@ struct HyperblockToKernelPattern
           Operation *def_op = operand.getDefiningOp();
           llvm::errs() << "[taskflow2neura] Operand from op: "
                        << *(operand.getDefiningOp()) << "\n";
-          bool is_in_hyperblock =
-              (def_op->getParentRegion() == &hyperblock_op.getBody());
+          bool is_in_hyperblock = hyperblock_op->isProperAncestor(def_op);
 
           bool is_in_task_body =
               (def_op->getParentRegion() == &task_op.getBody());
