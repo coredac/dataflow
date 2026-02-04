@@ -25,9 +25,11 @@ def AffineLoopTreeSerialization : Pass<"affine-loop-tree-serialization", "Module
 // Passes for the Taskflow dialect
 //=========================================================//
 def ConstructHyperblockFromTask : Pass<"construct-hyperblock-from-task", "func::FuncOp">{
-  let summary = "Constructs hyperblocks from Taskflow tasks by detecting perfect nested loop bands";
+  let summary = "Constructs hyperblocks from Taskflow tasks.";
   let description = [{
-    This pass constructs hyperblocks from Taskflow tasks by detecting perfect nested loop bands.
+    This passes selected two transform modes based on the input architecture specification.
+    1. With counter support: This pass constructs hyperblocks from Taskflow tasks by detecting perfect nested loop bands.
+    2. Without counter support: This pass constructs hyperblocks from Taskflow tasks by wrapping the innermost loop as a hyperblock.
   }];
   let constructor = "taskflow::createConstructHyperblockFromTaskPass()";
 }

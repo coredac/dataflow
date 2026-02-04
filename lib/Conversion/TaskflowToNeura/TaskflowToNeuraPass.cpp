@@ -152,8 +152,6 @@ struct HyperblockToKernelPattern
           // 1. Inside hyperblock
           // 2. Inside task body (but outside hyperblock)
           // 3. Outside task body (error)
-          llvm::errs() << "[taskflow2neura] Operand from op: "
-                       << *(operand.getDefiningOp()) << "\n";
           bool is_in_hyperblock = hyperblock_op->isProperAncestor(def_op);
           bool is_in_task_body = task_op->isProperAncestor(def_op);
 
