@@ -478,6 +478,26 @@ static LogicalResult transformTaskWithoutCounter(TaskflowTaskOp task_op) {
       }
     }
 
+    // Converts affine operations to standard/scf operations.
+    MLIRContext *context = hyperblock_op.getContext();
+    RewritePatternSet patterns(context);
+    populateAffineToStdConversionPatterns(patterns);
+
+    ConversionTarget target(*context);
+    target
+        .addLegalDialect<arith::ArithDialect, memref::MemRefDialect,
+                         func::FuncDialect, TaskflowDialect, scf::SCFDialect>();
+    target.addIllegalOp<affine::AffineLoadOp, affine::AffineStoreOp,
+                        affine::AffineForOp, affine::AffineIfOp,
+                        affine::AffineYieldOp>();
+
+    if (failed(applyPartialConversion(hyperblock_op, target,
+                                      std::move(patterns)))) {
+      llvm::errs()
+          << "Error: Failed to convert affine operations to standard/scf\n";
+      return failure();
+    }
+
     llvm::errs() << "  Wrapped innermost loop in hyperblock\n";
   }
 

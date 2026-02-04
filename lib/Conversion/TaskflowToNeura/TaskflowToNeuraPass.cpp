@@ -23,122 +23,15 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
+#include <cassert>
 
 using namespace mlir;
 using namespace mlir::taskflow;
 
 namespace {
-//==============================================================================
-// innermost Mode.
-//==============================================================================
-// Checks if an affine.for loop is innermost (has no nested loops).
-static bool isInnermostLoop(affine::AffineForOp for_op) {
-  bool has_nested_loops = false;
-  for_op.getBody()->walk([&](affine::AffineForOp) { has_nested_loops = true; });
-  return !has_nested_loops;
-}
-
-// Wraps an innermost affine.for loop in a neura.kernel operation.
-static LogicalResult wrapInnermostLoopAsKernel(affine::AffineForOp for_op,
-                                               OpBuilder &builder,
-                                               unsigned &kernel_id) {
-  Location loc = for_op.getLoc();
-  MLIRContext *context = for_op.getContext();
-
-  // Collects values that need to be captured by the kernel.
-  llvm::SetVector<Value> captured_values;
-
-  // 1. Values used in the loop body (loads, stores, computations).
-  getUsedValuesDefinedAbove(for_op.getRegion(), captured_values);
-
-  // 2. Explicitly collect loop operands (iter_args init values, bounds if
-  // dynamic). For affine.for, bounds are usually constant, but iter_args init
-  // values are operands.
-  for (Value operand : for_op.getInits()) {
-    // Only adds if defined outside (not a constant or in the loop itself).
-    if (operand.getParentRegion() != &for_op.getRegion()) {
-      captured_values.insert(operand);
-    }
-  }
-
-  // Checks if the loop has output values.
-  bool has_outputs = !for_op.getResults().empty();
-
-  // Creates the neura.kernel operation.
-  builder.setInsertionPoint(for_op);
-  SmallVector<Value> inputs(captured_values.begin(), captured_values.end());
-
-  neura::KernelOp kernel_op = builder.create<neura::KernelOp>(
-      loc, /*output_types=*/for_op->getResultTypes(),
-      /*inputs=*/inputs,
-      /*iter_args_init=*/ValueRange{},
-      /*cgra_id*/ nullptr,
-      /*kernel_name*/ nullptr,
-      /*accelerator*/ nullptr);
-
-  // Sets kernel name.
-  std::string kernel_name = "kernel_" + std::to_string(kernel_id++);
-  kernel_op.setKernelNameAttr(builder.getStringAttr(kernel_name));
-
-  // Creates the kernel body block.
-  Block *kernel_body = new Block();
-  kernel_op.getBody().push_back(kernel_body);
-
-  // Adds block arguments for captured values.
-  IRMapping mapping;
-  for (Value captured : captured_values) {
-    BlockArgument arg = kernel_body->addArgument(captured.getType(), loc);
-    mapping.map(captured, arg);
-  }
-
-  // Clones the loop into the kernel body.
-  builder.setInsertionPointToStart(kernel_body);
-  Operation *cloned_loop = builder.clone(*for_op, mapping);
-
-  // Adds yield operation.
-  builder.setInsertionPointToEnd(kernel_body);
-  if (has_outputs) {
-    SmallVector<Value> yield_operands(cloned_loop->getResults());
-    builder.create<neura::YieldOp>(loc, ValueRange{}, yield_operands);
-  } else {
-    builder.create<neura::YieldOp>(loc);
-  }
-
-  // Converts affine operations to standard/scf operations within the kernel.
-  RewritePatternSet patterns(context);
-  populateAffineToStdConversionPatterns(patterns);
-
-  ConversionTarget target(*context);
-  target.addLegalDialect<arith::ArithDialect, memref::MemRefDialect,
-                         func::FuncDialect, neura::NeuraDialect,
-                         scf::SCFDialect>();
-  target.addIllegalOp<affine::AffineLoadOp, affine::AffineStoreOp,
-                      affine::AffineForOp, affine::AffineIfOp,
-                      affine::AffineYieldOp>();
-
-  if (failed(applyPartialConversion(kernel_op, target, std::move(patterns)))) {
-    llvm::errs()
-        << "Error: Failed to convert affine operations to standard/scf in "
-           "kernel\n";
-    return failure();
-  }
-
-  // Replaces uses of the original loop's results with kernel results.
-  if (has_outputs) {
-    for (auto [orig_result, kernel_result] :
-         llvm::zip(for_op->getResults(), kernel_op.getResults())) {
-      orig_result.replaceAllUsesWith(kernel_result);
-    }
-  }
-
-  // Erases the original loop.
-  for_op.erase();
-
-  return success();
-}
 
 //===============================================================================
-// hyperblock Mode.
+// Converts taskflow.hyperblock to neura.kernel.
 //===============================================================================
 // Pattern to convert taskflow.hyperblock to neura.kernel.
 //
@@ -205,8 +98,10 @@ struct HyperblockToKernelPattern
         return;
       }
       for (Value operand : op->getOperands()) {
-        if (auto blockArg = dyn_cast<BlockArgument>(operand)) {
-          if (blockArg.getOwner() == &task_block) {
+        if (auto block_arg = dyn_cast<BlockArgument>(operand)) {
+          Block *owner_block = block_arg.getOwner();
+
+          if (block_arg.getOwner() == &task_block) {
             if (iter_args_init_set.contains(operand) ||
                 indices_set.contains(operand)) {
               // Skips iter args and indices.
@@ -215,9 +110,40 @@ struct HyperblockToKernelPattern
             if (live_in_set.insert(operand).second) {
               live_in_values.push_back(operand);
             }
+          } else if (block_arg.getOwner() == &hb_block) {
+            // Block argument from hyperblock - already handled.
+            continue;
           } else {
-            assert(blockArg.getOwner() == &hb_block &&
-                   "Unexpected block argument from other block");
+            // Block argument from another block.
+            Operation *owner_op = owner_block->getParentOp();
+
+            // Checks if the owner op is INSIDE the hyperblock.
+            bool is_inside_hyperblock = hyperblock_op->isAncestor(owner_op);
+
+            if (is_inside_hyperblock) {
+              // This is a block argument from an operation inside the
+              // hyperblock (e.g., scf.for induction variable) These should NOT
+              // be added as live-ins.
+              continue;
+            }
+
+            // Checks if it's from an operation OUTSIDE hyperblock but INSIDE
+            // task.
+            bool is_in_task = task_op->isAncestor(owner_op);
+
+            if (is_in_task) {
+              // This is a block argument from an outer affine.for loop
+              // Adds as live-in value.
+              if (live_in_set.insert(operand).second) {
+                live_in_values.push_back(operand);
+              }
+            } else {
+              llvm::errs() << "ERROR: Block argument from outside task\n";
+              llvm::errs() << "  Operand: " << operand << "\n";
+              llvm::errs() << "  Owner block: " << *owner_block << "\n";
+              llvm::errs() << "  Owner op: " << *owner_op << "\n";
+              assert(false && "Unexpected block argument from outside task");
+            }
           }
         } else if (operand.getDefiningOp()) {
           Operation *def_op = operand.getDefiningOp();
@@ -235,6 +161,9 @@ struct HyperblockToKernelPattern
               constant_ops_to_internalize.push_back(def_op);
               continue;
             } else {
+              llvm::errs() << "ERROR: Non-constant task body value\n";
+              llvm::errs() << "  Operand: " << operand << "\n";
+              llvm::errs() << "  Defining op: " << *def_op << "\n";
               // Non-constant task body value should not be used in hyperblock.
               assert(
                   false &&
@@ -439,18 +368,6 @@ struct ConvertTaskflowToNeuraPass
     : public PassWrapper<ConvertTaskflowToNeuraPass, OperationPass<ModuleOp>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ConvertTaskflowToNeuraPass)
 
-  // Adds default constructor and copy constructor.
-  ConvertTaskflowToNeuraPass() = default;
-  ConvertTaskflowToNeuraPass(const ConvertTaskflowToNeuraPass &pass)
-      : PassWrapper<ConvertTaskflowToNeuraPass, OperationPass<ModuleOp>>(pass) {
-  }
-
-  // Pass option to control conversion mode.
-  Option<std::string> conversionMode{
-      *this, "mode",
-      llvm::cl::desc("Conversion mode: 'hyperblock' or 'innermost'"),
-      llvm::cl::init("hyperblock")};
-
   StringRef getArgument() const override { return "convert-taskflow-to-neura"; }
   StringRef getDescription() const override {
     return "Convert taskflow operations to neura.kernel";
@@ -468,66 +385,30 @@ struct ConvertTaskflowToNeuraPass
     ModuleOp module = getOperation();
     MLIRContext *ctx = &getContext();
 
-    // Validates conversion mode.
-    if (conversionMode != "hyperblock" && conversionMode != "innermost") {
-      module.emitError("Invalid conversion mode: ")
-          << conversionMode << ". Must be 'hyperblock' or 'innermost'.";
-      signalPassFailure();
-      return;
+    // Converts entire hyperblock to neura.kernel.
+    // Phase 1: Converts hyperblocks to kernels.
+    {
+      RewritePatternSet patterns(ctx);
+      patterns.add<HyperblockToKernelPattern>(ctx);
+
+      if (failed(applyPatternsGreedily(module, std::move(patterns)))) {
+        signalPassFailure();
+        return;
+      }
     }
 
-    if (conversionMode == "innermost") {
-      // Mode: innermost - Wraps only innermost loops as neura.kernel in each
-      // task.
+    // Phase 2: Internalizes counters into kernels.
+    {
+      RewritePatternSet patterns(ctx);
+      patterns.add<InternalizeCounterPattern>(ctx);
 
-      SmallVector<TaskflowTaskOp> task_ops;
-      module.walk([&](TaskflowTaskOp task_op) { task_ops.push_back(task_op); });
-
-      OpBuilder builder(ctx);
-      unsigned kernel_id = 0;
-
-      for (TaskflowTaskOp task_op : task_ops) {
-        // Collects all innermost affine.for loops in the task.
-        SmallVector<affine::AffineForOp> innermost_loops;
-        task_op.walk([&](affine::AffineForOp for_op) {
-          if (isInnermostLoop(for_op)) {
-            innermost_loops.push_back(for_op);
-          }
-        });
-
-        // Wraps each innermost affine.for loop in a neura.kernel operation.
-        for (affine::AffineForOp for_op : innermost_loops) {
-          if (failed(wrapInnermostLoopAsKernel(for_op, builder, kernel_id))) {
-            signalPassFailure();
-            return;
-          }
-        }
-      }
-    } else {
-      // Mode: hyperblock - Converts entire hyperblock to neura.kernel.
-      // Phase 1: Converts hyperblocks to kernels.
-      {
-        RewritePatternSet patterns(ctx);
-        patterns.add<HyperblockToKernelPattern>(ctx);
-
-        if (failed(applyPatternsGreedily(module, std::move(patterns)))) {
-          signalPassFailure();
-          return;
-        }
-      }
-
-      // Phase 2: Internalizes counters into kernels.
-      {
-        RewritePatternSet patterns(ctx);
-        patterns.add<InternalizeCounterPattern>(ctx);
-
-        if (failed(applyPatternsGreedily(module, std::move(patterns)))) {
-          signalPassFailure();
-          return;
-        }
+      if (failed(applyPatternsGreedily(module, std::move(patterns)))) {
+        signalPassFailure();
+        return;
       }
     }
   }
+  // }
 };
 } // namespace
 
