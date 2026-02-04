@@ -707,3 +707,12 @@ void Architecture::removeLink(int src_tile_x, int src_tile_y, int dst_tile_x,
   }
   removeLink(src_tile, dst_tile);
 }
+
+bool Architecture::canSupportCounter() const {
+  for (const auto &[id, tile] : this->tile_storage_) {
+    if (tile->canSupportOperation(OperationKind::ICounter)) {
+      return true;
+    }
+  }
+  return false;
+}

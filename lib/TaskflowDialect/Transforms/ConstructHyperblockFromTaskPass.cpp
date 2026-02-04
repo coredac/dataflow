@@ -1,3 +1,6 @@
+#include "NeuraDialect/Architecture/Architecture.h"
+#include "NeuraDialect/NeuraDialect.h"
+#include "NeuraDialect/NeuraOps.h"
 #include "TaskflowDialect/TaskflowDialect.h"
 #include "TaskflowDialect/TaskflowOps.h"
 #include "TaskflowDialect/TaskflowPasses.h"
@@ -8,15 +11,29 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/IRMapping.h"
+#include "mlir/IR/Value.h"
+#include "mlir/IR/ValueRange.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/RegionUtils.h"
 #include "llvm/ADT/SmallVector.h"
 #include <cstddef>
 using namespace mlir;
 using namespace mlir::taskflow;
 
 namespace {
+
+//==============================================================================
+// Innermost Loop Detection (for non-counter mode).
+//==============================================================================
+
+// Checks if an affine.for loop is innermost (has no nested loops).
+static bool isInnermostLoop(affine::AffineForOp for_op) {
+  bool has_nested_loops = false;
+  for_op.getBody()->walk([&](affine::AffineForOp) { has_nested_loops = true; });
+  return !has_nested_loops;
+}
 
 //==============================================================================
 // Perfect Loop Band Detection.
@@ -140,7 +157,7 @@ createCounterChain(OpBuilder &builder, Location loc,
 }
 
 //==============================================================================
-// Hyperblock Creation.
+// Hyperblock Creation (with counter support).
 //==============================================================================
 
 // Analyzes which loop induction variables are actually used in the loop body.
@@ -319,7 +336,7 @@ createHyperblockFromLoopBody(OpBuilder &builder, Location loc,
 //============================================================================
 // Task Transformation.
 //===========================================================================
-static LogicalResult transformTask(TaskflowTaskOp task_op) {
+static LogicalResult transformTaskWithCounter(TaskflowTaskOp task_op) {
   Location loc = task_op.getLoc();
   Block &task_body = task_op.getBody().front();
 
@@ -394,6 +411,79 @@ static LogicalResult transformTask(TaskflowTaskOp task_op) {
   return success();
 }
 
+static LogicalResult transformTaskWithoutCounter(TaskflowTaskOp task_op) {
+  Location loc = task_op.getLoc();
+
+  llvm::errs()
+      << "\n[ConstructHyperblock] Processing WITHOUT counter support\n";
+  llvm::errs() << "  Will wrap only innermost loops as hyperblocks\n";
+
+  // Collects ALL innermost loops (including nested ones).
+  SmallVector<affine::AffineForOp> innermost_loops;
+  task_op.walk([&](affine::AffineForOp for_op) {
+    if (isInnermostLoop(for_op)) {
+      innermost_loops.push_back(for_op);
+    }
+  });
+
+  llvm::errs() << "  Found " << innermost_loops.size() << " innermost loops\n";
+
+  OpBuilder builder(task_op.getContext());
+
+  // Processes each innermost loop.
+  for (affine::AffineForOp innermost_loop : innermost_loops) {
+    llvm::errs() << "  Processing innermost loop\n";
+
+    // Checks if the loop has results (iter_args).
+    bool has_results = innermost_loop.getNumResults() > 0;
+    SmallVector<Type> result_types;
+
+    if (has_results) {
+      for (Value result : innermost_loop.getResults()) {
+        result_types.push_back(result.getType());
+      }
+    }
+
+    // Inserts hyperblock BEFORE the innermost loop.
+    builder.setInsertionPoint(innermost_loop);
+
+    // Creates hyperblock with NO triggers and NO iter_args.
+    // The entire affine.for will be moved inside.
+    auto hyperblock_op = builder.create<TaskflowHyperblockOp>(
+        loc, result_types, /*triggers=*/ValueRange{},
+        /*iter_args=*/ValueRange{});
+
+    // Creates hyperblock body block (no arguments needed).
+    Block *hyperblock_body = &hyperblock_op.getBody().emplaceBlock();
+
+    // Moves the entire innermost loop INTO the hyperblock.
+    innermost_loop->moveBefore(hyperblock_body, hyperblock_body->end());
+
+    // Adds hyperblock terminator.
+    builder.setInsertionPointToEnd(hyperblock_body);
+    if (has_results) {
+      // Yields the loop's results.
+      builder.create<TaskflowHyperblockYieldOp>(
+          loc, /*iter_args_next=*/ValueRange{},
+          /*results=*/innermost_loop.getResults());
+    } else {
+      builder.create<TaskflowHyperblockYieldOp>(loc);
+    }
+
+    // Replaces uses of the loop's results with hyperblock's results.
+    if (has_results) {
+      for (size_t i = 0; i < innermost_loop.getNumResults(); ++i) {
+        innermost_loop.getResult(i).replaceAllUsesWith(
+            hyperblock_op.getResult(i));
+      }
+    }
+
+    llvm::errs() << "  Wrapped innermost loop in hyperblock\n";
+  }
+
+  return success();
+}
+
 struct ConstructHyperblockFromTaskPass
     : public PassWrapper<ConstructHyperblockFromTaskPass,
                          OperationPass<func::FuncOp>> {
@@ -416,12 +506,21 @@ struct ConstructHyperblockFromTaskPass
 
   void runOnOperation() override {
     func::FuncOp func_op = getOperation();
+    const neura::Architecture &arch = neura::getArchitecture();
+    bool supports_counter = arch.canSupportCounter();
 
     // Walks through all TaskflowTaskOp in the function.
     func_op.walk([&](TaskflowTaskOp task_op) {
-      if (failed(transformTask(task_op))) {
-        signalPassFailure();
-        return WalkResult::interrupt();
+      if (supports_counter) {
+        if (failed(transformTaskWithCounter(task_op))) {
+          signalPassFailure();
+          return WalkResult::interrupt();
+        }
+      } else {
+        if (failed(transformTaskWithoutCounter(task_op))) {
+          signalPassFailure();
+          return WalkResult::interrupt();
+        }
       }
       return WalkResult::advance();
     });
