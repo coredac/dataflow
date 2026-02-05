@@ -96,7 +96,7 @@ struct MemoryNode;
 struct TaskNode {
   size_t id;
   TaskflowTaskOp op;
-  int alap_level = 0;
+  int dependency_depth = 0;  // Longest path to any sink in the dependency graph.
   
   // Edges based on original memory access.
   SmallVector<MemoryNode *> read_memrefs;  // original_read_memrefs
@@ -228,24 +228,25 @@ public:
       return;
     }
 
-    // Computes ALAP Levels on the Task Graph.
-    // We use ALAP (As Late As Possible) to identify the critical path and
-    // prioritize tasks that are closer to the sink, which helps in minimizing
-    // the overall dependency latency during placement.
-    computeALAP(graph);
+    // Computes Dependency Depth for each task.
+    // Dependency depth = longest path from this node to any sink in the
+    // dependency graph (considering both SSA and memory edges). Tasks with
+    // higher depth are more "critical" and are placed first to ensure their
+    // dependent chains have good locality.
+    computeDependencyDepth(graph);
 
-    // Sorts tasks by ALAP level (Critical Path First).
+    // Sorts tasks by dependency depth (Critical Path First).
     SmallVector<TaskNode *> sorted_tasks;
     for (auto &node : graph.task_nodes) sorted_tasks.push_back(node.get());
     
     std::stable_sort(sorted_tasks.begin(), sorted_tasks.end(), 
         [](TaskNode *a, TaskNode *b) {
-            return a->alap_level > b->alap_level; 
+            return a->dependency_depth > b->dependency_depth; 
         });
 
-    // Critical path priority placement:
-    // 1. Computes ALAP level for each task (longest path to sink).
-    // 2. Sorts tasks by: (a) ALAP level, (b) criticality, (c) degree.
+    // Critical-path-first placement:
+    // 1. Computes dependency depth for each task (longest path to sink).
+    // 2. Sorts tasks by dependency depth (higher = more critical).
     // 3. Places tasks in sorted order with heuristic scoring.
     // Iterative Refinement Loop (Coordinate Descent).
     // Alternates between Task Placement (Phase 1) and SRAM Assignment (Phase 2).
@@ -320,37 +321,33 @@ public:
             builder.getArrayAttr(pos_attrs)));
 
         // 2. Read SRAM Locations
-        if (!task_node->read_memrefs.empty()) {
-            SmallVector<Attribute> read_sram_attrs;
-            for (MemoryNode *mem : task_node->read_memrefs) {
-                if (mem->assigned_sram_pos) {
-                    SmallVector<NamedAttribute, 2> sram_coord;
-                    sram_coord.push_back(NamedAttribute(StringAttr::get(func.getContext(), "row"), builder.getI32IntegerAttr(mem->assigned_sram_pos->row)));
-                    sram_coord.push_back(NamedAttribute(StringAttr::get(func.getContext(), "col"), builder.getI32IntegerAttr(mem->assigned_sram_pos->col)));
-                    read_sram_attrs.push_back(DictionaryAttr::get(func.getContext(), sram_coord));
-                }
+        SmallVector<Attribute> read_sram_attrs;
+        for (MemoryNode *mem : task_node->read_memrefs) {
+            if (mem->assigned_sram_pos) {
+                SmallVector<NamedAttribute, 2> sram_coord;
+                sram_coord.push_back(NamedAttribute(StringAttr::get(func.getContext(), "row"), builder.getI32IntegerAttr(mem->assigned_sram_pos->row)));
+                sram_coord.push_back(NamedAttribute(StringAttr::get(func.getContext(), "col"), builder.getI32IntegerAttr(mem->assigned_sram_pos->col)));
+                read_sram_attrs.push_back(DictionaryAttr::get(func.getContext(), sram_coord));
             }
-            mapping_attrs.push_back(NamedAttribute(
-                StringAttr::get(func.getContext(), "read_sram_locations"),
-                builder.getArrayAttr(read_sram_attrs)));
         }
+        mapping_attrs.push_back(NamedAttribute(
+            StringAttr::get(func.getContext(), "read_sram_locations"),
+            builder.getArrayAttr(read_sram_attrs)));
 
         // 3. Write SRAM Locations
-        if (!task_node->write_memrefs.empty()) {
-            SmallVector<Attribute> write_sram_attrs;
-            for (MemoryNode *mem : task_node->write_memrefs) {
-                if (mem->assigned_sram_pos) {
-                  SmallVector<NamedAttribute, 2> sram_coord;
-                  sram_coord.push_back(NamedAttribute(StringAttr::get(func.getContext(), "row"), builder.getI32IntegerAttr(mem->assigned_sram_pos->row)));
-                  sram_coord.push_back(NamedAttribute(StringAttr::get(func.getContext(), "col"), builder.getI32IntegerAttr(mem->assigned_sram_pos->col)));
+        SmallVector<Attribute> write_sram_attrs;
+        for (MemoryNode *mem : task_node->write_memrefs) {
+            if (mem->assigned_sram_pos) {
+              SmallVector<NamedAttribute, 2> sram_coord;
+              sram_coord.push_back(NamedAttribute(StringAttr::get(func.getContext(), "row"), builder.getI32IntegerAttr(mem->assigned_sram_pos->row)));
+              sram_coord.push_back(NamedAttribute(StringAttr::get(func.getContext(), "col"), builder.getI32IntegerAttr(mem->assigned_sram_pos->col)));
 
-                  write_sram_attrs.push_back(DictionaryAttr::get(func.getContext(), sram_coord));
-                }
+              write_sram_attrs.push_back(DictionaryAttr::get(func.getContext(), sram_coord));
             }
-            mapping_attrs.push_back(NamedAttribute(
-                StringAttr::get(func.getContext(), "write_sram_locations"),
-                builder.getArrayAttr(write_sram_attrs)));
         }
+        mapping_attrs.push_back(NamedAttribute(
+            StringAttr::get(func.getContext(), "write_sram_locations"),
+            builder.getArrayAttr(write_sram_attrs)));
 
         // Set Attribute
         task_node->op->setAttr("task_mapping_info", DictionaryAttr::get(func.getContext(), mapping_attrs));
@@ -498,32 +495,41 @@ private:
     return kAlpha * ssa_score + kBeta * mem_score;
   }
 
-  /// Computes ALAP levels considering both SSA and memory dependencies.
-  void computeALAP(TaskMemoryGraph &graph) {
-    // DFS for longest path from node to any sink (ALAP Level).
-    DenseMap<TaskNode*, int> node_alap_cache;
+  /// Computes dependency depth for all tasks in the graph.
+  ///
+  /// Dependency depth = longest path from this node to any sink node in the
+  /// dependency graph (via SSA or memory edges).
+  ///
+  /// Tasks with higher dependency depth have longer chains of dependent tasks
+  /// after them. By placing these tasks first:
+  /// 1. They get priority access to good grid positions.
+  /// 2. Their dependent tasks can then be positioned adjacent to them,
+  ///    minimizing inter-task communication distance.
+  void computeDependencyDepth(TaskMemoryGraph &graph) {
+    DenseMap<TaskNode*, int> depth_cache;
     for (auto &node : graph.task_nodes) {
-        node->alap_level = calculateLevel(node.get(), node_alap_cache);
+        node->dependency_depth = calculateDepth(node.get(), depth_cache);
     }
   }
 
-  int calculateLevel(TaskNode *node, DenseMap<TaskNode*, int> &node_alap_cache) {
-    if (node_alap_cache.count(node)) return node_alap_cache[node];
+  int calculateDepth(TaskNode *node, DenseMap<TaskNode*, int> &depth_cache) {
+    if (depth_cache.count(node)) return depth_cache[node];
 
-    int max_child_level = 0;
+    int max_child_depth = 0;
+    // SSA dependencies.
     for (TaskNode *child : node->ssa_users) {
-        max_child_level = std::max(max_child_level, calculateLevel(child, node_alap_cache) + 1);
+        max_child_depth = std::max(max_child_depth, calculateDepth(child, depth_cache) + 1);
     }
 
-    // Checks memory dependencies too (Producer -> Mem -> Consumer).
+    // Memory dependencies (Producer -> Mem -> Consumer).
     for (MemoryNode *mem : node->write_memrefs) {
         for (TaskNode *reader : mem->readers) {
             if (reader != node)
-                max_child_level = std::max(max_child_level, calculateLevel(reader, node_alap_cache) + 1);
+                max_child_depth = std::max(max_child_depth, calculateDepth(reader, depth_cache) + 1);
         }
     }
 
-    return node_alap_cache[node] = max_child_level;
+    return depth_cache[node] = max_child_depth;
   }
 
 
