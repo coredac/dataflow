@@ -1,6 +1,6 @@
 //===- MapTaskOnCgraPass.cpp - Task to CGRA Mapping Pass ----------------===//
 //
-// This pass maps Canonical Tasks (CTs) onto a 2D CGRA grid array:
+// This pass maps Taskflow tasks onto a 2D CGRA grid array:
 // 1. Places tasks with SSA dependencies on adjacent CGRAs.
 // 2. Assigns memrefs to SRAMs (each MemRef is assigned to exactly one SRAM,
 //    determined by proximity to the task that first accesses it).
@@ -251,12 +251,12 @@ public:
     // Iterative Refinement Loop (Coordinate Descent).
     // Alternates between Task Placement (Phase 1) and SRAM Assignment (Phase 2).
     constexpr int kMaxIterations = 10;
-    
-
-
+  
     for (int iter = 0; iter < kMaxIterations; ++iter) {
         // Phase 1: Place Tasks (assuming fixed SRAMs).
-        if (iter > 0) resetTaskPlacements(graph);
+        if (iter > 0) {
+            resetTaskPlacements(graph);
+        }
 
         for (TaskNode *task_node : sorted_tasks) {
           int cgra_count = 1;
@@ -277,8 +277,9 @@ public:
 
           // Marks Occupied.
           for (const auto &pos : placement.cgra_positions) {
-            if (pos.row >= 0 && pos.row < grid_rows_ && pos.col >= 0 && pos.col < grid_cols_)
+            if (pos.row >= 0 && pos.row < grid_rows_ && pos.col >= 0 && pos.col < grid_cols_) {
                 occupied_[pos.row][pos.col] = true;
+            }
           }
         }
 
@@ -290,7 +291,6 @@ public:
         // Convergence Check.
         // If SRAMs didn't move, it means task placement based on them likely won't change either.
         if (iter > 0 && !sram_moved) {
-
             break; 
         }
     }
@@ -300,7 +300,9 @@ public:
     // Annotates Result.
     OpBuilder builder(func.getContext());
     for (auto &task_node : graph.task_nodes) {
-        if (task_node->placement.empty()) continue;
+        if (task_node->placement.empty()) {
+            continue;
+        }
         
         SmallVector<NamedAttribute, 4> mapping_attrs;
 
@@ -320,7 +322,7 @@ public:
             StringAttr::get(func.getContext(), "cgra_positions"),
             builder.getArrayAttr(pos_attrs)));
 
-        // 2. Read SRAM Locations
+        // 2. Reads SRAM Locations.
         SmallVector<Attribute> read_sram_attrs;
         for (MemoryNode *mem : task_node->read_memrefs) {
             if (mem->assigned_sram_pos) {
@@ -334,7 +336,7 @@ public:
             StringAttr::get(func.getContext(), "read_sram_locations"),
             builder.getArrayAttr(read_sram_attrs)));
 
-        // 3. Write SRAM Locations
+        // 3. Writes SRAM Locations.
         SmallVector<Attribute> write_sram_attrs;
         for (MemoryNode *mem : task_node->write_memrefs) {
             if (mem->assigned_sram_pos) {
@@ -349,7 +351,7 @@ public:
             StringAttr::get(func.getContext(), "write_sram_locations"),
             builder.getArrayAttr(write_sram_attrs)));
 
-        // Set Attribute
+        // Sets Attribute.
         task_node->op->setAttr("task_mapping_info", DictionaryAttr::get(func.getContext(), mapping_attrs));
     }
   }
@@ -417,8 +419,9 @@ private:
     // Baseline: For cgra_count=1, finds single best position.
     for (int r = 0; r < grid_rows_; ++r) {
       for (int c = 0; c < grid_cols_; ++c) {
-        if (occupied_[r][c])
+        if (occupied_[r][c]) {
           continue;
+        }
 
         TaskPlacement candidate;
         candidate.cgra_positions.push_back({r, c});
@@ -513,7 +516,9 @@ private:
   }
 
   int calculateDepth(TaskNode *node, DenseMap<TaskNode*, int> &depth_cache) {
-    if (depth_cache.count(node)) return depth_cache[node];
+    if (depth_cache.count(node)) {
+        return depth_cache[node];
+    }
 
     int max_child_depth = 0;
     // SSA dependencies.
@@ -524,8 +529,9 @@ private:
     // Memory dependencies (Producer -> Mem -> Consumer).
     for (MemoryNode *mem : node->write_memrefs) {
         for (TaskNode *reader : mem->readers) {
-            if (reader != node)
+            if (reader != node) {
                 max_child_depth = std::max(max_child_depth, calculateDepth(reader, depth_cache) + 1);
+            }
         }
     }
 
