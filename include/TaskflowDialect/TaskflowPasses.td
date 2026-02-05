@@ -21,6 +21,19 @@ def AffineLoopTreeSerialization : Pass<"affine-loop-tree-serialization", "Module
     "mlir::func::FuncDialect"];
 }
 
+def AffineLoopPerfection : Pass<"affine-loop-perfection", "func::FuncOp">{
+  let summary = "Perfectionizes affine.for loops into perfect nested loop bands";
+  let description = [{
+    This pass transforms affine.for loops into perfect nested loop bands by
+    applying loop transformations such as loop fusion, loop interchange, and
+    loop tiling.
+  }];
+  let constructor = "taskflow::createAffineLoopPerfectionPass()";
+  let dependentDialects = [
+    "mlir::affine::AffineDialect",
+    "mlir::func::FuncDialect"];
+}
+
 //=========================================================//
 // Passes for the Taskflow dialect
 //=========================================================//
