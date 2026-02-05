@@ -72,7 +72,7 @@
 // RUN: --fold-constant \
 // RUN: --insert-data-mov \
 // RUN: --map-to-accelerator="mapping-strategy=heuristic" \
-// RUN: --architecture-spec=%S/../../../arch_spec/architecture.yaml \
+// RUN: --architecture-spec=%S/../../../arch_spec/architecture_with_counter.yaml \
 // RUN: -o %t.mapped.mlir
 // RUN: FileCheck %s --input-file=%t.mapped.mlir --check-prefixes=MAPPED
 
@@ -99,7 +99,7 @@ module attributes {} {
 // TASKFLOW:     module {
 // TASKFLOW-NEXT:  func.func @_Z6kernelPiS_(%arg0: memref<?xi32>, %arg1: memref<?xi32>) attributes {llvm.linkage = #llvm.linkage<external>} {
 // TASKFLOW-NEXT:    %c0_i32 = arith.constant 0 : i32
-// TASKFLOW-NEXT:    %write_outputs = taskflow.task @Task_0 read_memrefs(%arg0, %arg1 : memref<?xi32>, memref<?xi32>) write_memrefs(%arg1 : memref<?xi32>) value_inputs(%c0_i32 : i32) [original_read_memrefs(%arg0, %arg1), original_write_memrefs(%arg1)] : (memref<?xi32>, memref<?xi32>, memref<?xi32>, i32) -> (memref<?xi32>) {
+// TASKFLOW-NEXT:    %write_outputs = taskflow.task @Task_0 read_memrefs(%arg0, %arg1 : memref<?xi32>, memref<?xi32>) write_memrefs(%arg1 : memref<?xi32>) value_inputs(%c0_i32 : i32) [original_read_memrefs(%arg0, %arg1 : memref<?xi32>, memref<?xi32>), original_write_memrefs(%arg1 : memref<?xi32>)] : (memref<?xi32>, memref<?xi32>, memref<?xi32>, i32) -> (memref<?xi32>) {
 // TASKFLOW-NEXT:    ^bb0(%arg2: memref<?xi32>, %arg3: memref<?xi32>, %arg4: memref<?xi32>, %arg5: i32):
 // TASKFLOW-NEXT:      affine.for %arg6 = 0 to 32 {
 // TASKFLOW-NEXT:        %0 = affine.load %arg2[%arg6] : memref<?xi32>
@@ -123,7 +123,7 @@ module attributes {} {
 // HYPERBLOCK:      module {
 // HYPERBLOCK-NEXT:   func.func @_Z6kernelPiS_(%arg0: memref<?xi32>, %arg1: memref<?xi32>) attributes {llvm.linkage = #llvm.linkage<external>} {
 // HYPERBLOCK-NEXT:     %c0_i32 = arith.constant 0 : i32
-// HYPERBLOCK-NEXT:     %write_outputs = taskflow.task @Task_0 read_memrefs(%arg0, %arg1 : memref<?xi32>, memref<?xi32>) write_memrefs(%arg1 : memref<?xi32>) value_inputs(%c0_i32 : i32) [original_read_memrefs(%arg0, %arg1), original_write_memrefs(%arg1)] : (memref<?xi32>, memref<?xi32>, memref<?xi32>, i32) -> (memref<?xi32>) {
+// HYPERBLOCK-NEXT:     %write_outputs = taskflow.task @Task_0 read_memrefs(%arg0, %arg1 : memref<?xi32>, memref<?xi32>) write_memrefs(%arg1 : memref<?xi32>) value_inputs(%c0_i32 : i32) [original_read_memrefs(%arg0, %arg1 : memref<?xi32>, memref<?xi32>), original_write_memrefs(%arg1 : memref<?xi32>)] : (memref<?xi32>, memref<?xi32>, memref<?xi32>, i32) -> (memref<?xi32>) {
 // HYPERBLOCK-NEXT:     ^bb0(%arg2: memref<?xi32>, %arg3: memref<?xi32>, %arg4: memref<?xi32>, %arg5: i32):
 // HYPERBLOCK-NEXT:       %0 = taskflow.counter attributes {lower_bound = 0 : index, step = 1 : index, upper_bound = 32 : index} : index
 // HYPERBLOCK-NEXT:       "taskflow.hyperblock"(%0) <{operandSegmentSizes = array<i32: 1, 0>}> ({
@@ -150,7 +150,7 @@ module attributes {} {
 // KERNEL:      module {
 // KERNEL-NEXT:   func.func @_Z6kernelPiS_(%arg0: memref<?xi32>, %arg1: memref<?xi32>) attributes {llvm.linkage = #llvm.linkage<external>} {
 // KERNEL-NEXT:     %c0_i32 = arith.constant 0 : i32
-// KERNEL-NEXT:     %write_outputs = taskflow.task @Task_0 read_memrefs(%arg0, %arg1 : memref<?xi32>, memref<?xi32>) write_memrefs(%arg1 : memref<?xi32>) value_inputs(%c0_i32 : i32) [original_read_memrefs(%arg0, %arg1), original_write_memrefs(%arg1)] : (memref<?xi32>, memref<?xi32>, memref<?xi32>, i32) -> (memref<?xi32>) {
+// KERNEL-NEXT:     %write_outputs = taskflow.task @Task_0 read_memrefs(%arg0, %arg1 : memref<?xi32>, memref<?xi32>) write_memrefs(%arg1 : memref<?xi32>) value_inputs(%c0_i32 : i32) [original_read_memrefs(%arg0, %arg1 : memref<?xi32>, memref<?xi32>), original_write_memrefs(%arg1 : memref<?xi32>)] : (memref<?xi32>, memref<?xi32>, memref<?xi32>, i32) -> (memref<?xi32>) {
 // KERNEL-NEXT:     ^bb0(%arg2: memref<?xi32>, %arg3: memref<?xi32>, %arg4: memref<?xi32>, %arg5: i32):
 // KERNEL-NEXT:       %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 32 : index} : index
 // KERNEL-NEXT:       neura.kernel inputs(%arg2, %arg5, %arg4 : memref<?xi32>, i32, memref<?xi32>) {
@@ -178,7 +178,7 @@ module attributes {} {
 // NEURA:      module {
 // NEURA-NEXT:   func.func @_Z6kernelPiS_(%arg0: memref<?xi32>, %arg1: memref<?xi32>) attributes {llvm.linkage = #llvm.linkage<external>} {
 // NEURA-NEXT:     %c0_i32 = arith.constant 0 : i32
-// NEURA-NEXT:     %write_outputs = taskflow.task @Task_0 read_memrefs(%arg0, %arg1 : memref<?xi32>, memref<?xi32>) write_memrefs(%arg1 : memref<?xi32>) value_inputs(%c0_i32 : i32) [original_read_memrefs(%arg0, %arg1), original_write_memrefs(%arg1)] : (memref<?xi32>, memref<?xi32>, memref<?xi32>, i32) -> (memref<?xi32>) {
+// NEURA-NEXT:     %write_outputs = taskflow.task @Task_0 read_memrefs(%arg0, %arg1 : memref<?xi32>, memref<?xi32>) write_memrefs(%arg1 : memref<?xi32>) value_inputs(%c0_i32 : i32) [original_read_memrefs(%arg0, %arg1 : memref<?xi32>, memref<?xi32>), original_write_memrefs(%arg1 : memref<?xi32>)] : (memref<?xi32>, memref<?xi32>, memref<?xi32>, i32) -> (memref<?xi32>) {
 // NEURA-NEXT:     ^bb0(%arg2: memref<?xi32>, %arg3: memref<?xi32>, %arg4: memref<?xi32>, %arg5: i32):
 // NEURA-NEXT:       %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 32 : index} : index
 // NEURA-NEXT:       neura.kernel inputs(%arg2, %arg5, %arg4 : memref<?xi32>, i32, memref<?xi32>) attributes {accelerator = "neura"} {
@@ -209,7 +209,7 @@ module attributes {} {
 // DATAFLOW:      module {
 // DATAFLOW-NEXT:   func.func @_Z6kernelPiS_(%arg0: memref<?xi32>, %arg1: memref<?xi32>) attributes {llvm.linkage = #llvm.linkage<external>} {
 // DATAFLOW-NEXT:     %c0_i32 = arith.constant 0 : i32
-// DATAFLOW-NEXT:     %write_outputs = taskflow.task @Task_0 read_memrefs(%arg0, %arg1 : memref<?xi32>, memref<?xi32>) write_memrefs(%arg1 : memref<?xi32>) value_inputs(%c0_i32 : i32) [original_read_memrefs(%arg0, %arg1), original_write_memrefs(%arg1)] : (memref<?xi32>, memref<?xi32>, memref<?xi32>, i32) -> (memref<?xi32>) {
+// DATAFLOW-NEXT:     %write_outputs = taskflow.task @Task_0 read_memrefs(%arg0, %arg1 : memref<?xi32>, memref<?xi32>) write_memrefs(%arg1 : memref<?xi32>) value_inputs(%c0_i32 : i32) [original_read_memrefs(%arg0, %arg1 : memref<?xi32>, memref<?xi32>), original_write_memrefs(%arg1 : memref<?xi32>)] : (memref<?xi32>, memref<?xi32>, memref<?xi32>, i32) -> (memref<?xi32>) {
 // DATAFLOW-NEXT:     ^bb0(%arg2: memref<?xi32>, %arg3: memref<?xi32>, %arg4: memref<?xi32>, %arg5: i32):
 // DATAFLOW-NEXT:       %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 32 : index} : index
 // DATAFLOW-NEXT:       neura.kernel inputs(%arg2, %arg5, %arg4 : memref<?xi32>, i32, memref<?xi32>) attributes {accelerator = "neura", dataflow_mode = "predicate"} {
@@ -237,7 +237,7 @@ module attributes {} {
 // MAPPED:      module {
 // MAPPED-NEXT:   func.func @_Z6kernelPiS_(%arg0: memref<?xi32>, %arg1: memref<?xi32>) attributes {llvm.linkage = #llvm.linkage<external>} {
 // MAPPED-NEXT:     %c0_i32 = arith.constant 0 : i32
-// MAPPED-NEXT:     %write_outputs = taskflow.task @Task_0 read_memrefs(%arg0, %arg1 : memref<?xi32>, memref<?xi32>) write_memrefs(%arg1 : memref<?xi32>) value_inputs(%c0_i32 : i32) [original_read_memrefs(%arg0, %arg1), original_write_memrefs(%arg1)] : (memref<?xi32>, memref<?xi32>, memref<?xi32>, i32) -> (memref<?xi32>) {
+// MAPPED-NEXT:     %write_outputs = taskflow.task @Task_0 read_memrefs(%arg0, %arg1 : memref<?xi32>, memref<?xi32>) write_memrefs(%arg1 : memref<?xi32>) value_inputs(%c0_i32 : i32) [original_read_memrefs(%arg0, %arg1 : memref<?xi32>, memref<?xi32>), original_write_memrefs(%arg1 : memref<?xi32>)] : (memref<?xi32>, memref<?xi32>, memref<?xi32>, i32) -> (memref<?xi32>) {
 // MAPPED-NEXT:     ^bb0(%arg2: memref<?xi32>, %arg3: memref<?xi32>, %arg4: memref<?xi32>, %arg5: i32):
 // MAPPED-NEXT:       %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 32 : index} : index
 // MAPPED-NEXT:       neura.kernel inputs(%arg2, %arg5, %arg4 : memref<?xi32>, i32, memref<?xi32>) attributes {accelerator = "neura", dataflow_mode = "predicate", mapping_info = {compiled_ii = 2 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 1 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {

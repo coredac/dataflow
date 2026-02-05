@@ -16,7 +16,7 @@ module {
 }
 
 // CHECK:        func.func @simple_add(%arg0: memref<16xf32>, %arg1: memref<16xf32>, %arg2: memref<16xf32>) {
-// CHECK-NEXT:     %write_outputs = taskflow.task @Task_0 read_memrefs(%arg0, %arg1 : memref<16xf32>, memref<16xf32>) write_memrefs(%arg2 : memref<16xf32>) [original_read_memrefs(%arg0, %arg1), original_write_memrefs(%arg2)] : (memref<16xf32>, memref<16xf32>, memref<16xf32>) -> (memref<16xf32>) {
+// CHECK-NEXT:     %write_outputs = taskflow.task @Task_0 read_memrefs(%arg0, %arg1 : memref<16xf32>, memref<16xf32>) write_memrefs(%arg2 : memref<16xf32>) [original_read_memrefs(%arg0, %arg1 : memref<16xf32>, memref<16xf32>), original_write_memrefs(%arg2 : memref<16xf32>)] : (memref<16xf32>, memref<16xf32>, memref<16xf32>) -> (memref<16xf32>) {
 // CHECK-NEXT:     ^bb0(%arg3: memref<16xf32>, %arg4: memref<16xf32>, %arg5: memref<16xf32>):
 // CHECK-NEXT:       affine.for %arg6 = 0 to 16 {
 // CHECK-NEXT:         %0 = affine.load %arg3[%arg6] : memref<16xf32>

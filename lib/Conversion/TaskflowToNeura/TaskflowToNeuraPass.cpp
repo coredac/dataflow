@@ -4,23 +4,35 @@
 #include "NeuraDialect/NeuraOps.h"
 #include "TaskflowDialect/TaskflowDialect.h"
 #include "TaskflowDialect/TaskflowOps.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/Attributes.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
+#include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/Transforms/RegionUtils.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
+#include <cassert>
 
 using namespace mlir;
 using namespace mlir::taskflow;
 
 namespace {
+
+//===============================================================================
+// Converts taskflow.hyperblock to neura.kernel.
+//===============================================================================
 // Pattern to convert taskflow.hyperblock to neura.kernel.
 //
 // Hyperblock structure:
@@ -77,10 +89,19 @@ struct HyperblockToKernelPattern
     llvm::DenseSet<Value> live_in_set;
     SmallVector<Value> live_in_values;
 
+    // Collects constants that should be internalized in the kernel.
+    SmallVector<Operation *> constant_ops_to_internalize;
+
     hyperblock_op.walk([&](Operation *op) {
+      if (op == hyperblock_op.getOperation()) {
+        // Skips the hyperblock op itself.
+        return;
+      }
       for (Value operand : op->getOperands()) {
-        if (auto blockArg = dyn_cast<BlockArgument>(operand)) {
-          if (blockArg.getOwner() == &task_block) {
+        if (auto block_arg = dyn_cast<BlockArgument>(operand)) {
+          Block *owner_block = block_arg.getOwner();
+
+          if (block_arg.getOwner() == &task_block) {
             if (iter_args_init_set.contains(operand) ||
                 indices_set.contains(operand)) {
               // Skips iter args and indices.
@@ -89,18 +110,78 @@ struct HyperblockToKernelPattern
             if (live_in_set.insert(operand).second) {
               live_in_values.push_back(operand);
             }
+          } else if (block_arg.getOwner() == &hb_block) {
+            // Block argument from hyperblock - already handled.
+            continue;
           } else {
-            assert(blockArg.getOwner() == &hb_block &&
-                   "Unexpected block argument from other block");
+            // Block argument from another block.
+            Operation *owner_op = owner_block->getParentOp();
+
+            // Checks if the owner op is INSIDE the hyperblock.
+            bool is_inside_hyperblock = hyperblock_op->isAncestor(owner_op);
+
+            if (is_inside_hyperblock) {
+              // This is a block argument from an operation inside the
+              // hyperblock (e.g., scf.for induction variable) These should NOT
+              // be added as live-ins.
+              continue;
+            }
+
+            // Checks if it's from an operation OUTSIDE hyperblock but INSIDE
+            // task.
+            bool is_in_task = task_op->isAncestor(owner_op);
+
+            if (is_in_task) {
+              // This is a block argument from an outer affine.for loop
+              // Adds as live-in value.
+              if (live_in_set.insert(operand).second) {
+                live_in_values.push_back(operand);
+              }
+            } else {
+              llvm::errs() << "ERROR: Block argument from outside task\n";
+              llvm::errs() << "  Operand: " << operand << "\n";
+              llvm::errs() << "  Owner block: " << *owner_block << "\n";
+              llvm::errs() << "  Owner op: " << *owner_op << "\n";
+              assert(false && "Unexpected block argument from outside task");
+            }
           }
         } else if (operand.getDefiningOp()) {
           Operation *def_op = operand.getDefiningOp();
-          llvm::errs() << "[taskflow2neura] Operand from op: "
-                       << *(operand.getDefiningOp()) << "\n";
-          assert(((isa<TaskflowCounterOp>(def_op) &&
-                   def_op->getParentOp() == task_op) ||
-                  (hyperblock_op->isProperAncestor(def_op))) &&
-                 "Unexpected non-block-arg operand in hyperblock");
+
+          // Checks three regions:
+          // 1. Inside hyperblock
+          // 2. Inside task body (but outside hyperblock)
+          // 3. Outside task body (error)
+          bool is_in_hyperblock = hyperblock_op->isProperAncestor(def_op);
+          bool is_in_task_body = task_op->isProperAncestor(def_op);
+
+          if (is_in_hyperblock) {
+            // Defined inside hyperblock - do nothing.
+            continue;
+          } else if (is_in_task_body && !is_in_hyperblock) {
+            // If it is a constant in task body, marks it for internalization.
+            if (def_op->hasTrait<OpTrait::ConstantLike>()) {
+              // Don't add to live_in.
+              constant_ops_to_internalize.push_back(def_op);
+              continue;
+            } else {
+              // Non-constant value from outer loop body.
+              // Adds as live-in (will be passed from outer scope).
+              if (live_in_set.insert(operand).second) {
+                live_in_values.push_back(operand);
+                llvm::errs()
+                    << "[taskflow2neura] Added live-in from outer loop body: "
+                    << operand << " from op: " << *def_op << "\n";
+              }
+              continue;
+            }
+          } else {
+            // Defined outside task - ERROR.
+            llvm::errs() << "ERROR: Value from outside task\n";
+            llvm::errs() << "  Operand: " << operand << "\n";
+            llvm::errs() << "  Defining op: " << *def_op << "\n";
+            assert(false && "Operand defined outside task");
+          }
         }
       }
     });
@@ -151,6 +232,16 @@ struct HyperblockToKernelPattern
           entry_block->addArgument(iter_args_init[i].getType(), loc);
       BlockArgument hb_arg = hb_block.getArgument(num_indices + i);
       mapping.map(hb_arg, kernel_iter_arg);
+    }
+
+    // Clones constants into kernel.
+    rewriter.setInsertionPointToStart(entry_block);
+    for (Operation *const_op : constant_ops_to_internalize) {
+      Operation *cloned = rewriter.clone(*const_op);
+      // Maps the original constant to the cloned one.
+      for (size_t i = 0; i < const_op->getNumResults(); ++i) {
+        mapping.map(const_op->getResult(i), cloned->getResult(i));
+      }
     }
 
     // Clones hyperblock body into kernel.
@@ -288,17 +379,22 @@ struct ConvertTaskflowToNeuraPass
 
   StringRef getArgument() const override { return "convert-taskflow-to-neura"; }
   StringRef getDescription() const override {
-    return "Convert taskflow.hyperblock to neura.kernel";
+    return "Convert taskflow operations to neura.kernel";
   }
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mlir::neura::NeuraDialect>();
     registry.insert<mlir::taskflow::TaskflowDialect>();
+    registry.insert<mlir::affine::AffineDialect>();
+    registry.insert<mlir::func::FuncDialect>();
+    registry.insert<mlir::memref::MemRefDialect>();
+    registry.insert<mlir::scf::SCFDialect>();
   }
 
   void runOnOperation() override {
     ModuleOp module = getOperation();
     MLIRContext *ctx = &getContext();
 
+    // Converts entire hyperblock to neura.kernel.
     // Phase 1: Converts hyperblocks to kernels.
     {
       RewritePatternSet patterns(ctx);
@@ -321,6 +417,7 @@ struct ConvertTaskflowToNeuraPass
       }
     }
   }
+  // }
 };
 } // namespace
 

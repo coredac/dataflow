@@ -18,7 +18,6 @@ add_mlir_library(
     TransformToSteerControlPass.cpp
     RemovePredicatedTypePass.cpp
     HardwareMergePass.cpp
-    WrapLoopInKernelPass.cpp
     GraphMining/HardwareTemplate.cpp
 
     DEPENDS

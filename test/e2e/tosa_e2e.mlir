@@ -11,7 +11,7 @@ func.func @test_e2e(%arg0: tensor<16xf32>, %arg1: tensor<16xf32>) -> tensor<16xf
 
 // CHECK:      func.func @test_e2e(%arg0: memref<16xf32>, %arg1: memref<16xf32>) -> memref<16xf32> {
 // CHECK-NEXT:   %alloc = memref.alloc() {alignment = 64 : i64} : memref<16xf32>
-// CHECK-NEXT:   %write_outputs = taskflow.task @Task_0 read_memrefs(%arg0, %arg1 : memref<16xf32>, memref<16xf32>) write_memrefs(%alloc : memref<16xf32>) [original_read_memrefs(%arg0, %arg1), original_write_memrefs(%alloc)] : (memref<16xf32>, memref<16xf32>, memref<16xf32>) -> (memref<16xf32>) {
+// CHECK-NEXT:   %write_outputs = taskflow.task @Task_0 read_memrefs(%arg0, %arg1 : memref<16xf32>, memref<16xf32>) write_memrefs(%alloc : memref<16xf32>) [original_read_memrefs(%arg0, %arg1 : memref<16xf32>, memref<16xf32>), original_write_memrefs(%alloc : memref<16xf32>)] : (memref<16xf32>, memref<16xf32>, memref<16xf32>) -> (memref<16xf32>) {
 // CHECK-NEXT:   ^bb0(%arg2: memref<16xf32>, %arg3: memref<16xf32>, %arg4: memref<16xf32>):
 // CHECK-NEXT:     affine.for %arg5 = 0 to 16 {
 // CHECK-NEXT:       %0 = affine.load %arg2[%arg5] : memref<16xf32>
