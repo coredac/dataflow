@@ -130,6 +130,6 @@ module {
 // HYPERBLOCK-NEXT: }
 
 // PLACEMENT:      taskflow.task @Task_0
-// PLACEMENT-SAME: mapping_info = {cgra_positions = [{col = 0 : i32, row = 0 : i32}], read_sram_ids = [0 : i32], write_sram_ids = [0 : i32]}
+// PLACEMENT-SAME: read_memrefs(%arg0 : memref<16xf32>) write_memrefs(%arg0 : memref<16xf32>) value_inputs(%arg4 : f32) [original_read_memrefs(%arg0 : memref<16xf32>), original_write_memrefs(%arg0 : memref<16xf32>)] {task_mapping_info = {cgra_positions = [{col = 0 : i32, row = 0 : i32}], read_sram_locs = [{col = 0 : i32, row = 0 : i32}], write_sram_locs = [{col = 0 : i32, row = 0 : i32}]}}
 // PLACEMENT:      taskflow.task @Task_1
-// PLACEMENT-SAME: mapping_info = {cgra_positions = [{col = 1 : i32, row = 0 : i32}], read_sram_ids = [1 : i32, 1 : i32], write_sram_ids = [1 : i32]}
+// PLACEMENT-SAME: read_memrefs(%arg1, %arg2 : memref<8x8xf32>, memref<8x8xf32>) write_memrefs(%arg3 : memref<8x8xf32>) [original_read_memrefs(%arg1, %arg2 : memref<8x8xf32>, memref<8x8xf32>), original_write_memrefs(%arg3 : memref<8x8xf32>)] {task_mapping_info = {cgra_positions = [{col = 1 : i32, row = 0 : i32}], read_sram_locs = [{col = 1 : i32, row = 0 : i32}, {col = 1 : i32, row = 0 : i32}], write_sram_locs = [{col = 1 : i32, row = 0 : i32}]}}

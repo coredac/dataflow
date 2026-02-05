@@ -191,9 +191,9 @@ private:
 //===----------------------------------------------------------------------===//
 /// Maps a task-memory graph onto a 2D CGRA grid.
 
-class CGRAPlacer {
+class TaskMapper {
 public:
-  CGRAPlacer(int grid_rows, int grid_cols)
+  TaskMapper(int grid_rows, int grid_cols)
       : grid_rows_(grid_rows), grid_cols_(grid_cols) {
     occupied_.resize(grid_rows_);
     for (auto &row : occupied_) {
@@ -314,26 +314,44 @@ public:
             StringAttr::get(func.getContext(), "cgra_positions"),
             builder.getArrayAttr(pos_attrs)));
 
-        // 2. Read SRAM IDs
+        // 2. Read SRAM Locations
         SmallVector<Attribute> read_sram_attrs;
         for (MemoryNode *mem : task_node->read_memrefs) {
-            read_sram_attrs.push_back(builder.getI32IntegerAttr(mem->assigned_sram_id));
+            int row = mem->assigned_sram_id >> 16;
+            int col = mem->assigned_sram_id & 0xFFFF;
+            SmallVector<NamedAttribute, 2> coord_attrs;
+            coord_attrs.push_back(NamedAttribute(
+                StringAttr::get(func.getContext(), "row"),
+                builder.getI32IntegerAttr(row)));
+            coord_attrs.push_back(NamedAttribute(
+                StringAttr::get(func.getContext(), "col"),
+                builder.getI32IntegerAttr(col)));
+            read_sram_attrs.push_back(DictionaryAttr::get(func.getContext(), coord_attrs));
         }
         mapping_attrs.push_back(NamedAttribute(
-            StringAttr::get(func.getContext(), "read_sram_ids"),
+            StringAttr::get(func.getContext(), "read_sram_locs"),
             builder.getArrayAttr(read_sram_attrs)));
 
-        // 3. Write SRAM IDs
+        // 3. Write SRAM Locations
         SmallVector<Attribute> write_sram_attrs;
         for (MemoryNode *mem : task_node->write_memrefs) {
-            write_sram_attrs.push_back(builder.getI32IntegerAttr(mem->assigned_sram_id));
+            int row = mem->assigned_sram_id >> 16;
+            int col = mem->assigned_sram_id & 0xFFFF;
+            SmallVector<NamedAttribute, 2> coord_attrs;
+            coord_attrs.push_back(NamedAttribute(
+                StringAttr::get(func.getContext(), "row"),
+                builder.getI32IntegerAttr(row)));
+            coord_attrs.push_back(NamedAttribute(
+                StringAttr::get(func.getContext(), "col"),
+                builder.getI32IntegerAttr(col)));
+            write_sram_attrs.push_back(DictionaryAttr::get(func.getContext(), coord_attrs));
         }
         mapping_attrs.push_back(NamedAttribute(
-            StringAttr::get(func.getContext(), "write_sram_ids"),
+            StringAttr::get(func.getContext(), "write_sram_locs"),
             builder.getArrayAttr(write_sram_attrs)));
 
         // Set Attribute
-        task_node->op->setAttr("mapping_info", DictionaryAttr::get(func.getContext(), mapping_attrs));
+        task_node->op->setAttr("task_mapping_info", DictionaryAttr::get(func.getContext(), mapping_attrs));
     }
   }
 
@@ -544,8 +562,8 @@ struct MapCTOnCGRAArrayPass
     func::FuncOp func = getOperation();
     constexpr int kDefaultGridRows = 3;
     constexpr int kDefaultGridCols = 3;
-    CGRAPlacer placer(kDefaultGridRows, kDefaultGridCols);
-    placer.place(func);
+    TaskMapper mapper(kDefaultGridRows, kDefaultGridCols);
+    mapper.place(func);
   }
 };
 
