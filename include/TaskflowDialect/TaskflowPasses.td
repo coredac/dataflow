@@ -46,15 +46,15 @@ def ClassifyCounters : Pass<"classify-counters", "ModuleOp">{
   let constructor = "taskflow::createClassifyCountersPass()";
 }
 
-def MapCTOnCGRAArray : Pass<"map-ct-on-cgra-array", "func::FuncOp"> {
-  let summary = "Maps Canonical Tasks (CTs) onto a 2D CGRA grid array";
+def MapTaskOnCgra : Pass<"map-task-on-cgra", "func::FuncOp"> {
+  let summary = "Maps Taskflow tasks onto a 2D CGRA grid array";
   let description = [{
-    This pass maps Canonical Tasks (CTs) onto a 2D CGRA grid array.
+    This pass maps Taskflow tasks onto a 2D CGRA grid array.
     Fusion candidates (same-header SSA dependencies) are placed on adjacent
     CGRAs to enable direct data forwarding.
 
-    Uses a default 4x4 CGRA grid.
+    Uses a default 3x3 CGRA grid.
   }];
-  let constructor = "taskflow::createMapCTOnCGRAArrayPass()";
+  let constructor = "taskflow::createMapTaskOnCgraPass()";
 }
 #endif // TASKFLOW_PASSES_TD

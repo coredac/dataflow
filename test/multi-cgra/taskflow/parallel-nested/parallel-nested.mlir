@@ -16,7 +16,7 @@
 // RUN: mlir-neura-opt %s --affine-loop-tree-serialization \
 // RUN: --convert-affine-to-taskflow \
 // RUN: --construct-hyperblock-from-task \
-// RUN: --map-ct-on-cgra-array \
+// RUN: --map-task-on-cgra \
 // RUN: -o %t.placement.mlir
 // RUN: FileCheck %s --input-file=%t.placement.mlir --check-prefixes=PLACEMENT
 
@@ -130,6 +130,6 @@ module {
 // HYPERBLOCK-NEXT: }
 
 // PLACEMENT:      taskflow.task @Task_0
-// PLACEMENT-SAME: read_memrefs(%arg0 : memref<16xf32>) write_memrefs(%arg0 : memref<16xf32>) value_inputs(%arg4 : f32) [original_read_memrefs(%arg0 : memref<16xf32>), original_write_memrefs(%arg0 : memref<16xf32>)] {task_mapping_info = {cgra_positions = [{col = 0 : i32, row = 0 : i32}], read_sram_locs = [{col = 0 : i32, row = 0 : i32}], write_sram_locs = [{col = 0 : i32, row = 0 : i32}]}}
+// PLACEMENT-SAME: task_mapping_info = {cgra_positions = [{col = 0 : i32, row = 0 : i32}], read_sram_locations = [{col = 0 : i32, row = 0 : i32}], write_sram_locations = [{col = 0 : i32, row = 0 : i32}]}
 // PLACEMENT:      taskflow.task @Task_1
-// PLACEMENT-SAME: read_memrefs(%arg1, %arg2 : memref<8x8xf32>, memref<8x8xf32>) write_memrefs(%arg3 : memref<8x8xf32>) [original_read_memrefs(%arg1, %arg2 : memref<8x8xf32>, memref<8x8xf32>), original_write_memrefs(%arg3 : memref<8x8xf32>)] {task_mapping_info = {cgra_positions = [{col = 1 : i32, row = 0 : i32}], read_sram_locs = [{col = 1 : i32, row = 0 : i32}, {col = 1 : i32, row = 0 : i32}], write_sram_locs = [{col = 1 : i32, row = 0 : i32}]}}
+// PLACEMENT-SAME: task_mapping_info = {cgra_positions = [{col = 1 : i32, row = 0 : i32}], read_sram_locations = [{col = 1 : i32, row = 0 : i32}, {col = 1 : i32, row = 0 : i32}], write_sram_locations = [{col = 1 : i32, row = 0 : i32}]}

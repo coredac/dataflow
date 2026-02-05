@@ -1,4 +1,4 @@
-//===- MapCTOnCGRAArrayPass.cpp - CT to CGRA Mapping Pass ----------------===//
+//===- MapTaskOnCgraPass.cpp - Task to CGRA Mapping Pass ----------------===//
 //
 // This pass maps Canonical Tasks (CTs) onto a 2D CGRA grid array:
 // 1. Places tasks with SSA dependencies on adjacent CGRAs.
@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <climits>
 #include <cmath>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -40,6 +41,10 @@ struct CGRAPosition {
 
   bool operator==(const CGRAPosition &other) const {
     return row == other.row && col == other.col;
+  }
+
+  bool operator!=(const CGRAPosition &other) const {
+    return !(*this == other);
   }
 
   /// Computes Manhattan distance to another position.
@@ -114,7 +119,7 @@ struct MemoryNode {
   SmallVector<TaskNode *> writers;
 
   // Mapping result
-  int assigned_sram_id = -1;
+  std::optional<CGRAPosition> assigned_sram_pos;
 
   MemoryNode(Value memref) : memref(memref) {}
 };
@@ -315,40 +320,37 @@ public:
             builder.getArrayAttr(pos_attrs)));
 
         // 2. Read SRAM Locations
-        SmallVector<Attribute> read_sram_attrs;
-        for (MemoryNode *mem : task_node->read_memrefs) {
-            int row = mem->assigned_sram_id >> 16;
-            int col = mem->assigned_sram_id & 0xFFFF;
-            SmallVector<NamedAttribute, 2> coord_attrs;
-            coord_attrs.push_back(NamedAttribute(
-                StringAttr::get(func.getContext(), "row"),
-                builder.getI32IntegerAttr(row)));
-            coord_attrs.push_back(NamedAttribute(
-                StringAttr::get(func.getContext(), "col"),
-                builder.getI32IntegerAttr(col)));
-            read_sram_attrs.push_back(DictionaryAttr::get(func.getContext(), coord_attrs));
+        if (!task_node->read_memrefs.empty()) {
+            SmallVector<Attribute> read_sram_attrs;
+            for (MemoryNode *mem : task_node->read_memrefs) {
+                if (mem->assigned_sram_pos) {
+                    SmallVector<NamedAttribute, 2> sram_coord;
+                    sram_coord.push_back(NamedAttribute(StringAttr::get(func.getContext(), "row"), builder.getI32IntegerAttr(mem->assigned_sram_pos->row)));
+                    sram_coord.push_back(NamedAttribute(StringAttr::get(func.getContext(), "col"), builder.getI32IntegerAttr(mem->assigned_sram_pos->col)));
+                    read_sram_attrs.push_back(DictionaryAttr::get(func.getContext(), sram_coord));
+                }
+            }
+            mapping_attrs.push_back(NamedAttribute(
+                StringAttr::get(func.getContext(), "read_sram_locations"),
+                builder.getArrayAttr(read_sram_attrs)));
         }
-        mapping_attrs.push_back(NamedAttribute(
-            StringAttr::get(func.getContext(), "read_sram_locs"),
-            builder.getArrayAttr(read_sram_attrs)));
 
         // 3. Write SRAM Locations
-        SmallVector<Attribute> write_sram_attrs;
-        for (MemoryNode *mem : task_node->write_memrefs) {
-            int row = mem->assigned_sram_id >> 16;
-            int col = mem->assigned_sram_id & 0xFFFF;
-            SmallVector<NamedAttribute, 2> coord_attrs;
-            coord_attrs.push_back(NamedAttribute(
-                StringAttr::get(func.getContext(), "row"),
-                builder.getI32IntegerAttr(row)));
-            coord_attrs.push_back(NamedAttribute(
-                StringAttr::get(func.getContext(), "col"),
-                builder.getI32IntegerAttr(col)));
-            write_sram_attrs.push_back(DictionaryAttr::get(func.getContext(), coord_attrs));
+        if (!task_node->write_memrefs.empty()) {
+            SmallVector<Attribute> write_sram_attrs;
+            for (MemoryNode *mem : task_node->write_memrefs) {
+                if (mem->assigned_sram_pos) {
+                  SmallVector<NamedAttribute, 2> sram_coord;
+                  sram_coord.push_back(NamedAttribute(StringAttr::get(func.getContext(), "row"), builder.getI32IntegerAttr(mem->assigned_sram_pos->row)));
+                  sram_coord.push_back(NamedAttribute(StringAttr::get(func.getContext(), "col"), builder.getI32IntegerAttr(mem->assigned_sram_pos->col)));
+
+                  write_sram_attrs.push_back(DictionaryAttr::get(func.getContext(), sram_coord));
+                }
+            }
+            mapping_attrs.push_back(NamedAttribute(
+                StringAttr::get(func.getContext(), "write_sram_locations"),
+                builder.getArrayAttr(write_sram_attrs)));
         }
-        mapping_attrs.push_back(NamedAttribute(
-            StringAttr::get(func.getContext(), "write_sram_locs"),
-            builder.getArrayAttr(write_sram_attrs)));
 
         // Set Attribute
         task_node->op->setAttr("task_mapping_info", DictionaryAttr::get(func.getContext(), mapping_attrs));
@@ -389,19 +391,16 @@ private:
         }
       }
       
-      int new_sram_id = 0;
+      std::optional<CGRAPosition> new_sram_pos;
       if (count > 0) {
         // Rounds to the nearest integer.
         int avg_row = (total_row + count / 2) / count;
         int avg_col = (total_col + count / 2) / count;
-        // SRAM ID encoding: (row << 16) | col
-        new_sram_id = (avg_row << 16) | (avg_col & 0xFFFF);
-      } else {
-        new_sram_id = 0; // Default fallback
+        new_sram_pos = CGRAPosition{avg_row, avg_col};
       }
 
-      if (mem_node->assigned_sram_id != new_sram_id) {
-        mem_node->assigned_sram_id = new_sram_id;
+      if (mem_node->assigned_sram_pos != new_sram_pos) {
+        mem_node->assigned_sram_pos = new_sram_pos;
         changed = true;
       }
     }
@@ -481,12 +480,8 @@ private:
     // 2. Memory Proximity
     // For Read MemRefs
     for (MemoryNode *mem : task_node->read_memrefs) {
-        if (mem->assigned_sram_id != -1) {
-            // SRAM ID encoding: (row << 16) | col
-            int sram_r = mem->assigned_sram_id >> 16;
-            int sram_c = mem->assigned_sram_id & 0xFFFF;
-            CGRAPosition sram_pos{sram_r, sram_c};
-            int dist = current_pos.manhattanDistance(sram_pos);
+        if (mem->assigned_sram_pos) {
+            int dist = current_pos.manhattanDistance(*mem->assigned_sram_pos);
             mem_score -= dist;
         }
     }
@@ -494,12 +489,8 @@ private:
     // If we write to a memory that is already assigned (e.g. read by previous task),
     // we want to be close to it too.
     for (MemoryNode *mem : task_node->write_memrefs) {
-         if (mem->assigned_sram_id != -1) {
-            // SRAM ID encoding: (row << 16) | col
-            int sram_r = mem->assigned_sram_id >> 16;
-            int sram_c = mem->assigned_sram_id & 0xFFFF;
-            CGRAPosition sram_pos{sram_r, sram_c};
-            int dist = current_pos.manhattanDistance(sram_pos);
+         if (mem->assigned_sram_pos) {
+            int dist = current_pos.manhattanDistance(*mem->assigned_sram_pos);
             mem_score -= dist;
         }
     }
@@ -545,16 +536,16 @@ private:
 //===----------------------------------------------------------------------===//
 // Pass Definition
 //===----------------------------------------------------------------------===//
-struct MapCTOnCGRAArrayPass
-    : public PassWrapper<MapCTOnCGRAArrayPass, OperationPass<func::FuncOp>> {
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(MapCTOnCGRAArrayPass)
+struct MapTaskOnCgraPass
+    : public PassWrapper<MapTaskOnCgraPass, OperationPass<func::FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(MapTaskOnCgraPass)
 
-  MapCTOnCGRAArrayPass() = default;
+  MapTaskOnCgraPass() = default;
 
-  StringRef getArgument() const override { return "map-ct-on-cgra-array"; }
+  StringRef getArgument() const override { return "map-task-on-cgra"; }
 
   StringRef getDescription() const override {
-    return "Maps Canonical Tasks (CTs) onto a 2D CGRA grid with adjacency "
+    return "Maps Taskflow tasks onto a 2D CGRA grid with adjacency "
            "optimization and memory mapping.";
   }
 
@@ -572,8 +563,8 @@ struct MapCTOnCGRAArrayPass
 namespace mlir {
 namespace taskflow {
 
-std::unique_ptr<Pass> createMapCTOnCGRAArrayPass() {
-  return std::make_unique<MapCTOnCGRAArrayPass>();
+std::unique_ptr<Pass> createMapTaskOnCgraPass() {
+  return std::make_unique<MapTaskOnCgraPass>();
 }
 
 } // namespace taskflow

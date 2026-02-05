@@ -17,7 +17,7 @@ namespace taskflow {
 #include "TaskflowDialect/TaskflowPasses.h.inc"
 std::unique_ptr<mlir::Pass> createConstructHyperblockFromTaskPass();
 std::unique_ptr<mlir::Pass> createClassifyCountersPass();
-std::unique_ptr<mlir::Pass> createMapCTOnCGRAArrayPass();
+std::unique_ptr<mlir::Pass> createMapTaskOnCgraPass();
 
 //=========================================================//
 // Optimization Passes
