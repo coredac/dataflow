@@ -1,5 +1,3 @@
-#include "TaskflowDialect/TaskflowDialect.h"
-#include "TaskflowDialect/TaskflowOps.h"
 #include "TaskflowDialect/TaskflowPasses.h"
 
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
@@ -11,7 +9,6 @@
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/TypeID.h"
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
@@ -80,15 +77,11 @@ static void collectLoopBands(func::FuncOp func_op,
       Block &body = current_loop.getRegion().front();
       affine::AffineForOp nested_loop = nullptr;
       size_t num_loops = 0;
-      size_t num_other_ops = 0;
 
       for (Operation &body_op : body) {
         if (auto nested_for = dyn_cast<affine::AffineForOp>(&body_op)) {
           nested_loop = nested_for;
           num_loops++;
-        } else if (!isa<affine::AffineYieldOp>(&body_op)) {
-          // Counts other operations (excluding yield).
-          num_other_ops++;
         }
       }
 
@@ -112,6 +105,75 @@ static void collectLoopBands(func::FuncOp func_op,
 // Loop Perfection Logic.
 //=================================================================
 
+// Creates a condition checking if all inner loop indices are at their lower
+// bounds. Used for prologue condition.
+static Value
+createPrologueCondition(OpBuilder &builder, Location loc,
+                        ArrayRef<affine::AffineForOp> inner_loops) {
+  // Builds condition for prologue code: (i1 == lb1) && (i2 == lb2) && ...
+  Value condition = nullptr;
+
+  for (affine::AffineForOp loop : inner_loops) {
+    Value idx = loop.getInductionVar();
+    Value lb;
+
+    if (loop.hasConstantLowerBound()) {
+      lb = builder.create<arith::ConstantIndexOp>(loc,
+                                                  loop.getConstantLowerBound());
+    } else {
+      llvm::errs()
+          << "[LoopPerfection] Non-constant lower bound not supported.\n";
+      return nullptr;
+    }
+
+    Value eq =
+        builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::eq, idx, lb);
+
+    if (condition) {
+      condition = builder.create<arith::AndIOp>(loc, condition, eq);
+    } else {
+      condition = eq;
+    }
+  }
+
+  return condition;
+}
+
+// Creates a condition checking if all inner loop indices are at their upper
+// bounds. Used for epilogue condition.
+static Value
+createEpilogueCondition(OpBuilder &builder, Location loc,
+                        ArrayRef<affine::AffineForOp> inner_loops) {
+  // Builds condition for epilogue code: (i1 == ub1 - 1) && (i2 == ub2 - 1) &&
+  // ...
+  Value condition = nullptr;
+
+  for (affine::AffineForOp loop : inner_loops) {
+    Value idx = loop.getInductionVar();
+    Value ub_minus_1;
+
+    if (loop.hasConstantUpperBound()) {
+      ub_minus_1 = builder.create<arith::ConstantIndexOp>(
+          loc, loop.getConstantUpperBound() - 1);
+    } else {
+      llvm::errs()
+          << "[LoopPerfection] Non-constant upper bound not supported.\n";
+      return nullptr;
+    }
+
+    Value eq = builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::eq, idx,
+                                             ub_minus_1);
+
+    if (condition) {
+      condition = builder.create<arith::AndIOp>(loc, condition, eq);
+    } else {
+      condition = eq;
+    }
+  }
+
+  return condition;
+}
+
 // Applies loop perfection to a single loop band.
 // Sinks all operations into the innermost loop with condition execution.
 static LogicalResult applyLoopPerfection(AffineLoopBand &loop_band) {
@@ -130,8 +192,8 @@ static LogicalResult applyLoopPerfection(AffineLoopBand &loop_band) {
     affine::AffineForOp loop = loop_band[i - 1];
     affine::AffineForOp child_loop = loop_band[i];
 
-    // Collects prologue and epilogue operations in the current loop (excluding
-    // the child loop).
+    // Collects prologue and epilogue operations in the current loop
+    // (excluding the child loop).
     SmallVector<Operation *> prologue_ops; // Before child loop.
     SmallVector<Operation *> epilogue_ops; // After child loop.
 
@@ -150,8 +212,8 @@ static LogicalResult applyLoopPerfection(AffineLoopBand &loop_band) {
       // Rejects operations that cannot be perfectized.
       if (llvm::any_of(op.getResultTypes(),
                        [](Type type) { return isa<MemRefType>(type); })) {
-        llvm::errs()
-            << "[LoopPerfection] Memref-producing op cannot be perfectized.\n";
+        llvm::errs() << "[LoopPerfection] Memref-producing op cannot be "
+                        "perfectized.\n";
         op.dump();
         return failure();
       }
@@ -207,14 +269,83 @@ static LogicalResult applyLoopPerfection(AffineLoopBand &loop_band) {
         op->moveBefore(insert_point);
       }
 
-      // Moves side-effecting operations into the innermost loop with condition
-      // execution.
+      // Moves side-effecting operations into the innermost loop with
+      // condition execution.
       if (!side_effect_ops.empty()) {
         builder.setInsertionPoint(insert_point);
         Value condition = createPrologueCondition(builder, loc, inner_loops);
+
+        if (condition) {
+          scf::IfOp if_op = builder.create<scf::IfOp>(loc, condition,
+                                                      /*withElseRegion*/ false);
+
+          Block *then_block = if_op.thenBlock();
+
+          for (Operation *op : side_effect_ops) {
+            op->moveBefore(then_block->getTerminator());
+          }
+        } else {
+          // If condition creation fails, returns failure to avoid
+          // incorrect transformation.
+          llvm::errs()
+              << "[LoopPerfection] Failed to create prologue condition.\n";
+          return failure();
+        }
+      }
+    }
+
+    // Handles epilogue operations.
+    if (!epilogue_ops.empty()) {
+      llvm::errs() << "  Moving " << epilogue_ops.size()
+                   << " epilogue operations\n";
+
+      Operation *insert_point = innermost_body.getTerminator();
+
+      // Separates pure and side-effecting operations in the epilogue.
+      SmallVector<Operation *> pure_ops;
+      SmallVector<Operation *> side_effect_ops;
+
+      for (Operation *op : epilogue_ops) {
+        if (hasSideEffect(op)) {
+          side_effect_ops.push_back(op);
+        } else {
+          pure_ops.push_back(op);
+        }
+      }
+
+      // Moves pure operations directly into the innermost loop (will be CSE'd
+      // if redundant).
+      for (Operation *op : pure_ops) {
+        op->moveBefore(insert_point);
+      }
+
+      // Moves side-effecting operations into the innermost loop with
+      // condition execution.
+      if (!side_effect_ops.empty()) {
+        builder.setInsertionPoint(insert_point);
+        Value condition = createEpilogueCondition(builder, loc, inner_loops);
+
+        if (condition) {
+          scf::IfOp if_op = builder.create<scf::IfOp>(loc, condition,
+                                                      /*withElseRegion*/ false);
+
+          Block *then_block = if_op.thenBlock();
+
+          for (Operation *op : side_effect_ops) {
+            op->moveBefore(then_block->getTerminator());
+          }
+        } else {
+          // If condition creation fails, returns failure to avoid
+          // incorrect transformation.
+          llvm::errs()
+              << "[LoopPerfection] Failed to create epilogue condition.\n";
+          return failure();
+        }
       }
     }
   }
+
+  return success();
 }
 
 //=================================================================
