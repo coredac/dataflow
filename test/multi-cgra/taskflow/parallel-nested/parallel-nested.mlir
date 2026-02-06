@@ -13,6 +13,13 @@
 // RUN: -o %t.hyperblock.mlir
 // RUN: FileCheck %s --input-file=%t.hyperblock.mlir --check-prefixes=HYPERBLOCK
 
+// RUN: mlir-neura-opt %s --affine-loop-tree-serialization \
+// RUN: --convert-affine-to-taskflow \
+// RUN: --construct-hyperblock-from-task \
+// RUN: --map-task-on-cgra \
+// RUN: -o %t.placement.mlir
+// RUN: FileCheck %s --input-file=%t.placement.mlir --check-prefixes=PLACEMENT
+
 module {
   // Example: Parallel nested loops scenario
   // Task 0: Single-level loop (vector scaling)
@@ -121,3 +128,8 @@ module {
 // HYPERBLOCK-NEXT:     return
 // HYPERBLOCK-NEXT:   }
 // HYPERBLOCK-NEXT: }
+
+// PLACEMENT:      taskflow.task @Task_0
+// PLACEMENT-SAME: task_mapping_info = {cgra_positions = [{col = 0 : i32, row = 0 : i32}], read_sram_locations = [{col = 0 : i32, row = 0 : i32}], write_sram_locations = [{col = 0 : i32, row = 0 : i32}]}
+// PLACEMENT:      taskflow.task @Task_1
+// PLACEMENT-SAME: task_mapping_info = {cgra_positions = [{col = 1 : i32, row = 0 : i32}], read_sram_locations = [{col = 1 : i32, row = 0 : i32}, {col = 1 : i32, row = 0 : i32}], write_sram_locations = [{col = 1 : i32, row = 0 : i32}]}

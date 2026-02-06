@@ -21,6 +21,13 @@
 // RUN: -o %t.hyperblock.mlir
 // RUN: FileCheck %s --input-file=%t.hyperblock.mlir --check-prefixes=HYPERBLOCK
 
+// RUN: mlir-neura-opt %s --affine-loop-tree-serialization \
+// RUN: --convert-affine-to-taskflow \
+// RUN: --construct-hyperblock-from-task \
+// RUN: --map-task-on-cgra \
+// RUN: -o %t.placement.mlir
+// RUN: FileCheck %s --input-file=%t.placement.mlir --check-prefixes=PLACEMENT
+
 #set = affine_set<(d0, d1) : (d0 - 3 == 0, d1 - 7 == 0)>
 module attributes {} {
   func.func @_Z21irregularLoopExample1v() -> i32 attributes {llvm.linkage = #llvm.linkage<external>} {
@@ -298,3 +305,9 @@ module attributes {} {
 // HYPERBLOCK-NEXT:   }
 // HYPERBLOCK-NEXT: }
 
+// PLACEMENT:      taskflow.task @Task_0
+// PLACEMENT-SAME: task_mapping_info = {cgra_positions = [{col = 0 : i32, row = 0 : i32}], read_sram_locations = [], write_sram_locations = []}
+// PLACEMENT:      taskflow.task @Task_1
+// PLACEMENT-SAME: task_mapping_info = {cgra_positions = [{col = 1 : i32, row = 1 : i32}], read_sram_locations = [], write_sram_locations = [{col = 1 : i32, row = 1 : i32}]}
+// PLACEMENT:      taskflow.task @Task_2
+// PLACEMENT-SAME: task_mapping_info = {cgra_positions = [{col = 0 : i32, row = 1 : i32}], read_sram_locations = [{col = 1 : i32, row = 1 : i32}], write_sram_locations = [{col = 0 : i32, row = 1 : i32}]}
