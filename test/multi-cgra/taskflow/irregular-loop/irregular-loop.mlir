@@ -3,6 +3,11 @@
 // RUN: FileCheck %s --input-file=%t.serialized.mlir --check-prefixes=SERIALIZED
 
 // RUN: mlir-neura-opt %s --affine-loop-tree-serialization \
+// RUN: --affine-loop-perfection \
+// RUN: -o %t.perfect.mlir
+// RUN: FileCheck %s --input-file=%t.perfect.mlir --check-prefixes=PERFECT
+
+// RUN: mlir-neura-opt %s --affine-loop-tree-serialization \
 // RUN: --convert-affine-to-taskflow \
 // RUN: -o %t.taskflow.mlir
 // RUN: FileCheck %s --input-file=%t.taskflow.mlir --check-prefixes=TASKFLOW
@@ -102,6 +107,45 @@ module attributes {} {
 // SERIALIZED-NEXT:     return %1 : i32
 // SERIALIZED-NEXT:   }
 // SERIALIZED-NEXT: }
+
+// PERFECT:      module {
+// PERFECT-NEXT:   func.func @_Z21irregularLoopExample1v() -> i32 attributes {llvm.linkage = #llvm.linkage<external>} {
+// PERFECT-NEXT:     %c2_i32 = arith.constant 2 : i32
+// PERFECT-NEXT:     %c8_i32 = arith.constant 8 : i32
+// PERFECT-NEXT:     %c0_i32 = arith.constant 0 : i32
+// PERFECT-NEXT:     %alloca = memref.alloca() : memref<i32>
+// PERFECT-NEXT:     %alloca_0 = memref.alloca() : memref<4x8xi32>
+// PERFECT-NEXT:     %0 = affine.for %arg0 = 0 to 5 iter_args(%arg1 = %c0_i32) -> (i32) {
+// PERFECT-NEXT:       %2 = arith.index_cast %arg0 : index to i32
+// PERFECT-NEXT:       %3 = arith.addi %arg1, %2 : i32
+// PERFECT-NEXT:       affine.yield %3 : i32
+// PERFECT-NEXT:     }
+// PERFECT-NEXT:     affine.for %arg0 = 0 to 4 {
+// PERFECT-NEXT:       affine.for %arg1 = 0 to 8 {
+// PERFECT-NEXT:         %2 = arith.index_cast %arg0 : index to i32
+// PERFECT-NEXT:         %3 = arith.muli %2, %c8_i32 : i32
+// PERFECT-NEXT:         %4 = arith.index_cast %arg1 : index to i32
+// PERFECT-NEXT:         %5 = arith.addi %3, %4 : i32
+// PERFECT-NEXT:         affine.store %5, %alloca_0[%arg0, %arg1] : memref<4x8xi32>
+// PERFECT-NEXT:       }
+// PERFECT-NEXT:     }
+// PERFECT-NEXT:     affine.for %arg0 = 0 to 4 {
+// PERFECT-NEXT:       affine.for %arg1 = 0 to 8 {
+// PERFECT-NEXT:         %2 = arith.index_cast %arg0 : index to i32
+// PERFECT-NEXT:         %3 = arith.muli %2, %c8_i32 : i32
+// PERFECT-NEXT:         %4 = affine.load %alloca_0[%arg0, %arg1] : memref<4x8xi32>
+// PERFECT-NEXT:         %5 = arith.addi %4, %0 : i32
+// PERFECT-NEXT:         affine.if #set(%arg0, %arg1) {
+// PERFECT-NEXT:           affine.store %5, %alloca[] : memref<i32>
+// PERFECT-NEXT:           %6 = arith.muli %5, %c2_i32 : i32
+// PERFECT-NEXT:           affine.store %6, %alloca[] : memref<i32>
+// PERFECT-NEXT:         }
+// PERFECT-NEXT:       }
+// PERFECT-NEXT:     }
+// PERFECT-NEXT:     %1 = affine.load %alloca[] : memref<i32>
+// PERFECT-NEXT:     return %1 : i32
+// PERFECT-NEXT:   }
+// PERFECT-NEXT: }
 
 // TASKFLOW:      #set = affine_set<(d0, d1) : (d0 - 3 == 0, d1 - 7 == 0)>
 // TASKFLOW-NEXT: module {

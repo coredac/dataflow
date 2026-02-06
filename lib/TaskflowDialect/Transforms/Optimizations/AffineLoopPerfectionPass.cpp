@@ -150,24 +150,38 @@ createEpilogueCondition(OpBuilder &builder, Location loc,
 
   for (affine::AffineForOp loop : inner_loops) {
     Value idx = loop.getInductionVar();
-    Value ub_minus_1;
+    Value next_idx; // idx + step
+    Value ub;
+
+    // Gets step.
+    int32_t step_val = 1;
+    if (loop.getStepAsInt()) {
+      step_val = loop.getStepAsInt();
+    } else {
+      llvm::errs() << "[LoopPerfection] Non-constant step not supported.\n";
+      return nullptr;
+    }
+
+    // Computes next_idx = idx + step.
+    Value step = builder.create<arith::ConstantIndexOp>(loc, step_val);
+    next_idx = builder.create<arith::AddIOp>(loc, idx, step);
 
     if (loop.hasConstantUpperBound()) {
-      ub_minus_1 = builder.create<arith::ConstantIndexOp>(
-          loc, loop.getConstantUpperBound() - 1);
+      ub = builder.create<arith::ConstantIndexOp>(loc,
+                                                  loop.getConstantUpperBound());
     } else {
       llvm::errs()
           << "[LoopPerfection] Non-constant upper bound not supported.\n";
       return nullptr;
     }
 
-    Value eq = builder.create<arith::CmpIOp>(loc, arith::CmpIPredicate::eq, idx,
-                                             ub_minus_1);
+    Value is_last = builder.create<arith::CmpIOp>(
+        loc, arith::CmpIPredicate::sge, next_idx, ub);
 
     if (condition) {
-      condition = builder.create<arith::AndIOp>(loc, condition, eq);
+      condition = builder.create<arith::AndIOp>(loc, condition, is_last);
     } else {
-      condition = eq;
+      condition = is_last;
     }
   }
 
