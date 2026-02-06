@@ -177,7 +177,7 @@ public:
 
 private:
   MemoryNode *getOrCreateMemoryNode(Value memref) {
-    if (memref_to_node.count(memref)){
+    if (memref_to_node.count(memref)) {
       return memref_to_node[memref];
     }
     
@@ -264,7 +264,7 @@ public:
             cgra_count = attr.getInt();
           }
 
-          // Finds Best Placement using SRAM positions from previous iter (or -1/default).
+          // Finds best placement using SRAM positions from previous iter (or -1/default).
           TaskPlacement placement = findBestPlacement(task_node, cgra_count, graph);
           
           // Commits Placement.
@@ -275,7 +275,7 @@ public:
              task_node->placement.push_back(placement.cgra_positions[i]);
           }
 
-          // Marks Occupied.
+          // Marks occupied.
           for (const auto &pos : placement.cgra_positions) {
             if (pos.row >= 0 && pos.row < grid_rows_ && pos.col >= 0 && pos.col < grid_cols_) {
                 occupied_[pos.row][pos.col] = true;
@@ -283,7 +283,7 @@ public:
           }
         }
 
-        // Phase 2: Assign SRAMs (assuming fixed Tasks).
+        // Phase 2: Assign SRAMs (assuming fixed tasks).
         bool sram_moved = assignAllSRAMs(graph);
         
 
@@ -297,7 +297,7 @@ public:
 
 
 
-    // Annotates Result.
+    // Annotates result.
     OpBuilder builder(func.getContext());
     for (auto &task_node : graph.task_nodes) {
         if (task_node->placement.empty()) {
@@ -515,6 +515,7 @@ private:
     }
   }
 
+  /// Recursively calculates dependency depth for a single task.
   int calculateDepth(TaskNode *node, DenseMap<TaskNode*, int> &depth_cache) {
     if (depth_cache.count(node)) {
         return depth_cache[node];
