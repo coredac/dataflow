@@ -99,8 +99,8 @@ struct TaskNode {
   int dependency_depth = 0;  // Longest path to any sink in the dependency graph.
   
   // Edges based on original memory access.
-  SmallVector<MemoryNode *> read_memrefs;  // original_read_memrefs
-  SmallVector<MemoryNode *> write_memrefs; // original_write_memrefs
+  SmallVector<MemoryNode *> read_memrefs;  // Original read memrefs.
+  SmallVector<MemoryNode *> write_memrefs; // Original write memrefs.
   SmallVector<TaskNode *> ssa_users;
   SmallVector<TaskNode *> ssa_operands;
 
@@ -114,11 +114,11 @@ struct TaskNode {
 struct MemoryNode {
   Value memref;
   
-  // Edges
+  // Edges.
   SmallVector<TaskNode *> readers;
   SmallVector<TaskNode *> writers;
-
-  // Mapping result
+  
+  // Mapping result.
   std::optional<CGRAPosition> assigned_sram_pos;
 
   MemoryNode(Value memref) : memref(memref) {}
@@ -163,7 +163,7 @@ public:
     // 3. Builds SSA Edges (Inter-Task Value Dependencies).
     // Identifies if a task uses a value produced by another task.
     for (auto &consumer_node : task_nodes) {
-        // Interates all operands for now to be safe.
+        // Iterates all operands for now to be safe.
         for (Value operand : consumer_node->op.getValueInputs()) {
             if (auto producer_op = operand.getDefiningOp<TaskflowTaskOp>()) {
                 if (auto *producer_node = op_to_node[producer_op]) {
@@ -306,7 +306,7 @@ public:
         
         SmallVector<NamedAttribute, 4> mapping_attrs;
 
-        // 1. CGRA Positions
+        // 1. CGRA positions.
         SmallVector<Attribute> pos_attrs;
         for (const auto &pos : task_node->placement) {
             SmallVector<NamedAttribute, 2> coord_attrs;
@@ -447,22 +447,22 @@ private:
   /// downstream hardware generators to configure fast bypass paths between
   /// adjacent PEs with dependencies.
   ///
-  /// Score = α·SSA_Dist + β·Mem_Dist
+  /// Score = α·SSA_Dist + β·Mem_Dist.
   ///
   /// SSA_Dist: Minimize distance to placed SSA predecessors (ssa_operands).
   /// Mem_Dist: Minimize distance to assigned SRAMs for read/write memrefs.
   int computeScore(TaskNode *task_node, const TaskPlacement &placement,
                    TaskMemoryGraph &graph) {
     // Weight constants (tunable).
-    constexpr int kAlpha = 10;   // SSA proximity weight
-    constexpr int kBeta = 50;    // Memory proximity weight (High priority)
+    constexpr int kAlpha = 10;   // SSA proximity weight.
+    constexpr int kBeta = 50;    // Memory proximity weight (high priority).
 
     int ssa_score = 0;
     int mem_score = 0;
     
     CGRAPosition current_pos = placement.primary();
 
-    // 1. SSA Proximity (Predecessors & Successors)
+    // 1. SSA proximity (predecessors & successors).
     for (TaskNode *producer : task_node->ssa_operands) {
         if (!producer->placement.empty()) {
             int dist = current_pos.manhattanDistance(producer->placement[0]);
@@ -477,15 +477,15 @@ private:
         }
     }
 
-    // 2. Memory Proximity
-    // For Read MemRefs
+    // 2. Memory proximity.
+    // For read memrefs.
     for (MemoryNode *mem : task_node->read_memrefs) {
         if (mem->assigned_sram_pos) {
             int dist = current_pos.manhattanDistance(*mem->assigned_sram_pos);
             mem_score -= dist;
         }
     }
-    // For Write MemRefs
+    // For write memrefs.
     // If we write to a memory that is already assigned (e.g. read by previous task),
     // we want to be close to it too.
     for (MemoryNode *mem : task_node->write_memrefs) {
