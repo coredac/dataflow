@@ -1,3 +1,6 @@
+#include "NeuraDialect/Architecture/Architecture.h"
+#include "NeuraDialect/NeuraDialect.h"
+#include "NeuraDialect/NeuraOps.h"
 #include "TaskflowDialect/TaskflowDialect.h"
 #include "TaskflowDialect/TaskflowOps.h"
 #include "TaskflowDialect/TaskflowPasses.h"
@@ -8,15 +11,29 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/IRMapping.h"
+#include "mlir/IR/Value.h"
+#include "mlir/IR/ValueRange.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/RegionUtils.h"
 #include "llvm/ADT/SmallVector.h"
 #include <cstddef>
 using namespace mlir;
 using namespace mlir::taskflow;
 
 namespace {
+
+//==============================================================================
+// Innermost Loop Detection (for non-counter mode).
+//==============================================================================
+
+// Checks if an affine.for loop is innermost (has no nested loops).
+static bool isInnermostLoop(affine::AffineForOp for_op) {
+  bool has_nested_loops = false;
+  for_op.getBody()->walk([&](affine::AffineForOp) { has_nested_loops = true; });
+  return !has_nested_loops;
+}
 
 //==============================================================================
 // Perfect Loop Band Detection.
@@ -140,7 +157,7 @@ createCounterChain(OpBuilder &builder, Location loc,
 }
 
 //==============================================================================
-// Hyperblock Creation.
+// Hyperblock Creation (with counter support).
 //==============================================================================
 
 // Analyzes which loop induction variables are actually used in the loop body.
@@ -316,10 +333,109 @@ createHyperblockFromLoopBody(OpBuilder &builder, Location loc,
   return hyperblock_op;
 }
 
+//==============================================================================
+// Hyperblock Creation (without counter support - innermost loop only).
+//==============================================================================
+
+// Wraps an innermost affine.for loop in a hyperblock without using counters.
+// The entire loop is moved into the hyperblock, and affine ops are converted
+// to standard/scf ops. If the loop has results (iter_args), they are returned
+// through the hyperblock.
+//
+// Returns the created hyperblock operation, or nullptr on failure.
+static TaskflowHyperblockOp
+createHyperblockFromInnermostLoop(OpBuilder &builder, Location loc,
+                                  affine::AffineForOp innermost_loop) {
+  // Checks if the loop has results (iter_args/reduction variables).
+  bool has_results = innermost_loop.getNumResults() > 0;
+  SmallVector<Type> result_types;
+
+  if (has_results) {
+    for (Value result : innermost_loop.getResults()) {
+      result_types.push_back(result.getType());
+    }
+  }
+
+  // Creates hyperblock with NO triggers and NO iter_args.
+  // The entire affine.for will be moved inside, so all loop parameters
+  // (bounds, step, iter_args) remain inside the loop itself.
+  auto hyperblock_op = builder.create<TaskflowHyperblockOp>(
+      loc, result_types, /*triggers=*/ValueRange{},
+      /*iter_args=*/ValueRange{});
+
+  // Creates hyperblock body block with NO arguments.
+  // The loop is self-contained and doesn't need external inputs.
+  Block *hyperblock_body = &hyperblock_op.getBody().emplaceBlock();
+
+  // Moves the entire innermost loop INTO the hyperblock.
+  // After this, the loop is inside the hyperblock region.
+  innermost_loop->moveBefore(hyperblock_body, hyperblock_body->end());
+
+  // Converts affine operations to standard/scf operations.
+  // This must be done BEFORE creating the yield, because:
+  // 1. affine.for will be replaced by scf.for
+  // 2. We need to reference the scf.for's results in the yield
+  MLIRContext *context = hyperblock_op.getContext();
+  RewritePatternSet patterns(context);
+  populateAffineToStdConversionPatterns(patterns);
+
+  ConversionTarget target(*context);
+  target.addLegalDialect<arith::ArithDialect, memref::MemRefDialect,
+                         func::FuncDialect, TaskflowDialect, scf::SCFDialect>();
+  target.addIllegalOp<affine::AffineLoadOp, affine::AffineStoreOp,
+                      affine::AffineForOp, affine::AffineIfOp,
+                      affine::AffineYieldOp>();
+
+  if (failed(
+          applyPartialConversion(hyperblock_op, target, std::move(patterns)))) {
+    llvm::errs()
+        << "Error: Failed to convert affine operations to standard/scf\n";
+    return nullptr;
+  }
+
+  // After conversion, the affine.for has been replaced by scf.for.
+  // We need to find the converted scf.for to get its results.
+  OpBuilder body_builder = OpBuilder::atBlockEnd(hyperblock_body);
+
+  if (has_results) {
+    // Finds the scf.for that replaced our affine.for.
+    // Since we moved only one loop into the hyperblock, there should be
+    // exactly one scf.for at the top level.
+    scf::ForOp scf_loop = nullptr;
+    for (Operation &op : hyperblock_body->getOperations()) {
+      if (auto for_op = dyn_cast<scf::ForOp>(&op)) {
+        scf_loop = for_op;
+        break;
+      }
+    }
+
+    if (!scf_loop) {
+      llvm::errs() << "Error: Could not find converted scf.for in hyperblock\n";
+      return nullptr;
+    }
+
+    // Gets results from the converted scf.for.
+    SmallVector<Value> loop_results;
+    for (size_t i = 0; i < scf_loop.getNumResults(); ++i) {
+      loop_results.push_back(scf_loop.getResult(i));
+    }
+
+    // Creates hyperblock terminator that yields the loop's results.
+    body_builder.create<TaskflowHyperblockYieldOp>(
+        loc, /*iter_args_next=*/ValueRange{},
+        /*results=*/loop_results);
+  } else {
+    // No results - just create empty yield.
+    body_builder.create<TaskflowHyperblockYieldOp>(loc);
+  }
+
+  return hyperblock_op;
+}
+
 //============================================================================
 // Task Transformation.
 //===========================================================================
-static LogicalResult transformTask(TaskflowTaskOp task_op) {
+static LogicalResult transformTaskWithCounter(TaskflowTaskOp task_op) {
   Location loc = task_op.getLoc();
   Block &task_body = task_op.getBody().front();
 
@@ -394,6 +510,79 @@ static LogicalResult transformTask(TaskflowTaskOp task_op) {
   return success();
 }
 
+static LogicalResult transformTaskWithoutCounter(TaskflowTaskOp task_op) {
+  Location loc = task_op.getLoc();
+
+  llvm::errs()
+      << "\n[ConstructHyperblock] Processing WITHOUT counter support\n";
+  llvm::errs() << "  Will wrap only innermost loops as hyperblocks\n";
+
+  // Collects ALL innermost loops (including nested ones).
+  SmallVector<affine::AffineForOp> innermost_loops;
+  task_op.walk([&](affine::AffineForOp for_op) {
+    if (isInnermostLoop(for_op)) {
+      innermost_loops.push_back(for_op);
+    }
+  });
+
+  llvm::errs() << "  Found " << innermost_loops.size() << " innermost loops\n";
+
+  OpBuilder builder(task_op.getContext());
+
+  // Processes each innermost loop.
+  for (affine::AffineForOp innermost_loop : innermost_loops) {
+    llvm::errs() << "  Processing innermost loop\n";
+
+    bool has_results = innermost_loop.getNumResults() > 0;
+
+    // Saves the USERS of loop results, not the results themselves.
+    // And replaces these uses after creating the hyperblock.
+    SmallVector<OpOperand *> result_uses;
+    if (has_results) {
+      for (Value result : innermost_loop.getResults()) {
+        for (OpOperand &use : result.getUses()) {
+          result_uses.push_back(&use);
+        }
+      }
+    }
+
+    // Inserts hyperblock BEFORE the innermost loop.
+    builder.setInsertionPoint(innermost_loop);
+
+    // Creates hyperblock from the innermost loop.
+    TaskflowHyperblockOp hyperblock_op =
+        createHyperblockFromInnermostLoop(builder, loc, innermost_loop);
+
+    if (!hyperblock_op) {
+      llvm::errs()
+          << "Error: Failed to create hyperblock from innermost loop\n";
+      return failure();
+    }
+
+    llvm::errs() << "  Created hyperblock with "
+                 << hyperblock_op.getBody().front().getOperations().size()
+                 << " operations\n";
+
+    // Replaces uses of the original loop results with hyperblock results.
+    // And iterates through the saved uses and update them.
+    if (has_results) {
+      llvm::errs() << "  Replacing " << result_uses.size()
+                   << " uses with hyperblock outputs\n";
+
+      size_t result_idx = 0;
+
+      for (OpOperand *use : result_uses) {
+        // Updates this use to point to the hyperblock result.
+        use->set(hyperblock_op.getResult(result_idx++));
+      }
+    }
+
+    llvm::errs() << "  Wrapped innermost loop in hyperblock\n";
+  }
+
+  return success();
+}
+
 struct ConstructHyperblockFromTaskPass
     : public PassWrapper<ConstructHyperblockFromTaskPass,
                          OperationPass<func::FuncOp>> {
@@ -416,12 +605,21 @@ struct ConstructHyperblockFromTaskPass
 
   void runOnOperation() override {
     func::FuncOp func_op = getOperation();
+    const neura::Architecture &arch = neura::getArchitecture();
+    bool supports_counter = arch.canSupportCounter();
 
     // Walks through all TaskflowTaskOp in the function.
     func_op.walk([&](TaskflowTaskOp task_op) {
-      if (failed(transformTask(task_op))) {
-        signalPassFailure();
-        return WalkResult::interrupt();
+      if (supports_counter) {
+        if (failed(transformTaskWithCounter(task_op))) {
+          signalPassFailure();
+          return WalkResult::interrupt();
+        }
+      } else {
+        if (failed(transformTaskWithoutCounter(task_op))) {
+          signalPassFailure();
+          return WalkResult::interrupt();
+        }
       }
       return WalkResult::advance();
     });

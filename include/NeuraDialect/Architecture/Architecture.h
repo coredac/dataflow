@@ -491,6 +491,9 @@ public:
   std::vector<Tile *> getAllTiles() const;
   std::vector<Link *> getAllLinks() const;
 
+  // Checks if the architecture supports counter operations.
+  bool canSupportCounter() const;
+
 private:
   // Helper methods for constructor initialization.
   void initializeTiles(int rows, int columns);
