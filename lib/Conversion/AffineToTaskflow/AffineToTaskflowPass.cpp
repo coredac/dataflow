@@ -15,6 +15,7 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Value.h"
+#include "mlir/IR/ValueRange.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -30,7 +31,6 @@ namespace {
 //------------------------------------------------------------------------------
 // Helper Functions.
 //------------------------------------------------------------------------------
-
 // Collects memrefs that are loaded (read) within a given operation scope.
 static void collectReadMemrefs(Operation *op, SetVector<Value> &read_memrefs) {
   op->walk([&](Operation *nested_op) {
@@ -105,14 +105,40 @@ updateOperationOperands(Operation *op,
 }
 
 //------------------------------------------------------------------------------
+// Analyzes all the original memory access info before conversion.
+//------------------------------------------------------------------------------
+struct MemrefAccessInfo {
+  SetVector<Value> read_memrefs;
+  SetVector<Value> write_memrefs;
+};
+
+static DenseMap<Operation *, MemrefAccessInfo>
+analyzeMemrefAccesses(func::FuncOp func_op) {
+  DenseMap<Operation *, MemrefAccessInfo> loop_to_memref_info;
+
+  func_op.walk([&](affine::AffineForOp for_op) {
+    llvm::errs() << "\nAnalyzing memref accesses for loop:\n" << for_op << "\n";
+    MemrefAccessInfo access_info;
+
+    collectReadMemrefs(for_op.getOperation(), access_info.read_memrefs);
+    collectWrittenMemrefs(for_op.getOperation(), access_info.write_memrefs);
+
+    loop_to_memref_info[for_op] = access_info;
+  });
+
+  return loop_to_memref_info;
+}
+
+//------------------------------------------------------------------------------
 // Task Conversion
 //------------------------------------------------------------------------------
 
 // Converts a top-level affine.for to a taskflow.task operation.
-static TaskflowTaskOp convertLoopToTask(OpBuilder &builder,
-                                        affine::AffineForOp for_op,
-                                        DenseMap<Value, Value> &value_mapping,
-                                        int task_id) {
+static TaskflowTaskOp convertLoopToTask(
+    OpBuilder &builder, affine::AffineForOp for_op,
+    DenseMap<Value, Value> &value_mapping,
+    const DenseMap<Operation *, MemrefAccessInfo> &loop_to_original_memref_info,
+    int task_id) {
   Location loc = for_op.getLoc();
   std::string task_name = "Task_" + std::to_string(task_id);
 
@@ -125,9 +151,9 @@ static TaskflowTaskOp convertLoopToTask(OpBuilder &builder,
   // Step 1: Collects read and written memrefs.
   //-------------------------------------------------------------------
   SetVector<Value> read_memrefs;
-  SetVector<Value> written_memrefs;
+  SetVector<Value> write_memrefs;
   collectReadMemrefs(for_op.getOperation(), read_memrefs);
-  collectWrittenMemrefs(for_op.getOperation(), written_memrefs);
+  collectWrittenMemrefs(for_op.getOperation(), write_memrefs);
 
   llvm::errs() << "Read memrefs for loop:\n" << for_op << "\n";
   for (Value memref : read_memrefs) {
@@ -135,23 +161,25 @@ static TaskflowTaskOp convertLoopToTask(OpBuilder &builder,
   }
 
   llvm::errs() << "Written memrefs for loop:\n" << for_op << "\n";
-  for (Value memref : written_memrefs) {
+  for (Value memref : write_memrefs) {
     llvm::errs() << memref << "\n";
   }
+
+  // Collects original memref access info.
+  auto it = loop_to_original_memref_info.find(for_op.getOperation());
+  assert(it != loop_to_original_memref_info.end() &&
+         "Original memref access info not found for the loop");
+  const MemrefAccessInfo &original_memref_info = it->second;
+  SetVector<Value> original_read_memrefs = original_memref_info.read_memrefs;
+  SetVector<Value> original_write_memrefs = original_memref_info.write_memrefs;
 
   //-------------------------------------------------------------------
   // Step 2: Determines memory inputs and outputs.
   //-------------------------------------------------------------------
-  // Memory inputs: ALL memrefs that are accessed (read OR written).
-  // This ensures WAR and WAW dependencies are respected.
-  SetVector<Value> accessed_memrefs;
-  accessed_memrefs.insert(read_memrefs.begin(), read_memrefs.end());
-  accessed_memrefs.insert(written_memrefs.begin(), written_memrefs.end());
-
   // Memory outputs: ONLY memrefs that are written.
   // This ensures RAW and WAW dependencies are respected.
   SetVector<Value> output_memrefs;
-  output_memrefs.insert(written_memrefs.begin(), written_memrefs.end());
+  output_memrefs.insert(write_memrefs.begin(), write_memrefs.end());
 
   //-------------------------------------------------------------------
   // Step 3: Collects external SSA values (non-memref).
@@ -167,17 +195,28 @@ static TaskflowTaskOp convertLoopToTask(OpBuilder &builder,
   //-------------------------------------------------------------------
   // Step 4: Resolves inputs through value mapping.
   //-------------------------------------------------------------------
-  SmallVector<Value> memory_inputs;
+  SmallVector<Value> read_inputs;
+  SmallVector<Value> write_inputs;
   SmallVector<Value> value_inputs;
   IRMapping mapping;
 
-  // Resolves memory inputs.
-  for (Value memref : accessed_memrefs) {
+  // Resolves read inputs.
+  for (Value memref : read_memrefs) {
     Value resolved_memref = value_mapping.lookup(memref);
     if (!resolved_memref) {
       resolved_memref = memref;
     }
-    memory_inputs.push_back(resolved_memref);
+    read_inputs.push_back(resolved_memref);
+    mapping.map(memref, resolved_memref);
+  }
+
+  // Resolves write inputs.
+  for (Value memref : write_memrefs) {
+    Value resolved_memref = value_mapping.lookup(memref);
+    if (!resolved_memref) {
+      resolved_memref = memref;
+    }
+    write_inputs.push_back(resolved_memref);
     mapping.map(memref, resolved_memref);
   }
 
@@ -211,9 +250,12 @@ static TaskflowTaskOp convertLoopToTask(OpBuilder &builder,
       loc,
       /*memory_outputs=*/memory_output_types,
       /*value_outputs=*/value_output_types,
-      /*memory_inputs=*/memory_inputs,
+      /*read_inputs=*/read_inputs,
+      /*write_inputs=*/write_inputs,
       /*value_inputs=*/value_inputs,
-      /*task_name=*/builder.getStringAttr(task_name));
+      /*task_name=*/builder.getStringAttr(task_name),
+      /*original_read_memrefs=*/original_read_memrefs.getArrayRef(),
+      /*original_write_memrefs=*/original_write_memrefs.getArrayRef());
 
   //-------------------------------------------------------------------
   // Step 7: Builds the task body.
@@ -223,8 +265,15 @@ static TaskflowTaskOp convertLoopToTask(OpBuilder &builder,
 
   // Adds block arguments (memory inputs first, then value inputs).
   DenseMap<Value, BlockArgument> input_to_block_arg;
-  // Memory input arguments.
-  for (Value memref : accessed_memrefs) {
+  // Memory read input arguments.
+  for (Value memref : read_memrefs) {
+    BlockArgument arg = task_body->addArgument(memref.getType(), loc);
+    mapping.map(memref, arg);
+    input_to_block_arg[memref] = arg;
+  }
+
+  // Memory write input arguments.
+  for (Value memref : write_memrefs) {
     BlockArgument arg = task_body->addArgument(memref.getType(), loc);
     mapping.map(memref, arg);
     input_to_block_arg[memref] = arg;
@@ -270,7 +319,7 @@ static TaskflowTaskOp convertLoopToTask(OpBuilder &builder,
   //-------------------------------------------------------------------
   // Memory outputs.
   for (auto [memref, task_output] :
-       llvm::zip(output_memrefs, task_op.getMemoryOutputs())) {
+       llvm::zip(output_memrefs, task_op.getWriteOutputs())) {
     value_mapping[memref] = task_output;
   }
 
@@ -285,6 +334,8 @@ static LogicalResult convertFuncToTaskflow(func::FuncOp func_op) {
 
   llvm::errs() << "\n===Converting function: " << func_op.getName() << "===\n";
 
+  DenseMap<Operation *, MemrefAccessInfo> loop_to_original_memref_info =
+      analyzeMemrefAccesses(func_op);
   OpBuilder builder(func_op.getContext());
   SmallVector<affine::AffineForOp> loops_to_erase;
   DenseMap<Value, Value> value_mapping;
@@ -298,13 +349,19 @@ static LogicalResult convertFuncToTaskflow(func::FuncOp func_op) {
       ops_to_process.push_back(&op);
     }
 
+    llvm::errs() << "ops_to_process:\n";
+    for (Operation *op : ops_to_process) {
+      llvm::errs() << *op << "\n";
+    }
+
     // Processes each operation in order (top to bottom).
     for (Operation *op : ops_to_process) {
       if (auto for_op = dyn_cast<affine::AffineForOp>(op)) {
         // Converts affine.for to taskflow.task.
         OpBuilder builder(for_op);
-        TaskflowTaskOp task_op = convertLoopToTask(
-            builder, for_op, value_mapping, task_id_counter++);
+        TaskflowTaskOp task_op =
+            convertLoopToTask(builder, for_op, value_mapping,
+                              loop_to_original_memref_info, task_id_counter++);
 
         // Replaces uses of loop results with task value outputs.
         for (auto [loop_result, task_value_output] :

@@ -1,6 +1,6 @@
+#include "NeuraDialect/NeuraAttributes.h"
 #include "NeuraDialect/NeuraOps.h"
 #include "NeuraDialect/NeuraTypes.h"
-#include "NeuraDialect/NeuraAttributes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -22,6 +22,8 @@ using namespace mlir;
 #include "NeuraDialect/NeuraPasses.h.inc"
 
 namespace {
+// Attribute name to mark iter_arg init constants.
+constexpr const char *kIterArgInitAttr = "is_iter_arg_init";
 
 // =========================================
 // Helper Functions
@@ -33,6 +35,16 @@ bool isOriginConstantOp(Value value) {
   Operation *def_op = value.getDefiningOp();
   if (!def_op || !isa<neura::ConstantOp>(def_op)) {
     return false;
+  }
+
+  // Skips constants marked as iter_arg_init.
+  if (def_op->hasAttr(kIterArgInitAttr)) {
+    if (auto bool_attr = def_op->getAttrOfType<BoolAttr>(kIterArgInitAttr)) {
+      if (bool_attr.getValue()) {
+        // This constant is an iter_arg_init, should not be folded.
+        return false;
+      }
+    }
   }
 
   // Checks if the result type is the original type or the predicated type.
@@ -434,7 +446,8 @@ struct FuseStoreIndexedConstantPattern
   LogicalResult matchAndRewrite(neura::StoreIndexedOp op,
                                 PatternRewriter &rewriter) const override {
     // Checks if already folded.
-    if (op->hasAttr(neura::attr::kLhsValue) || op->hasAttr(neura::attr::kRhsValue)) {
+    if (op->hasAttr(neura::attr::kLhsValue) ||
+        op->hasAttr(neura::attr::kRhsValue)) {
       return failure();
     }
 

@@ -1,22 +1,9 @@
-set(LLVM_TARGET_DEFINITIONS
-  ${CMAKE_CURRENT_SOURCE_DIR}/LlvmToNeuraPatterns.td
-)
-mlir_tablegen(LlvmToNeuraPatterns.inc
-  -gen-rewriters
-  -I ${MLIR_SOURCE_DIR}/include
-  -I ${MLIR_BINARY_DIR}/include
-  -I ${CMAKE_SOURCE_DIR}/include
-  -I ${CMAKE_CURRENT_SOURCE_DIR}
-)
-add_public_tablegen_target(MLIRLlvmToNeuraPatternIncGen)
-
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
 add_mlir_conversion_library(MLIRNeuraLlvmToNeuraPass
   LlvmToNeuraPass.cpp
 
   DEPENDS
-  MLIRLlvmToNeuraPatternIncGen
   MLIRConversionIncGen
 
   LINK_LIBS PUBLIC

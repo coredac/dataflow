@@ -39,11 +39,17 @@ def TaskflowTaskOp : TaskflowOpBase<"task", [
     1. Memory dependencies: memrefs that are read or written by the task
     2. Value dependencies: SSA values from producer tasks
 
+    The `read_memrefs` and `write_memrefs` attributes record the actural
+    original memrefs that this task accesses,
+    enabling data placement analysis for multi-CGRA mapping.
+
     Example:
-      // Memory input: %mem, Value input: %val
+      // Memory inputs: %mem, Value inputs: %val
       $out_mem, %out_val = taskflow.task "Task_0"
-        memory_inputs(%mem : memref<4xi32>)
-        value_inputs(%val : i32) {
+        read_inputs(%mem : memref<4xi32>)
+        value_inputs(%val : i32)
+        original_read_memrefs(%arg0 : memref<?x8x6xi32>)
+        original_write_memrefs(%arg5 : memref<?xi32>) {
       ^bb0(%a0: memref<4xi32>, %a1: i32):
         affine.for %i = 0 to 4 {
           %v = affine.load %a0[%i] : memref<4xi32>
@@ -55,28 +61,22 @@ def TaskflowTaskOp : TaskflowOpBase<"task", [
   }];
 
   let arguments = (ins
-    Variadic<AnyMemRef>:$memory_inputs,
+    Variadic<AnyMemRef>:$read_memrefs,
+    Variadic<AnyMemRef>:$write_memrefs,
     Variadic<AnyType>:$value_inputs,
-    StrAttr:$task_name
+    StrAttr:$task_name,
+    Variadic<AnyMemRef>:$original_read_memrefs,
+    Variadic<AnyMemRef>:$original_write_memrefs
   );
 
   let results = (outs
-    Variadic<AnyMemRef>:$memory_outputs,
+    Variadic<AnyMemRef>:$write_outputs,
     Variadic<AnyType>:$value_outputs
   );
 
   let regions = (region SizedRegion<1>:$body);
 
-  // let hasCustomAssemblyFormat = 1;
-
-  // let assemblyFormat = [{
-  //   (`memory_inputs` `(` $memory_inputs^ `:` type($memory_inputs) `)`)?
-  //   (`value_inputs` `(` $value_inputs^ `:` type($value_inputs) `)`)?
-  //   attr-dict-with-keyword
-  //   $body
-  //   `->` `(` type($memory_outputs) `,` type($value_outputs) `)`
-  // }];
-
+  let hasCustomAssemblyFormat = 1;
 }
 
 // Defines the yield operation to terminate a Taskflow task.
@@ -97,13 +97,7 @@ def TaskflowYieldOp : TaskflowOpBase<"yield", [Terminator, Pure, ReturnLike, Att
     Variadic<AnyMemRef>:$memory_results,
     Variadic<AnyType>:$value_results);
 
-  // let assemblyFormat = [{
-  //   (`memory_outputs` `(` $memory_results^ `:` type($memory_results) `)`)?
-  //   (`value_outputs` `(` $value_results^ `:` type($value_results) `)`)?
-  //   attr-dict
-  // }];
-
-  // let hasCustomAssemblyFormat = 1;
+  let hasCustomAssemblyFormat = 1;
 
   let builders = [
     // Default builder for empty yield.
@@ -144,31 +138,32 @@ def TaskflowChannelOp : TaskflowOpBase<"channel", [Pure, SameOperandsAndResultTy
 // Intra-Task Operations.
 //----------------------------------------------------------------------
 // Counter operation representing loop iteration control within a Taskflow task.
-def TaskflowCounterOp : TaskflowOpBase<"counter", [Pure]>{
+def TaskflowCounterOp : TaskflowOpBase<"counter", []>{
   let summary = "Loop counter operation with hardware counter semantics";
 
   let description = [{
     Represents a loop counter that generates iteration indices.
     The hardware counter produces a predicated index value.
 
-    Counter behavior:
-    - Top-level counter: increments unconditionally each cycle.
-    - Nested counter: increments only when the parent counter is valid.
+    Counter classification:
+    - "root": Top-level counter with no parent (drives entire loop nest)
+    - "relay": Intermediate counter with both parent and child counters
+    - "leaf": Innermost counter with no child counters (maps to CGRA tile array)
 
     Example:
-      // Top-level counter
+      // Root counter
       %i = taskflow.counter {
         lower_bound = 0 : index,
         upper_bound = 16 : index,
         step = 1 : index,
-        counter_name = "i"
+        counter_type = "root"
       } : index
-      // Nested counter
+      // Leaf counter
       %j = taskflow.counter parent(%i) {
         lower_bound = 0 : index,
         upper_bound = 8 : index,
         step = 1 : index,
-        counter_name = "j"
+        counter_type = "leaf"
       } : index
   }];
 
@@ -176,7 +171,9 @@ def TaskflowCounterOp : TaskflowOpBase<"counter", [Pure]>{
     Optional<AnyType>:$parent_index,
     IndexAttr:$lower_bound,
     IndexAttr:$upper_bound,
-    IndexAttr:$step
+    IndexAttr:$step,
+    OptionalAttr<StrAttr>:$counter_type,
+    OptionalAttr<I32Attr>:$counter_id
   );
 
   let results = (outs AnyType:$counter_index);
@@ -233,6 +230,7 @@ def TaskflowHyperblockYieldOp : TaskflowOpBase<"hyperblock.yield", [
   Terminator,
   Pure,
   ReturnLike,
+  AttrSizedOperandSegments,
   ParentOneOf<["TaskflowHyperblockOp"]>
 ]>{
   let summary = "Yield operation for Taskflow hyperblock";
@@ -241,15 +239,18 @@ def TaskflowHyperblockYieldOp : TaskflowOpBase<"hyperblock.yield", [
     Terminates the hyperblock body.
   }];
 
-  let arguments = (ins Variadic<AnyType>:$outputs);
+  let arguments = (ins
+    Variadic<AnyType>:$iter_args_next,
+    Variadic<AnyType>:$results);
 
   let assemblyFormat = [{
-    (`outputs` `(` $outputs^ `:` type($outputs) `)`)?
+    (`iter_args_next` `(` $iter_args_next^ `:` type($iter_args_next) `)`)?
+    (`results` `(` $results^ `:` type($results) `)`)?
     attr-dict
   }];
 
   let builders = [
-    OpBuilder<(ins), [{build($_builder, $_state, ValueRange{});}]>
+    OpBuilder<(ins), [{build($_builder, $_state, ValueRange{}, ValueRange{});}]>
   ];
 }
 

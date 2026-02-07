@@ -20,8 +20,9 @@ using namespace mlir;
 #include "NeuraDialect/NeuraPasses.h.inc"
 
 namespace {
-// Return type attribute values.
+// Return/Yield type attribute values.
 constexpr const char *kReturnTypeAttr = "return_type";
+constexpr const char *kYieldTypeAttr = "yield_type";
 constexpr const char *kReturnTypeVoid = "void";
 constexpr const char *kReturnTypeValue = "value";
 
@@ -36,6 +37,16 @@ static bool isVoidFunction(func::FuncOp func_op) {
     }
   }
   return false;
+}
+
+// Checks if kernel has any counter.
+static bool kernelHasCounter(neura::KernelOp kernel_op) {
+  bool has_counter = false;
+  kernel_op.walk([&](neura::CounterOp counter_op) {
+    has_counter = true;
+    return WalkResult::interrupt();
+  });
+  return has_counter;
 }
 
 // Marks empty returns with "is_void" attribute and adds trigger values.
@@ -55,6 +66,69 @@ static void processReturns(Region &region, OpBuilder &builder) {
 
   for (neura::ReturnOp ret_op : empty_returns) {
     ret_op->setAttr(kReturnTypeAttr, builder.getStringAttr(kReturnTypeVoid));
+  }
+}
+
+// Converts yields to returns (for kernels without counters).
+static void convertYieldsToReturns(neura::KernelOp kernel_op,
+                                   OpBuilder &builder) {
+  SmallVector<neura::YieldOp> yields_to_convert;
+
+  // Collects all yields in kernel.
+  kernel_op.walk(
+      [&](neura::YieldOp yield_op) { yields_to_convert.push_back(yield_op); });
+
+  for (neura::YieldOp yield_op : yields_to_convert) {
+    llvm::errs() << "[canonicalize]   Converting yield to return: " << yield_op
+                 << "\n";
+
+    builder.setInsertionPoint(yield_op);
+
+    if (yield_op.getResults().size() > 0) {
+      // Yield with results → return with values
+      llvm::errs() << "[canonicalize]     Yield has results\n";
+      builder.create<neura::ReturnOp>(yield_op.getLoc(), yield_op.getResults());
+    } else {
+      // Yield without results → return without operands (empty return)
+      llvm::errs() << "[canonicalize]     Yield is void\n";
+      builder.create<neura::ReturnOp>(yield_op.getLoc(), ValueRange{});
+    }
+
+    yield_op.erase();
+  }
+}
+
+// Processes neura.yield operations in kernel regions.
+static void processYields(neura::KernelOp kernel_op, OpBuilder &builder) {
+  // Checks if kernel has counter.
+  bool has_counter = kernelHasCounter(kernel_op);
+
+  if (has_counter) {
+    // Case 1: kernel has counter -> keep yields, just marks them.
+    kernel_op.walk([&](neura::YieldOp yield_op) {
+      llvm::errs() << "[canonicalize] Processing neura.yield operation...\n";
+      llvm::errs() << yield_op << "\n";
+
+      // yield has results - mark as value type.
+      if (yield_op.getResults().size() > 0) {
+        llvm::errs() << "[canonicalize] Marking neura.yield with value...\n";
+        yield_op->setAttr(kYieldTypeAttr,
+                          builder.getStringAttr(kReturnTypeValue));
+        return;
+      }
+
+      // yield has NO results, marks as "void" type.
+      yield_op->setAttr(kYieldTypeAttr, builder.getStringAttr(kReturnTypeVoid));
+    });
+  } else {
+    // Case 2: kernel has NO counter -> converts yields to direct returns.
+    llvm::errs()
+        << "[canonicalize]    No counter -> converting yields to returns\n";
+    convertYieldsToReturns(kernel_op, builder);
+
+    // No marks the returns we converted.
+    Region &kernel_region = kernel_op.getBody();
+    processReturns(kernel_region, builder);
   }
 }
 
@@ -176,8 +250,40 @@ static void processEmptyReturnVoidBlock(Block *ret_block,
   void_ret_op.erase();
 }
 
+// Processes void returns in kernel (same logic as function).
+static void processVoidReturnsInKernel(neura::KernelOp kernel_op,
+                                       OpBuilder &builder) {
+  Region &kernel_region = kernel_op.getBody();
+
+  // Collects all return operations with "void" attribute.
+  SmallVector<neura::ReturnOp> ret_void_ops;
+  kernel_region.walk([&](neura::ReturnOp ret_op) {
+    if (ret_op->hasAttr(kReturnTypeAttr)) {
+      if (dyn_cast<StringAttr>(ret_op->getAttr(kReturnTypeAttr)).getValue() ==
+          kReturnTypeVoid) {
+        ret_void_ops.push_back(ret_op);
+      }
+    }
+  });
+
+  llvm::errs() << "[canonicalize]   Found " << ret_void_ops.size()
+               << " void returns in kernel\n";
+
+  // Processes each return_void block.
+  for (neura::ReturnOp ret_void_op : ret_void_ops) {
+    Block *ret_block = ret_void_op->getBlock();
+    bool is_empty_block = (ret_block->getOperations().size() == 1);
+
+    if (is_empty_block) {
+      processEmptyReturnVoidBlock(ret_block, ret_void_op, builder);
+    } else {
+      assert(false && "Unsupported case: return block is not empty.");
+    }
+  }
+}
+
 struct CanonicalizeReturnPass
-    : public PassWrapper<CanonicalizeReturnPass, OperationPass<func::FuncOp>> {
+    : public PassWrapper<CanonicalizeReturnPass, OperationPass<ModuleOp>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(CanonicalizeReturnPass)
 
   StringRef getArgument() const override { return "canonicalize-return"; }
@@ -190,58 +296,83 @@ struct CanonicalizeReturnPass
   }
 
   void runOnOperation() override {
-    func::FuncOp func_op = getOperation();
-    // Checks for neura accelerator attribute.
-    auto accel_attr =
-        func_op->getAttrOfType<StringAttr>(accel::kAcceleratorAttr);
-    if (!accel_attr) {
-      return;
-    }
+    ModuleOp module_op = getOperation();
+    OpBuilder builder(module_op.getContext());
 
-    Region &region = func_op.getBody();
-    if (region.empty()) {
-      return;
-    }
+    // Processes all functions.
+    module_op.walk([&](func::FuncOp func_op) {
+      // Checks for neura accelerator attribute.
+      auto accel_attr =
+          func_op->getAttrOfType<StringAttr>(accel::kAcceleratorAttr);
+      if (!accel_attr) {
+        return;
+      }
 
-    OpBuilder builder(func_op.getContext());
+      Region &region = func_op.getBody();
+      if (region.empty()) {
+        return;
+      }
 
-    // Step 1: Marks empty returns with "void" attribute.
-    processReturns(region, builder);
+      // Step 1: Marks empty returns with "void" attribute.
+      processReturns(region, builder);
 
-    if (!isVoidFunction(func_op)) {
-      llvm::errs() << "[ctrl2data] Function is not void, no further action "
-                      "needed.\n";
-      return;
-    }
+      if (!isVoidFunction(func_op)) {
+        llvm::errs() << "[ctrl2data] Function is not void, no further action "
+                        "needed.\n";
+        return;
+      }
 
-    // Step 2: Collects all return operations with "is_void" attribute.
-    SmallVector<neura::ReturnOp> ret_void_ops;
-    region.walk([&](neura::ReturnOp ret_op) {
-      if (ret_op->hasAttr(kReturnTypeAttr)) {
-        if (dyn_cast<StringAttr>(ret_op->getAttr(kReturnTypeAttr)).getValue() ==
-            kReturnTypeVoid) {
-          ret_void_ops.push_back(ret_op);
+      // Step 2: Collects all return operations with "is_void" attribute.
+      SmallVector<neura::ReturnOp> ret_void_ops;
+      region.walk([&](neura::ReturnOp ret_op) {
+        if (ret_op->hasAttr(kReturnTypeAttr)) {
+          if (dyn_cast<StringAttr>(ret_op->getAttr(kReturnTypeAttr))
+                  .getValue() == kReturnTypeVoid) {
+            ret_void_ops.push_back(ret_op);
+          }
+        }
+      });
+
+      // Step 3: Processes each return_void block.
+      for (neura::ReturnOp ret_void_op : ret_void_ops) {
+        Block *ret_block = ret_void_op->getBlock();
+
+        // Checks if ret_block only contains the return_void operation.
+        bool is_empty_block = (ret_block->getOperations().size() == 1);
+
+        if (is_empty_block) {
+          processEmptyReturnVoidBlock(ret_block, ret_void_op, builder);
+        } else {
+          // TODO: Handle non-empty return blocks.
+          // The basic idea is to create a new block that only contains the
+          // return_void operation, and redirect the original return block to
+          // this new block.
+          assert(false && "Unsupported case: return block is not empty.");
         }
       }
     });
 
-    // Step 3: Processes each return_void block.
-    for (neura::ReturnOp ret_void_op : ret_void_ops) {
-      Block *ret_block = ret_void_op->getBlock();
-
-      // Checks if ret_block only contains the return_void operation.
-      bool is_empty_block = (ret_block->getOperations().size() == 1);
-
-      if (is_empty_block) {
-        processEmptyReturnVoidBlock(ret_block, ret_void_op, builder);
-      } else {
-        // TODO: Handle non-empty return blocks.
-        // The basic idea is to create a new block that only contains the
-        // return_void operation, and redirect the original return block to this
-        // new block.
-        assert(false && "Unsupported case: return block is not empty.");
+    // Processes all neura.kernel operations.
+    // There are two cases to handle:
+    // 1) kernel with counters - the return process is triggered by the counter.
+    // 2) kernel without counters - same logic as function return.
+    module_op.walk([&](neura::KernelOp kernel_op) {
+      auto accel_attr =
+          kernel_op->getAttrOfType<StringAttr>(accel::kAcceleratorAttr);
+      if (!accel_attr) {
+        return;
       }
-    }
+
+      // Step 1: Processes yields.
+      processYields(kernel_op, builder);
+
+      // Step 2: If yields are converted to returns, processes void returns.
+      bool has_counter = kernelHasCounter(kernel_op);
+      if (!has_counter) {
+        llvm::errs() << "[canonicalize] Processing void returns in kernel\n";
+        processVoidReturnsInKernel(kernel_op, builder);
+      }
+    });
   }
 };
 } // namespace

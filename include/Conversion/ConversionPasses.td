@@ -74,4 +74,23 @@ def ConvertAffineToTaskflow : Pass<"convert-affine-to-taskflow", "ModuleOp">{
   ];
 }
 
+def ConvertTaskflowToNeura : Pass<"convert-taskflow-to-neura", "ModuleOp">{
+  let summary = "Convert taskflow operations to neura.kernel";
+  let description = [{
+    Converts taskflow.hyperblock operations into neura.kernel operations suitable for
+    CGRA tile array mapping.
+
+    Converts the entire taskflow.hyperblock operations and corresponding counters ops
+    to neura.kernel, based on the input architecture spec file.
+
+    mlir-neura-opt --convert-taskflow-to-neura input.mlir --architecture-spec=$PATH/architecture.yaml -o output.mlir
+  }];
+  let constructor = "mlir::createConvertTaskflowToNeuraPass()";
+  let dependentDialects = [
+    "mlir::taskflow::TaskflowDialect",
+    "mlir::neura::NeuraDialect"
+    "mlir::affine::AffineDialect"
+  ];
+}
+
 #endif // CONVERSION_PASSES_TD
