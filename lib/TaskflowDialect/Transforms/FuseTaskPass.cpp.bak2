@@ -1,0 +1,1190 @@
+//===- FuseTaskPass.cpp - Task Fusion Pass for Taskflow Dialect ------------===//
+//
+// This pass implements task-level fusion for the Taskflow dialect.
+// It operates on atomic tasks (each containing a single hyperblock) produced
+// by the canonicalize-task pass. The fusion merges loop bodies into a single
+// loop instead of wrapping separate loops.
+//
+// Fusion types:
+// 1. Producer-Consumer Fusion: Fuses a producer task into its consumer when
+//    the producer's memory output feeds directly into the consumer.
+// 2. Sibling Fusion: Fuses tasks that share inputs without data dependency.
+//
+// Profitability: Clones tasks into a test module, runs the full
+// taskflow-to-neura pipeline, and computes MII metrics to determine whether
+// fusion is beneficial.
+//
+//===----------------------------------------------------------------------===//
+
+#include "TaskflowDialect/TaskflowDialect.h"
+#include "TaskflowDialect/TaskflowOps.h"
+#include "TaskflowDialect/TaskflowPasses.h"
+
+#include "NeuraDialect/NeuraOps.h"
+#include "NeuraDialect/NeuraPasses.h"
+#include "NeuraDialect/Architecture/Architecture.h"
+#include "NeuraDialect/Mapping/mapping_util.h"
+#include "Conversion/ConversionPasses.h"
+
+#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
+#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
+#include "mlir/Conversion/Passes.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Dominance.h"
+#include "mlir/IR/IRMapping.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/Parser/Parser.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SetVector.h"
+#include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/Support/raw_ostream.h"
+
+using namespace mlir;
+using namespace mlir::taskflow;
+
+namespace {
+
+//===----------------------------------------------------------------------===//
+// Fusion Metrics
+//===----------------------------------------------------------------------===//
+
+// Represents metrics for evaluating fusion profitability.
+struct FusionMetrics {
+  int rec_mii = 1;
+  int res_mii = 1;
+  int max_fanout = 0;
+  int num_ops = 0;
+};
+
+// Calculates the maximum fanout in a block.
+static int calculateMaxFanoutInBlock(Block &block) {
+  int max_fanout = 0;
+  for (Operation &op : block) {
+    for (Value result : op.getResults()) {
+      int fanout = std::distance(result.use_begin(), result.use_end());
+      max_fanout = std::max(max_fanout, fanout);
+    }
+  }
+  return max_fanout;
+}
+
+//===----------------------------------------------------------------------===//
+// Pipeline for Computing Real Metrics
+//===----------------------------------------------------------------------===//
+
+// Runs the full taskflow-to-neura pipeline on a cloned module and computes
+// MII metrics. The pipeline mirrors the kernel_mapping test pass sequence:
+//   classify-counters -> convert-taskflow-to-neura -> lower-affine ->
+//   convert-scf-to-cf -> convert-cf-to-llvm -> assign-accelerator ->
+//   lower-memref-to-neura -> lower-arith-to-neura -> lower-builtin-to-neura ->
+//   lower-llvm-to-neura -> promote-input-arg-to-const -> fold-constant ->
+//   canonicalize-return -> canonicalize-live-in -> leverage-predicated-value ->
+//   transform-ctrl-to-data-flow
+// Sets pipeline_failed to true if the pipeline cannot run successfully.
+// Uses a fresh MLIRContext to avoid multi-threading issues with the outer
+// pass manager.
+static FusionMetrics computeRealMetrics(ModuleOp test_module,
+                                        const neura::Architecture &architecture,
+                                        bool &pipeline_failed) {
+  FusionMetrics metrics;
+  pipeline_failed = false;
+
+  // Serializes the test module to a string.
+  std::string module_str;
+  {
+    llvm::raw_string_ostream os(module_str);
+    test_module.print(os);
+  }
+
+  // Creates a fresh MLIRContext to avoid multi-threading conflicts.
+  MLIRContext ctx;
+  ctx.loadDialect<neura::NeuraDialect, taskflow::TaskflowDialect,
+                  func::FuncDialect, arith::ArithDialect,
+                  memref::MemRefDialect, scf::SCFDialect,
+                  LLVM::LLVMDialect, math::MathDialect,
+                  affine::AffineDialect, cf::ControlFlowDialect>();
+  ctx.allowUnregisteredDialects();
+  // Suppress diagnostic output from the inner pipeline (it's best-effort).
+  ctx.getDiagEngine().registerHandler([](Diagnostic &) -> LogicalResult {
+    return success();
+  });
+
+  auto parsed_module = mlir::parseSourceString<ModuleOp>(module_str, &ctx);
+  if (!parsed_module) {
+    metrics.rec_mii = 100;
+    metrics.res_mii = 100;
+    pipeline_failed = true;
+    return metrics;
+  }
+
+  PassManager pm(&ctx);
+  pm.enableVerifier(false);  // Disable verify-each: intermediate IR may have multi-block task regions.
+  // Taskflow-to-neura conversion pipeline.
+  pm.addPass(mlir::taskflow::createClassifyCountersPass());
+  pm.addPass(mlir::createConvertTaskflowToNeuraPass());
+  // Standard lowering passes.
+  pm.addPass(mlir::createLowerAffinePass());
+  pm.addPass(mlir::createConvertSCFToCFPass());
+  pm.addPass(mlir::createConvertControlFlowToLLVMPass());
+  // Neura lowering passes.
+  pm.addPass(mlir::neura::createAssignAcceleratorPass());
+  pm.addPass(mlir::createLowerMemRefToNeuraPass());
+  pm.addPass(mlir::createLowerArithToNeuraPass());
+  pm.addPass(mlir::createLowerBuiltinToNeuraPass());
+  pm.addPass(mlir::createLowerLlvmToNeuraPass());
+  // Neura optimization passes.
+  pm.addPass(mlir::neura::createPromoteInputArgToConstPass());
+  pm.addPass(mlir::neura::createFoldConstantPass());
+  pm.addPass(mlir::neura::createCanonicalizeReturnPass());
+  pm.addPass(mlir::neura::createCanonicalizeLiveInPass());
+  pm.addPass(mlir::neura::createLeveragePredicatedValuePass());
+  pm.addPass(mlir::neura::createTransformCtrlToDataFlowPass());
+
+  if (failed(pm.run(*parsed_module))) {
+    metrics.rec_mii = 100;
+    metrics.res_mii = 100;
+    pipeline_failed = true;
+    return metrics;
+  }
+
+  parsed_module->walk([&](func::FuncOp func_op) {
+    if (func_op.getName() != "test_fused_kernel") {
+      return;
+    }
+    metrics.res_mii =
+        neura::calculateResMii(func_op.getBody(), architecture);
+    auto cycles = neura::collectRecurrenceCycles(func_op.getBody());
+    metrics.rec_mii = 1;
+    for (const auto &cycle : cycles) {
+      metrics.rec_mii = std::max(metrics.rec_mii, cycle.length);
+    }
+    int num_ops = 0;
+    func_op.walk([&](Operation *op) {
+      if (!isa<func::FuncOp>(op) && !op->hasTrait<OpTrait::IsTerminator>()) {
+        ++num_ops;
+      }
+    });
+    metrics.num_ops = num_ops;
+    if (!func_op.getBody().empty()) {
+      metrics.max_fanout =
+          calculateMaxFanoutInBlock(func_op.getBody().front());
+    }
+  });
+
+  return metrics;
+}
+
+// Estimates MII with fanout and utilization penalties.
+static int estimateMII(const FusionMetrics &metrics, int total_ops,
+                       int total_tiles) {
+  const float alpha = 0.5;
+  const float beta = 0.5;
+  int mii = std::max(metrics.rec_mii, metrics.res_mii);
+  return std::ceil(
+      (1.0 + alpha * (total_ops / float(total_tiles))) *
+      (1 + beta * std::max(metrics.max_fanout - 4, 0)) * mii);
+}
+
+//===----------------------------------------------------------------------===//
+// Helper: Creating Test Functions from Tasks
+//===----------------------------------------------------------------------===//
+
+// Creates a test function from a single task by cloning the entire task
+// (counters + hyperblocks) into a func::FuncOp. This preserves the task
+// structure required by classify-counters and convert-taskflow-to-neura.
+static func::FuncOp createTestFuncFromTask(TaskflowTaskOp task,
+                                           OpBuilder &builder,
+                                           Location loc) {
+  // Collects all unique operand values used by the task, in order.
+  // This ensures original_read_memrefs/original_write_memrefs are also mapped.
+  llvm::SetVector<Value> all_operands;
+  for (Value v : task.getReadMemrefs())
+    all_operands.insert(v);
+  for (Value v : task.getWriteMemrefs())
+    all_operands.insert(v);
+  for (Value v : task.getValueInputs())
+    all_operands.insert(v);
+  for (Value v : task.getOriginalReadMemrefs())
+    all_operands.insert(v);
+  for (Value v : task.getOriginalWriteMemrefs())
+    all_operands.insert(v);
+
+  SmallVector<Type> input_types;
+  for (Value v : all_operands)
+    input_types.push_back(v.getType());
+
+  // Collects output types: write_outputs + value_outputs.
+  SmallVector<Type> output_types;
+  for (Type t : task.getWriteOutputs().getTypes())
+    output_types.push_back(t);
+  for (Type t : task.getValueOutputs().getTypes())
+    output_types.push_back(t);
+
+  if (input_types.empty())
+    input_types.push_back(builder.getI64Type());
+  if (output_types.empty())
+    output_types.push_back(builder.getI64Type());
+
+  auto func_type = builder.getFunctionType(input_types, output_types);
+  auto func_op =
+      builder.create<func::FuncOp>(loc, "test_fused_kernel", func_type);
+
+  Block *entry_block = func_op.addEntryBlock();
+  builder.setInsertionPointToStart(entry_block);
+
+  // Maps all task operands to function arguments.
+  IRMapping mapping;
+  unsigned idx = 0;
+  for (Value v : all_operands)
+    mapping.map(v, entry_block->getArgument(idx++));
+
+  // Clones the entire task operation into the function body.
+  auto *cloned_task = builder.clone(*task.getOperation(), mapping);
+  auto cloned_task_op = cast<TaskflowTaskOp>(cloned_task);
+
+  // Creates return from the cloned task's results.
+  SmallVector<Value> return_vals;
+  for (Value v : cloned_task_op.getWriteOutputs())
+    return_vals.push_back(v);
+  for (Value v : cloned_task_op.getValueOutputs())
+    return_vals.push_back(v);
+
+  if (return_vals.empty()) {
+    auto dummy =
+        builder.create<arith::ConstantOp>(loc, builder.getI64IntegerAttr(0));
+    return_vals.push_back(dummy);
+  }
+
+  builder.create<func::ReturnOp>(loc, return_vals);
+  return func_op;
+}
+
+//===----------------------------------------------------------------------===//
+// Metric Computation
+//===----------------------------------------------------------------------===//
+
+// Computes metrics for a single task by creating a test module.
+// Sets pipeline_failed to true if the pipeline cannot process the task.
+static FusionMetrics
+computeSingleTaskMetrics(TaskflowTaskOp task,
+                         const neura::Architecture &architecture,
+                         bool &pipeline_failed) {
+  pipeline_failed = false;
+  MLIRContext *ctx = task.getContext();
+  OpBuilder builder(ctx);
+
+  auto module_op = ModuleOp::create(builder.getUnknownLoc());
+  builder.setInsertionPointToStart(module_op.getBody());
+  auto func_op =
+      createTestFuncFromTask(task, builder, builder.getUnknownLoc());
+  if (!func_op) {
+    module_op.erase();
+    FusionMetrics m;
+    m.rec_mii = 100;
+    m.res_mii = 100;
+    pipeline_failed = true;
+    return m;
+  }
+
+  FusionMetrics metrics =
+      computeRealMetrics(module_op, architecture, pipeline_failed);
+  module_op.erase();
+  return metrics;
+}
+
+// Creates a test module with two tasks for computing fused metrics.
+// Both tasks are cloned into a single function in sequence.
+static FusionMetrics
+computeFusedTaskMetrics(TaskflowTaskOp task1, TaskflowTaskOp task2,
+                        bool is_producer_consumer,
+                        Value intermediate_memref,
+                        const neura::Architecture &architecture,
+                        bool &pipeline_failed) {
+  pipeline_failed = false;
+  MLIRContext *ctx = task1.getContext();
+  OpBuilder builder(ctx);
+  Location loc = builder.getUnknownLoc();
+
+  auto module_op = ModuleOp::create(loc);
+  builder.setInsertionPointToStart(module_op.getBody());
+
+  // Collects all unique operand values from both tasks (including
+  // original_read/write_memrefs) to avoid UNKNOWN SSA values after cloning.
+  llvm::SetVector<Value> all_operands;
+  auto collectTaskOperands = [&](TaskflowTaskOp task) {
+    for (Value v : task.getReadMemrefs()) all_operands.insert(v);
+    for (Value v : task.getWriteMemrefs()) all_operands.insert(v);
+    for (Value v : task.getValueInputs()) all_operands.insert(v);
+    for (Value v : task.getOriginalReadMemrefs()) all_operands.insert(v);
+    for (Value v : task.getOriginalWriteMemrefs()) all_operands.insert(v);
+  };
+  collectTaskOperands(task1);
+  collectTaskOperands(task2);
+
+  SmallVector<Type> input_types;
+  for (Value v : all_operands)
+    input_types.push_back(v.getType());
+
+  // Collects output types based on fusion type.
+  SmallVector<Type> output_types;
+  if (is_producer_consumer) {
+    for (Type t : task2.getWriteOutputs().getTypes())
+      output_types.push_back(t);
+    for (Type t : task2.getValueOutputs().getTypes())
+      output_types.push_back(t);
+  } else {
+    for (Type t : task1.getWriteOutputs().getTypes())
+      output_types.push_back(t);
+    for (Type t : task1.getValueOutputs().getTypes())
+      output_types.push_back(t);
+    for (Type t : task2.getWriteOutputs().getTypes())
+      output_types.push_back(t);
+    for (Type t : task2.getValueOutputs().getTypes())
+      output_types.push_back(t);
+  }
+
+  if (input_types.empty())
+    input_types.push_back(builder.getI64Type());
+  if (output_types.empty())
+    output_types.push_back(builder.getI64Type());
+
+  auto func_type = builder.getFunctionType(input_types, output_types);
+  auto func_op =
+      builder.create<func::FuncOp>(loc, "test_fused_kernel", func_type);
+
+  Block *entry_block = func_op.addEntryBlock();
+  builder.setInsertionPointToStart(entry_block);
+
+  // Maps all operands to function arguments.
+  IRMapping mapping;
+  unsigned func_arg_idx = 0;
+  for (Value v : all_operands)
+    mapping.map(v, entry_block->getArgument(func_arg_idx++));
+
+  // Clones task1.
+  auto *cloned_task1 = builder.clone(*task1.getOperation(), mapping);
+  auto cloned_task1_op = cast<TaskflowTaskOp>(cloned_task1);
+
+  // For producer-consumer: also map task1 results (which task2 reads).
+  if (is_producer_consumer) {
+    for (unsigned i = 0; i < task1.getWriteOutputs().size(); ++i) {
+      mapping.map(task1.getWriteOutputs()[i],
+                  cloned_task1_op.getWriteOutputs()[i]);
+    }
+    for (unsigned i = 0; i < task1.getValueOutputs().size(); ++i) {
+      mapping.map(task1.getValueOutputs()[i],
+                  cloned_task1_op.getValueOutputs()[i]);
+    }
+  }
+
+  // Clones task2.
+  auto *cloned_task2 = builder.clone(*task2.getOperation(), mapping);
+  auto cloned_task2_op = cast<TaskflowTaskOp>(cloned_task2);
+
+  // Creates return from appropriate outputs.
+  SmallVector<Value> return_vals;
+  if (is_producer_consumer) {
+    for (Value v : cloned_task2_op.getWriteOutputs())
+      return_vals.push_back(v);
+    for (Value v : cloned_task2_op.getValueOutputs())
+      return_vals.push_back(v);
+  } else {
+    for (Value v : cloned_task1_op.getWriteOutputs())
+      return_vals.push_back(v);
+    for (Value v : cloned_task1_op.getValueOutputs())
+      return_vals.push_back(v);
+    for (Value v : cloned_task2_op.getWriteOutputs())
+      return_vals.push_back(v);
+    for (Value v : cloned_task2_op.getValueOutputs())
+      return_vals.push_back(v);
+  }
+  if (return_vals.empty()) {
+    auto dummy =
+        builder.create<arith::ConstantOp>(loc, builder.getI64IntegerAttr(0));
+    return_vals.push_back(dummy);
+  }
+
+  builder.create<func::ReturnOp>(loc, return_vals);
+
+  FusionMetrics metrics =
+      computeRealMetrics(module_op, architecture, pipeline_failed);
+  module_op.erase();
+  return metrics;
+}
+
+//===----------------------------------------------------------------------===//
+// Profitability Check
+//===----------------------------------------------------------------------===//
+
+// Checks if fusion is profitable based on MII and fanout metrics.
+// Clones tasks into a test module, runs the full taskflow-to-neura pipeline,
+// and compares estimated MII before and after fusion.
+// If the pipeline fails, fusion is still permitted (conservative approach).
+static bool isFusionProfitable(TaskflowTaskOp task1, TaskflowTaskOp task2,
+                               bool is_producer_consumer,
+                               Value intermediate_memref = nullptr) {
+  const neura::Architecture &architecture = neura::getArchitecture();
+
+  bool m1_failed = false, m2_failed = false, fused_failed = false;
+  FusionMetrics m1 = computeSingleTaskMetrics(task1, architecture, m1_failed);
+  FusionMetrics m2 = computeSingleTaskMetrics(task2, architecture, m2_failed);
+  FusionMetrics fused = computeFusedTaskMetrics(
+      task1, task2, is_producer_consumer, intermediate_memref, architecture,
+      fused_failed);
+
+  // If the pipeline fails for any metric computation, permits fusion to avoid
+  // blocking fusion for tasks the pipeline cannot handle yet.
+  if (m1_failed || m2_failed || fused_failed) {
+    return true;
+  }
+
+  int num_tiles = architecture.getNumTiles();
+  int fused_mii = estimateMII(fused, fused.num_ops, num_tiles);
+  int m1_mii = estimateMII(m1, m1.num_ops, num_tiles);
+  int m2_mii = estimateMII(m2, m2.num_ops, num_tiles);
+  return fused_mii <= std::max(m1_mii, m2_mii);
+}
+
+//===----------------------------------------------------------------------===//
+// Fusion Legality Checks
+//===----------------------------------------------------------------------===//
+
+// Checks if two tasks can be fused (same block, task1 appears before task2).
+static bool canFuseTasks(TaskflowTaskOp task1, TaskflowTaskOp task2) {
+  if (!task1 || !task2 || task1 == task2) {
+    return false;
+  }
+  if (task1->getBlock() != task2->getBlock()) {
+    return false;
+  }
+  return task1->isBeforeInBlock(task2);
+}
+
+// Returns true if consumer uses any of producer's write outputs.
+static bool hasProducerConsumerRelation(TaskflowTaskOp producer,
+                                        TaskflowTaskOp consumer) {
+  for (Value result : producer.getWriteOutputs()) {
+    for (Value input : consumer.getReadMemrefs()) {
+      if (result == input) {
+        return true;
+      }
+    }
+    for (Value input : consumer.getWriteMemrefs()) {
+      if (result == input) {
+        return true;
+      }
+    }
+  }
+  for (Value result : producer.getValueOutputs()) {
+    for (Value input : consumer.getValueInputs()) {
+      if (result == input) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// Checks if two tasks are siblings (share inputs but no data dependency).
+static bool areSiblingTasks(TaskflowTaskOp task1, TaskflowTaskOp task2) {
+  llvm::SmallPtrSet<Value, 8> task1_mem_inputs;
+  for (Value v : task1.getReadMemrefs())
+    task1_mem_inputs.insert(v);
+  for (Value v : task1.getWriteMemrefs())
+    task1_mem_inputs.insert(v);
+  llvm::SmallPtrSet<Value, 8> task1_val_inputs(
+      task1.getValueInputs().begin(), task1.getValueInputs().end());
+
+  bool share_input = false;
+  for (Value input : task2.getReadMemrefs()) {
+    if (task1_mem_inputs.contains(input)) {
+      share_input = true;
+      break;
+    }
+  }
+  if (!share_input) {
+    for (Value input : task2.getWriteMemrefs()) {
+      if (task1_mem_inputs.contains(input)) {
+        share_input = true;
+        break;
+      }
+    }
+  }
+  if (!share_input) {
+    for (Value input : task2.getValueInputs()) {
+      if (task1_val_inputs.contains(input)) {
+        share_input = true;
+        break;
+      }
+    }
+  }
+  return share_input && !hasProducerConsumerRelation(task1, task2) &&
+         !hasProducerConsumerRelation(task2, task1);
+}
+
+// Checks if any operation between producer and consumer uses producer's
+// results.
+static bool hasInterveningUses(TaskflowTaskOp producer,
+                                TaskflowTaskOp consumer) {
+  llvm::SmallPtrSet<Value, 8> producer_results;
+  for (Value v : producer.getWriteOutputs()) {
+    producer_results.insert(v);
+  }
+  for (Value v : producer.getValueOutputs()) {
+    producer_results.insert(v);
+  }
+
+  bool in_range = false;
+  for (Operation &op : *producer->getBlock()) {
+    if (&op == producer.getOperation()) {
+      in_range = true;
+      continue;
+    }
+    if (&op == consumer.getOperation()) {
+      break;
+    }
+    if (in_range) {
+      for (Value operand : op.getOperands()) {
+        if (producer_results.contains(operand)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+//===----------------------------------------------------------------------===//
+// Fusion Execution: Producer-Consumer
+//===----------------------------------------------------------------------===//
+
+// Fuses a producer task into its consumer task. Merges the hyperblock bodies
+// into a single task with shared counter chain and direct value forwarding
+// for the intermediate memref.
+static TaskflowTaskOp
+fuseProducerConsumerTasks(TaskflowTaskOp producer, TaskflowTaskOp consumer,
+                          Value intermediate_memref, OpBuilder &builder) {
+  Location loc = consumer.getLoc();
+
+  // Collects fused read memref inputs: producer reads + consumer reads
+  // (minus the intermediate memref if it appears there).
+  SmallVector<Value> fused_read_inputs;
+  for (Value input : producer.getReadMemrefs()) {
+    fused_read_inputs.push_back(input);
+  }
+  for (Value input : consumer.getReadMemrefs()) {
+    if (input != intermediate_memref) {
+      fused_read_inputs.push_back(input);
+    }
+  }
+
+  // Collects fused write memref inputs: producer writes + consumer writes
+  // (minus the intermediate memref if it appears there).
+  SmallVector<Value> fused_write_inputs;
+  for (Value input : producer.getWriteMemrefs()) {
+    fused_write_inputs.push_back(input);
+  }
+  for (Value input : consumer.getWriteMemrefs()) {
+    if (input != intermediate_memref) {
+      fused_write_inputs.push_back(input);
+    }
+  }
+
+  // Collects fused value inputs.
+  SmallVector<Value> fused_val_inputs;
+  for (Value input : producer.getValueInputs()) {
+    fused_val_inputs.push_back(input);
+  }
+  for (Value input : consumer.getValueInputs()) {
+    fused_val_inputs.push_back(input);
+  }
+
+  // Output types come from the consumer.
+  SmallVector<Type> fused_write_output_types;
+  for (Type t : consumer.getWriteOutputs().getTypes()) {
+    fused_write_output_types.push_back(t);
+  }
+  SmallVector<Type> fused_val_output_types;
+  for (Type t : consumer.getValueOutputs().getTypes()) {
+    fused_val_output_types.push_back(t);
+  }
+
+  // Collects original read/write memrefs from both tasks.
+  SmallVector<Value> fused_original_reads;
+  for (Value v : producer.getOriginalReadMemrefs())
+    fused_original_reads.push_back(v);
+  for (Value v : consumer.getOriginalReadMemrefs())
+    fused_original_reads.push_back(v);
+  SmallVector<Value> fused_original_writes;
+  for (Value v : producer.getOriginalWriteMemrefs())
+    fused_original_writes.push_back(v);
+  for (Value v : consumer.getOriginalWriteMemrefs())
+    fused_original_writes.push_back(v);
+
+  // Creates the fused task.
+  auto fused_task = builder.create<TaskflowTaskOp>(
+      loc, fused_write_output_types, fused_val_output_types,
+      fused_read_inputs, fused_write_inputs, fused_val_inputs,
+      builder.getStringAttr("fused_producer_consumer"),
+      fused_original_reads, fused_original_writes);
+
+  Block *fused_body = new Block();
+  fused_task.getBody().push_back(fused_body);
+
+  // Adds block arguments: [read_memrefs | write_memrefs | value_inputs].
+  for (Value input : fused_read_inputs) {
+    fused_body->addArgument(input.getType(), loc);
+  }
+  for (Value input : fused_write_inputs) {
+    fused_body->addArgument(input.getType(), loc);
+  }
+  for (Value input : fused_val_inputs) {
+    fused_body->addArgument(input.getType(), loc);
+  }
+
+  OpBuilder::InsertionGuard guard(builder);
+  builder.setInsertionPointToStart(fused_body);
+
+  // --- Maps producer's block arguments to fused block arguments ---
+  // Producer body layout: [prod_read | prod_write | prod_val]
+  // Fused layout: [fused_read | fused_write | fused_val]
+  // Producer reads are at fused_read[0..prod_read.size()-1]
+  // Producer writes are at fused_write[0..prod_write.size()-1]
+  // Producer vals are at fused_val[0..prod_val.size()-1]
+  IRMapping mapping;
+  Block &producer_body = producer.getBody().front();
+  auto prod_read = producer.getReadMemrefs();
+  auto prod_write = producer.getWriteMemrefs();
+  auto prod_val = producer.getValueInputs();
+  unsigned fused_read_count = fused_read_inputs.size();
+  unsigned fused_write_count = fused_write_inputs.size();
+
+  // Maps producer read block args.
+  for (unsigned i = 0; i < prod_read.size(); ++i) {
+    mapping.map(producer_body.getArgument(i),
+                fused_body->getArgument(i));
+  }
+  // Maps producer write block args.
+  for (unsigned i = 0; i < prod_write.size(); ++i) {
+    mapping.map(producer_body.getArgument(prod_read.size() + i),
+                fused_body->getArgument(fused_read_count + i));
+  }
+  // Maps producer value block args.
+  for (unsigned i = 0; i < prod_val.size(); ++i) {
+    mapping.map(
+        producer_body.getArgument(prod_read.size() + prod_write.size() + i),
+        fused_body->getArgument(fused_read_count + fused_write_count + i));
+  }
+
+  // Clones producer body operations (counters + hyperblock).
+  // Skips the yield operation.
+  for (Operation &op : producer_body) {
+    if (isa<TaskflowYieldOp>(&op)) {
+      continue;
+    }
+    builder.clone(op, mapping);
+  }
+
+  // --- Maps consumer's block arguments to fused block arguments ---
+  // Consumer body layout: [cons_read | cons_write | cons_val]
+  Block &consumer_body = consumer.getBody().front();
+  auto cons_read = consumer.getReadMemrefs();
+  auto cons_write = consumer.getWriteMemrefs();
+  auto cons_val = consumer.getValueInputs();
+
+  // Maps consumer read block args (skipping intermediate_memref entries).
+  unsigned cons_read_fused_idx = prod_read.size();
+  for (unsigned i = 0; i < cons_read.size(); ++i) {
+    Value original_input = cons_read[i];
+    if (original_input == intermediate_memref) {
+      // Maps to the producer's corresponding write output.
+      auto producer_yield =
+          cast<TaskflowYieldOp>(producer_body.getTerminator());
+      auto prod_mem_results = producer_yield.getMemoryResults();
+      Value mapped_value = nullptr;
+      for (unsigned j = 0; j < producer.getWriteOutputs().size(); ++j) {
+        if (producer.getWriteOutputs()[j] == intermediate_memref) {
+          mapped_value = mapping.lookupOrDefault(prod_mem_results[j]);
+          break;
+        }
+      }
+      if (mapped_value) {
+        mapping.map(consumer_body.getArgument(i), mapped_value);
+      }
+    } else {
+      mapping.map(consumer_body.getArgument(i),
+                  fused_body->getArgument(cons_read_fused_idx++));
+    }
+  }
+
+  // Maps consumer write block args (skipping intermediate_memref entries).
+  unsigned cons_write_fused_idx = fused_read_count + prod_write.size();
+  for (unsigned i = 0; i < cons_write.size(); ++i) {
+    Value original_input = cons_write[i];
+    if (original_input == intermediate_memref) {
+      auto producer_yield =
+          cast<TaskflowYieldOp>(producer_body.getTerminator());
+      auto prod_mem_results = producer_yield.getMemoryResults();
+      Value mapped_value = nullptr;
+      for (unsigned j = 0; j < producer.getWriteOutputs().size(); ++j) {
+        if (producer.getWriteOutputs()[j] == intermediate_memref) {
+          mapped_value = mapping.lookupOrDefault(prod_mem_results[j]);
+          break;
+        }
+      }
+      if (mapped_value) {
+        mapping.map(consumer_body.getArgument(cons_read.size() + i),
+                    mapped_value);
+      }
+    } else {
+      mapping.map(consumer_body.getArgument(cons_read.size() + i),
+                  fused_body->getArgument(cons_write_fused_idx++));
+    }
+  }
+
+  // Maps consumer value block args.
+  unsigned cons_val_fused_start =
+      fused_read_count + fused_write_count + prod_val.size();
+  for (unsigned i = 0; i < cons_val.size(); ++i) {
+    mapping.map(
+        consumer_body.getArgument(cons_read.size() + cons_write.size() + i),
+        fused_body->getArgument(cons_val_fused_start + i));
+  }
+
+  // Clones consumer body operations (counters + hyperblock).
+  // Skips the yield operation.
+  for (Operation &op : consumer_body) {
+    if (isa<TaskflowYieldOp>(&op)) {
+      continue;
+    }
+    builder.clone(op, mapping);
+  }
+
+  // Creates the yield for the fused task using consumer's yield operands.
+  auto consumer_yield = cast<TaskflowYieldOp>(consumer_body.getTerminator());
+  SmallVector<Value> fused_mem_yields;
+  for (Value v : consumer_yield.getMemoryResults()) {
+    fused_mem_yields.push_back(mapping.lookupOrDefault(v));
+  }
+  SmallVector<Value> fused_val_yields;
+  for (Value v : consumer_yield.getValueResults()) {
+    fused_val_yields.push_back(mapping.lookupOrDefault(v));
+  }
+  builder.create<TaskflowYieldOp>(loc, fused_mem_yields, fused_val_yields);
+
+  return fused_task;
+}
+
+//===----------------------------------------------------------------------===//
+// Fusion Execution: Sibling
+//===----------------------------------------------------------------------===//
+
+// Fuses two sibling tasks into a single task with shared inputs and combined
+// outputs.
+static TaskflowTaskOp fuseSiblingTasks(TaskflowTaskOp task1,
+                                       TaskflowTaskOp task2,
+                                       OpBuilder &builder) {
+  Location loc = task1.getLoc();
+
+  // Collects unique read memref inputs.
+  SmallVector<Value> fused_read_inputs;
+  llvm::SmallDenseMap<Value, unsigned> read_input_index_map;
+  for (Value input : task1.getReadMemrefs()) {
+    read_input_index_map[input] = fused_read_inputs.size();
+    fused_read_inputs.push_back(input);
+  }
+  for (Value input : task2.getReadMemrefs()) {
+    if (!read_input_index_map.count(input)) {
+      read_input_index_map[input] = fused_read_inputs.size();
+      fused_read_inputs.push_back(input);
+    }
+  }
+
+  // Collects unique write memref inputs.
+  SmallVector<Value> fused_write_inputs;
+  llvm::SmallDenseMap<Value, unsigned> write_input_index_map;
+  for (Value input : task1.getWriteMemrefs()) {
+    write_input_index_map[input] = fused_write_inputs.size();
+    fused_write_inputs.push_back(input);
+  }
+  for (Value input : task2.getWriteMemrefs()) {
+    if (!write_input_index_map.count(input)) {
+      write_input_index_map[input] = fused_write_inputs.size();
+      fused_write_inputs.push_back(input);
+    }
+  }
+
+  // Collects unique value inputs.
+  SmallVector<Value> fused_val_inputs;
+  llvm::SmallDenseMap<Value, unsigned> val_input_index_map;
+  for (Value input : task1.getValueInputs()) {
+    val_input_index_map[input] = fused_val_inputs.size();
+    fused_val_inputs.push_back(input);
+  }
+  for (Value input : task2.getValueInputs()) {
+    if (!val_input_index_map.count(input)) {
+      val_input_index_map[input] = fused_val_inputs.size();
+      fused_val_inputs.push_back(input);
+    }
+  }
+
+  // Combined output types.
+  SmallVector<Type> fused_write_output_types;
+  fused_write_output_types.append(task1.getWriteOutputs().getTypes().begin(),
+                                  task1.getWriteOutputs().getTypes().end());
+  fused_write_output_types.append(task2.getWriteOutputs().getTypes().begin(),
+                                  task2.getWriteOutputs().getTypes().end());
+  SmallVector<Type> fused_val_output_types;
+  fused_val_output_types.append(task1.getValueOutputs().getTypes().begin(),
+                                task1.getValueOutputs().getTypes().end());
+  fused_val_output_types.append(task2.getValueOutputs().getTypes().begin(),
+                                task2.getValueOutputs().getTypes().end());
+
+  // Collects original read/write memrefs from both tasks.
+  SmallVector<Value> fused_original_reads;
+  for (Value v : task1.getOriginalReadMemrefs())
+    fused_original_reads.push_back(v);
+  for (Value v : task2.getOriginalReadMemrefs())
+    fused_original_reads.push_back(v);
+  SmallVector<Value> fused_original_writes;
+  for (Value v : task1.getOriginalWriteMemrefs())
+    fused_original_writes.push_back(v);
+  for (Value v : task2.getOriginalWriteMemrefs())
+    fused_original_writes.push_back(v);
+
+  // Creates the fused task.
+  auto fused_task = builder.create<TaskflowTaskOp>(
+      loc, fused_write_output_types, fused_val_output_types,
+      fused_read_inputs, fused_write_inputs, fused_val_inputs,
+      builder.getStringAttr("fused_sibling"),
+      fused_original_reads, fused_original_writes);
+
+  Block *fused_body = new Block();
+  fused_task.getBody().push_back(fused_body);
+
+  // Adds block arguments: [read_memrefs | write_memrefs | value_inputs].
+  for (Value input : fused_read_inputs) {
+    fused_body->addArgument(input.getType(), loc);
+  }
+  for (Value input : fused_write_inputs) {
+    fused_body->addArgument(input.getType(), loc);
+  }
+  for (Value input : fused_val_inputs) {
+    fused_body->addArgument(input.getType(), loc);
+  }
+
+  OpBuilder::InsertionGuard guard(builder);
+  builder.setInsertionPointToStart(fused_body);
+
+  unsigned read_count = fused_read_inputs.size();
+  unsigned write_count = fused_write_inputs.size();
+
+  // --- Clones task1 body ---
+  IRMapping mapping1;
+  Block &body1 = task1.getBody().front();
+  auto t1_read = task1.getReadMemrefs();
+  auto t1_write = task1.getWriteMemrefs();
+  auto t1_val = task1.getValueInputs();
+
+  // Maps task1 read block args.
+  for (unsigned i = 0; i < t1_read.size(); ++i) {
+    unsigned idx = read_input_index_map.lookup(t1_read[i]);
+    mapping1.map(body1.getArgument(i), fused_body->getArgument(idx));
+  }
+  // Maps task1 write block args.
+  for (unsigned i = 0; i < t1_write.size(); ++i) {
+    unsigned idx = write_input_index_map.lookup(t1_write[i]);
+    mapping1.map(body1.getArgument(t1_read.size() + i),
+                 fused_body->getArgument(read_count + idx));
+  }
+  // Maps task1 value block args.
+  for (unsigned i = 0; i < t1_val.size(); ++i) {
+    unsigned idx = val_input_index_map.lookup(t1_val[i]);
+    mapping1.map(body1.getArgument(t1_read.size() + t1_write.size() + i),
+                 fused_body->getArgument(read_count + write_count + idx));
+  }
+
+  SmallVector<Value> task1_mem_yields;
+  SmallVector<Value> task1_val_yields;
+  for (Operation &op : body1) {
+    if (auto yield_op = dyn_cast<TaskflowYieldOp>(&op)) {
+      for (Value v : yield_op.getMemoryResults()) {
+        task1_mem_yields.push_back(mapping1.lookupOrDefault(v));
+      }
+      for (Value v : yield_op.getValueResults()) {
+        task1_val_yields.push_back(mapping1.lookupOrDefault(v));
+      }
+      continue;
+    }
+    builder.clone(op, mapping1);
+  }
+
+  // --- Clones task2 body ---
+  IRMapping mapping2;
+  Block &body2 = task2.getBody().front();
+  auto t2_read = task2.getReadMemrefs();
+  auto t2_write = task2.getWriteMemrefs();
+  auto t2_val = task2.getValueInputs();
+
+  // Maps task2 read block args.
+  for (unsigned i = 0; i < t2_read.size(); ++i) {
+    unsigned idx = read_input_index_map.lookup(t2_read[i]);
+    mapping2.map(body2.getArgument(i), fused_body->getArgument(idx));
+  }
+  // Maps task2 write block args.
+  for (unsigned i = 0; i < t2_write.size(); ++i) {
+    unsigned idx = write_input_index_map.lookup(t2_write[i]);
+    mapping2.map(body2.getArgument(t2_read.size() + i),
+                 fused_body->getArgument(read_count + idx));
+  }
+  // Maps task2 value block args.
+  for (unsigned i = 0; i < t2_val.size(); ++i) {
+    unsigned idx = val_input_index_map.lookup(t2_val[i]);
+    mapping2.map(body2.getArgument(t2_read.size() + t2_write.size() + i),
+                 fused_body->getArgument(read_count + write_count + idx));
+  }
+
+  SmallVector<Value> task2_mem_yields;
+  SmallVector<Value> task2_val_yields;
+  for (Operation &op : body2) {
+    if (auto yield_op = dyn_cast<TaskflowYieldOp>(&op)) {
+      for (Value v : yield_op.getMemoryResults()) {
+        task2_mem_yields.push_back(mapping2.lookupOrDefault(v));
+      }
+      for (Value v : yield_op.getValueResults()) {
+        task2_val_yields.push_back(mapping2.lookupOrDefault(v));
+      }
+      continue;
+    }
+    builder.clone(op, mapping2);
+  }
+
+  // Creates the fused yield with combined results.
+  SmallVector<Value> all_mem_yields;
+  all_mem_yields.append(task1_mem_yields);
+  all_mem_yields.append(task2_mem_yields);
+  SmallVector<Value> all_val_yields;
+  all_val_yields.append(task1_val_yields);
+  all_val_yields.append(task2_val_yields);
+  builder.create<TaskflowYieldOp>(loc, all_mem_yields, all_val_yields);
+
+  return fused_task;
+}
+
+//===----------------------------------------------------------------------===//
+// Rewrite Patterns
+//===----------------------------------------------------------------------===//
+
+// Pattern that fuses a producer task into its consumer.
+struct ProducerConsumerTaskFusion
+    : public OpRewritePattern<TaskflowTaskOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TaskflowTaskOp consumer,
+                                PatternRewriter &rewriter) const override {
+    TaskflowTaskOp producer = nullptr;
+    Value intermediate_memref;
+
+    // Searches for a producer among the consumer's read memref inputs.
+    for (Value input : consumer.getReadMemrefs()) {
+      auto def_op = input.getDefiningOp<TaskflowTaskOp>();
+      if (!canFuseTasks(def_op, consumer)) {
+        continue;
+      }
+      // Checks that all of the producer's outputs have only one use or are
+      // unused.
+      bool has_only_one_use = true;
+      for (Value result : def_op.getWriteOutputs()) {
+        if (!result.hasOneUse() && !result.use_empty()) {
+          has_only_one_use = false;
+          break;
+        }
+      }
+      for (Value result : def_op.getValueOutputs()) {
+        if (!result.hasOneUse() && !result.use_empty()) {
+          has_only_one_use = false;
+          break;
+        }
+      }
+      if (!has_only_one_use || hasInterveningUses(def_op, consumer)) {
+        continue;
+      }
+      if (!isFusionProfitable(def_op, consumer, /*is_producer_consumer=*/true,
+                              input)) {
+        continue;
+      }
+      producer = def_op;
+      intermediate_memref = input;
+      break;
+    }
+
+    // Also searches write memref inputs for producer-consumer relation.
+    if (!producer) {
+      for (Value input : consumer.getWriteMemrefs()) {
+        auto def_op = input.getDefiningOp<TaskflowTaskOp>();
+        if (!canFuseTasks(def_op, consumer)) {
+          continue;
+        }
+        bool has_only_one_use = true;
+        for (Value result : def_op.getWriteOutputs()) {
+          if (!result.hasOneUse() && !result.use_empty()) {
+            has_only_one_use = false;
+            break;
+          }
+        }
+        for (Value result : def_op.getValueOutputs()) {
+          if (!result.hasOneUse() && !result.use_empty()) {
+            has_only_one_use = false;
+            break;
+          }
+        }
+        if (!has_only_one_use || hasInterveningUses(def_op, consumer)) {
+          continue;
+        }
+        if (!isFusionProfitable(def_op, consumer,
+                                /*is_producer_consumer=*/true, input)) {
+          continue;
+        }
+        producer = def_op;
+        intermediate_memref = input;
+        break;
+      }
+    }
+
+    if (!producer) {
+      return failure();
+    }
+
+    auto fused_task = fuseProducerConsumerTasks(producer, consumer,
+                                                intermediate_memref, rewriter);
+    // Replaces consumer outputs with fused task outputs.
+    for (auto [old_val, new_val] :
+         llvm::zip(consumer.getWriteOutputs(), fused_task.getWriteOutputs())) {
+      old_val.replaceAllUsesWith(new_val);
+    }
+    for (auto [old_val, new_val] :
+         llvm::zip(consumer.getValueOutputs(), fused_task.getValueOutputs())) {
+      old_val.replaceAllUsesWith(new_val);
+    }
+
+    rewriter.eraseOp(consumer);
+    rewriter.eraseOp(producer);
+    return success();
+  }
+};
+
+// Pattern that fuses sibling tasks sharing the same inputs.
+struct SiblingTaskFusion : public OpRewritePattern<TaskflowTaskOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TaskflowTaskOp task1,
+                                PatternRewriter &rewriter) const override {
+    TaskflowTaskOp task2 = nullptr;
+
+    for (Operation *op = task1->getNextNode(); op; op = op->getNextNode()) {
+      if (auto next_task = dyn_cast<TaskflowTaskOp>(op)) {
+        if (areSiblingTasks(task1, next_task) &&
+            canFuseTasks(task1, next_task) &&
+            isFusionProfitable(task1, next_task,
+                               /*is_producer_consumer=*/false)) {
+          task2 = next_task;
+          break;
+        }
+      }
+    }
+
+    if (!task2) {
+      return failure();
+    }
+
+    auto fused_task = fuseSiblingTasks(task1, task2, rewriter);
+
+    // Splits the fused outputs: first task1's, then task2's.
+    unsigned task1_write_count = task1.getWriteOutputs().size();
+    unsigned task1_val_count = task1.getValueOutputs().size();
+
+    // Replaces task1 write outputs.
+    for (unsigned i = 0; i < task1_write_count; ++i) {
+      task1.getWriteOutputs()[i].replaceAllUsesWith(
+          fused_task.getWriteOutputs()[i]);
+    }
+    // Replaces task1 value outputs.
+    for (unsigned i = 0; i < task1_val_count; ++i) {
+      task1.getValueOutputs()[i].replaceAllUsesWith(
+          fused_task.getValueOutputs()[i]);
+    }
+    // Replaces task2 write outputs.
+    for (unsigned i = 0; i < task2.getWriteOutputs().size(); ++i) {
+      task2.getWriteOutputs()[i].replaceAllUsesWith(
+          fused_task.getWriteOutputs()[task1_write_count + i]);
+    }
+    // Replaces task2 value outputs.
+    for (unsigned i = 0; i < task2.getValueOutputs().size(); ++i) {
+      task2.getValueOutputs()[i].replaceAllUsesWith(
+          fused_task.getValueOutputs()[task1_val_count + i]);
+    }
+
+    rewriter.eraseOp(task1);
+    rewriter.eraseOp(task2);
+    return success();
+  }
+};
+
+//===----------------------------------------------------------------------===//
+// Pass Definition
+//===----------------------------------------------------------------------===//
+
+// Fuses taskflow.task operations using producer-consumer and sibling fusion.
+struct FuseTaskPass
+    : public PassWrapper<FuseTaskPass, OperationPass<func::FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(FuseTaskPass)
+
+  StringRef getArgument() const override { return "fuse-task"; }
+
+  StringRef getDescription() const override {
+    return "Fuses taskflow.task operations using producer-consumer and sibling "
+           "fusion strategies. Uses Neura-level MII metrics for profitability.";
+  }
+
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<mlir::LLVM::LLVMDialect>();
+    registry.insert<mlir::func::FuncDialect>();
+    registry.insert<mlir::arith::ArithDialect>();
+    registry.insert<mlir::memref::MemRefDialect>();
+    registry.insert<mlir::neura::NeuraDialect>();
+    registry.insert<mlir::taskflow::TaskflowDialect>();
+  }
+
+  void runOnOperation() override {
+    func::FuncOp func_op = getOperation();
+
+    RewritePatternSet patterns(&getContext());
+    patterns.add<ProducerConsumerTaskFusion>(&getContext(), /*benefit=*/10);
+    patterns.add<SiblingTaskFusion>(&getContext(), /*benefit=*/5);
+
+    FrozenRewritePatternSet frozen(std::move(patterns));
+    if (failed(applyPatternsGreedily(func_op, frozen))) {
+      signalPassFailure();
+    }
+  }
+};
+
+} // namespace
+
+namespace mlir::taskflow {
+std::unique_ptr<Pass> createFuseTaskPass() {
+  return std::make_unique<FuseTaskPass>();
+}
+} // namespace mlir::taskflow

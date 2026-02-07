@@ -5,7 +5,6 @@ add_mlir_library(
     InsertDataMovPass.cpp
     InsertCtrlMovPass.cpp
     FusePatternPass.cpp
-    FuseKernelPass.cpp
     AssignAcceleratorPass.cpp
     TransformCtrlToDataFlowPass.cpp
     LeveragePredicatedValuePass.cpp

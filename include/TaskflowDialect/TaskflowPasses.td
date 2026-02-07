@@ -72,4 +72,25 @@ def MapTaskOnCgra : Pass<"map-task-on-cgra", "func::FuncOp"> {
   }];
   let constructor = "taskflow::createMapTaskOnCgraPass()";
 }
+
+def FuseTask : Pass<"fuse-task", "func::FuncOp"> {
+  let summary = "Fuses Taskflow tasks using producer-consumer and sibling strategies";
+  let description = [{
+    Fuses taskflow.task operations using producer-consumer and sibling
+    fusion strategies. Uses Neura-level MII metrics for profitability analysis.
+    
+    Producer-Consumer Fusion: Fuses a producer task into its consumer when
+    the producer's memory output feeds directly into the consumer.
+    
+    Sibling Fusion: Fuses tasks that share inputs without data dependency.
+  }];
+  let constructor = "taskflow::createFuseTaskPass()";
+  let dependentDialects = [
+    "mlir::LLVM::LLVMDialect",
+    "mlir::func::FuncDialect",
+    "mlir::arith::ArithDialect",
+    "mlir::memref::MemRefDialect",
+    "mlir::neura::NeuraDialect",
+    "mlir::taskflow::TaskflowDialect"];
+}
 #endif // TASKFLOW_PASSES_TD

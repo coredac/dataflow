@@ -7,6 +7,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
 #include "NeuraDialect/Architecture/ArchitectureSpec.h"
+#include "NeuraDialect/Architecture/Architecture.h"
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraOps.h"
 #include "NeuraDialect/NeuraPasses.h"
