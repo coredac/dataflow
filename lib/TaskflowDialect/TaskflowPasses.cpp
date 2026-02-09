@@ -7,6 +7,7 @@
 #include "mlir/Dialect/Affine/Passes.h"
 #include "mlir/Dialect/Bufferization/Transforms/OneShotAnalysis.h"
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/Tosa/Transforms/Passes.h"
 #include "mlir/Pass/PassManager.h"
@@ -33,44 +34,43 @@ void mlir::taskflow::registerTaskflowConversionPassPipeline() {
 void mlir::taskflow::registerTosaToAffineConversionPassPipeline() {
   PassPipelineRegistration<>(
       "tosa-to-affine-conversion",
-      "Complete pipeline: TOSA to Linalg to Affine with subview/copy cleanup.",
+      "Complete pipeline: TOSA to Linalg to Affine with subview/copy cleanup",
       [](OpPassManager &pm) {
-        // Step 1: TOSA to Linalg Named operations.
-        pm.addPass(mlir::tosa::createTosaInferShapesPass());
-        pm.addPass(mlir::tosa::createTosaMakeBroadcastablePass());
-        pm.addPass(mlir::tosa::createTosaToLinalgNamed());
+        // Step 1-3: TOSA to Linalg (function-level passes).
+        pm.nest<func::FuncOp>().addPass(
+            mlir::tosa::createTosaInferShapesPass());
+        pm.nest<func::FuncOp>().addPass(
+            mlir::tosa::createTosaMakeBroadcastablePass());
+        pm.nest<func::FuncOp>().addPass(mlir::tosa::createTosaToLinalgNamed());
+        pm.nest<func::FuncOp>().addPass(mlir::tosa::createTosaToLinalg());
+        pm.nest<func::FuncOp>().addPass(mlir::tosa::createTosaToArith());
+        pm.nest<func::FuncOp>().addPass(mlir::tosa::createTosaToTensor());
 
-        // Step 2: TOSA to Linalg (remaining ops).
-        pm.addPass(mlir::tosa::createTosaToLinalg());
+        // Step 4: Linalg Generalization (function-level).
+        pm.nest<func::FuncOp>().addPass(createLinalgGeneralizeNamedOpsPass());
 
-        // Step 3: TOSA to Standard.
-        pm.addPass(mlir::tosa::createTosaToArith());
-        pm.addPass(mlir::tosa::createTosaToTensor());
+        // Step 5: Canonicalization (module-level).
+        pm.addPass(createCanonicalizerPass());
 
-        // Step 4: Linalg Generalization.
-        pm.addPass(mlir::createLinalgGeneralizeNamedOpsPass());
-
-        // Step 5: Canonicalization.
-        pm.addPass(mlir::createCanonicalizerPass());
-
-        // Step 6: Bufferization with proper options.
-        bufferization::OneShotBufferizationOptions bufferizationOptions;
+        // Step 6: Bufferization with proper options (module-level).
+        OneShotBufferizationOptions bufferizationOptions;
         bufferizationOptions.bufferizeFunctionBoundaries = true;
         bufferizationOptions.setFunctionBoundaryTypeConversion(
-            bufferization::LayoutMapOption::IdentityLayoutMap);
-        pm.addPass(mlir::bufferization::createOneShotBufferizePass(
-            bufferizationOptions));
+            LayoutMapOption::IdentityLayoutMap);
+        pm.addPass(createOneShotBufferizePass(bufferizationOptions));
 
-        // Step 7: Linalg to Affine Loops.
-        pm.addPass(mlir::createConvertLinalgToAffineLoopsPass());
+        // Step 7: Linalg to Affine Loops (function-level).
+        pm.nest<func::FuncOp>().addPass(createConvertLinalgToAffineLoopsPass());
 
-        // Step 8: Cleanup subview and copy operations.
-        pm.addPass(mlir::createFoldSubViewPass());
-        pm.addPass(mlir::createConvertCopyToAffineLoopsPass());
+        // Step 8: Cleanup subview and copy operations (function-level).
+        pm.nest<func::FuncOp>().addPass(createFoldSubViewPass());
+        pm.nest<func::FuncOp>().addPass(createConvertCopyToAffineLoopsPass());
 
-        // Step 9: Final Affine cleanup.
-        pm.addPass(mlir::affine::createAffineLoopNormalizePass());
-        pm.addPass(mlir::affine::createSimplifyAffineStructuresPass());
-        pm.addPass(mlir::createCanonicalizerPass());
+        // Step 9: Final Affine cleanup (function-level).
+        pm.nest<func::FuncOp>().addPass(
+            mlir::affine::createAffineLoopNormalizePass());
+        pm.nest<func::FuncOp>().addPass(
+            mlir::affine::createSimplifyAffineStructuresPass());
+        pm.addPass(createCanonicalizerPass());
       });
 }

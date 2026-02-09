@@ -14,6 +14,8 @@ set(LIBS
         MLIRIR
         MLIRParser
         MLIRSupport
+        MLIRFuncAllExtensions
+        MLIRTensorAllExtensions
         )
 
 target_link_libraries(neura-compiler PRIVATE ${LIBS})
