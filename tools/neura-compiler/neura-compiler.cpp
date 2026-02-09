@@ -5,8 +5,6 @@
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllPasses.h"
-#include "mlir/Support/FileUtilities.h"
-#include "mlir/Support/LogicalResult.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 
 #include "Conversion/ConversionPasses.h"
@@ -14,6 +12,7 @@
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraPasses.h"
 #include "NeuraDialect/Util/ArchParser.h"
+#include "TaskflowDialect/TaskflowPasses.h"
 #include "mlir/Support/LogicalResult.h"
 
 using mlir::neura::Architecture;
@@ -73,6 +72,8 @@ int main(int argc, char **argv) {
   registry.insert<mlir::memref::MemRefDialect>();
 
   mlir::neura::registerNeuraConversionPassPipeline();
+  mlir::taskflow::registerTosaToAffineConversionPassPipeline();
+  mlir::taskflow::registerTaskflowConversionPassPipeline();
 
   // Print architecture spec file info
   if (!architecture_spec_file.empty()) {
