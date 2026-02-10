@@ -17,11 +17,12 @@
 using namespace mlir;
 using namespace mlir::bufferization;
 
-// This pass pipeline can convert all the other dialects into the Neura dialect.
+// This pass pipeline can convert affine dialect into taskflow dialect with
+// neura.kernel op.
 void mlir::taskflow::registerTaskflowConversionPassPipeline() {
   PassPipelineRegistration<>(
       "taskflow-conversion",
-      "Convertes affine dialects to taskflow dialect with neura.kernel ops.",
+      "Converts affine dialects to taskflow dialect with neura.kernel ops.",
       [](OpPassManager &pm) {
         pm.addPass(mlir::createConvertAffineToTaskflowPass());
         pm.addPass(mlir::taskflow::createConstructHyperblockFromTaskPass());
