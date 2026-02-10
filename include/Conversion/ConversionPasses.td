@@ -93,4 +93,35 @@ def ConvertTaskflowToNeura : Pass<"convert-taskflow-to-neura", "ModuleOp">{
   ];
 }
 
+def FoldSubView : Pass<"fold-subview", "func::FuncOp"> {
+  let summary = "Folds memref.subview into affine load/store operations";
+  let description = [{
+    Eliminates memref.subview operations by folding them into their users
+    (affine.load and affine.store). Adjusts indices to account for subview
+    offsets and strides, enabling direct access to the source memref.
+  }];
+  let constructor = "mlir::createFoldSubViewPass()";
+  let dependentDialects = [
+    "mlir::affine::AffineDialect",
+    "mlir::memref::MemRefDialect",
+    "mlir::arith::ArithDialect",
+    "mlir::func::FuncDialect"
+  ];
+}
+
+def ConvertCopyToAffineLoops : Pass<"convert-copy-to-affine-loops", "func::FuncOp"> {
+  let summary = "Converts memref.copy to explicit affine loop nests";
+  let description = [{
+    Converts memref.copy operations into explicit affine.for loop nests
+    with affine.load and affine.store operations. This makes data movement
+    explicit for CGRA compilation with global addressing.
+  }];
+  let constructor = "mlir::createConvertCopyToAffineLoopsPass()";
+  let dependentDialects = [
+    "mlir::affine::AffineDialect",
+    "mlir::memref::MemRefDialect",
+    "mlir::func::FuncDialect"
+  ];
+}
+
 #endif // CONVERSION_PASSES_TD

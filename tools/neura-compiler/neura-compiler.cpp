@@ -1,12 +1,7 @@
 // neura-compiler.cpp
-
-#include "mlir/Dialect/Affine/IR/AffineOps.h"
-#include "mlir/Dialect/DLTI/DLTI.h"
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/InitAllDialects.h"
+#include "mlir/InitAllExtensions.h"
 #include "mlir/InitAllPasses.h"
-#include "mlir/Support/FileUtilities.h"
-#include "mlir/Support/LogicalResult.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 
 #include "Conversion/ConversionPasses.h"
@@ -14,6 +9,7 @@
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraPasses.h"
 #include "NeuraDialect/Util/ArchParser.h"
+#include "TaskflowDialect/TaskflowPasses.h"
 #include "mlir/Support/LogicalResult.h"
 
 using mlir::neura::Architecture;
@@ -65,14 +61,14 @@ int main(int argc, char **argv) {
   // Registers MLIR dialects.
   mlir::DialectRegistry registry;
   registry.insert<mlir::neura::NeuraDialect>();
-  registry.insert<mlir::func::FuncDialect>();
-  registry.insert<mlir::arith::ArithDialect>();
-  registry.insert<mlir::DLTIDialect>();
-  registry.insert<mlir::LLVM::LLVMDialect>();
-  registry.insert<mlir::affine::AffineDialect>();
-  registry.insert<mlir::memref::MemRefDialect>();
+  registry.insert<mlir::taskflow::TaskflowDialect>();
+
+  mlir::registerAllDialects(registry);
+  mlir::registerAllExtensions(registry);
 
   mlir::neura::registerNeuraConversionPassPipeline();
+  mlir::taskflow::registerTosaToAffineConversionPassPipeline();
+  mlir::taskflow::registerTaskflowConversionPassPipeline();
 
   // Print architecture spec file info
   if (!architecture_spec_file.empty()) {

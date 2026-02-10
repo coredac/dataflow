@@ -7,10 +7,7 @@
 // RUN: -o %t.hyperblock.mlir
 // RUN: FileCheck %s --input-file=%t.hyperblock.mlir --check-prefixes=HYPERBLOCK
 
-// RUN: mlir-neura-opt %s --convert-affine-to-taskflow \
-// RUN: --construct-hyperblock-from-task \
-// RUN: --classify-counters \
-// RUN: --convert-taskflow-to-neura \
+// RUN: neura-compiler %s --taskflow-conversion \
 // RUN: -o %t.kernel.mlir
 // RUN: FileCheck %s --input-file=%t.kernel.mlir --check-prefixes=KERNEL
 
