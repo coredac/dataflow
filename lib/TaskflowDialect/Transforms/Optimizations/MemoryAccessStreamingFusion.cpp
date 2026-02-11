@@ -989,14 +989,15 @@ struct MemoryAccessStreamingFusionPass
       MemoryDependencyAnalysis analysis(func);
       analysis.analyze(task_map);
 
-      llvm::errs() << "Iteration " << iter << ": Found " << task_map.size()
-                   << " tasks\n";
+      llvm::errs() << "[MemoryAccessStreamingFusion] Iteration " << iter
+                   << ": Found " << task_map.size() << " tasks\n";
 
       // Identifies fusion candidates.
       FusionCandidateIdentifier identifier(task_map);
       auto candidates = identifier.identify();
 
-      llvm::errs() << "Found " << candidates.size() << " fusion candidates\n";
+      llvm::errs() << "[MemoryAccessStreamingFusion] Found "
+                   << candidates.size() << " fusion candidates\n";
 
       if (candidates.empty()) {
         break;
@@ -1017,7 +1018,8 @@ struct MemoryAccessStreamingFusionPass
           continue;
         }
 
-        llvm::errs() << "Attempting to fuse tasks (benefit: "
+        llvm::errs() << "[MemoryAccessStreamingFusion] Attempting to fuse "
+                        "tasks (benefit: "
                      << candidate.fusion_benefit << ")\n";
 
         if (fuser.performFusion(candidate)) {
@@ -1027,8 +1029,8 @@ struct MemoryAccessStreamingFusionPass
         }
       }
 
-      llvm::errs() << "Round " << iter << ": fused " << round_fusions
-                   << " task pairs\n";
+      llvm::errs() << "[MemoryAccessStreamingFusion] Round " << iter
+                   << ": fused " << round_fusions << " task pairs\n";
 
       total_fusions += round_fusions;
 
@@ -1038,7 +1040,8 @@ struct MemoryAccessStreamingFusionPass
       }
     }
 
-    llvm::errs() << "Total fusions: " << total_fusions << "\n";
+    llvm::errs() << "[MemoryAccessStreamingFusion] Total fusions: "
+                 << total_fusions << "\n";
   }
 };
 
