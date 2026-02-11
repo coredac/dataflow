@@ -81,9 +81,6 @@ def MemoryAccessStreamingFusion : Pass<"memory-access-streaming-fusion", "func::
     Eliminates intermediate memref allocations and converts memory access
     dependencies into direct SSA value dependencies.
     
-    This is distinct from SSA value producer-consumer dependencies which
-    already exist in the IR (value-output -> value-input).
-    
     Uses greedy fusion strategy to iteratively fuse the most beneficial
     task pairs until no more fusion opportunities exist.
   }];

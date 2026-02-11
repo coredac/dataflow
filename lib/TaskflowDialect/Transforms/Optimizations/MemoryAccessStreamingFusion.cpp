@@ -1,4 +1,4 @@
-//===- MemoryAccessStreamingFusion.cpp - Fuse tasks by memory deps -------===//
+//===- MemoryAccessStreamingFusion.cpp - Fuses tasks by memory deps -------===//
 //
 // This pass identifies and fuses taskflow.task operations that are connected
 // by memory access dependencies (one task writes a memref, another reads it).
@@ -20,25 +20,21 @@
 #include "mlir/IR/Dominance.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/TypeID.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Debug.h"
 
-#define DEBUG_TYPE "memory-access-streaming-fusion"
-
-namespace mlir {
-namespace taskflow {
-
-#define GEN_PASS_DEF_MEMORYACCESSSTREAMINGFUSION
-#include "TaskflowDialect/TaskflowPasses.h.inc"
+using namespace mlir;
+using namespace mlir::taskflow;
 
 namespace {
 
 //===----------------------------------------------------------------------===//
-// Task Information and Dependency Analysis
+// Task Information and Dependency Analysis.
 //===----------------------------------------------------------------------===//
 
-/// Stores information about a single task and its memory dependencies.
+// Stores information about a single task and its memory dependencies.
 struct TaskInfo {
   taskflow::TaskflowTaskOp task_op;
 
@@ -46,11 +42,15 @@ struct TaskInfo {
   SmallVector<Value> read_memrefs;
   SmallVector<Value> write_memrefs;
 
-  // Memory dependency tracking (distinct from SSA value dependencies).
-  // Tasks that write memrefs which this task reads.
+  // Memory dependency graph edges.
+  // Upstream producers: tasks whose write_memrefs this task reads from.
+  // e.g., if Task A writes %alloc and this task reads %alloc,
+  //        then Task A is in this->memory_writers.
   SmallVector<TaskInfo *> memory_writers;
 
-  // Tasks that read memrefs which this task writes.
+  // Downstream consumers: tasks that read from this task's write_memrefs.
+  // e.g., if this task writes %alloc and Task B reads %alloc,
+  //        then Task B is in this->memory_readers.
   SmallVector<TaskInfo *> memory_readers;
 
   // SSA value inputs (true producer-consumer dependencies).
@@ -60,7 +60,7 @@ struct TaskInfo {
   TaskInfo(taskflow::TaskflowTaskOp op) : task_op(op) {}
 };
 
-/// Represents a candidate pair of tasks that can be fused.
+// Represents a candidate pair of tasks that can be fused.
 struct FusionCandidate {
   TaskInfo *memory_writer;   // Task that writes the intermediate memref.
   TaskInfo *memory_reader;   // Task that reads the intermediate memref.
@@ -76,16 +76,16 @@ struct FusionCandidate {
 // Memory Dependency Graph Builder
 //===----------------------------------------------------------------------===//
 
-/// Builds the memory dependency graph for all tasks in the function.
+// Builds the memory dependency graph for all tasks in the function.
 class MemoryDependencyAnalysis {
 public:
-  MemoryDependencyAnalysis(func::FuncOp func) : function(func) {}
+  MemoryDependencyAnalysis(func::FuncOp func_op) : func_op(func_op) {}
 
-  /// Analyzes all tasks and builds the memory dependency graph.
+  // Analyzes all tasks and builds the memory dependency graph.
   void analyze(DenseMap<Operation *, TaskInfo> &task_map) {
     // Collects all task operations.
     SmallVector<taskflow::TaskflowTaskOp> tasks;
-    function.walk([&](taskflow::TaskflowTaskOp task_op) {
+    this->func_op.walk([&](taskflow::TaskflowTaskOp task_op) {
       tasks.push_back(task_op);
       task_map[task_op.getOperation()] = TaskInfo(task_op);
     });
@@ -101,7 +101,7 @@ public:
   }
 
 private:
-  /// Extracts read and write memrefs from a task operation.
+  // Extracts read and write memrefs from a task operation.
   void extractMemrefAccesses(taskflow::TaskflowTaskOp task_op,
                              TaskInfo &task_info) {
     // Extracts read memrefs from the task operands.
@@ -120,55 +120,85 @@ private:
     }
   }
 
-  /// Builds memory dependency edges between tasks.
-  /// Uses original_read/write_memrefs for matching because the IR
-  /// passes writer's write_outputs (SSA results) as reader's read_memrefs,
-  /// so the raw alloc values are only preserved in original_read/write_memrefs.
+  // Builds memory dependency edges between tasks by tracing SSA value flow.
+  //
+  // The two sets of read/write memrefs serve distinct purposes:
+  //   - read/write_memrefs: carry SSA values (write_outputs results from
+  //     upstream tasks). These encode memory ordering (RAW, WAW, WAR deps).
+  //   - original_read/write_memrefs: track the physical %alloc buffers.
+  //     These are used later to identify intermediate memrefs to eliminate.
+  //
+  // This function builds the dependency graph using the SSA value flow:
+  //   If Task B's read_memrefs or write_memrefs contains a value produced
+  //   by Task A's write_outputs, then Task A → Task B is a dependency.
+  //
+  // Example:
+  //   %alloc = memref.alloc()
+  //   %wo_A = taskflow.task @A write_memrefs(%alloc) ...
+  //   %wo_B = taskflow.task @B read_memrefs(%wo_A) write_memrefs(%wo_A) ...
+  //   Here %wo_A in B's read_memrefs → RAW dep (A→B),
+  //        %wo_A in B's write_memrefs → WAW dep (A→B).
   void buildMemoryDependencies(ArrayRef<taskflow::TaskflowTaskOp> tasks,
                                DenseMap<Operation *, TaskInfo> &task_map) {
-    // Maps each original write memref to the task that writes it.
-    DenseMap<Value, TaskInfo *> orig_memref_writers;
+    // Maps each write_outputs SSA value to the task that produces it.
+    DenseMap<Value, TaskInfo *> write_output_to_producer;
 
-    // First pass: records all original memref writers.
     for (auto task_op : tasks) {
       auto &task_info = task_map[task_op.getOperation()];
-      for (Value orig_write : task_op.getOriginalWriteMemrefs()) {
-        orig_memref_writers[orig_write] = &task_info;
+      for (Value wo : task_op.getWriteOutputs()) {
+        write_output_to_producer[wo] = &task_info;
       }
     }
 
-    // Second pass: establishes memory dependencies using original memrefs.
+    // For each task, check if its read/write_memrefs consume another
+    // task's write_outputs. If so, establish a dependency edge.
     for (auto task_op : tasks) {
       auto &task_info = task_map[task_op.getOperation()];
-      for (Value orig_read : task_op.getOriginalReadMemrefs()) {
-        auto it = orig_memref_writers.find(orig_read);
-        if (it != orig_memref_writers.end()) {
-          TaskInfo *writer = it->second;
-          // Don't create self-dependency.
-          if (writer == &task_info)
-            continue;
-          // Establishes bidirectional memory dependency.
-          task_info.memory_writers.push_back(writer);
-          writer->memory_readers.push_back(&task_info);
+      DenseSet<TaskInfo *> seen_writers;
+
+      auto addDependencyIfProduced = [&](Value operand) {
+        auto it = write_output_to_producer.find(operand);
+        if (it == write_output_to_producer.end()) {
+          return;
         }
+        TaskInfo *writer = it->second;
+        if (writer == &task_info) {
+          return; // No self-dependency.
+        }
+        if (!seen_writers.insert(writer).second) {
+          return; // Deduplicate (same value may appear in both read and
+                  // write).
+        }
+        task_info.memory_writers.push_back(writer);
+        writer->memory_readers.push_back(&task_info);
+      };
+
+      // RAW: read_memrefs consuming a write_outputs value.
+      for (Value operand : task_op.getReadMemrefs()) {
+        addDependencyIfProduced(operand);
+      }
+
+      // WAW/WAR: write_memrefs consuming a write_outputs value.
+      for (Value operand : task_op.getWriteMemrefs()) {
+        addDependencyIfProduced(operand);
       }
     }
   }
 
-  func::FuncOp function;
+  func::FuncOp func_op;
 };
 
 //===----------------------------------------------------------------------===//
 // Fusion Candidate Identification
 //===----------------------------------------------------------------------===//
 
-/// Identifies viable fusion candidates using greedy strategy.
+// Identifies viable fusion candidates using greedy strategy.
 class FusionCandidateIdentifier {
 public:
   FusionCandidateIdentifier(DenseMap<Operation *, TaskInfo> &map)
       : task_map(map) {}
 
-  /// Identifies all valid fusion candidates and sorts them by benefit.
+  // Identifies all valid fusion candidates and sorts them by benefit.
   SmallVector<FusionCandidate> identify() {
     SmallVector<FusionCandidate> candidates;
 
@@ -192,7 +222,8 @@ public:
       }
     }
 
-    // Sorts candidates by fusion benefit (highest first) for greedy selection.
+    // Sorts candidates by fusion benefit (highest first) for greedy
+    // selection.
     llvm::sort(candidates,
                [](const FusionCandidate &a, const FusionCandidate &b) {
                  return a.fusion_benefit > b.fusion_benefit;
@@ -202,52 +233,66 @@ public:
   }
 
 private:
-  /// Checks if two tasks can be fused.
+  // Checks if two tasks can be fused.
   bool canFuse(TaskInfo *writer, TaskInfo *reader) {
     auto writer_op = writer->task_op;
     auto reader_op = reader->task_op;
+
+    // 0. Writers with value_outputs are not fusable.
+    //    The fused task only produces the reader's outputs, so the
+    //    writer's value_outputs would be lost. A future enhancement
+    //    could propagate them through the fused task.
+    if (!writer_op.getValueOutputs().empty()) {
+      llvm::errs() << "  canFuse: writer has value_outputs\n";
+      return false;
+    }
 
     // 1. Extracts loop nests from both tasks and checks bounds compatibility.
     auto writer_loops = extractOutermostLoopNest(writer_op);
     auto reader_loops = extractOutermostLoopNest(reader_op);
 
     if (writer_loops.empty() || reader_loops.empty()) {
-      LLVM_DEBUG(llvm::dbgs() << "  canFuse: empty loop nest\n");
+      llvm::errs() << "  canFuse: empty loop nest\n";
       return false;
     }
 
     if (!areLoopBoundsCompatible(writer_loops, reader_loops)) {
-      LLVM_DEBUG(llvm::dbgs() << "  canFuse: incompatible loop bounds\n");
+      llvm::errs() << "  canFuse: incompatible loop bounds\n";
       return false;
     }
 
     // 2. Checks that the intermediate memref is not used outside
     //    writer/reader (e.g., not returned by the function).
     Value intermediate = findIntermediateMemref(writer, reader);
-    if (!intermediate)
+    if (!intermediate) {
       return false;
+    }
 
     for (Operation *user : intermediate.getUsers()) {
-      if (user == writer_op.getOperation() || user == reader_op.getOperation())
+      if (user == writer_op.getOperation() ||
+          user == reader_op.getOperation()) {
         continue;
+      }
       // Allow memref.alloc which defines it.
-      if (isa<memref::AllocOp>(user))
+      if (isa<memref::AllocOp>(user)) {
         continue;
-      LLVM_DEBUG(llvm::dbgs()
-                 << "  canFuse: intermediate memref has external use\n");
+      }
+      llvm::errs() << "  canFuse: intermediate memref has external use\n";
       return false;
     }
 
     // 3. No cyclic dependency: writer must not read any original memref
     //    that reader writes (excluding the intermediate itself).
     for (Value w_read : writer_op.getOriginalReadMemrefs()) {
-      if (w_read == intermediate)
+      if (w_read == intermediate) {
         continue;
+      }
       for (Value r_write : reader_op.getOriginalWriteMemrefs()) {
-        if (r_write == intermediate)
+        if (r_write == intermediate) {
           continue;
+        }
         if (w_read == r_write) {
-          LLVM_DEBUG(llvm::dbgs() << "  canFuse: cyclic dependency\n");
+          llvm::errs() << "  canFuse: cyclic dependency\n";
           return false;
         }
       }
@@ -256,8 +301,8 @@ private:
     return true;
   }
 
-  /// Extracts the outermost chain of perfectly nested affine.for loops
-  /// from a task body.
+  // Extracts the outermost chain of perfectly nested affine.for loops
+  // from a task body.
   SmallVector<affine::AffineForOp>
   extractOutermostLoopNest(taskflow::TaskflowTaskOp task_op) {
     SmallVector<affine::AffineForOp> loops;
@@ -267,13 +312,15 @@ private:
     affine::AffineForOp outermost = nullptr;
     for (Operation &op : body) {
       if (auto for_op = dyn_cast<affine::AffineForOp>(op)) {
-        if (outermost)
+        if (outermost) {
           return {}; // Multiple top-level loops: bail.
+        }
         outermost = for_op;
       }
     }
-    if (!outermost)
+    if (!outermost) {
       return {};
+    }
 
     // Walks the perfectly nested chain.
     auto current = outermost;
@@ -295,28 +342,31 @@ private:
     return loops;
   }
 
-  /// Checks if two loop nests have compatible bounds.
+  // Checks if two loop nests have compatible bounds.
   bool areLoopBoundsCompatible(SmallVector<affine::AffineForOp> &writer_loops,
                                SmallVector<affine::AffineForOp> &reader_loops) {
-    if (writer_loops.size() != reader_loops.size())
+    if (writer_loops.size() != reader_loops.size()) {
       return false;
+    }
     for (size_t i = 0; i < writer_loops.size(); ++i) {
       if (!writer_loops[i].hasConstantBounds() ||
-          !reader_loops[i].hasConstantBounds())
+          !reader_loops[i].hasConstantBounds()) {
         return false;
+      }
       if (writer_loops[i].getConstantLowerBound() !=
               reader_loops[i].getConstantLowerBound() ||
           writer_loops[i].getConstantUpperBound() !=
               reader_loops[i].getConstantUpperBound() ||
-          writer_loops[i].getStepAsInt() != reader_loops[i].getStepAsInt())
+          writer_loops[i].getStepAsInt() != reader_loops[i].getStepAsInt()) {
         return false;
+      }
     }
     return true;
   }
 
-  /// Finds the intermediate memref (original alloc) between writer and reader.
-  /// Uses original_write/read_memrefs since the IR passes SSA results
-  /// (not raw allocs) as read_memrefs.
+  // Finds the intermediate memref (original alloc) between writer and
+  // reader. Uses original_write/read_memrefs since the IR passes SSA results
+  // (not raw allocs) as read_memrefs.
   Value findIntermediateMemref(TaskInfo *writer, TaskInfo *reader) {
     auto writer_op = writer->task_op;
     auto reader_op = reader->task_op;
@@ -330,16 +380,18 @@ private:
     return nullptr;
   }
 
-  /// Calculates the fusion benefit score for greedy selection.
+  // Calculates the fusion benefit score for greedy selection.
   int calculateFusionBenefit(TaskInfo *writer, TaskInfo *reader) {
     int benefit = 0;
 
     // Base benefit: eliminates one memref allocation.
     benefit += 100;
 
-    // Bonus for element-wise operations (same loop bounds, same memref shape).
-    if (writer->write_memrefs.size() == 1 && reader->read_memrefs.size() == 1)
+    // Bonus for element-wise operations (same loop bounds, same memref
+    // shape).
+    if (writer->write_memrefs.size() == 1 && reader->read_memrefs.size() == 1) {
       benefit += 50;
+    }
 
     return benefit;
   }
@@ -351,20 +403,19 @@ private:
 // Task Fuser - Performs the actual fusion transformation
 //===----------------------------------------------------------------------===//
 
-/// Fuses two tasks connected by a memory dependency into a single task.
+// Fuses two tasks connected by a memory dependency into a single task.
 class TaskFuser {
 public:
   TaskFuser(func::FuncOp func) : function(func) {}
 
-  /// Performs fusion of a candidate pair. Returns true if fusion succeeded.
+  // Performs fusion of a candidate pair. Returns true if fusion succeeded.
   bool performFusion(FusionCandidate &candidate) {
     auto writer_op = candidate.memory_writer->task_op;
     auto reader_op = candidate.memory_reader->task_op;
     Value intermediate = candidate.intermediate_memref;
 
-    LLVM_DEBUG(llvm::dbgs()
-               << "  Fusing writer: " << writer_op.getTaskName()
-               << " + reader: " << reader_op.getTaskName() << "\n");
+    llvm::errs() << "  Fusing writer: " << writer_op.getTaskName()
+                 << " + reader: " << reader_op.getTaskName() << "\n";
 
     // Step 1: Builds merged operand lists.
     SmallVector<Value> fused_read_memrefs;
@@ -379,12 +430,16 @@ public:
                         fused_original_write_memrefs);
 
     // Step 2: Builds the result types (same as reader's outputs).
+    // Writer's value_outputs are not included because canFuse rejects
+    // writers with value_outputs.
     SmallVector<Type> write_output_types;
     SmallVector<Type> value_output_types;
-    for (Value v : reader_op.getWriteOutputs())
+    for (Value v : reader_op.getWriteOutputs()) {
       write_output_types.push_back(v.getType());
-    for (Value v : reader_op.getValueOutputs())
+    }
+    for (Value v : reader_op.getValueOutputs()) {
       value_output_types.push_back(v.getType());
+    }
 
     // Step 3: Creates the fused task.
     OpBuilder builder(reader_op);
@@ -408,15 +463,15 @@ public:
     // Step 5: Replaces uses and cleans up.
     replaceUsesAndCleanup(writer_op, reader_op, fused_task, intermediate);
 
-    LLVM_DEBUG(llvm::dbgs() << "  Fusion succeeded: " << fused_name << "\n");
+    llvm::errs() << "  Fusion succeeded: " << fused_name << "\n";
     return true;
   }
 
 private:
-  /// Builds merged operand lists for the fused task.
-  /// The intermediate is the original alloc value. We must use
-  /// original_read/write_memrefs to identify which operands to exclude
-  /// from the reader (since reader's read_memrefs contain SSA results).
+  // Builds merged operand lists for the fused task.
+  // The intermediate is the original alloc value. We must use
+  // original_read/write_memrefs to identify which operands to exclude
+  // from the reader (since reader's read_memrefs contain SSA results).
   void buildMergedOperands(taskflow::TaskflowTaskOp writer_op,
                            taskflow::TaskflowTaskOp reader_op,
                            Value intermediate, SmallVector<Value> &fused_reads,
@@ -432,8 +487,9 @@ private:
     for (unsigned i = 0; i < writer_reads.size(); ++i) {
       Value orig = (i < writer_orig_reads.size()) ? writer_orig_reads[i]
                                                   : writer_reads[i];
-      if (orig != intermediate && seen.insert(writer_reads[i]).second)
+      if (orig != intermediate && seen.insert(writer_reads[i]).second) {
         fused_reads.push_back(writer_reads[i]);
+      }
     }
 
     auto reader_reads = reader_op.getReadMemrefs();
@@ -441,8 +497,9 @@ private:
     for (unsigned i = 0; i < reader_reads.size(); ++i) {
       Value orig = (i < reader_orig_reads.size()) ? reader_orig_reads[i]
                                                   : reader_reads[i];
-      if (orig != intermediate && seen.insert(reader_reads[i]).second)
+      if (orig != intermediate && seen.insert(reader_reads[i]).second) {
         fused_reads.push_back(reader_reads[i]);
+      }
     }
 
     // write_memrefs = reader.writes ∪ (writer.writes - intermediate)
@@ -452,8 +509,9 @@ private:
     for (unsigned i = 0; i < reader_writes.size(); ++i) {
       Value orig = (i < reader_orig_writes.size()) ? reader_orig_writes[i]
                                                    : reader_writes[i];
-      if (orig != intermediate && seen.insert(reader_writes[i]).second)
+      if (orig != intermediate && seen.insert(reader_writes[i]).second) {
         fused_writes.push_back(reader_writes[i]);
+      }
     }
 
     auto writer_writes = writer_op.getWriteMemrefs();
@@ -461,40 +519,48 @@ private:
     for (unsigned i = 0; i < writer_writes.size(); ++i) {
       Value orig = (i < writer_orig_writes.size()) ? writer_orig_writes[i]
                                                    : writer_writes[i];
-      if (orig != intermediate && seen.insert(writer_writes[i]).second)
+      if (orig != intermediate && seen.insert(writer_writes[i]).second) {
         fused_writes.push_back(writer_writes[i]);
+      }
     }
 
     // value_inputs = writer.values ∪ reader.values
-    for (Value v : writer_op.getValueInputs())
+    for (Value v : writer_op.getValueInputs()) {
       fused_values.push_back(v);
-    for (Value v : reader_op.getValueInputs())
+    }
+    for (Value v : reader_op.getValueInputs()) {
       fused_values.push_back(v);
+    }
 
-    // original_read/write_memrefs: same merge rules (using originals directly).
+    // original_read/write_memrefs: same merge rules (using originals
+    // directly).
     seen.clear();
     for (Value v : writer_op.getOriginalReadMemrefs()) {
-      if (v != intermediate && seen.insert(v).second)
+      if (v != intermediate && seen.insert(v).second) {
         fused_orig_reads.push_back(v);
+      }
     }
     for (Value v : reader_op.getOriginalReadMemrefs()) {
-      if (v != intermediate && seen.insert(v).second)
+      if (v != intermediate && seen.insert(v).second) {
         fused_orig_reads.push_back(v);
+      }
     }
 
     seen.clear();
     for (Value v : reader_op.getOriginalWriteMemrefs()) {
-      if (v != intermediate && seen.insert(v).second)
+      if (v != intermediate && seen.insert(v).second) {
         fused_orig_writes.push_back(v);
+      }
     }
     for (Value v : writer_op.getOriginalWriteMemrefs()) {
-      if (v != intermediate && seen.insert(v).second)
+      if (v != intermediate && seen.insert(v).second) {
         fused_orig_writes.push_back(v);
+      }
     }
   }
 
-  /// Builds the fused task body by merging writer and reader loop nests.
-  /// Returns false if fusion fails (e.g., unexpected IR structure).
+  // Builds the fused task body by merging writer and reader loop nests.
+  // Returns false if fusion fails (e.g., unexpected IR structure).
   bool buildFusedBody(taskflow::TaskflowTaskOp fused_task,
                       taskflow::TaskflowTaskOp writer_op,
                       taskflow::TaskflowTaskOp reader_op, Value intermediate,
@@ -506,12 +572,15 @@ private:
     fused_task.getBody().push_back(fused_block);
 
     // Block args: read_memrefs, write_memrefs, value_inputs.
-    for (Value v : fused_reads)
+    for (Value v : fused_reads) {
       fused_block->addArgument(v.getType(), v.getLoc());
-    for (Value v : fused_writes)
+    }
+    for (Value v : fused_writes) {
       fused_block->addArgument(v.getType(), v.getLoc());
-    for (Value v : fused_values)
+    }
+    for (Value v : fused_values) {
       fused_block->addArgument(v.getType(), v.getLoc());
+    }
 
     // Builds a mapping from writer/reader block args to fused block args.
     IRMapping writer_mapping;
@@ -542,8 +611,9 @@ private:
         break;
       }
     }
-    if (!writer_outer_loop)
+    if (!writer_outer_loop) {
       return false;
+    }
 
     // Finds the reader's outermost affine.for.
     affine::AffineForOp reader_outer_loop = nullptr;
@@ -553,8 +623,9 @@ private:
         break;
       }
     }
-    if (!reader_outer_loop)
+    if (!reader_outer_loop) {
       return false;
+    }
 
     // Clones the writer's entire loop nest.
     Operation *cloned_writer =
@@ -571,8 +642,9 @@ private:
           break;
         }
       }
-      if (!nested)
+      if (!nested) {
         break;
+      }
       innermost_writer = nested;
     }
 
@@ -599,15 +671,15 @@ private:
       if (auto store_op = dyn_cast<affine::AffineStoreOp>(op)) {
         // Checks if this store writes to the intermediate memref's
         // block arg (mapped from the writer's original arg).
-        // The stored-to memref is the writer's block arg for the intermediate.
+        // The stored-to memref is the writer's block arg for the
+        // intermediate.
         store_value = store_op.getValueToStore();
         store_to_intermediate = &op;
       }
     }
 
     if (!store_value) {
-      LLVM_DEBUG(llvm::dbgs()
-                 << "  No store to intermediate found in writer\n");
+      llvm::errs() << "  No store to intermediate found in writer\n";
       return false;
     }
 
@@ -623,8 +695,9 @@ private:
           break;
         }
       }
-      if (!nested)
+      if (!nested) {
         break;
+      }
       reader_innermost = nested;
     }
 
@@ -635,13 +708,15 @@ private:
     // Positions before the affine.yield terminator if it exists.
     if (!innermost_writer.getBody()->empty()) {
       Operation *terminator = innermost_writer.getBody()->getTerminator();
-      if (terminator)
+      if (terminator) {
         inner_builder.setInsertionPoint(terminator);
+      }
     }
 
     for (Operation &op : reader_innermost.getBody()->getOperations()) {
-      if (op.hasTrait<OpTrait::IsTerminator>())
+      if (op.hasTrait<OpTrait::IsTerminator>()) {
         continue;
+      }
 
       if (auto load_op = dyn_cast<affine::AffineLoadOp>(op)) {
         // Checks if this load reads from the intermediate memref.
@@ -682,15 +757,17 @@ private:
     }
 
     // Removes the store to intermediate (no longer needed).
-    if (store_to_intermediate)
+    if (store_to_intermediate) {
       store_to_intermediate->erase();
+    }
 
     // Step 5: Creates the yield for the fused task.
     // Yields the reader's output memrefs.
     // Remove any existing terminator (if the block already has one).
     if (fused_block->mightHaveTerminator()) {
-      if (auto *yield_point = fused_block->getTerminator())
+      if (auto *yield_point = fused_block->getTerminator()) {
         yield_point->erase();
+      }
     }
 
     OpBuilder yield_builder(fused_block, fused_block->end());
@@ -703,16 +780,18 @@ private:
 
     // Maps reader yield's memory results to fused block args.
     for (Value v : reader_yield.getMemoryResults()) {
-      if (reader_mapping.contains(v))
+      if (reader_mapping.contains(v)) {
         yield_writes.push_back(reader_mapping.lookup(v));
-      else
+      } else {
         yield_writes.push_back(v);
+      }
     }
     for (Value v : reader_yield.getValueResults()) {
-      if (reader_mapping.contains(v))
+      if (reader_mapping.contains(v)) {
         yield_values.push_back(reader_mapping.lookup(v));
-      else
+      } else {
         yield_values.push_back(v);
+      }
     }
 
     yield_builder.create<taskflow::TaskflowYieldOp>(reader_op.getLoc(),
@@ -721,7 +800,7 @@ private:
     return true;
   }
 
-  /// Maps a task's block args to the corresponding fused block args.
+  // Maps a task's block args to the corresponding fused block args.
   void mapBlockArgs(taskflow::TaskflowTaskOp task_op, Block &original_body,
                     Block *fused_block, unsigned &fused_arg_idx,
                     IRMapping &mapping, Value intermediate,
@@ -789,31 +868,34 @@ private:
     }
   }
 
-  /// Finds the index of an outer value in the fused block's argument list.
-  /// Returns -1 if not found.
+  // Finds the index of an outer value in the fused block's argument list.
+  // Returns -1 if not found.
   int findInFusedArgs(Value outer_val, ArrayRef<Value> fused_reads,
                       ArrayRef<Value> fused_writes,
                       ArrayRef<Value> fused_values) {
     unsigned idx = 0;
     for (Value v : fused_reads) {
-      if (v == outer_val)
+      if (v == outer_val) {
         return idx;
+      }
       idx++;
     }
     for (Value v : fused_writes) {
-      if (v == outer_val)
+      if (v == outer_val) {
         return idx;
+      }
       idx++;
     }
     for (Value v : fused_values) {
-      if (v == outer_val)
+      if (v == outer_val) {
         return idx;
+      }
       idx++;
     }
     return -1;
   }
 
-  /// Gets the chain of nested affine.for ops starting from the outermost.
+  // Gets the chain of nested affine.for ops starting from the outermost.
   SmallVector<affine::AffineForOp> getLoopChain(affine::AffineForOp outermost) {
     SmallVector<affine::AffineForOp> chain;
     auto current = outermost;
@@ -831,8 +913,8 @@ private:
     return chain;
   }
 
-  /// Replaces uses of original tasks' results with fused task results
-  /// and erases original ops.
+  // Replaces uses of original tasks' results with fused task results
+  // and erases original ops.
   void replaceUsesAndCleanup(taskflow::TaskflowTaskOp writer_op,
                              taskflow::TaskflowTaskOp reader_op,
                              taskflow::TaskflowTaskOp fused_task,
@@ -862,8 +944,9 @@ private:
 
     // Erases the intermediate memref allocation if it's now dead.
     if (auto alloc_op = intermediate.getDefiningOp<memref::AllocOp>()) {
-      if (alloc_op.getResult().use_empty())
+      if (alloc_op.getResult().use_empty()) {
         alloc_op.erase();
+      }
     }
   }
 
@@ -875,18 +958,28 @@ private:
 //===----------------------------------------------------------------------===//
 
 struct MemoryAccessStreamingFusionPass
-    : public impl::MemoryAccessStreamingFusionBase<
-          MemoryAccessStreamingFusionPass> {
+    : public PassWrapper<MemoryAccessStreamingFusionPass,
+                         OperationPass<func::FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(MemoryAccessStreamingFusionPass)
+
+  StringRef getArgument() const final {
+    return "memory-access-streaming-fusion";
+  }
+
+  StringRef getDescription() const final {
+    return "Memory Access Streaming Fusion";
+  }
 
   void runOnOperation() override {
     func::FuncOp func = getOperation();
 
-    LLVM_DEBUG(llvm::dbgs()
-               << "Running MemoryAccessStreamingFusion on function: "
-               << func.getName() << "\n");
+    llvm::errs() << "[MemoryAccessStreamingFusion] Running "
+                    "MemoryAccessStreamingFusion on function: "
+                 << func.getName() << "\n";
 
     // Iterative fusion: re-analyze after each round to catch chains.
-    // e.g., A→B→C: first round fuses A+B, second round fuses (A+B)+C.
+    // e.g., Task A → Task B → Task C: first round fuses A+B, second round
+    // fuses (A+B)+C.
     unsigned total_fusions = 0;
     constexpr unsigned kMaxIterations = 100;
 
@@ -896,18 +989,18 @@ struct MemoryAccessStreamingFusionPass
       MemoryDependencyAnalysis analysis(func);
       analysis.analyze(task_map);
 
-      LLVM_DEBUG(llvm::dbgs() << "Iteration " << iter << ": Found "
-                              << task_map.size() << " tasks\n");
+      llvm::errs() << "Iteration " << iter << ": Found " << task_map.size()
+                   << " tasks\n";
 
       // Identifies fusion candidates.
       FusionCandidateIdentifier identifier(task_map);
       auto candidates = identifier.identify();
 
-      LLVM_DEBUG(llvm::dbgs()
-                 << "Found " << candidates.size() << " fusion candidates\n");
+      llvm::errs() << "Found " << candidates.size() << " fusion candidates\n";
 
-      if (candidates.empty())
+      if (candidates.empty()) {
         break;
+      }
 
       // Performs greedy fusion for this round.
       DenseSet<Operation *> fused_tasks;
@@ -920,11 +1013,12 @@ struct MemoryAccessStreamingFusionPass
 
         // Skips if either task was already consumed by a previous fusion
         // in this round.
-        if (fused_tasks.count(writer_op) || fused_tasks.count(reader_op))
+        if (fused_tasks.count(writer_op) || fused_tasks.count(reader_op)) {
           continue;
+        }
 
-        LLVM_DEBUG(llvm::dbgs() << "Attempting to fuse tasks (benefit: "
-                                << candidate.fusion_benefit << ")\n");
+        llvm::errs() << "Attempting to fuse tasks (benefit: "
+                     << candidate.fusion_benefit << ")\n";
 
         if (fuser.performFusion(candidate)) {
           fused_tasks.insert(writer_op);
@@ -933,17 +1027,18 @@ struct MemoryAccessStreamingFusionPass
         }
       }
 
-      LLVM_DEBUG(llvm::dbgs() << "Round " << iter << ": fused " << round_fusions
-                              << " task pairs\n");
+      llvm::errs() << "Round " << iter << ": fused " << round_fusions
+                   << " task pairs\n";
 
       total_fusions += round_fusions;
 
       // If no fusions happened this round, we've converged.
-      if (round_fusions == 0)
+      if (round_fusions == 0) {
         break;
+      }
     }
 
-    LLVM_DEBUG(llvm::dbgs() << "Total fusions: " << total_fusions << "\n");
+    llvm::errs() << "Total fusions: " << total_fusions << "\n";
   }
 };
 
@@ -953,9 +1048,6 @@ struct MemoryAccessStreamingFusionPass
 // Pass Registration
 //===----------------------------------------------------------------------===//
 
-std::unique_ptr<Pass> createMemoryAccessStreamingFusionPass() {
+std::unique_ptr<Pass> mlir::taskflow::createMemoryAccessStreamingFusionPass() {
   return std::make_unique<MemoryAccessStreamingFusionPass>();
 }
-
-} // namespace taskflow
-} // namespace mlir
