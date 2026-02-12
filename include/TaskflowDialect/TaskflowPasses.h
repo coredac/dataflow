@@ -28,6 +28,7 @@ std::unique_ptr<mlir::Pass> createMapTaskOnCgraPass();
 //=========================================================//
 std::unique_ptr<mlir::Pass> createAffineLoopTreeSerializationPass();
 std::unique_ptr<mlir::Pass> createAffineLoopPerfectionPass();
+std::unique_ptr<mlir::Pass> createMemoryAccessStreamingFusionPass();
 
 #define GEN_PASS_REGISTRATION
 #include "TaskflowDialect/TaskflowPasses.h.inc"

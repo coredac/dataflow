@@ -72,4 +72,18 @@ def MapTaskOnCgra : Pass<"map-task-on-cgra", "func::FuncOp"> {
   }];
   let constructor = "taskflow::createMapTaskOnCgraPass()";
 }
+
+def MemoryAccessStreamingFusion : Pass<"memory-access-streaming-fusion", "func::FuncOp"> {
+  let summary = "Fuses tasks connected by memory dependencies for streaming execution";
+  let description = [{
+    Identifies and fuses taskflow.task operations that have memory access
+    dependencies (one task writes a memref, another task reads it).
+    Eliminates intermediate memref allocations and converts memory access
+    dependencies into direct SSA value dependencies.
+    
+    Uses greedy fusion strategy to iteratively fuse the most beneficial
+    task pairs until no more fusion opportunities exist.
+  }];
+  let constructor = "taskflow::createMemoryAccessStreamingFusionPass()";
+}
 #endif // TASKFLOW_PASSES_TD
