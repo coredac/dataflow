@@ -7,11 +7,21 @@
 // RUN: -o %t.taskflow.mlir
 // RUN: FileCheck %s --input-file=%t.taskflow.mlir --check-prefixes=TASKFLOW
 
+// RUN: mlir-neura-opt %t.taskflow.mlir \
+// RUN: --resource-aware-task-optimization \
+// RUN: -o %t.resopt.mlir
+// RUN: FileCheck %s --input-file=%t.resopt.mlir --check-prefixes=RESOPT
+
 // RUN: mlir-neura-opt %s --affine-loop-tree-serialization \
 // RUN: --convert-affine-to-taskflow \
 // RUN: --construct-hyperblock-from-task \
 // RUN: -o %t.hyperblock.mlir
 // RUN: FileCheck %s --input-file=%t.hyperblock.mlir --check-prefixes=HYPERBLOCK
+
+// RUN: mlir-neura-opt %t.taskflow.mlir \
+// RUN: --resource-aware-task-optimization \
+// RUN: -o %t.resopt.mlir
+// RUN: FileCheck %s --input-file=%t.resopt.mlir --check-prefixes=RESOPT
 
 // RUN: mlir-neura-opt %s --affine-loop-tree-serialization \
 // RUN: --convert-affine-to-taskflow \
@@ -133,3 +143,8 @@ module {
 // PLACEMENT-SAME: task_mapping_info = {cgra_positions = [{col = 0 : i32, row = 0 : i32}], read_sram_locations = [{col = 0 : i32, row = 0 : i32}], write_sram_locations = [{col = 0 : i32, row = 0 : i32}]}
 // PLACEMENT:      taskflow.task @Task_1
 // PLACEMENT-SAME: task_mapping_info = {cgra_positions = [{col = 1 : i32, row = 0 : i32}], read_sram_locations = [{col = 1 : i32, row = 0 : i32}, {col = 1 : i32, row = 0 : i32}], write_sram_locations = [{col = 1 : i32, row = 0 : i32}]}
+
+// RESOPT:      %write_outputs:2 = taskflow.task @Task_0_Task_1_utilfused
+// RESOPT-SAME: {trip_count = 80 : i64}
+// RESOPT:      taskflow.yield writes(%arg0, %arg3 : memref<16xf32>, memref<8x8xf32>)
+// RESOPT:      return %write_outputs#0, %write_outputs#1 : memref<16xf32>, memref<8x8xf32>
