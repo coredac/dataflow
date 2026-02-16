@@ -4,7 +4,7 @@
 // 1. Utilization Fusion: merges independent (no-edge) tasks into a single task
 //    to free up CGRA resources.
 // 2. Latency-Aware Balance: allocates extra CGRAs to critical-path bottleneck
-//    tasks using the latency model: II * (ceil(trip/cgra) - 1) + steps.
+//    tasks using the latency model: II * (ceil(trip/cgra) - 1).
 //
 // Targets a hardcoded 4x4 CGRA grid (16 CGRAs total).
 //
@@ -275,39 +275,78 @@ public:
       return path;
     }
 
-    /// Finds the node on the critical path with the highest estimated latency
-    /// (i.e., the bottleneck). Skips nodes in the ignored set.
+    /// Computes the longest path from any source to the given node
+    /// (depth_from_source). Uses dynamic programming with memoization.
+    int64_t computeDepthFromSource(TaskGraphNode *node,
+                                   DenseMap<TaskGraphNode *, int64_t> &cache) {
+      auto it = cache.find(node);
+      if (it != cache.end()) {
+        return it->second;
+      }
+
+      int64_t max_predecessor_depth = 0;
+      for (auto *pred : node->predecessors) {
+        max_predecessor_depth =
+            std::max(max_predecessor_depth,
+                     computeDepthFromSource(pred, cache));
+      }
+
+      // depth_from_source(node) = max(depth_from_source(pred) for all preds)
+      //                           + node's own latency.
+      int64_t depth = max_predecessor_depth + node->estimatedLatency();
+      cache[node] = depth;
+      return depth;
+    }
+
+    /// Finds the bottleneck node on the critical path using full slack analysis.
+    ///
+    /// For each node, slack is defined as:
+    ///   slack(node) = global_critical_path
+    ///                 - depth_from_source(node)
+    ///                 - depth_to_sink(node)
+    ///                 + node->estimatedLatency()
+    ///
+    /// where depth_from_source includes the node's own latency, and
+    /// depth_to_sink (computeCriticalPathFrom) also includes the node's own
+    /// latency, so we add it back once to avoid double-counting.
+    ///
+    /// A node is on the critical path iff slack == 0.
+    /// Among critical-path nodes, the one with highest individual latency
+    /// is the bottleneck (reducing its latency most benefits the pipeline).
     TaskGraphNode *findBottleneck(TaskDependencyGraph &graph,
                                   const DenseSet<TaskGraphNode *> &ignored) {
-      DenseMap<TaskGraphNode *, int64_t> cache;
+      DenseMap<TaskGraphNode *, int64_t> to_sink_cache;
+      DenseMap<TaskGraphNode *, int64_t> from_source_cache;
 
-      // Computes critical path from every source node.
+      // Computes depth_to_sink for all nodes (via computeCriticalPathFrom).
       int64_t global_critical_path = 0;
       for (auto &node : graph.nodes) {
-        int64_t cp = computeCriticalPathFrom(node.get(), cache);
+        int64_t cp = computeCriticalPathFrom(node.get(), to_sink_cache);
         global_critical_path = std::max(global_critical_path, cp);
       }
 
-      // Finds the node on the critical path with highest latency.
-      // A node is "on the critical path" if:
-      //   computeCriticalPathFrom(node) + depth_from_source(node) == global_critical_path
-      // For simplicity, we search for the highest latency node among those that
-      // can reach a sink with path length close to critical path.
-      
+      // Computes depth_from_source for all nodes.
+      for (auto &node : graph.nodes) {
+        computeDepthFromSource(node.get(), from_source_cache);
+      }
+
+      // Finds the critical-path node with highest individual latency.
       TaskGraphNode *bottleneck = nullptr;
       int64_t max_latency = -1;
 
       for (auto &node : graph.nodes) {
         if (ignored.count(node.get())) continue;
-        
-        // Only consider nodes on the critical path (or close to it).
-        // Since we don't compute depth_from_source here, we approximate by checking
-        // if this node's path-to-sink is close to the max.
-        // In a real implementation we'd need full slack analysis.
-        // For now, let's just pick the highest latency node in the graph that isn't ignored.
-        // This is a simplification but works for pipeline balancing.
-        
         if (node->cgra_count >= node->trip_count) continue;
+
+        int64_t depth_from = from_source_cache[node.get()];
+        int64_t depth_to = to_sink_cache[node.get()];
+
+        // slack = global_cp - depth_from - depth_to + node_latency
+        // (because both depth_from and depth_to include node's own latency).
+        int64_t slack = global_critical_path - depth_from - depth_to
+                        + node->estimatedLatency();
+
+        if (slack != 0) continue; // Not on the critical path.
 
         if (node->estimatedLatency() > max_latency) {
           max_latency = node->estimatedLatency();
