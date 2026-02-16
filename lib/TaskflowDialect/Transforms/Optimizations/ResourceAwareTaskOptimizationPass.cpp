@@ -25,14 +25,12 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <algorithm>
 #include <cmath>
 #include <numeric>
 
-#define DEBUG_TYPE "resource-aware-task-optimization"
 
 using namespace mlir;
 using namespace mlir::taskflow;
@@ -56,7 +54,6 @@ struct TaskGraphNode {
   size_t id;
   TaskflowTaskOp op;
   int64_t trip_count = 1;
-  int64_t steps = 1; // Pipeline depth of one loop iteration.
   int cgra_count = 1;
 
   // Dependency edges (both SSA and memory).
@@ -65,13 +62,9 @@ struct TaskGraphNode {
 
   TaskGraphNode(size_t id, TaskflowTaskOp op) : id(id), op(op) {}
 
-  /// Returns estimated task latency using the pipelined model:
-  ///   latency = II * (ceil(trip_count / cgra_count) - 1) + steps
-  /// where II = 1 (ideal pipelining assumed at this optimization stage).
+  /// Returns estimated task latency: ceil(trip_count / cgra_count).
   int64_t estimatedLatency() const {
-    int64_t iterations_per_cgra =
-        (trip_count + cgra_count - 1) / cgra_count;
-    return (iterations_per_cgra - 1) + steps;
+    return (trip_count + cgra_count - 1) / cgra_count;
   }
 };
 
@@ -91,12 +84,7 @@ public:
       } else {
         node->trip_count = computeTripCount(task);
       }
-      // Reads existing steps attribute if set by fusion.
-      if (auto attr = task->getAttrOfType<IntegerAttr>("steps")) {
-        node->steps = attr.getInt();
-      } else {
-        node->steps = computeSteps(task);
-      }
+
       // Reads existing cgra_count attribute if set by a previous iteration.
       if (auto attr = task->getAttrOfType<IntegerAttr>("cgra_count")) {
         node->cgra_count = attr.getInt();
@@ -135,14 +123,14 @@ public:
       }
     }
 
-    LLVM_DEBUG(llvm::dbgs() << "TaskDependencyGraph: " << nodes.size()
-                            << " tasks\n");
-    LLVM_DEBUG(for (auto &n : nodes) {
-      llvm::dbgs() << "  Task " << n->id << " ("
+    llvm::errs() << "TaskDependencyGraph: " << nodes.size()
+                 << " tasks\n";
+    for (auto &n : nodes) {
+      llvm::errs() << "  Task " << n->id << " ("
                    << n->op.getTaskName().str() << "): trip_count="
                    << n->trip_count << ", preds=" << n->predecessors.size()
                    << ", succs=" << n->successors.size() << "\n";
-    });
+    }
   }
 
   /// Returns true if there is any (direct or transitive) edge between a and b.
@@ -206,21 +194,6 @@ private:
     return total;
   }
 
-  /// Estimates the pipeline depth (steps) of one loop iteration.
-  /// Counts non-control-flow operations in the innermost loop body as a
-  /// proxy for the pipeline critical path depth.
-  static int64_t computeSteps(TaskflowTaskOp task) {
-    int64_t count = 0;
-    task.getBody().walk([&](Operation *op) {
-      // Skip control-flow and structural ops.
-      if (isa<affine::AffineForOp, affine::AffineYieldOp,
-             TaskflowYieldOp>(op)) {
-        return;
-      }
-      ++count;
-    });
-    return std::max(count, int64_t(1));
-  }
 };
 
 //===----------------------------------------------------------------------===//
@@ -253,13 +226,11 @@ public:
           break;
         }
 
-        // Checks if incrementing cgra_count actually reduces latency
-        // using the pipelined model: latency = (ceil(trip/cgra) - 1) + steps.
+        // Checks if incrementing cgra_count actually reduces latency.
         int64_t current_latency = bottleneck->estimatedLatency();
         int new_cgra_count = bottleneck->cgra_count + 1;
-        int64_t new_iterations =
+        int64_t new_latency =
             (bottleneck->trip_count + new_cgra_count - 1) / new_cgra_count;
-        int64_t new_latency = (new_iterations - 1) + bottleneck->steps;
 
         if (new_latency >= current_latency) {
           // No improvement from adding another CGRA.
@@ -271,12 +242,12 @@ public:
         bottleneck->cgra_count = new_cgra_count;
         changed = true;
 
-        LLVM_DEBUG(llvm::dbgs()
-                   << "  Balance: Task " << bottleneck->id << " ("
-                   << bottleneck->op.getTaskName().str()
-                   << ") cgra_count=" << new_cgra_count
-                   << ", latency: " << current_latency << " -> " << new_latency
-                   << ", total_cgras=" << graph.totalCGRAs() << "\n");
+        llvm::errs()
+            << "  Balance: Task " << bottleneck->id << " ("
+            << bottleneck->op.getTaskName().str()
+            << ") cgra_count=" << new_cgra_count
+            << ", latency: " << current_latency << " -> " << new_latency
+            << ", total_cgras=" << graph.totalCGRAs() << "\n";
       }
 
       return changed;
@@ -367,10 +338,10 @@ public:
 
     auto [node_a, node_b] = *pair;
 
-    LLVM_DEBUG(llvm::dbgs()
-               << "  Fuse: Task " << node_a->id << " ("
-               << node_a->op.getTaskName().str() << ") + Task " << node_b->id
-               << " (" << node_b->op.getTaskName().str() << ")\n");
+    llvm::errs()
+        << "  Fuse: Task " << node_a->id << " ("
+        << node_a->op.getTaskName().str() << ") + Task " << node_b->id
+        << " (" << node_b->op.getTaskName().str() << ")\n";
 
     return performFusion(func, node_a, node_b, graph);
   }
@@ -641,10 +612,6 @@ private:
     fused_task->setAttr("trip_count",
                         OpBuilder(fused_task).getI64IntegerAttr(fused_trip));
 
-    // Step 10b: Sets fused steps as sum (both bodies run sequentially).
-    int64_t fused_steps = node_a->steps + node_b->steps;
-    fused_task->setAttr("steps",
-                        OpBuilder(fused_task).getI64IntegerAttr(fused_steps));
 
     // Step 11: Replaces uses of original tasks' results.
     replaceTaskResults(task_a, fused_task, merged_write_memrefs);
@@ -708,8 +675,8 @@ struct ResourceAwareTaskOptimizationPass
   void runOnOperation() override {
     func::FuncOp func = getOperation();
 
-    LLVM_DEBUG(llvm::dbgs() << "=== ResourceAwareTaskOptimization on "
-                            << func.getName() << " ===\n");
+    llvm::errs() << "=== ResourceAwareTaskOptimization on "
+                 << func.getName() << " ===\n";
 
     constexpr int kMaxOuterIterations = 10;
 
