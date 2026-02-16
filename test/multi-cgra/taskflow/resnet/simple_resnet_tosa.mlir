@@ -683,15 +683,15 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 
 
 // RESOPT:      %write_outputs:3 = taskflow.task @Task_1_Task_0_Task_2_utilfused_utilfused
-// RESOPT-SAME: {trip_count = 14592 : i64}
+// RESOPT-SAME: trip_count = 14592 : i64}
 // RESOPT:      taskflow.yield writes(%arg2, %arg3, %arg4 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>)
 // RESOPT:      %write_outputs_5 = taskflow.task @Task_3
 // RESOPT:      taskflow.yield writes(%arg3 : memref<1x8x8x64xf32>)
 // RESOPT:      %write_outputs_9:2 = taskflow.task @Task_4_Task_5_fused_Task_7_utilfused
-// RESOPT-SAME: {trip_count = 10496 : i64}
+// RESOPT-SAME: trip_count = 10496 : i64}
 // RESOPT:      taskflow.yield writes(%arg2, %arg3 : memref<1x64x8x8xf32>, memref<1x10x10x64xf32>)
 // RESOPT:      %write_outputs_11:2 = taskflow.task @Task_6_Task_8_utilfused
-// RESOPT-SAME: {trip_count = 8192 : i64}
+// RESOPT-SAME: trip_count = 8192 : i64}
 // RESOPT:      taskflow.yield writes(%arg2, %arg3 : memref<1x8x8x64xf32>, memref<1x8x8x64xf32>)
 // RESOPT:      %write_outputs_12 = taskflow.task @Task_9
 // RESOPT:      taskflow.yield writes(%arg3 : memref<1x8x8x64xf32>)

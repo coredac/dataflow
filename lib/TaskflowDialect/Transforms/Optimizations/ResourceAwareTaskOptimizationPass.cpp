@@ -1,10 +1,10 @@
 //===- ResourceAwareTaskOptimizationPass.cpp - Pipeline Balance & Fusion --===//
 //
 // This pass performs two-phase optimization on the task graph:
-// 1. Pipeline Balance: allocates extra CGRAs to critical-path bottleneck tasks
-//    to reduce their effective latency (trip_count / cgra_count).
-// 2. Utilization Fusion: merges independent (no-edge) tasks into a single task
-//    to reduce total CGRA count.
+// 1. Utilization Fusion: merges independent (no-edge) tasks into a single task
+//    to free up CGRA resources.
+// 2. Latency-Aware Balance: allocates extra CGRAs to critical-path bottleneck
+//    tasks using the latency model: II * (ceil(trip/cgra) - 1) + steps.
 //
 // Targets a hardcoded 4x4 CGRA grid (16 CGRAs total).
 //
@@ -56,6 +56,7 @@ struct TaskGraphNode {
   size_t id;
   TaskflowTaskOp op;
   int64_t trip_count = 1;
+  int64_t steps = 1; // Pipeline depth of one loop iteration.
   int cgra_count = 1;
 
   // Dependency edges (both SSA and memory).
@@ -64,9 +65,13 @@ struct TaskGraphNode {
 
   TaskGraphNode(size_t id, TaskflowTaskOp op) : id(id), op(op) {}
 
-  /// Returns estimated task latency: ceil(trip_count / cgra_count).
+  /// Returns estimated task latency using the pipelined model:
+  ///   latency = II * (ceil(trip_count / cgra_count) - 1) + steps
+  /// where II = 1 (ideal pipelining assumed at this optimization stage).
   int64_t estimatedLatency() const {
-    return (trip_count + cgra_count - 1) / cgra_count;
+    int64_t iterations_per_cgra =
+        (trip_count + cgra_count - 1) / cgra_count;
+    return (iterations_per_cgra - 1) + steps;
   }
 };
 
@@ -85,6 +90,12 @@ public:
         node->trip_count = attr.getInt();
       } else {
         node->trip_count = computeTripCount(task);
+      }
+      // Reads existing steps attribute if set by fusion.
+      if (auto attr = task->getAttrOfType<IntegerAttr>("steps")) {
+        node->steps = attr.getInt();
+      } else {
+        node->steps = computeSteps(task);
       }
       // Reads existing cgra_count attribute if set by a previous iteration.
       if (auto attr = task->getAttrOfType<IntegerAttr>("cgra_count")) {
@@ -194,6 +205,22 @@ private:
     });
     return total;
   }
+
+  /// Estimates the pipeline depth (steps) of one loop iteration.
+  /// Counts non-control-flow operations in the innermost loop body as a
+  /// proxy for the pipeline critical path depth.
+  static int64_t computeSteps(TaskflowTaskOp task) {
+    int64_t count = 0;
+    task.getBody().walk([&](Operation *op) {
+      // Skip control-flow and structural ops.
+      if (isa<affine::AffineForOp, affine::AffineYieldOp,
+             TaskflowYieldOp>(op)) {
+        return;
+      }
+      ++count;
+    });
+    return std::max(count, int64_t(1));
+  }
 };
 
 //===----------------------------------------------------------------------===//
@@ -226,22 +253,13 @@ public:
           break;
         }
 
-        // Checks if incrementing cgra_count actually reduces latency.
+        // Checks if incrementing cgra_count actually reduces latency
+        // using the pipelined model: latency = (ceil(trip/cgra) - 1) + steps.
         int64_t current_latency = bottleneck->estimatedLatency();
         int new_cgra_count = bottleneck->cgra_count + 1;
-        int64_t new_latency =
+        int64_t new_iterations =
             (bottleneck->trip_count + new_cgra_count - 1) / new_cgra_count;
-
-        // Heuristic: Stop if workload per CGRA is too small (e.g. < 64 ops).
-        // This prevents over-allocation for small tasks where overhead dominates.
-        if (bottleneck->trip_count / new_cgra_count < 64) {
-          LLVM_DEBUG(llvm::dbgs()
-                     << "  Balance: Skipping Task " << bottleneck->id
-                     << " (workload too small for " << new_cgra_count
-                     << " CGRAs)\n");
-          ignored_nodes.insert(bottleneck);
-          continue;
-        }
+        int64_t new_latency = (new_iterations - 1) + bottleneck->steps;
 
         if (new_latency >= current_latency) {
           // No improvement from adding another CGRA.
@@ -623,6 +641,11 @@ private:
     fused_task->setAttr("trip_count",
                         OpBuilder(fused_task).getI64IntegerAttr(fused_trip));
 
+    // Step 10b: Sets fused steps as sum (both bodies run sequentially).
+    int64_t fused_steps = node_a->steps + node_b->steps;
+    fused_task->setAttr("steps",
+                        OpBuilder(fused_task).getI64IntegerAttr(fused_steps));
+
     // Step 11: Replaces uses of original tasks' results.
     replaceTaskResults(task_a, fused_task, merged_write_memrefs);
     replaceTaskResults(task_b, fused_task, merged_write_memrefs);
@@ -715,7 +738,21 @@ struct ResourceAwareTaskOptimizationPass
                      << ", est_latency=" << node->estimatedLatency() << "\n";
       }
 
-      // Phase 1: Pipeline Balance.
+      // Phase 1: Utilization Fusion.
+      // Fuse independent tasks to free up CGRA budget for balance.
+      UtilizationFuser fuser;
+      bool fuse_changed = fuser.fuse(func, graph);
+
+      llvm::errs() << "[ResourceAware] After fusion: total_cgras="
+                   << graph.totalCGRAs() << "\n";
+
+      // Rebuild graph after fusion (tasks may have been erased/created).
+      if (fuse_changed) {
+        graph = TaskDependencyGraph();
+        graph.build(func);
+      }
+
+      // Phase 2: Latency-Aware Pipeline Balance.
       PipelineBalancer balancer;
       bool balance_changed = balancer.balance(graph);
 
@@ -736,11 +773,6 @@ struct ResourceAwareTaskOptimizationPass
 
       llvm::errs() << "[ResourceAware] After balance: total_cgras="
                    << graph.totalCGRAs() << "\n";
-
-      // Phase 2: Utilization Fusion.
-      // Fuse independent tasks to free up CGRA budget for future balance.
-      UtilizationFuser fuser;
-      bool fuse_changed = fuser.fuse(func, graph);
 
       if (!balance_changed && !fuse_changed) {
         break; // Converged.
