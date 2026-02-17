@@ -33,6 +33,13 @@
 // RUN: -o %t.placement.mlir
 // RUN: FileCheck %s --input-file=%t.placement.mlir --check-prefixes=PLACEMENT
 
+// RUN: mlir-neura-opt %s --affine-loop-tree-serialization \
+// RUN: --convert-affine-to-taskflow \
+// RUN: --resource-aware-task-optimization \
+// RUN: --architecture-spec=%S/../../../arch_spec/architecture.yaml \
+// RUN: -o %t.resopt.mlir
+// RUN: FileCheck %s --input-file=%t.resopt.mlir --check-prefixes=RESOPT
+
 #set = affine_set<(d0, d1) : (d0 - 3 == 0, d1 - 7 == 0)>
 module attributes {} {
   func.func @_Z21irregularLoopExample1v() -> i32 attributes {llvm.linkage = #llvm.linkage<external>} {
@@ -355,3 +362,10 @@ module attributes {} {
 // PLACEMENT-SAME: task_mapping_info = {cgra_positions = [{col = 1 : i32, row = 1 : i32}], read_sram_locations = [], write_sram_locations = [{col = 1 : i32, row = 1 : i32}]}
 // PLACEMENT:      taskflow.task @Task_2
 // PLACEMENT-SAME: task_mapping_info = {cgra_positions = [{col = 0 : i32, row = 1 : i32}], read_sram_locations = [{col = 1 : i32, row = 1 : i32}], write_sram_locations = [{col = 0 : i32, row = 1 : i32}]}
+
+// RESOPT:      %value_outputs = taskflow.task @Task_0
+// RESOPT-SAME: {cgra_count = 1 : i32, ii = 6 : i64, steps = 7 : i64, trip_count = 5 : i64}
+// RESOPT:      %write_outputs = taskflow.task @Task_1
+// RESOPT-SAME: {cgra_count = 7 : i32, ii = 7 : i64, steps = 8 : i64, trip_count = 32 : i64}
+// RESOPT:      %write_outputs_1 = taskflow.task @Task_2
+// RESOPT-SAME: {cgra_count = 8 : i32, ii = 10 : i64, steps = 12 : i64, trip_count = 32 : i64}

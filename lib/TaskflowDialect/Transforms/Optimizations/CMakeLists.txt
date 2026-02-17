@@ -11,6 +11,7 @@ add_mlir_conversion_library(MLIRTaskflowOptimization
 
   LINK_LIBS PUBLIC
   MLIRTaskflow
+  MLIRTaskflowTransforms
   MLIRAffineDialect
   MLIRArithDialect
   MLIRFuncDialect
@@ -19,5 +20,7 @@ add_mlir_conversion_library(MLIRTaskflowOptimization
   MLIRPass
   MLIRTransforms
   MLIRNeura
+  MLIRNeuraTransforms
+  MLIRConversion
   MLIRSupport
 )

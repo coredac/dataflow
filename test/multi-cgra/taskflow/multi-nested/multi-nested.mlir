@@ -20,6 +20,7 @@
 
 // RUN: mlir-neura-opt %t.stream.mlir \
 // RUN: --resource-aware-task-optimization \
+// RUN: --architecture-spec=%S/../../../arch_spec/architecture.yaml \
 // RUN: -o %t.resopt.mlir
 // RUN: FileCheck %s --input-file=%t.resopt.mlir --check-prefixes=RESOPT
 
@@ -513,12 +514,12 @@ module attributes {} {
 // PLACEMENT-SAME: task_mapping_info = {cgra_positions = [{col = 1 : i32, row = 1 : i32}], read_sram_locations = [{col = 1 : i32, row = 1 : i32}, {col = 2 : i32, row = 1 : i32}], write_sram_locations = [{col = 1 : i32, row = 1 : i32}]}
 
 // RESOPT:      %write_outputs = taskflow.task @Task_1
-// RESOPT-SAME: {cgra_count = 5 : i32}
+// RESOPT-SAME: {cgra_count = 6 : i32, ii = 7 : i64, steps = 8 : i64, trip_count = 160 : i64}
 // RESOPT:      taskflow.yield writes(%arg12 : memref<?xi32>)
 // RESOPT:      %write_outputs_0:2 = taskflow.task @Task_0_Task_2_fused_Task_3_utilfused
-// RESOPT-SAME: {cgra_count = 10 : i32, ii = 3 : i64, steps = 64 : i64, trip_count = 220 : i64}
+// RESOPT-SAME: {cgra_count = 9 : i32, ii = 8 : i64, steps = 16 : i64, trip_count = 220 : i64}
 // RESOPT:      taskflow.yield writes(%arg14, %arg15 : memref<?xi32>, memref<?xi32>)
 // RESOPT:      %write_outputs_1 = taskflow.task @Task_4
-// RESOPT-SAME: {cgra_count = 1 : i32}
+// RESOPT-SAME: {cgra_count = 1 : i32, ii = 6 : i64, steps = 8 : i64, trip_count = 36 : i64}
 // RESOPT:      taskflow.yield writes(%arg12 : memref<?xi32>)
 // RESOPT:      return %0 : i32
