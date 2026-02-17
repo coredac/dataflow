@@ -864,13 +864,13 @@ struct ResourceAwareTaskOptimizationPass
       PipelineBalancer balancer;
       bool balance_changed = balancer.balance(graph);
 
-      // Writes cgra_count attributes back to IR.
-      if (balance_changed) {
+      // Writes cgra_count attributes back to IR (always explicit, even for 1).
+      if (balance_changed || fuse_changed) {
         for (auto &node : graph.nodes) {
-          if (node->cgra_count > 1) {
-            node->op->setAttr(
-                "cgra_count",
-                OpBuilder(node->op).getI32IntegerAttr(node->cgra_count));
+          node->op->setAttr(
+              "cgra_count",
+              OpBuilder(node->op).getI32IntegerAttr(node->cgra_count));
+          if (balance_changed && node->cgra_count > 1) {
             llvm::errs() << "  [Balance] " << node->op.getTaskName()
                          << " -> cgra_count=" << node->cgra_count
                          << ", est_latency=" << node->estimatedLatency()

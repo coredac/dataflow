@@ -519,5 +519,6 @@ module attributes {} {
 // RESOPT-SAME: {cgra_count = 10 : i32, ii = 3 : i64, steps = 64 : i64, trip_count = 220 : i64}
 // RESOPT:      taskflow.yield writes(%arg14, %arg15 : memref<?xi32>, memref<?xi32>)
 // RESOPT:      %write_outputs_1 = taskflow.task @Task_4
+// RESOPT-SAME: {cgra_count = 1 : i32}
 // RESOPT:      taskflow.yield writes(%arg12 : memref<?xi32>)
 // RESOPT:      return %0 : i32
