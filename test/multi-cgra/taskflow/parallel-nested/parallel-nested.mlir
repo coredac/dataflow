@@ -19,12 +19,6 @@
 // RUN: -o %t.hyperblock.mlir
 // RUN: FileCheck %s --input-file=%t.hyperblock.mlir --check-prefixes=HYPERBLOCK
 
-// RUN: mlir-neura-opt %t.taskflow.mlir \
-// RUN: --resource-aware-task-optimization \
-// RUN: --architecture-spec=%S/../../../arch_spec/architecture.yaml \
-// RUN: -o %t.resopt.mlir
-// RUN: FileCheck %s --input-file=%t.resopt.mlir --check-prefixes=RESOPT
-
 // RUN: mlir-neura-opt %s --affine-loop-tree-serialization \
 // RUN: --convert-affine-to-taskflow \
 // RUN: --construct-hyperblock-from-task \

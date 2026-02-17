@@ -1381,13 +1381,24 @@ struct ResourceAwareTaskOptimizationPass
       PipelineBalancer balancer;
       bool balance_changed = balancer.balance(graph);
 
-      // Writes cgra_count back to IR during iterations so that the next
-      // iteration's graph.build() reads the correct allocation.
+      // Writes cgra_count, ii, steps, and trip_count back to IR during
+      // iterations so that the next iteration's graph.build() reads them
+      // and skips expensive re-profiling for unchanged tasks.
       if (balance_changed || fuse_changed) {
         for (auto &node : graph.nodes) {
+          OpBuilder b(node->op);
           node->op->setAttr(
-              "cgra_count",
-              OpBuilder(node->op).getI32IntegerAttr(node->cgra_count));
+              "cgra_count", b.getI32IntegerAttr(node->cgra_count));
+          if (node->ii != kUnprofiled) {
+            node->op->setAttr("ii", b.getI64IntegerAttr(node->ii));
+          }
+          if (node->steps != kUnprofiled) {
+            node->op->setAttr("steps", b.getI64IntegerAttr(node->steps));
+          }
+          if (node->trip_count > 0) {
+            node->op->setAttr("trip_count",
+                              b.getI64IntegerAttr(node->trip_count));
+          }
           if (balance_changed && node->cgra_count > 1) {
             llvm::errs() << "  [Balance] " << node->op.getTaskName()
                          << " -> cgra_count=" << node->cgra_count
