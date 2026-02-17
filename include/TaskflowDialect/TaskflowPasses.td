@@ -86,4 +86,20 @@ def MemoryAccessStreamingFusion : Pass<"memory-access-streaming-fusion", "func::
   }];
   let constructor = "taskflow::createMemoryAccessStreamingFusionPass()";
 }
+
+def ResourceAwareTaskOptimization : Pass<"resource-aware-task-optimization", "func::FuncOp"> {
+  let summary = "Balances pipeline latency and fuses independent tasks for CGRA utilization";
+  let description = [{
+    Two-phase optimization:
+    1. Pipeline Balance: allocates extra CGRAs to critical-path bottleneck tasks
+       to reduce their effective latency (trip_count / cgra_count).
+    2. Utilization Fusion: merges independent (no-edge) tasks into a single task
+       to reduce total CGRA count.
+    Targets a 4x4 CGRA grid (16 CGRAs). Asserts if tasks exceed budget.
+  }];
+  let constructor = "taskflow::createResourceAwareTaskOptimizationPass()";
+  let dependentDialects = [
+    "mlir::affine::AffineDialect",
+    "mlir::func::FuncDialect"];
+}
 #endif // TASKFLOW_PASSES_TD

@@ -1,0 +1,414 @@
+[mlir-neura-opt] No architecture specification file provided, using default configuration
+=== SALT Structure ===
+Loop [0,4) step=1 | body_ops=0 | children=3
+  Loop [0,8) step=1 | body_ops=0 | children=3
+    Loop [0,6) step=1 | body_ops=2 | children=0
+    Loop [0,5) step=1 | body_ops=4 | children=0
+    Loop [0,6) step=1 | body_ops=6 | children=0
+  Loop [0,7) step=1 | body_ops=2 | children=0
+  Loop [0,9) step=1 | body_ops=4 | children=0
+=== Extracted 5 MCT(s) ===
+MCT 0: [0,4) [0,8) [0,6) 
+MCT 1: [0,4) [0,8) [0,5) 
+MCT 2: [0,4) [0,8) [0,6) 
+MCT 3: [0,4) [0,7) 
+MCT 4: [0,4) [0,9) 
+
+===Converting function: _Z21pureNestedLoopExamplePA8_A6_iPA8_A5_iS4_PA7_iPA9_iPiS9_S9_S9_S9_===
+
+Analyzing memref accesses for loop:
+affine.for %arg12 = 0 to 6 {
+  %1 = affine.load %arg0[%arg10, %arg11, %arg12] : memref<?x8x6xi32>
+  affine.store %1, %arg5[%arg12] : memref<?xi32>
+}
+
+Analyzing memref accesses for loop:
+affine.for %arg11 = 0 to 8 {
+  affine.for %arg12 = 0 to 6 {
+    %1 = affine.load %arg0[%arg10, %arg11, %arg12] : memref<?x8x6xi32>
+    affine.store %1, %arg5[%arg12] : memref<?xi32>
+  }
+}
+
+Analyzing memref accesses for loop:
+affine.for %arg10 = 0 to 4 {
+  affine.for %arg11 = 0 to 8 {
+    affine.for %arg12 = 0 to 6 {
+      %1 = affine.load %arg0[%arg10, %arg11, %arg12] : memref<?x8x6xi32>
+      affine.store %1, %arg5[%arg12] : memref<?xi32>
+    }
+  }
+}
+
+Analyzing memref accesses for loop:
+affine.for %arg12 = 0 to 5 {
+  %1 = affine.load %arg1[%arg10, %arg11, %arg12] : memref<?x8x5xi32>
+  %2 = affine.load %arg2[%arg10, %arg11, %arg12] : memref<?x8x5xi32>
+  %3 = arith.addi %1, %2 : i32
+  affine.store %3, %arg6[%arg12] : memref<?xi32>
+}
+
+Analyzing memref accesses for loop:
+affine.for %arg11 = 0 to 8 {
+  affine.for %arg12 = 0 to 5 {
+    %1 = affine.load %arg1[%arg10, %arg11, %arg12] : memref<?x8x5xi32>
+    %2 = affine.load %arg2[%arg10, %arg11, %arg12] : memref<?x8x5xi32>
+    %3 = arith.addi %1, %2 : i32
+    affine.store %3, %arg6[%arg12] : memref<?xi32>
+  }
+}
+
+Analyzing memref accesses for loop:
+affine.for %arg10 = 0 to 4 {
+  affine.for %arg11 = 0 to 8 {
+    affine.for %arg12 = 0 to 5 {
+      %1 = affine.load %arg1[%arg10, %arg11, %arg12] : memref<?x8x5xi32>
+      %2 = affine.load %arg2[%arg10, %arg11, %arg12] : memref<?x8x5xi32>
+      %3 = arith.addi %1, %2 : i32
+      affine.store %3, %arg6[%arg12] : memref<?xi32>
+    }
+  }
+}
+
+Analyzing memref accesses for loop:
+affine.for %arg12 = 0 to 6 {
+  %1 = affine.load %arg5[%arg12] : memref<?xi32>
+  %2 = affine.load %arg6[%arg12] : memref<?xi32>
+  %3 = arith.addi %1, %2 : i32
+  %4 = affine.load %arg9[0] : memref<?xi32>
+  %5 = arith.addi %4, %3 : i32
+  affine.store %5, %arg9[0] : memref<?xi32>
+}
+
+Analyzing memref accesses for loop:
+affine.for %arg11 = 0 to 8 {
+  affine.for %arg12 = 0 to 6 {
+    %1 = affine.load %arg5[%arg12] : memref<?xi32>
+    %2 = affine.load %arg6[%arg12] : memref<?xi32>
+    %3 = arith.addi %1, %2 : i32
+    %4 = affine.load %arg9[0] : memref<?xi32>
+    %5 = arith.addi %4, %3 : i32
+    affine.store %5, %arg9[0] : memref<?xi32>
+  }
+}
+
+Analyzing memref accesses for loop:
+affine.for %arg10 = 0 to 4 {
+  affine.for %arg11 = 0 to 8 {
+    affine.for %arg12 = 0 to 6 {
+      %1 = affine.load %arg5[%arg12] : memref<?xi32>
+      %2 = affine.load %arg6[%arg12] : memref<?xi32>
+      %3 = arith.addi %1, %2 : i32
+      %4 = affine.load %arg9[0] : memref<?xi32>
+      %5 = arith.addi %4, %3 : i32
+      affine.store %5, %arg9[0] : memref<?xi32>
+    }
+  }
+}
+
+Analyzing memref accesses for loop:
+affine.for %arg11 = 0 to 7 {
+  %1 = affine.load %arg3[%arg10, %arg11] : memref<?x7xi32>
+  affine.store %1, %arg7[%arg11] : memref<?xi32>
+}
+
+Analyzing memref accesses for loop:
+affine.for %arg10 = 0 to 4 {
+  affine.for %arg11 = 0 to 7 {
+    %1 = affine.load %arg3[%arg10, %arg11] : memref<?x7xi32>
+    affine.store %1, %arg7[%arg11] : memref<?xi32>
+  }
+}
+
+Analyzing memref accesses for loop:
+affine.for %arg11 = 0 to 9 {
+  %1 = affine.load %arg4[%arg10, %arg11] : memref<?x9xi32>
+  %2 = affine.load %arg7[%arg11] : memref<?xi32>
+  %3 = arith.addi %1, %2 : i32
+  affine.store %3, %arg8[%arg11] : memref<?xi32>
+}
+
+Analyzing memref accesses for loop:
+affine.for %arg10 = 0 to 4 {
+  affine.for %arg11 = 0 to 9 {
+    %1 = affine.load %arg4[%arg10, %arg11] : memref<?x9xi32>
+    %2 = affine.load %arg7[%arg11] : memref<?xi32>
+    %3 = arith.addi %1, %2 : i32
+    affine.store %3, %arg8[%arg11] : memref<?xi32>
+  }
+}
+ops_to_process:
+affine.for %arg10 = 0 to 4 {
+  affine.for %arg11 = 0 to 8 {
+    affine.for %arg12 = 0 to 6 {
+      %1 = affine.load %arg0[%arg10, %arg11, %arg12] : memref<?x8x6xi32>
+      affine.store %1, %arg5[%arg12] : memref<?xi32>
+    }
+  }
+}
+affine.for %arg10 = 0 to 4 {
+  affine.for %arg11 = 0 to 8 {
+    affine.for %arg12 = 0 to 5 {
+      %1 = affine.load %arg1[%arg10, %arg11, %arg12] : memref<?x8x5xi32>
+      %2 = affine.load %arg2[%arg10, %arg11, %arg12] : memref<?x8x5xi32>
+      %3 = arith.addi %1, %2 : i32
+      affine.store %3, %arg6[%arg12] : memref<?xi32>
+    }
+  }
+}
+affine.for %arg10 = 0 to 4 {
+  affine.for %arg11 = 0 to 8 {
+    affine.for %arg12 = 0 to 6 {
+      %1 = affine.load %arg5[%arg12] : memref<?xi32>
+      %2 = affine.load %arg6[%arg12] : memref<?xi32>
+      %3 = arith.addi %1, %2 : i32
+      %4 = affine.load %arg9[0] : memref<?xi32>
+      %5 = arith.addi %4, %3 : i32
+      affine.store %5, %arg9[0] : memref<?xi32>
+    }
+  }
+}
+affine.for %arg10 = 0 to 4 {
+  affine.for %arg11 = 0 to 7 {
+    %1 = affine.load %arg3[%arg10, %arg11] : memref<?x7xi32>
+    affine.store %1, %arg7[%arg11] : memref<?xi32>
+  }
+}
+affine.for %arg10 = 0 to 4 {
+  affine.for %arg11 = 0 to 9 {
+    %1 = affine.load %arg4[%arg10, %arg11] : memref<?x9xi32>
+    %2 = affine.load %arg7[%arg11] : memref<?xi32>
+    %3 = arith.addi %1, %2 : i32
+    affine.store %3, %arg8[%arg11] : memref<?xi32>
+  }
+}
+%0 = affine.load %arg9[0] : memref<?xi32>
+func.return %0 : i32
+Read memrefs for loop:
+affine.for %arg10 = 0 to 4 {
+  affine.for %arg11 = 0 to 8 {
+    affine.for %arg12 = 0 to 6 {
+      %1 = affine.load %arg0[%arg10, %arg11, %arg12] : memref<?x8x6xi32>
+      affine.store %1, %arg5[%arg12] : memref<?xi32>
+    }
+  }
+}
+<block argument> of type 'memref<?x8x6xi32>' at index: 0
+Written memrefs for loop:
+affine.for %arg10 = 0 to 4 {
+  affine.for %arg11 = 0 to 8 {
+    affine.for %arg12 = 0 to 6 {
+      %1 = affine.load %arg0[%arg10, %arg11, %arg12] : memref<?x8x6xi32>
+      affine.store %1, %arg5[%arg12] : memref<?xi32>
+    }
+  }
+}
+<block argument> of type 'memref<?xi32>' at index: 5
+External values for loop:
+affine.for %arg10 = 0 to 4 {
+  affine.for %arg11 = 0 to 8 {
+    affine.for %arg12 = 0 to 6 {
+      %1 = affine.load %arg0[%arg10, %arg11, %arg12] : memref<?x8x6xi32>
+      affine.store %1, %arg5[%arg12] : memref<?xi32>
+    }
+  }
+}
+Read memrefs for loop:
+affine.for %arg10 = 0 to 4 {
+  affine.for %arg11 = 0 to 8 {
+    affine.for %arg12 = 0 to 5 {
+      %1 = affine.load %arg1[%arg10, %arg11, %arg12] : memref<?x8x5xi32>
+      %2 = affine.load %arg2[%arg10, %arg11, %arg12] : memref<?x8x5xi32>
+      %3 = arith.addi %1, %2 : i32
+      affine.store %3, %arg6[%arg12] : memref<?xi32>
+    }
+  }
+}
+<block argument> of type 'memref<?x8x5xi32>' at index: 1
+<block argument> of type 'memref<?x8x5xi32>' at index: 2
+Written memrefs for loop:
+affine.for %arg10 = 0 to 4 {
+  affine.for %arg11 = 0 to 8 {
+    affine.for %arg12 = 0 to 5 {
+      %1 = affine.load %arg1[%arg10, %arg11, %arg12] : memref<?x8x5xi32>
+      %2 = affine.load %arg2[%arg10, %arg11, %arg12] : memref<?x8x5xi32>
+      %3 = arith.addi %1, %2 : i32
+      affine.store %3, %arg6[%arg12] : memref<?xi32>
+    }
+  }
+}
+<block argument> of type 'memref<?xi32>' at index: 6
+External values for loop:
+affine.for %arg10 = 0 to 4 {
+  affine.for %arg11 = 0 to 8 {
+    affine.for %arg12 = 0 to 5 {
+      %1 = affine.load %arg1[%arg10, %arg11, %arg12] : memref<?x8x5xi32>
+      %2 = affine.load %arg2[%arg10, %arg11, %arg12] : memref<?x8x5xi32>
+      %3 = arith.addi %1, %2 : i32
+      affine.store %3, %arg6[%arg12] : memref<?xi32>
+    }
+  }
+}
+Read memrefs for loop:
+affine.for %arg10 = 0 to 4 {
+  affine.for %arg11 = 0 to 8 {
+    affine.for %arg12 = 0 to 6 {
+      %1 = affine.load %arg5[%arg12] : memref<?xi32>
+      %2 = affine.load %arg6[%arg12] : memref<?xi32>
+      %3 = arith.addi %1, %2 : i32
+      %4 = affine.load %arg9[0] : memref<?xi32>
+      %5 = arith.addi %4, %3 : i32
+      affine.store %5, %arg9[0] : memref<?xi32>
+    }
+  }
+}
+<block argument> of type 'memref<?xi32>' at index: 5
+<block argument> of type 'memref<?xi32>' at index: 6
+<block argument> of type 'memref<?xi32>' at index: 9
+Written memrefs for loop:
+affine.for %arg10 = 0 to 4 {
+  affine.for %arg11 = 0 to 8 {
+    affine.for %arg12 = 0 to 6 {
+      %1 = affine.load %arg5[%arg12] : memref<?xi32>
+      %2 = affine.load %arg6[%arg12] : memref<?xi32>
+      %3 = arith.addi %1, %2 : i32
+      %4 = affine.load %arg9[0] : memref<?xi32>
+      %5 = arith.addi %4, %3 : i32
+      affine.store %5, %arg9[0] : memref<?xi32>
+    }
+  }
+}
+<block argument> of type 'memref<?xi32>' at index: 9
+External values for loop:
+affine.for %arg10 = 0 to 4 {
+  affine.for %arg11 = 0 to 8 {
+    affine.for %arg12 = 0 to 6 {
+      %1 = affine.load %arg5[%arg12] : memref<?xi32>
+      %2 = affine.load %arg6[%arg12] : memref<?xi32>
+      %3 = arith.addi %1, %2 : i32
+      %4 = affine.load %arg9[0] : memref<?xi32>
+      %5 = arith.addi %4, %3 : i32
+      affine.store %5, %arg9[0] : memref<?xi32>
+    }
+  }
+}
+Read memrefs for loop:
+affine.for %arg10 = 0 to 4 {
+  affine.for %arg11 = 0 to 7 {
+    %1 = affine.load %arg3[%arg10, %arg11] : memref<?x7xi32>
+    affine.store %1, %arg7[%arg11] : memref<?xi32>
+  }
+}
+<block argument> of type 'memref<?x7xi32>' at index: 3
+Written memrefs for loop:
+affine.for %arg10 = 0 to 4 {
+  affine.for %arg11 = 0 to 7 {
+    %1 = affine.load %arg3[%arg10, %arg11] : memref<?x7xi32>
+    affine.store %1, %arg7[%arg11] : memref<?xi32>
+  }
+}
+<block argument> of type 'memref<?xi32>' at index: 7
+External values for loop:
+affine.for %arg10 = 0 to 4 {
+  affine.for %arg11 = 0 to 7 {
+    %1 = affine.load %arg3[%arg10, %arg11] : memref<?x7xi32>
+    affine.store %1, %arg7[%arg11] : memref<?xi32>
+  }
+}
+Read memrefs for loop:
+affine.for %arg10 = 0 to 4 {
+  affine.for %arg11 = 0 to 9 {
+    %1 = affine.load %arg4[%arg10, %arg11] : memref<?x9xi32>
+    %2 = affine.load %arg7[%arg11] : memref<?xi32>
+    %3 = arith.addi %1, %2 : i32
+    affine.store %3, %arg8[%arg11] : memref<?xi32>
+  }
+}
+<block argument> of type 'memref<?x9xi32>' at index: 4
+<block argument> of type 'memref<?xi32>' at index: 7
+Written memrefs for loop:
+affine.for %arg10 = 0 to 4 {
+  affine.for %arg11 = 0 to 9 {
+    %1 = affine.load %arg4[%arg10, %arg11] : memref<?x9xi32>
+    %2 = affine.load %arg7[%arg11] : memref<?xi32>
+    %3 = arith.addi %1, %2 : i32
+    affine.store %3, %arg8[%arg11] : memref<?xi32>
+  }
+}
+<block argument> of type 'memref<?xi32>' at index: 8
+External values for loop:
+affine.for %arg10 = 0 to 4 {
+  affine.for %arg11 = 0 to 9 {
+    %1 = affine.load %arg4[%arg10, %arg11] : memref<?x9xi32>
+    %2 = affine.load %arg7[%arg11] : memref<?xi32>
+    %3 = arith.addi %1, %2 : i32
+    affine.store %3, %arg8[%arg11] : memref<?xi32>
+  }
+}
+No architecture specification file provided.
+
+[ConstructHyperblock] Processing top-level loop
+  Detected perfect loop band of depth 3
+  Created 3 counters
+  Created hyperblock with 3 operations
+
+[ConstructHyperblock] Processing top-level loop
+  Detected perfect loop band of depth 3
+  Created 3 counters
+  Created hyperblock with 5 operations
+
+[ConstructHyperblock] Processing top-level loop
+  Detected perfect loop band of depth 3
+  Created 3 counters
+  Created hyperblock with 9 operations
+
+[ConstructHyperblock] Processing top-level loop
+  Detected perfect loop band of depth 2
+  Created 2 counters
+  Created hyperblock with 3 operations
+
+[ConstructHyperblock] Processing top-level loop
+  Detected perfect loop band of depth 2
+  Created 2 counters
+  Created hyperblock with 5 operations
+=== ResourceAwareTaskOptimization on _Z21pureNestedLoopExamplePA8_A6_iPA8_A5_iS4_PA7_iPA9_iPiS9_S9_S9_S9_ ===
+LLVM ERROR: Can't add pass '{anonymous}::ClassifyCountersPass' restricted to 'builtin.module' on a PassManager intended to run on 'func.func', did you intend to nest?
+PLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.
+Stack dump:
+0.	Program arguments: ./build/tools/mlir-neura-opt/mlir-neura-opt test/multi-cgra/taskflow/multi-nested/multi-nested.mlir --affine-loop-tree-serialization --convert-affine-to-taskflow --construct-hyperblock-from-task --resource-aware-task-optimization
+ #0 0x0000556e04b0a258 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (./build/tools/mlir-neura-opt/mlir-neura-opt+0x3972258)
+ #1 0x0000556e04b07cde llvm::sys::RunSignalHandlers() (./build/tools/mlir-neura-opt/mlir-neura-opt+0x396fcde)
+ #2 0x0000556e04b0a8ed SignalHandler(int) Signals.cpp:0:0
+ #3 0x00007f0e3509b420 __restore_rt (/lib/x86_64-linux-gnu/libpthread.so.0+0x14420)
+ #4 0x00007f0e34b8c00b raise /build/glibc-LcI20x/glibc-2.31/signal/../sysdeps/unix/sysv/linux/raise.c:51:1
+ #5 0x00007f0e34b6b859 abort /build/glibc-LcI20x/glibc-2.31/stdlib/abort.c:81:7
+ #6 0x0000556e04a85bdf llvm::report_fatal_error(llvm::Twine const&, bool) (./build/tools/mlir-neura-opt/mlir-neura-opt+0x38edbdf)
+ #7 0x0000556e03cf8b42 mlir::detail::OpPassManagerImpl::addPass(std::unique_ptr<mlir::Pass, std::default_delete<mlir::Pass>>) (./build/tools/mlir-neura-opt/mlir-neura-opt+0x2b60b42)
+ #8 0x0000556e03cf8b8a mlir::OpPassManager::addPass(std::unique_ptr<mlir::Pass, std::default_delete<mlir::Pass>>) (./build/tools/mlir-neura-opt/mlir-neura-opt+0x2b60b8a)
+ #9 0x0000556e03b68ac2 void mlir::OpPassManager::addNestedPass<mlir::func::FuncOp>(std::unique_ptr<mlir::Pass, std::default_delete<mlir::Pass>>) /home/x/shiran/llvm-project/mlir/include/mlir/Pass/PassManager.h:117:24
+#10 0x0000556e03b63869 (anonymous namespace)::TaskDependencyGraph::profileTask((anonymous namespace)::TaskGraphNode*, mlir::taskflow::TaskflowTaskOp) /home/x/shiran/Project/dataflow/lib/TaskflowDialect/Transforms/Optimizations/ResourceAwareTaskOptimizationPass.cpp:261:72
+#11 0x0000556e03b623d7 (anonymous namespace)::TaskDependencyGraph::build(mlir::func::FuncOp)::'lambda'(mlir::taskflow::TaskflowTaskOp)::operator()(mlir::taskflow::TaskflowTaskOp) const /home/x/shiran/Project/dataflow/lib/TaskflowDialect/Transforms/Optimizations/ResourceAwareTaskOptimizationPass.cpp:111:68
+#12 0x0000556e03b6d117 _ZZN4mlir6detail4walkILNS_9WalkOrderE1ENS_15ForwardIteratorEZN12_GLOBAL__N_119TaskDependencyGraph5buildENS_4func6FuncOpEEUlNS_8taskflow14TaskflowTaskOpEE_S9_vEENSt9enable_ifIXaantsrSt11disjunctionIJSt7is_sameIT2_PNS_9OperationEESD_ISE_PNS_6RegionEESD_ISE_PNS_5BlockEEEE5valuesrSD_IT3_vE5valueESP_E4typeESG_OT1_ENKUlSG_E_clESG_ /home/x/shiran/llvm-project/mlir/include/mlir/IR/Visitors.h:336:20
+#13 0x0000556e03b7133a _ZN4llvm12function_refIFvPN4mlir9OperationEEE11callback_fnIZNS1_6detail4walkILNS1_9WalkOrderE1ENS1_15ForwardIteratorEZN12_GLOBAL__N_119TaskDependencyGraph5buildENS1_4func6FuncOpEEUlNS1_8taskflow14TaskflowTaskOpEE_SG_vEENSt9enable_ifIXaantsrSt11disjunctionIJSt7is_sameIT2_S3_ESK_ISL_PNS1_6RegionEESK_ISL_PNS1_5BlockEEEE5valuesrSK_IT3_vE5valueESU_E4typeES3_OT1_EUlS3_E_EEvlS3_ /home/x/shiran/llvm-project/llvm/include/llvm/ADT/STLFunctionalExtras.h:47:40
+#14 0x0000556e015f152e void mlir::detail::walk<mlir::ForwardIterator>(mlir::Operation*, llvm::function_ref<void (mlir::Operation*)>, mlir::WalkOrder) (./build/tools/mlir-neura-opt/mlir-neura-opt+0x45952e)
+#15 0x0000556e03b6d18c _ZN4mlir6detail4walkILNS_9WalkOrderE1ENS_15ForwardIteratorEZN12_GLOBAL__N_119TaskDependencyGraph5buildENS_4func6FuncOpEEUlNS_8taskflow14TaskflowTaskOpEE_S9_vEENSt9enable_ifIXaantsrSt11disjunctionIJSt7is_sameIT2_PNS_9OperationEESD_ISE_PNS_6RegionEESD_ISE_PNS_5BlockEEEE5valuesrSD_IT3_vE5valueESP_E4typeESG_OT1_ /home/x/shiran/llvm-project/mlir/include/mlir/IR/Visitors.h:341:38
+#16 0x0000556e03b6a626 _ZN4mlir9Operation4walkILNS_9WalkOrderE1ENS_15ForwardIteratorEZN12_GLOBAL__N_119TaskDependencyGraph5buildENS_4func6FuncOpEEUlNS_8taskflow14TaskflowTaskOpEE_vEENSt9enable_ifIXeqsrN4llvm15function_traitsINSt5decayIT1_E4typeEXsrSt8is_classISH_E5valueEEE8num_argsLi1EET2_E4typeEOSF_ /home/x/shiran/llvm-project/mlir/include/mlir/IR/Operation.h:799:75
+#17 0x0000556e03b6845d _ZN4mlir7OpState4walkILNS_9WalkOrderE1ENS_15ForwardIteratorEZN12_GLOBAL__N_119TaskDependencyGraph5buildENS_4func6FuncOpEEUlNS_8taskflow14TaskflowTaskOpEE_vEENSt9enable_ifIXeqsrN4llvm15function_traitsINSt5decayIT1_E4typeEXsrSt8is_classISH_E5valueEEE8num_argsLi1EET2_E4typeEOSF_ /home/x/shiran/llvm-project/mlir/include/mlir/IR/OpDefinition.h:166:68
+#18 0x0000556e03b6268c (anonymous namespace)::TaskDependencyGraph::build(mlir::func::FuncOp) /home/x/shiran/Project/dataflow/lib/TaskflowDialect/Transforms/Optimizations/ResourceAwareTaskOptimizationPass.cpp:133:27
+#19 0x0000556e03b67507 (anonymous namespace)::ResourceAwareTaskOptimizationPass::runOnOperation() /home/x/shiran/Project/dataflow/lib/TaskflowDialect/Transforms/Optimizations/ResourceAwareTaskOptimizationPass.cpp:966:28
+#20 0x0000556e03cfadc6 mlir::detail::OpToOpPassAdaptor::run(mlir::Pass*, mlir::Operation*, mlir::AnalysisManager, bool, unsigned int) (./build/tools/mlir-neura-opt/mlir-neura-opt+0x2b62dc6)
+#21 0x0000556e03cfb6f0 mlir::detail::OpToOpPassAdaptor::runPipeline(mlir::OpPassManager&, mlir::Operation*, mlir::AnalysisManager, bool, unsigned int, mlir::PassInstrumentor*, mlir::PassInstrumentation::PipelineParentInfo const*) (./build/tools/mlir-neura-opt/mlir-neura-opt+0x2b636f0)
+#22 0x0000556e03d00efe auto void mlir::parallelForEach<__gnu_cxx::__normal_iterator<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo*, std::vector<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo, std::allocator<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo>>>, mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::$_0>(mlir::MLIRContext*, __gnu_cxx::__normal_iterator<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo*, std::vector<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo, std::allocator<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo>>>, __gnu_cxx::__normal_iterator<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo*, std::vector<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo, std::allocator<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo>>>, mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::$_0&&)::'lambda'(__gnu_cxx::__normal_iterator<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo*, std::vector<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo, std::allocator<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo>>>&&)::operator()<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo&>(__gnu_cxx::__normal_iterator<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo*, std::vector<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo, std::allocator<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo>>>&&) const Pass.cpp:0:0
+#23 0x0000556e03cfd02b mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool) (./build/tools/mlir-neura-opt/mlir-neura-opt+0x2b6502b)
+#24 0x0000556e03cfaf1f mlir::detail::OpToOpPassAdaptor::run(mlir::Pass*, mlir::Operation*, mlir::AnalysisManager, bool, unsigned int) (./build/tools/mlir-neura-opt/mlir-neura-opt+0x2b62f1f)
+#25 0x0000556e03cfb6f0 mlir::detail::OpToOpPassAdaptor::runPipeline(mlir::OpPassManager&, mlir::Operation*, mlir::AnalysisManager, bool, unsigned int, mlir::PassInstrumentor*, mlir::PassInstrumentation::PipelineParentInfo const*) (./build/tools/mlir-neura-opt/mlir-neura-opt+0x2b636f0)
+#26 0x0000556e03cfdfd2 mlir::PassManager::run(mlir::Operation*) (./build/tools/mlir-neura-opt/mlir-neura-opt+0x2b65fd2)
+#27 0x0000556e03cf6c9a performActions(llvm::raw_ostream&, std::shared_ptr<llvm::SourceMgr> const&, mlir::MLIRContext*, mlir::MlirOptMainConfig const&) MlirOptMain.cpp:0:0
+#28 0x0000556e03cf68ed llvm::LogicalResult llvm::function_ref<llvm::LogicalResult (std::unique_ptr<llvm::MemoryBuffer, std::default_delete<llvm::MemoryBuffer>>, llvm::raw_ostream&)>::callback_fn<mlir::MlirOptMain(llvm::raw_ostream&, std::unique_ptr<llvm::MemoryBuffer, std::default_delete<llvm::MemoryBuffer>>, mlir::DialectRegistry&, mlir::MlirOptMainConfig const&)::$_0>(long, std::unique_ptr<llvm::MemoryBuffer, std::default_delete<llvm::MemoryBuffer>>, llvm::raw_ostream&) MlirOptMain.cpp:0:0
+#29 0x0000556e03e4b6e5 mlir::splitAndProcessBuffer(std::unique_ptr<llvm::MemoryBuffer, std::default_delete<llvm::MemoryBuffer>>, llvm::function_ref<llvm::LogicalResult (std::unique_ptr<llvm::MemoryBuffer, std::default_delete<llvm::MemoryBuffer>>, llvm::raw_ostream&)>, llvm::raw_ostream&, llvm::StringRef, llvm::StringRef) (./build/tools/mlir-neura-opt/mlir-neura-opt+0x2cb36e5)
+#30 0x0000556e03cef8c5 mlir::MlirOptMain(llvm::raw_ostream&, std::unique_ptr<llvm::MemoryBuffer, std::default_delete<llvm::MemoryBuffer>>, mlir::DialectRegistry&, mlir::MlirOptMainConfig const&) (./build/tools/mlir-neura-opt/mlir-neura-opt+0x2b578c5)
+#31 0x0000556e03cefb6f mlir::MlirOptMain(int, char**, llvm::StringRef, llvm::StringRef, mlir::DialectRegistry&) (./build/tools/mlir-neura-opt/mlir-neura-opt+0x2b57b6f)
+#32 0x0000556e03cefeae mlir::MlirOptMain(int, char**, llvm::StringRef, mlir::DialectRegistry&) (./build/tools/mlir-neura-opt/mlir-neura-opt+0x2b57eae)
+#33 0x0000556e015062ef main /home/x/shiran/Project/dataflow/tools/mlir-neura-opt/mlir-neura-opt.cpp:121:0
+#34 0x00007f0e34b6d083 __libc_start_main /build/glibc-LcI20x/glibc-2.31/csu/../csu/libc-start.c:342:3
+#35 0x0000556e014f41be _start (./build/tools/mlir-neura-opt/mlir-neura-opt+0x35c1be)

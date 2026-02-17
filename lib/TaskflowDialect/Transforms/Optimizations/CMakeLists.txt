@@ -4,17 +4,20 @@ add_mlir_conversion_library(MLIRTaskflowOptimization
   AffineLoopTreeSerializationPass.cpp
   AffineLoopPerfectionPass.cpp
   MemoryAccessStreamingFusion.cpp
+  ResourceAwareTaskOptimizationPass.cpp
 
   DEPENDS
   MLIRTaskflowTransformsIncGen
 
   LINK_LIBS PUBLIC
   MLIRTaskflow
+  MLIRAffineDialect
   MLIRArithDialect
   MLIRFuncDialect
   MLIRLinalgDialect
   MLIRIR
   MLIRPass
   MLIRTransforms
+  MLIRNeura
   MLIRSupport
 )
