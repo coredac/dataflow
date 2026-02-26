@@ -23,8 +23,12 @@ struct InsertDataMovForNeuraOps : public RewritePattern {
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
-    if (op->getDialect()->getNamespace() != accel::kNeuraTarget ||
-        isa<neura::DataMovOp>(op)) {
+    auto dialect_ns = op->getDialect()->getNamespace();
+    if ((dialect_ns != accel::kNeuraTarget && dialect_ns != "arith" && dialect_ns != "math") ||
+        isa<neura::DataMovOp>(op) ||
+        isa<neura::ReserveOp>(op) ||
+        isa<neura::KernelOp>(op) ||
+        isa<neura::FusedOp>(op)) {
       return failure();
     }
 

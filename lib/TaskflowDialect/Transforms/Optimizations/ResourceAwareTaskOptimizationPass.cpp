@@ -80,6 +80,7 @@ struct CGRAShape {
   bool rectangular;  // True if this is a perfect rectangle.
   int area() const { return rows * cols; }
 
+  /// Returns a human-readable description for log messages only (not IR).
   std::string describe(int cgra_count) const {
     std::string s = std::to_string(rows) + "x" + std::to_string(cols);
     if (!rectangular) {
@@ -87,6 +88,11 @@ struct CGRAShape {
            std::to_string(rows) + "x" + std::to_string(cols) + " bbox)";
     }
     return s;
+  }
+
+  /// Returns the simple "NxM" string written into the IR tile_shape attribute.
+  std::string irAttr() const {
+    return std::to_string(rows) + "x" + std::to_string(cols);
   }
 };
 
@@ -134,7 +140,8 @@ static CGRAShape pickBestShape(int cgra_count) {
 }
 
 /// Prints all valid shape options for a given cgra_count.
-static void printShapeOptions(int cgra_count) {
+/// (Kept for optional debug use; not called in the main path.)
+[[maybe_unused]] static void printShapeOptions(int cgra_count) {
   auto rect = getRectangularShapes(cgra_count);
   llvm::errs() << "    Valid shapes for " << cgra_count << " CGRAs: ";
   if (!rect.empty()) {
@@ -314,7 +321,7 @@ public:
   }
 
   /// Returns total CGRAs allocated.
-  int totalCGRAs() const {
+  int getTotalAllocatedCGRAs() const {
     int total = 0;
     for (auto &node : nodes) {
       total += node->cgra_count;
@@ -324,8 +331,12 @@ public:
 
   /// Public wrapper for profileTask — used by UtilizationFuser to re-profile
   /// fused tasks with the real downstream Neura pipeline.
-  void profileTaskPublic(TaskGraphNode *node, TaskflowTaskOp task) {
-    profileTask(node, task);
+  /// When skip_mapper=true, only ResMII/RecMII analytical estimates are used
+  /// (no MapToAcceleratorPass). This is safe for speculative balance checks
+  /// where the mapper may backtrack indefinitely on larger tile arrays.
+  void profileTaskPublic(TaskGraphNode *node, TaskflowTaskOp task,
+                         bool skip_mapper = false) {
+    profileTask(node, task, skip_mapper);
   }
 
 private:
@@ -352,7 +363,12 @@ private:
   ///     mapping pipeline to get real compiled_ii from MapToAcceleratorPass.
   /// ASSERTS if any phase fails — compiled_ii must come from the downstream
   /// pipeline, never from a silent fallback.
-  void profileTaskImpl(TaskGraphNode *node, TaskflowTaskOp task) {
+  ///
+  /// skip_mapper: when true, skip MapToAcceleratorPass and use only
+  ///   ResMII/RecMII analytical estimates. Safe for speculative balance probes
+  ///   where the mapper may loop indefinitely on large tile arrays.
+  void profileTask(TaskGraphNode *node, TaskflowTaskOp task,
+                   bool skip_mapper = false) {
     MLIRContext *ctx = task.getContext();
     OpBuilder builder(ctx);
     Location loc = task.getLoc();
@@ -361,6 +377,81 @@ private:
     assert(parent_func &&
            "[profileTask] FATAL: task has no parent func::FuncOp. "
            "compiled_ii must come from downstream pipeline.");
+
+    // ================================================================
+    // Split-Profiling for Multi-Body Tasks (e.g. after utilization fusion)
+    // ================================================================
+    // ConvertTaskflowToNeura asserts hyperblock_count==1. If a task body
+    // contains more than one top-level op (loop nest), we split it back into
+    // individual single-loop tasks, profile each independently, and take
+    // max(ii) / sum(steps) as the combined metrics.
+    SmallVector<Operation *> body_ops;
+    Block &task_body = task.getBody().front();
+    for (auto &op : task_body.getOperations()) {
+      if (!isa<TaskflowYieldOp>(op))
+        body_ops.push_back(&op);
+    }
+
+    if (body_ops.size() > 1) {
+      int64_t total_ii = 1;
+      int64_t total_steps = 0;
+
+      for (Operation *loop_op : body_ops) {
+        OpBuilder tmp_builder(task.getOperation());
+        auto tmp_task = tmp_builder.create<TaskflowTaskOp>(
+            task.getLoc(),
+            task.getWriteOutputs().getTypes(),
+            task.getValueOutputs().getTypes(),
+            task.getReadMemrefs(),
+            task.getWriteMemrefs(),
+            task.getValueInputs(),
+            (task.getTaskName().str() + "__split_profile__").c_str(),
+            task.getOriginalReadMemrefs(),
+            task.getOriginalWriteMemrefs());
+
+        Block *tmp_body = new Block();
+        tmp_task.getBody().push_back(tmp_body);
+        for (BlockArgument arg : task_body.getArguments())
+          tmp_body->addArgument(arg.getType(), arg.getLoc());
+
+        OpBuilder body_builder = OpBuilder::atBlockEnd(tmp_body);
+        IRMapping arg_map;
+        for (auto [orig, repl] : llvm::zip(task_body.getArguments(),
+                                           tmp_body->getArguments()))
+          arg_map.map(orig, repl);
+
+        body_builder.clone(*loop_op, arg_map);
+
+        SmallVector<Value> yield_writes;
+        for (size_t i = 0; i < task.getWriteMemrefs().size(); ++i)
+          yield_writes.push_back(
+              tmp_body->getArgument(task.getReadMemrefs().size() + i));
+        SmallVector<Value> yield_vals;
+        body_builder.create<TaskflowYieldOp>(task.getLoc(), yield_writes,
+                                             yield_vals);
+
+        // Inherit cgra_count so the split task profiles with the same tile array.
+        tmp_task->setAttr("cgra_count",
+                          tmp_builder.getI32IntegerAttr(node->cgra_count));
+
+        TaskGraphNode tmp_node(/*id=*/0, tmp_task);
+        tmp_node.cgra_count = node->cgra_count;
+        tmp_node.shape = node->shape;
+        this->profileTask(&tmp_node, tmp_task, skip_mapper);
+
+        total_ii = std::max(total_ii, tmp_node.ii);
+        total_steps += tmp_node.steps;
+
+        tmp_task.erase();
+      }
+
+      node->ii = total_ii;
+      node->steps = std::max(total_steps, (int64_t)1);
+      llvm::errs() << "[profileTask] split-profile result for "
+                   << task.getTaskName() << ": compiled_ii=" << node->ii
+                   << ", steps=" << node->steps << "\n";
+      return;
+    }
 
     // ================================================================
     // Phase 1: Taskflow -> Neura conversion (get neura.kernel ops)
@@ -443,6 +534,32 @@ private:
     int best_compiled_ii = 0;
     int best_cp_depth = 1;
 
+    // Compute tile dimensions for the target CGRA shape.
+    // For rectangular shapes: x_tiles = cols * per_cgra_cols,
+    //                         y_tiles = rows * per_cgra_rows.
+    // For non-rectangular (L/T): enumerate the exact tiles occupied.
+    int x_tiles = node->shape.cols * neura::getArchitecture().getPerCgraColumns();
+    int y_tiles = node->shape.rows * neura::getArchitecture().getPerCgraRows();
+    std::string valid_tiles;
+    if (!node->shape.rectangular) {
+      // Build an explicit tile list for the cgra_count CGRAs that actually fit.
+      int cgras_added = 0;
+      llvm::raw_string_ostream os(valid_tiles);
+      for (int r = 0; r < node->shape.rows && cgras_added < node->cgra_count; ++r) {
+        for (int c = 0; c < node->shape.cols && cgras_added < node->cgra_count; ++c) {
+          for (int tr = 0; tr < neura::getArchitecture().getPerCgraRows(); ++tr) {
+            for (int tc = 0; tc < neura::getArchitecture().getPerCgraColumns(); ++tc) {
+              if (!os.str().empty()) os << ",";
+              os << (c * neura::getArchitecture().getPerCgraColumns() + tc)
+                 << "_"
+                 << (r * neura::getArchitecture().getPerCgraRows() + tr);
+            }
+          }
+          ++cgras_added;
+        }
+      }
+    }
+
     for (neura::KernelOp kernel : kernels) {
       // Create a fresh module with a standalone func containing the kernel
       // body. All downstream Neura passes walk func::FuncOp with
@@ -453,14 +570,17 @@ private:
 
       if (succeeded(
               runNeuraPipelineOnKernel(ctx, kernel, phase2_module,
-                                      compiled_ii, cp_depth))) {
+                                      compiled_ii, cp_depth,
+                                      x_tiles, y_tiles, valid_tiles,
+                                      skip_mapper))) {
         llvm::errs() << "[profileTask] kernel in " << task.getTaskName()
                      << ": compiled_ii=" << compiled_ii
                      << ", cp_depth=" << cp_depth << "\n";
       } else {
         llvm::errs() << "[profileTask] Phase 2 failed for kernel in "
                      << task.getTaskName() << ", extracting partial\n";
-        extractMetricsFromPartialIR(phase2_module, compiled_ii, cp_depth);
+        extractMetricsFromPartialIR(phase2_module, compiled_ii, cp_depth,
+                                    x_tiles, y_tiles);
       }
 
       best_compiled_ii = std::max(best_compiled_ii, compiled_ii);
@@ -484,11 +604,24 @@ private:
   /// Clones a neura.kernel body into a standalone func::FuncOp inside
   /// dst_module, then runs the full Neura lowering + mapping pipeline.
   /// Returns success if MapToAccelerator ran and produced compiled_ii.
+  ///
+  /// x_tiles / y_tiles: total tile dimensions of the target CGRA array.
+  ///   These are passed to MapToAcceleratorPass so it maps onto the correct
+  ///   multi-CGRA tile grid rather than the default 1-CGRA singleton.
+  /// valid_tiles: explicit comma-separated tile list for non-rectangular shapes.
+  ///   Empty string means "use the full x_tiles × y_tiles rectangle".
+  /// skip_mapper: when true, skip MapToAcceleratorPass entirely and rely only
+  ///   on ResMII/RecMII analytical estimates. Used for speculative balance
+  ///   probes to prevent infinite mapper backtracking on larger tile arrays.
   LogicalResult runNeuraPipelineOnKernel(MLIRContext *ctx,
                                          neura::KernelOp kernel,
                                          ModuleOp dst_module,
                                          int &compiled_ii,
-                                         int &cp_depth) {
+                                         int &cp_depth,
+                                         int x_tiles = 0,
+                                         int y_tiles = 0,
+                                         const std::string &valid_tiles = "",
+                                         bool skip_mapper = false) {
     Location loc = kernel.getLoc();
     OpBuilder builder(ctx);
     builder.setInsertionPointToStart(dst_module.getBody());
@@ -572,8 +705,9 @@ private:
 
     if (failed(pm.run(dst_module))) {
       // Pre-mapper pipeline failed — extract best-effort metrics from partial
-      // Neura IR using ResMII/RecMII analysis.
-      extractMetricsFromPartialIR(dst_module, compiled_ii, cp_depth);
+      // Neura IR using ResMII/RecMII analysis with the correct multi-CGRA arch.
+      extractMetricsFromPartialIR(dst_module, compiled_ii, cp_depth,
+                                  x_tiles, y_tiles);
       return failure();
     }
 
@@ -581,8 +715,20 @@ private:
     // the authoritative lower-bounds and the fallback metrics when the mapper
     // is skipped. We compute them now (before MapToAccelerator modifies the IR
     // with dfg_id attrs) so that the fallback always uses the same IR.
+    //
+    // Use a custom architecture sized to the actual tile array
+    // (x_tiles × y_tiles) so ResMII reflects the real resource pool.
+    // Falls back to the global singleton if tile dims are not specified.
     {
-      const neura::Architecture &architecture = neura::getArchitecture();
+      std::unique_ptr<neura::Architecture> custom_arch;
+      const neura::Architecture *arch_ptr = &neura::getArchitecture();
+      if (x_tiles > 0 && y_tiles > 0) {
+        custom_arch = neura::getArchitecture().cloneWithNewDimensions(
+            y_tiles, x_tiles);
+        arch_ptr = custom_arch.get();
+      }
+      const neura::Architecture &architecture = *arch_ptr;
+
       dst_module.walk([&](func::FuncOp fn) {
         if (!fn->hasAttr("accelerator")) return;
         Region &region = fn.getBody();
@@ -602,18 +748,31 @@ private:
           auto level_buckets = neura::getOpsInAlapLevels(sorted_ops, critical_ops);
           cp_depth = std::max(cp_depth, (int)level_buckets.size());
         }
+        llvm::errs() << "[profileTask] analytical fallback: res_mii=" << res_mii
+                     << " rec_mii=" << rec_mii
+                     << " tiles=" << architecture.getNumTiles() << "\n";
       });
     }
 
     // Optionally run MapToAcceleratorPass to get the true compiled_ii.
     //
-    // Guards:
-    //   1. All non-Reserve operand producers must be DataMovOp (mapper asserts
+    // Guards (Option C — safe default to prevent backtracking timeout):
+    //   1. skip_mapper=true: caller explicitly requests analytical-only (e.g.
+    //      speculative balance probes where the mapper may loop indefinitely).
+    //   2. All non-Reserve operand producers must be DataMovOp (mapper asserts
     //      otherwise).
-    //   2. Kernel must be small enough (<= kMapperOpLimit ops) to avoid
+    //   3. Kernel must be small enough (<= kMapperOpLimit ops) to avoid
     //      exponential backtracking blowup during speculative profiling.
     //
-    // If either guard fails, we keep the ResMII/RecMII values computed above.
+    // If any guard fires, the ResMII/RecMII values computed above serve as
+    // the analytical lower-bound estimate (under-estimates true II on smaller
+    // arrays, but are safe and instant).
+    if (skip_mapper) {
+      llvm::errs() << "[profileTask] Skipping mapper (analytical-only mode). "
+                   << "Using analytical compiled_ii=" << compiled_ii << "\n";
+      return success();
+    }
+
     constexpr int kMapperOpLimit = 150;
     bool all_data_movs_ok = true;
     int total_mapped_ops = 0;
@@ -637,14 +796,24 @@ private:
     });
 
     llvm::errs() << "[profileTask] mapper guard: total_ops=" << total_mapped_ops
-                 << " all_data_movs=" << all_data_movs_ok << "\n";
+                 << " all_data_movs=" << all_data_movs_ok
+                 << " limit=" << kMapperOpLimit << "\n";
 
     if (all_data_movs_ok && total_mapped_ops <= kMapperOpLimit) {
       // Run MapToAcceleratorPass in a fresh pass manager on the already-lowered
       // dst_module (pre-mapper pipeline already ran above).
+      // Pass the correct tile dimensions so the mapper uses the right array.
       PassManager pm2(ctx);
       pm2.enableVerifier(false);
-      pm2.addPass(neura::createMapToAcceleratorPass());
+      if (x_tiles > 0 && y_tiles > 0) {
+        neura::MapToAcceleratorOptions map_options;
+        map_options.x_tiles = x_tiles;
+        map_options.y_tiles = y_tiles;
+        map_options.valid_tiles = valid_tiles;
+        pm2.addPass(neura::createMapToAcceleratorPass(map_options));
+      } else {
+        pm2.addPass(neura::createMapToAcceleratorPass());
+      }
 
       if (succeeded(pm2.run(dst_module))) {
         // Read the true compiled_ii from mapping_info (overrides ResMII/RecMII).
@@ -655,13 +824,23 @@ private:
           if (auto mapping_info =
                   fn->getAttrOfType<DictionaryAttr>(neura::attr::kMappingInfo)) {
             if (auto ii_attr =
-                    mapping_info.getAs<IntegerAttr>(neura::attr::kCompiledII))
+                    mapping_info.getAs<IntegerAttr>(neura::attr::kCompiledII)) {
               compiled_ii = (int)ii_attr.getInt(); // authoritative value
+              llvm::errs() << "[profileTask] mapper returned real II="
+                           << compiled_ii << "\n";
+            }
           }
         });
         return success();
       }
       // Mapper failed for all II values — keep ResMII/RecMII from above.
+      llvm::errs() << "[profileTask] WARNING: MapToAcceleratorPass failed, "
+                   << "keeping analytical fallback compiled_ii=" << compiled_ii
+                   << "\n";
+    } else {
+      llvm::errs() << "[profileTask] Skipping mapper (too large or DataMov "
+                   << "check failed). Using analytical compiled_ii="
+                   << compiled_ii << "\n";
     }
 
     // Fallback already computed via ResMII/RecMII above; nothing more to do.
@@ -672,9 +851,22 @@ private:
   /// Extracts metrics from partially-lowered Neura IR when the full pipeline
   /// fails. Uses ResMII/RecMII analysis and critical path depth on whatever
   /// Neura ops were successfully created.
+  ///
+  /// x_tiles / y_tiles: if > 0, use a custom architecture sized to this tile
+  ///   array so that ResMII reflects the real resource pool for multi-CGRA
+  ///   shapes. Falls back to the global singleton (1-CGRA) otherwise.
   void extractMetricsFromPartialIR(ModuleOp tmp_module,
-                                   int &out_ii, int &out_cp_depth) {
-    const neura::Architecture &architecture = neura::getArchitecture();
+                                   int &out_ii, int &out_cp_depth,
+                                   int x_tiles = 0, int y_tiles = 0) {
+    // Build architecture: use custom tile dimensions if provided.
+    std::unique_ptr<neura::Architecture> custom_arch;
+    const neura::Architecture *arch_ptr = &neura::getArchitecture();
+    if (x_tiles > 0 && y_tiles > 0) {
+      custom_arch = neura::getArchitecture().cloneWithNewDimensions(
+          y_tiles, x_tiles);
+      arch_ptr = custom_arch.get();
+    }
+    const neura::Architecture &architecture = *arch_ptr;
 
     int res_mii = 1;
     int rec_mii = 1;
@@ -775,10 +967,24 @@ private:
 
 class PipelineBalancer {
 public:
+  using ProfileFn = std::function<void(TaskGraphNode *, TaskflowTaskOp)>;
+
   /// Runs pipeline balance on the graph.
-  /// Returns true if any changes were made.
-  bool balance(TaskDependencyGraph &graph) {
+  ///
+  /// For each iteration, speculatively increments the bottleneck task's
+  /// cgra_count by 1 and re-profiles it via profile_fn. If the new estimated
+  /// latency is lower, the change is accepted; otherwise it is reverted and
+  /// the node is marked saturated (no further CGRA additions help it).
+  ///
+  /// This avoids blindly assigning more CGRAs without checking whether the
+  /// larger array actually produces a better compiled_ii.
+  ///
+  /// Returns true if any changes were accepted.
+  bool balance(TaskDependencyGraph &graph, ProfileFn profile_fn) {
     bool changed = false;
+    // Tracks nodes for which adding one more CGRA did not reduce latency.
+    // These are skipped in subsequent iterations.
+    llvm::DenseSet<TaskGraphNode *> saturated_nodes;
 
     for (int iter = 0; iter < kMaxBalanceIterations; ++iter) {
       int total_cgras = graph.getTotalAllocatedCGRAs();
@@ -790,39 +996,65 @@ public:
       // estimated latency. We recompute the critical path every iteration
       // because adding CGRAs to the previous bottleneck may shift the
       // critical path to a different node.
-      llvm::DenseSet<TaskGraphNode *> empty_ignored;
-      TaskGraphNode *bottleneck = findBottleneck(graph, empty_ignored);
+      TaskGraphNode *bottleneck = findBottleneck(graph, saturated_nodes);
       if (!bottleneck) {
         break;
       }
 
+      int old_cgra_count = bottleneck->cgra_count;
+      int new_cgra_count = old_cgra_count + 1;
+
       // Checks if incrementing cgra_count is feasible on the 4×4 grid.
-      int new_cgra_count = bottleneck->cgra_count + 1;
       if (!canFitOnGrid(new_cgra_count)) {
-        // No valid shape fits on the grid — skip this bottleneck.
-        llvm::DenseSet<TaskGraphNode *> ignored_nodes;
-        ignored_nodes.insert(bottleneck);
+        saturated_nodes.insert(bottleneck);
         continue;
       }
 
-      // Allocates one more CGRA to the bottleneck.
-      // The benefit comes from mapping on a larger tile array, which may
-      // yield a lower compiled_ii — the actual II improvement is determined
-      // by re-profiling via the downstream pipeline.
+      // Save state for potential rollback.
       int64_t old_latency = bottleneck->estimatedLatency();
+      int64_t old_ii     = bottleneck->ii;
+      int64_t old_steps  = bottleneck->steps;
+      CGRAShape old_shape = bottleneck->shape;
+
+      // Speculatively apply the new CGRA count and re-profile.
       bottleneck->cgra_count = new_cgra_count;
       bottleneck->shape = pickBestShape(new_cgra_count);
-      changed = true;
 
       llvm::errs()
-          << "  Balance: Task " << bottleneck->id << " ("
+          << "  Balance: trying Task " << bottleneck->id << " ("
           << bottleneck->op.getTaskName().str()
-          << ") cgra_count=" << new_cgra_count
+          << ") cgra_count=" << old_cgra_count << "->" << new_cgra_count
           << ", shape=" << bottleneck->shape.describe(new_cgra_count)
           << ", tile_array=" << (bottleneck->shape.rows * kPerCgraRows)
           << "x" << (bottleneck->shape.cols * kPerCgraCols)
-          << ", latency: " << old_latency
-          << ", total_cgras=" << graph.getTotalAllocatedCGRAs() << "\n";
+          << ", old_ii=" << old_ii << ", old_lat=" << old_latency << "\n";
+
+      profile_fn(bottleneck, bottleneck->op);
+
+      int64_t new_latency = bottleneck->estimatedLatency();
+
+      if (new_latency < old_latency) {
+        // Accepted: the larger array produces a measurably better latency.
+        changed = true;
+        llvm::errs()
+            << "  Balance: ACCEPTED Task " << bottleneck->id << " ("
+            << bottleneck->op.getTaskName().str()
+            << ") cgra_count=" << new_cgra_count
+            << ", ii=" << old_ii << "->" << bottleneck->ii
+            << ", lat=" << old_latency << "->" << new_latency
+            << ", total_cgras=" << graph.getTotalAllocatedCGRAs() << "\n";
+      } else {
+        // Rejected: no latency improvement — roll back and mark saturated.
+        llvm::errs()
+            << "  Balance: REJECTED Task " << bottleneck->id
+            << " (ii=" << bottleneck->ii << ", lat=" << new_latency
+            << " >= old_lat=" << old_latency << "). Reverting.\n";
+        bottleneck->cgra_count = old_cgra_count;
+        bottleneck->shape      = old_shape;
+        bottleneck->ii         = old_ii;
+        bottleneck->steps      = old_steps;
+        saturated_nodes.insert(bottleneck);
+      }
     }
 
     return changed;
@@ -1242,87 +1474,17 @@ private:
     fused_task->setAttr("trip_count",
                         OpBuilder(fused_task).getI64IntegerAttr(fused_trip));
 
-    // Run profileTask on the fused task to get real ii and steps from the
-    // merged loop body (ResMII/RecMII may differ after concatenation).
-    //
-    // A fused task body contains N sequential loop nests (one per original
-    // task). ConvertTaskflowToNeura asserts hyperblock_count==1, so we cannot
-    // profile the fused task as-is. Instead we split its body back into
-    // individual single-loop tasks, profile each independently, and take
-    // max(ii) / sum(steps) as the fused task's metrics.
+    // Profile the fused task to get real ii and steps.
+    // profileTask handles multi-body tasks by splitting them into per-loop-nest
+    // temporary tasks internally, so we can call it directly here.
     {
-      // Count top-level ops (loop nests) inside the fused task body,
-      // excluding the final TaskflowYieldOp.
-      SmallVector<Operation *> body_ops;
-      Block &fused_body = fused_task.getBody().front();
-      for (auto &op : fused_body.getOperations()) {
-        if (!isa<TaskflowYieldOp>(op))
-          body_ops.push_back(&op);
-      }
-
-      int64_t total_ii = 1;
-      int64_t total_steps = 0;
-
-      // For each top-level op (loop nest), create a temporary wrapper task,
-      // profile it, then discard it.
-      for (Operation *loop_op : body_ops) {
-        // Build a minimal temporary task wrapping just this one loop op.
-        // Insert it right before the fused task so parent_func is valid.
-        OpBuilder tmp_builder(fused_task.getOperation());
-
-        // Use the same operand signature as the fused task (conservative).
-        auto tmp_task = tmp_builder.create<TaskflowTaskOp>(
-            fused_task.getLoc(),
-            fused_task.getWriteOutputs().getTypes(),
-            fused_task.getValueOutputs().getTypes(),
-            fused_task.getReadMemrefs(),
-            fused_task.getWriteMemrefs(),
-            fused_task.getValueInputs(),
-            (fused_task.getTaskName().str() + "__split_profile__").c_str(),
-            fused_task.getOriginalReadMemrefs(),
-            fused_task.getOriginalWriteMemrefs());
-
-        // Build the body: clone just this one op, then yield.
-        Block *tmp_body = new Block();
-        tmp_task.getBody().push_back(tmp_body);
-        // Mirror block arguments from the fused task body.
-        for (BlockArgument arg : fused_body.getArguments())
-          tmp_body->addArgument(arg.getType(), arg.getLoc());
-
-        OpBuilder body_builder = OpBuilder::atBlockEnd(tmp_body);
-
-        // Build a mapping: fused_body args -> tmp_body args.
-        IRMapping arg_map;
-        for (auto [orig, repl] : llvm::zip(fused_body.getArguments(),
-                                           tmp_body->getArguments()))
-          arg_map.map(orig, repl);
-
-        body_builder.clone(*loop_op, arg_map);
-
-        // Yield: pass back the write-memref args unchanged.
-        SmallVector<Value> yield_writes;
-        for (size_t i = 0; i < fused_task.getWriteMemrefs().size(); ++i)
-          yield_writes.push_back(
-              tmp_body->getArgument(fused_task.getReadMemrefs().size() + i));
-        SmallVector<Value> yield_vals;
-        body_builder.create<TaskflowYieldOp>(fused_task.getLoc(),
-                                             yield_writes, yield_vals);
-
-        // Profile this single-loop task.
-        TaskGraphNode tmp_node(/*id=*/0, tmp_task);
-        profile_fn(&tmp_node, tmp_task);
-
-        total_ii = std::max(total_ii, tmp_node.ii);
-        total_steps += tmp_node.steps;
-
-        // Discard the temporary task.
-        tmp_task.erase();
-      }
-
+      TaskGraphNode fused_node(/*id=*/0, fused_task);
+      fused_node.trip_count = fused_trip;
+      profile_fn(&fused_node, fused_task);
       fused_task->setAttr("steps",
-                          OpBuilder(fused_task).getI64IntegerAttr(total_steps));
+                          OpBuilder(fused_task).getI64IntegerAttr(fused_node.steps));
       fused_task->setAttr("compiled_ii",
-                          OpBuilder(fused_task).getI64IntegerAttr(total_ii));
+                          OpBuilder(fused_task).getI64IntegerAttr(fused_node.ii));
     }
 
 
@@ -1435,7 +1597,7 @@ struct ResourceAwareTaskOptimizationPass
       // Expose TaskDependencyGraph::profileTask to UtilizationFuser via a
       // lambda so fused tasks get real ResMII/RecMII profiling.
       auto profile_fn = [&graph](TaskGraphNode *node, TaskflowTaskOp task) {
-        graph.profileTask(node, task);
+        graph.profileTaskPublic(node, task);
       };
       bool fuse_changed = fuser.fuse(func, graph, profile_fn);
 
@@ -1449,8 +1611,17 @@ struct ResourceAwareTaskOptimizationPass
       }
 
       // Phase 2: Latency-Aware Pipeline Balance.
+      // Use analytical-only profiling for speculative balance probes.
+      // The mapper is skipped to prevent infinite backtracking on large tile
+      // arrays. ResMII/RecMII estimates are sufficient to decide if adding a
+      // CGRA reduces the bottleneck's II (RecMII-bound tasks will correctly
+      // show no improvement; ResMII-bound tasks will show proportional gains).
+      auto balance_profile_fn = [&graph](TaskGraphNode *node,
+                                         TaskflowTaskOp task) {
+        graph.profileTaskPublic(node, task, /*skip_mapper=*/true);
+      };
       PipelineBalancer balancer;
-      bool balance_changed = balancer.balance(graph);
+      bool balance_changed = balancer.balance(graph, balance_profile_fn);
 
       // Writes cgra_count, ii, steps, and trip_count back to IR during
       // iterations so that the next iteration's graph.build() reads them
@@ -1498,40 +1669,105 @@ struct ResourceAwareTaskOptimizationPass
                             b.getI64IntegerAttr(node->steps));
           node->op->setAttr("trip_count",
                             b.getI64IntegerAttr(node->trip_count));
-          // Write tile_shape attribute for downstream passes.
-          std::string shape_str =
-              node->shape.describe(node->cgra_count);
+          // Write tile_shape attribute: simple "NxM" bounding-box string.
+          // The detailed occupancy diagram is printed in the summary below.
+          std::string shape_str = node->shape.irAttr();
           node->op->setAttr("tile_shape", b.getStringAttr(shape_str));
         }
         break;
       }
     }
 
-    // Final validation and tile occupation summary.
+    // Final validation and tile occupation summary with visual 4x4 grid.
     {
       TaskDependencyGraph final_graph;
       final_graph.build(func);
       int final_total = final_graph.getTotalAllocatedCGRAs();
 
-      llvm::errs() << "\n=== Tile Occupation Summary (4x4 CGRA Grid) ===\n";
+      // Assign each task a single character label for the combined grid.
+      // Tasks are labelled '0','1','2',... ; free cells shown as '.'.
+      // grid[row][col] == -1 means free.
+      std::vector<std::vector<int>> combined_grid(
+          kGridRows, std::vector<int>(kGridCols, -1));
+
+      // Pack tasks onto the grid left-to-right, top-to-bottom.
+      int next_col = 0, next_row = 0;
+      int task_idx = 0;
+
+      llvm::errs() << "\n=== Tile Occupation Summary (4x" << kGridCols
+                   << " CGRA Grid) ===\n";
+
       for (auto &node : final_graph.nodes) {
         auto shape = pickBestShape(node->cgra_count);
         int tile_rows = shape.rows * kPerCgraRows;
         int tile_cols = shape.cols * kPerCgraCols;
-        llvm::errs()
-            << "  " << node->op.getTaskName()
-            << ": cgra_count=" << node->cgra_count
-            << ", shape=" << shape.describe(node->cgra_count)
-            << ", tile_array=" << tile_rows << "x" << tile_cols
-            << ", compiled_ii=" << node->ii
-            << ", steps=" << node->steps
-            << ", trip_count=" << node->trip_count
-            << "\n";
-        printShapeOptions(node->cgra_count);
+
+        // Per-task grid (shape.rows x shape.cols bbox, filled up to cgra_count).
+        llvm::errs() << "\n  [" << task_idx << "] " << node->op.getTaskName()
+                     << "  cgra_count=" << node->cgra_count
+                     << "  shape=" << shape.describe(node->cgra_count)
+                     << "  tile_array=" << tile_rows << "x" << tile_cols
+                     << "  ii=" << node->ii
+                     << "  steps=" << node->steps
+                     << "  trip_count=" << node->trip_count << "\n";
+
+        // Draw a per-task bounding-box grid (shape.rows x shape.cols).
+        int remaining = node->cgra_count;
+        llvm::errs() << "      +" ;
+        for (int c = 0; c < shape.cols; ++c) llvm::errs() << "---+";
+        llvm::errs() << "\n";
+        for (int r = 0; r < shape.rows; ++r) {
+          llvm::errs() << "      |";
+          for (int c = 0; c < shape.cols; ++c) {
+            if (remaining > 0) {
+              llvm::errs() << " # |";
+              --remaining;
+            } else {
+              llvm::errs() << "   |";
+            }
+          }
+          llvm::errs() << "\n";
+          llvm::errs() << "      +";
+          for (int c = 0; c < shape.cols; ++c) llvm::errs() << "---+";
+          llvm::errs() << "\n";
+        }
+
+        // Place onto combined grid (pack sequentially).
+        int placed = 0;
+        for (int r = next_row; r < kGridRows && placed < node->cgra_count; ++r) {
+          for (int c = (r == next_row ? next_col : 0);
+               c < kGridCols && placed < node->cgra_count; ++c) {
+            combined_grid[r][c] = task_idx;
+            next_row = r;
+            next_col = c + 1;
+            if (next_col >= kGridCols) { next_col = 0; next_row = r + 1; }
+            ++placed;
+          }
+        }
+        ++task_idx;
       }
-      llvm::errs() << "  Total: " << final_total << "/" << kTotalCGRAs
-                   << " CGRAs used, " << (kTotalCGRAs - final_total)
-                   << " free\n";
+
+      // Print combined 4xN grid.
+      llvm::errs() << "\n  Combined 4x" << kGridCols << " Grid"
+                   << " (" << final_total << "/" << kTotalCGRAs << " used):\n";
+      llvm::errs() << "  +";
+      for (int c = 0; c < kGridCols; ++c) llvm::errs() << "---+";
+      llvm::errs() << "\n";
+      for (int r = 0; r < kGridRows; ++r) {
+        llvm::errs() << "  |";
+        for (int c = 0; c < kGridCols; ++c) {
+          int t = combined_grid[r][c];
+          if (t < 0)
+            llvm::errs() << " . |";
+          else
+            llvm::errs() << " " << (char)('0' + t) << " |";
+        }
+        llvm::errs() << "\n";
+        llvm::errs() << "  +";
+        for (int c = 0; c < kGridCols; ++c) llvm::errs() << "---+";
+        llvm::errs() << "\n";
+      }
+      llvm::errs() << "  (" << (kTotalCGRAs - final_total) << " free)\n";
       llvm::errs() << "================================================\n";
 
       llvm::errs() << "[ResourceAware] Final: " << final_graph.nodes.size()
