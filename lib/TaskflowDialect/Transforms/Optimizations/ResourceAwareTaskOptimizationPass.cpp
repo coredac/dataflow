@@ -468,7 +468,7 @@ private:
       IRMapping clone_mapping;
       mod_builder.clone(*parent_func, clone_mapping);
 
-      // Find the cloned copy of the target task and erase all others.
+      // Finds the cloned copy of the target task and erase all others.
       Operation *cloned_target = clone_mapping.lookupOrNull(task.getOperation());
       func::FuncOp cloned_func = nullptr;
       phase1_module.walk([&](func::FuncOp f) { cloned_func = f; });
@@ -480,10 +480,10 @@ private:
           }
         });
         for (auto t : to_erase) {
-          // Replace all results with undef-like values so uses don't dangle.
+          // Replaces all results with undef-like values so uses don't dangle.
           for (OpResult res : t->getResults()) {
-            /// Create a placeholder value so uses don't dangle.
-            /// Use UnrealizedConversionCastOp as a universal placeholder that
+            /// Creates a placeholder value so uses don't dangle.
+            /// Uses UnrealizedConversionCastOp as a universal placeholder that
             /// works for any type (memref, index, integer, float, etc.)
             /// without needing type-specific logic. Verifier is disabled.
             OpBuilder b(t);
@@ -519,7 +519,7 @@ private:
     // ================================================================
     // Phase 2: For each kernel, clone body -> func -> run Neura pipeline
     // ================================================================
-    // Collect all neura.kernel ops created by Phase 1.
+    // Collects all neura.kernel ops created by Phase 1.
     SmallVector<neura::KernelOp> kernels;
     phase1_module.walk([&](neura::KernelOp k) { kernels.push_back(k); });
 
@@ -534,7 +534,7 @@ private:
     int best_compiled_ii = 0;
     int best_cp_depth = 1;
 
-    // Compute tile dimensions for the target CGRA shape.
+    // Computes tile dimensions for the target CGRA shape.
     // For rectangular shapes: x_tiles = cols * per_cgra_cols,
     //                         y_tiles = rows * per_cgra_rows.
     // For non-rectangular (L/T): enumerate the exact tiles occupied.
@@ -542,7 +542,7 @@ private:
     int y_tiles = node->shape.rows * neura::getArchitecture().getPerCgraRows();
     std::string valid_tiles;
     if (!node->shape.rectangular) {
-      // Build an explicit tile list for the cgra_count CGRAs that actually fit.
+      // Builds an explicit tile list for the cgra_count CGRAs that actually fit.
       int cgras_added = 0;
       llvm::raw_string_ostream os(valid_tiles);
       for (int r = 0; r < node->shape.rows && cgras_added < node->cgra_count; ++r) {
@@ -561,7 +561,7 @@ private:
     }
 
     for (neura::KernelOp kernel : kernels) {
-      // Create a fresh module with a standalone func containing the kernel
+      // Creates a fresh module with a standalone func containing the kernel
       // body. All downstream Neura passes walk func::FuncOp with
       // accelerator="neura", so we package the kernel body as such.
       auto phase2_module = ModuleOp::create(loc);
@@ -647,7 +647,7 @@ private:
     wrapper_func->setAttr("accelerator",
                           builder.getStringAttr("neura"));
 
-    // Clone the entire kernel region (all blocks) into the func body.
+    // Clones the entire kernel region (all blocks) into the func body.
     Region &func_region = wrapper_func.getBody();
     IRMapping mapping;
     kernel_body.cloneInto(&func_region, mapping);
@@ -711,12 +711,12 @@ private:
       return failure();
     }
 
-    // Extract ResMII/RecMII from the post-InsertDataMov Neura IR. These are
+    // Extracts ResMII/RecMII from the post-InsertDataMov Neura IR. These are
     // the authoritative lower-bounds and the fallback metrics when the mapper
     // is skipped. We compute them now (before MapToAccelerator modifies the IR
     // with dfg_id attrs) so that the fallback always uses the same IR.
     //
-    // Use a custom architecture sized to the actual tile array
+    // Uses a custom architecture sized to the actual tile array
     // (x_tiles × y_tiles) so ResMII reflects the real resource pool.
     // Falls back to the global singleton if tile dims are not specified.
     {
@@ -800,7 +800,7 @@ private:
                  << " limit=" << kMapperOpLimit << "\n";
 
     if (all_data_movs_ok && total_mapped_ops <= kMapperOpLimit) {
-      /// Run MapToAcceleratorPass in a fresh pass manager on the already-lowered
+      /// Runs MapToAcceleratorPass in a fresh pass manager on the already-lowered
       /// dst_module (pre-mapper pipeline already ran above).
       /// Pass the correct tile dimensions so the mapper uses the right array.
       PassManager pm2(ctx);
@@ -843,7 +843,7 @@ private:
                    << compiled_ii << "\n";
     }
 
-    /// Fallback already computed via ResMII/RecMII above; nothing more to do.
+    /// Falls back already computed via ResMII/RecMII above; nothing more to do.
     return success();
   }
 
@@ -858,7 +858,7 @@ private:
   void extractMetricsFromPartialIR(ModuleOp tmp_module,
                                    int &out_ii, int &out_cp_depth,
                                    int x_tiles = 0, int y_tiles = 0) {
-    // Build architecture: use custom tile dimensions if provided.
+    // Builds architecture: use custom tile dimensions if provided.
     std::unique_ptr<neura::Architecture> custom_arch;
     const neura::Architecture *arch_ptr = &neura::getArchitecture();
     if (x_tiles > 0 && y_tiles > 0) {
@@ -1210,7 +1210,7 @@ private:
         auto *a = graph.nodes[i].get();
         auto *b = graph.nodes[j].get();
 
-        // Skip tasks with value outputs (e.g. reduction loops with iter_args).
+        // Skips tasks with value outputs (e.g. reduction loops with iter_args).
         // Sequential concatenation of loop bodies doesn't handle the cross-task
         // value flow required for these outputs.
         if (!a->op.getValueOutputs().empty() ||
@@ -1256,13 +1256,13 @@ private:
 
     if (task_a->getBlock() != task_b->getBlock()) return false;
 
-    // Ensure task_a is before task_b.
+    // Ensures task_a is before task_b.
     if (!task_a->isBeforeInBlock(task_b)) {
       std::swap(task_a, task_b);
       std::swap(a, b);
     }
 
-    // Check: no other task between a and b should have an edge from/to a or b.
+    // Checks: no other task between a and b should have an edge from/to a or b.
     for (auto &node : graph.nodes) {
       if (node.get() == a || node.get() == b) continue;
 
@@ -1272,7 +1272,7 @@ private:
       // Is this node between task_a and task_b?
       if (task_a->isBeforeInBlock(other_op) &&
           other_op->isBeforeInBlock(task_b)) {
-        // Check if this intermediate task has any dependency on a or b.
+        // Checks if this intermediate task has any dependency on a or b.
         if (!graph.areIndependent(a, node.get()) ||
             !graph.areIndependent(b, node.get())) {
           return false;
@@ -1305,7 +1305,7 @@ private:
     llvm::errs() << "  [Fuse] Merging " << task_a.getTaskName() << " + "
                  << task_b.getTaskName() << "\n";
 
-    // Compute the correct insertion point: must be after all operands of
+    // Computes the correct insertion point: must be after all operands of
     // both tasks are defined, but before any consumer of either task's
     // results. We find the latest-positioned operand definition and insert
     // right after it.
@@ -1358,7 +1358,7 @@ private:
     addUnique(merged_original_write_memrefs, task_b.getOriginalWriteMemrefs());
 
     // Step 2: Builds result types.
-    // Write outputs = merged write memrefs (each becomes a result).
+    // Writes outputs = merged write memrefs (each becomes a result).
     SmallVector<Type> write_output_types;
     for (Value v : merged_write_memrefs) {
       write_output_types.push_back(v.getType());
@@ -1474,7 +1474,7 @@ private:
     fused_task->setAttr("trip_count",
                         OpBuilder(fused_task).getI64IntegerAttr(fused_trip));
 
-    // Profile the fused task to get real ii and steps.
+    // Profiles the fused task to get real ii and steps.
     // profileTask handles multi-body tasks by splitting them into per-loop-nest
     // temporary tasks internally, so we can call it directly here.
     {
@@ -1511,7 +1511,7 @@ private:
   /// fused task.
   void replaceTaskResults(TaskflowTaskOp orig_task, TaskflowTaskOp fused_task,
                           const SmallVector<Value> &merged_write_memrefs) {
-    // Write outputs first, then value outputs.
+    // Writes outputs first, then value outputs.
     for (unsigned i = 0; i < orig_task.getWriteOutputs().size(); ++i) {
       Value orig_result = orig_task.getWriteOutputs()[i];
       Value orig_write = orig_task.getWriteMemrefs()[i];
@@ -1592,9 +1592,9 @@ struct ResourceAwareTaskOptimizationPass
       }
 
       // Phase 1: Utilization Fusion.
-      // Fuse independent tasks to free up CGRA budget for balance.
+      // Fuses independent tasks to free up CGRA budget for balance.
       UtilizationFuser fuser;
-      // Expose TaskDependencyGraph::profileTask to UtilizationFuser via a
+      // Exposes TaskDependencyGraph::profileTask to UtilizationFuser via a
       // lambda so fused tasks get real ResMII/RecMII profiling.
       auto profile_fn = [&graph](TaskGraphNode *node, TaskflowTaskOp task) {
         graph.profileTaskPublic(node, task);
@@ -1604,14 +1604,14 @@ struct ResourceAwareTaskOptimizationPass
       llvm::errs() << "[ResourceAware] After fusion: total_cgras="
                    << graph.getTotalAllocatedCGRAs() << "\n";
 
-      // Rebuild graph after fusion (tasks may have been erased/created).
+      // Rebuilds graph after fusion (tasks may have been erased/created).
       if (fuse_changed) {
         graph = TaskDependencyGraph();
         graph.build(func);
       }
 
       // Phase 2: Latency-Aware Pipeline Balance.
-      // Use analytical-only profiling for speculative balance probes.
+      // Uses analytical-only profiling for speculative balance probes.
       // The mapper is skipped to prevent infinite backtracking on large tile
       // arrays. ResMII/RecMII estimates are sufficient to decide if adding a
       // CGRA reduces the bottleneck's II (RecMII-bound tasks will correctly
@@ -1669,7 +1669,7 @@ struct ResourceAwareTaskOptimizationPass
                             b.getI64IntegerAttr(node->steps));
           node->op->setAttr("trip_count",
                             b.getI64IntegerAttr(node->trip_count));
-          // Write tile_shape attribute: simple "NxM" bounding-box string.
+          // Writes tile_shape attribute: simple "NxM" bounding-box string.
           // The detailed occupancy diagram is printed in the summary below.
           std::string shape_str = node->shape.irAttr();
           node->op->setAttr("tile_shape", b.getStringAttr(shape_str));
@@ -1684,13 +1684,13 @@ struct ResourceAwareTaskOptimizationPass
       final_graph.build(func);
       int final_total = final_graph.getTotalAllocatedCGRAs();
 
-      /// Assign each task a single character label for the combined grid.
+      /// Assigns each task a single character label for the combined grid.
       /// Tasks are labelled '0','1','2',... ; free cells shown as '.'.
       /// grid[row][col] == -1 means free.
       std::vector<std::vector<int>> combined_grid(
           kGridRows, std::vector<int>(kGridCols, -1));
 
-      // Pack tasks onto the grid left-to-right, top-to-bottom.
+      // Packs tasks onto the grid left-to-right, top-to-bottom.
       int next_col = 0, next_row = 0;
       int task_idx = 0;
 
@@ -1711,7 +1711,7 @@ struct ResourceAwareTaskOptimizationPass
                      << "  steps=" << node->steps
                      << "  trip_count=" << node->trip_count << "\n";
 
-        // Draw a per-task bounding-box grid (shape.rows x shape.cols).
+        // Draws a per-task bounding-box grid (shape.rows x shape.cols).
         int remaining = node->cgra_count;
         llvm::errs() << "      +" ;
         for (int c = 0; c < shape.cols; ++c) llvm::errs() << "---+";
@@ -1732,7 +1732,7 @@ struct ResourceAwareTaskOptimizationPass
           llvm::errs() << "\n";
         }
 
-        // Place onto combined grid (pack sequentially).
+        // Places onto combined grid (pack sequentially).
         int placed = 0;
         for (int r = next_row; r < kGridRows && placed < node->cgra_count; ++r) {
           for (int c = (r == next_row ? next_col : 0);
@@ -1747,7 +1747,7 @@ struct ResourceAwareTaskOptimizationPass
         ++task_idx;
       }
 
-      // Print combined 4xN grid.
+      // Prints combined 4xN grid.
       llvm::errs() << "\n  Combined 4x" << kGridCols << " Grid"
                    << " (" << final_total << "/" << kTotalCGRAs << " used):\n";
       llvm::errs() << "  +";
