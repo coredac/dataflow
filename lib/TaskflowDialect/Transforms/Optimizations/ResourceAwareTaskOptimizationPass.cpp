@@ -140,7 +140,7 @@ static CGRAShape pickBestShape(int cgra_count) {
 }
 
 /// Prints all valid shape options for a given cgra_count.
-/// (Kept for optional debug use; not called in the main path.)
+/// (Kept for optional debug use; not called in the main path.).
 [[maybe_unused]] static void printShapeOptions(int cgra_count) {
   auto rect = getRectangularShapes(cgra_count);
   llvm::errs() << "    Valid shapes for " << cgra_count << " CGRAs: ";
@@ -482,10 +482,10 @@ private:
         for (auto t : to_erase) {
           // Replace all results with undef-like values so uses don't dangle.
           for (OpResult res : t->getResults()) {
-            // Create a placeholder value so uses don't dangle.
-            // Use UnrealizedConversionCastOp as a universal placeholder that
-            // works for any type (memref, index, integer, float, etc.)
-            // without needing type-specific logic. Verifier is disabled.
+            /// Create a placeholder value so uses don't dangle.
+            /// Use UnrealizedConversionCastOp as a universal placeholder that
+            /// works for any type (memref, index, integer, float, etc.)
+            /// without needing type-specific logic. Verifier is disabled.
             OpBuilder b(t);
             Value placeholder =
                 b.create<UnrealizedConversionCastOp>(t.getLoc(),
@@ -636,7 +636,7 @@ private:
     for (BlockArgument arg : entry.getArguments())
       arg_types.push_back(arg.getType());
 
-    // Result types from the kernel op.
+    /// Result types from the kernel op.
     SmallVector<Type> result_types(kernel.getResultTypes());
 
     auto func_type = builder.getFunctionType(arg_types, result_types);
@@ -666,9 +666,9 @@ private:
       }
     }
 
-    // Run the full Neura lowering + dataflow pipeline.
-    // Pipeline order follows the reference tests in
-    // test/multi-cgra/kernel_mapping/ (fir, relu, loop-in-kernel).
+    /// Run the full Neura lowering + dataflow pipeline.
+    /// Pipeline order follows the reference tests in
+    /// test/multi-cgra/kernel_mapping/ (fir, relu, loop-in-kernel).
     PassManager pm(ctx);
     pm.enableVerifier(false);
 
@@ -698,7 +698,7 @@ private:
     pm.addPass(neura::createCanonicalizeLiveInPass());
     pm.addPass(neura::createLeveragePredicatedValuePass());
     pm.addPass(neura::createTransformCtrlToDataFlowPass());
-    // pm.addPass(neura::createFoldConstantPass());
+    // Pm.addPass(neura::createFoldConstantPass());
 
     // InsertDataMov: wraps operands with neura.data_mov for the mapper.
     pm.addPass(neura::createInsertDataMovPass());
@@ -800,9 +800,9 @@ private:
                  << " limit=" << kMapperOpLimit << "\n";
 
     if (all_data_movs_ok && total_mapped_ops <= kMapperOpLimit) {
-      // Run MapToAcceleratorPass in a fresh pass manager on the already-lowered
-      // dst_module (pre-mapper pipeline already ran above).
-      // Pass the correct tile dimensions so the mapper uses the right array.
+      /// Run MapToAcceleratorPass in a fresh pass manager on the already-lowered
+      /// dst_module (pre-mapper pipeline already ran above).
+      /// Pass the correct tile dimensions so the mapper uses the right array.
       PassManager pm2(ctx);
       pm2.enableVerifier(false);
       if (x_tiles > 0 && y_tiles > 0) {
@@ -843,7 +843,7 @@ private:
                    << compiled_ii << "\n";
     }
 
-    // Fallback already computed via ResMII/RecMII above; nothing more to do.
+    /// Fallback already computed via ResMII/RecMII above; nothing more to do.
     return success();
   }
 
@@ -1327,7 +1327,7 @@ private:
     updateLatest(task_b.getWriteMemrefs());
     updateLatest(task_b.getValueInputs());
 
-    // Insert right after the latest operand definition.
+    /// Insert right after the latest operand definition.
     OpBuilder builder(latest_def->getBlock(),
                       std::next(Block::iterator(latest_def)));
 
@@ -1684,9 +1684,9 @@ struct ResourceAwareTaskOptimizationPass
       final_graph.build(func);
       int final_total = final_graph.getTotalAllocatedCGRAs();
 
-      // Assign each task a single character label for the combined grid.
-      // Tasks are labelled '0','1','2',... ; free cells shown as '.'.
-      // grid[row][col] == -1 means free.
+      /// Assign each task a single character label for the combined grid.
+      /// Tasks are labelled '0','1','2',... ; free cells shown as '.'.
+      /// grid[row][col] == -1 means free.
       std::vector<std::vector<int>> combined_grid(
           kGridRows, std::vector<int>(kGridCols, -1));
 
