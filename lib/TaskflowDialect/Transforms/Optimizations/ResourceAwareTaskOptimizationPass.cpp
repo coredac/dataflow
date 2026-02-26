@@ -399,10 +399,25 @@ private:
 
       for (Operation *loop_op : body_ops) {
         OpBuilder tmp_builder(task.getOperation());
+
+        // Determine value_output_types for the throwaway split task.
+        // Most loop ops produce no values, so value_output_types is empty.
+        // However, affine.for with iter_args produces reduction results that
+        // ConstructHyperblockFromTask propagates through the hyperblock and
+        // ConvertTaskflowToNeura wires into the neura.kernel.  If we don't
+        // declare matching value_output_types on the tmp_task, the downstream
+        // pipeline will either fail or produce no kernel, crashing the
+        // profiler.  We therefore mirror the loop's result types.
+        SmallVector<Type> split_value_output_types;
+        if (auto affine_for = dyn_cast<affine::AffineForOp>(loop_op)) {
+          for (Type t : affine_for.getResultTypes())
+            split_value_output_types.push_back(t);
+        }
+
         auto tmp_task = tmp_builder.create<TaskflowTaskOp>(
             task.getLoc(),
             task.getWriteOutputs().getTypes(),
-            task.getValueOutputs().getTypes(),
+            /*value_output_types=*/split_value_output_types,
             task.getReadMemrefs(),
             task.getWriteMemrefs(),
             task.getValueInputs(),
@@ -421,13 +436,19 @@ private:
                                            tmp_body->getArguments()))
           arg_map.map(orig, repl);
 
-        body_builder.clone(*loop_op, arg_map);
+        Operation *cloned_op = body_builder.clone(*loop_op, arg_map);
 
         SmallVector<Value> yield_writes;
         for (size_t i = 0; i < task.getWriteMemrefs().size(); ++i)
           yield_writes.push_back(
               tmp_body->getArgument(task.getReadMemrefs().size() + i));
+
+        // Collect value results from the cloned loop (iter_args results).
+        // These must be yielded so the task's value_outputs match.
         SmallVector<Value> yield_vals;
+        for (Value res : cloned_op->getResults())
+          yield_vals.push_back(res);
+
         body_builder.create<TaskflowYieldOp>(task.getLoc(), yield_writes,
                                              yield_vals);
 
@@ -1211,14 +1232,6 @@ private:
         auto *a = graph.nodes[i].get();
         auto *b = graph.nodes[j].get();
 
-        // Skip tasks with value outputs (e.g. reduction loops with iter_args).
-        // Sequential concatenation of loop bodies doesn't handle the cross-task
-        // value flow required for these outputs.
-        if (!a->op.getValueOutputs().empty() ||
-            !b->op.getValueOutputs().empty()) {
-          continue;
-        }
-
         if (!graph.areIndependent(a, b)) {
           continue;
         }
@@ -1429,8 +1442,9 @@ private:
     };
 
     // Step 7: Clones task_a body into fused task.
+    // Mappings are kept alive for Step 9 (yield value output lookup).
+    IRMapping mapping_a;
     {
-      IRMapping mapping_a;
       buildArgMapping(task_a, mapping_a);
       OpBuilder body_builder = OpBuilder::atBlockEnd(body);
       Block &src_body = task_a.getBody().front();
@@ -1442,8 +1456,8 @@ private:
     }
 
     // Step 8: Clones task_b body into fused task (sequentially after task_a).
+    IRMapping mapping_b;
     {
-      IRMapping mapping_b;
       buildArgMapping(task_b, mapping_b);
       OpBuilder body_builder = OpBuilder::atBlockEnd(body);
       Block &src_body = task_b.getBody().front();
@@ -1462,8 +1476,22 @@ private:
         yield_writes.push_back(
             body->getArgument(merged_read_memrefs.size() + i));
       }
-      // Value outputs are empty for utilization fusion of independent tasks.
+
+      // Collects value outputs from both tasks via their original yield ops.
+      // Each original yield's value_results are looked up through the
+      // IRMapping to find the cloned values in the fused body.
       SmallVector<Value> yield_values;
+      auto collectYieldValues = [&](TaskflowTaskOp orig_task,
+                                    IRMapping &mapping) {
+        Block &orig_body = orig_task.getBody().front();
+        auto orig_yield = cast<TaskflowYieldOp>(orig_body.getTerminator());
+        for (Value v : orig_yield.getValueResults()) {
+          yield_values.push_back(mapping.lookupOrDefault(v));
+        }
+      };
+      collectYieldValues(task_a, mapping_a);
+      collectYieldValues(task_b, mapping_b);
+
       body_builder.create<TaskflowYieldOp>(fused_task.getLoc(), yield_writes,
                                            yield_values);
     }
@@ -1490,8 +1518,11 @@ private:
 
 
     // Step 11: Replaces uses of original tasks' results.
-    replaceTaskResults(task_a, fused_task, merged_write_memrefs);
-    replaceTaskResults(task_b, fused_task, merged_write_memrefs);
+    // Value outputs are ordered: task_a's value outputs first, then task_b's.
+    unsigned val_offset_a = 0;
+    unsigned val_offset_b = task_a.getValueOutputs().size();
+    replaceTaskResults(task_a, fused_task, merged_write_memrefs, val_offset_a);
+    replaceTaskResults(task_b, fused_task, merged_write_memrefs, val_offset_b);
 
     // Step 12: Erases original tasks.
     task_a.erase();
@@ -1509,21 +1540,26 @@ private:
   }
 
   /// Replaces results of an original task with corresponding results from the
-  /// fused task.
+  /// fused task. Handles both write outputs (memrefs) and value outputs
+  /// (reductions, iter_args).
   void replaceTaskResults(TaskflowTaskOp orig_task, TaskflowTaskOp fused_task,
-                          const SmallVector<Value> &merged_write_memrefs) {
-    // Write outputs first, then value outputs.
+                          const SmallVector<Value> &merged_write_memrefs,
+                          unsigned value_output_offset) {
+    // Write outputs: maps by matching the original write memref to its
+    // position in the merged write memrefs list.
     for (unsigned i = 0; i < orig_task.getWriteOutputs().size(); ++i) {
       Value orig_result = orig_task.getWriteOutputs()[i];
       Value orig_write = orig_task.getWriteMemrefs()[i];
       unsigned fused_idx = findOperandIndex(merged_write_memrefs, orig_write);
       orig_result.replaceAllUsesWith(fused_task.getWriteOutputs()[fused_idx]);
     }
-    // Value outputs: utilization fusion of independent tasks should not
-    // produce value outputs. Assert to catch unexpected cases.
-    assert(orig_task.getValueOutputs().empty() &&
-           "Value outputs in utilization-fused independent tasks are "
-           "unexpected; fusion logic needs extension to handle them.");
+    // Value outputs: each original task's value_output[i] maps to
+    // fused_task.getValueOutputs()[value_output_offset + i].
+    for (unsigned i = 0; i < orig_task.getValueOutputs().size(); ++i) {
+      Value orig_val = orig_task.getValueOutputs()[i];
+      orig_val.replaceAllUsesWith(
+          fused_task.getValueOutputs()[value_output_offset + i]);
+    }
   }
 };
 
