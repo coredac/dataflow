@@ -535,16 +535,41 @@ private:
       int compiled_ii = 0;
       int cp_depth = 1;
 
+      int x_tiles = node->shape.cols * neura::getArchitecture().getPerCgraColumns();
+      int y_tiles = node->shape.rows * neura::getArchitecture().getPerCgraRows();
+      std::string valid_tiles = "";
+
+      if (!node->shape.rectangular) {
+        // Non-rectangular: we have a bounding box of rows x cols CGRAs, but only cgra_count are used.
+        // For speculative profiling, we just pick the first `cgra_count` CGRAs in the bounding box.
+        // Each CGRA is a grid of per_cgra_rows x per_cgra_columns tiles.
+        int cgras_added = 0;
+        llvm::raw_string_ostream os(valid_tiles);
+        for (int r = 0; r < node->shape.rows && cgras_added < node->cgra_count; ++r) {
+          for (int c = 0; c < node->shape.cols && cgras_added < node->cgra_count; ++c) {
+            // Add all tiles in this CGRA
+            for (int tr = 0; tr < neura::getArchitecture().getPerCgraRows(); ++tr) {
+              for (int tc = 0; tc < neura::getArchitecture().getPerCgraColumns(); ++tc) {
+                if (!os.str().empty()) os << ",";
+                os << (c * neura::getArchitecture().getPerCgraColumns() + tc) << "_" 
+                   << (r * neura::getArchitecture().getPerCgraRows() + tr);
+              }
+            }
+            cgras_added++;
+          }
+        }
+      }
+
       if (succeeded(
               runNeuraPipelineOnKernel(ctx, kernel, phase2_module,
-                                      compiled_ii, cp_depth))) {
+                                       compiled_ii, cp_depth, x_tiles, y_tiles, valid_tiles))) {
         llvm::errs() << "[profileTask] kernel in " << task.getTaskName()
                      << ": compiled_ii=" << compiled_ii
                      << ", cp_depth=" << cp_depth << "\n";
       } else {
         llvm::errs() << "[profileTask] Phase 2 failed for kernel in "
-                     << task.getTaskName() << ", extracting partial\n";
-        extractMetricsFromPartialIR(phase2_module, compiled_ii, cp_depth);
+                     << task.getTaskName() << "\n";
+        assert(false && "Mapping failed. Fallback to analytical II is disabled because it ignores spatial routing congestion. The pipeline must produce real values!");
       }
 
       best_compiled_ii = std::max(best_compiled_ii, compiled_ii);
@@ -572,7 +597,10 @@ private:
                                          neura::KernelOp kernel,
                                          ModuleOp dst_module,
                                          int &compiled_ii,
-                                         int &cp_depth) {
+                                         int &cp_depth,
+                                         int x_tiles,
+                                         int y_tiles,
+                                         const std::string &valid_tiles) {
     Location loc = kernel.getLoc();
     OpBuilder builder(ctx);
     builder.setInsertionPointToStart(dst_module.getBody());
@@ -661,23 +689,15 @@ private:
       return failure();
     }
 
-    // Extract ResMII/RecMII from the post-InsertDataMov Neura IR. These are
-    // the authoritative lower-bounds and the fallback metrics when the mapper
-    // is skipped. We compute them now (before MapToAccelerator modifies the IR
-    // with dfg_id attrs) so that the fallback always uses the same IR.
+    // Extract cp_depth from ALAP before mapping logic (which modifies the IR).
     {
       const neura::Architecture &architecture = neura::getArchitecture();
       dst_module.walk([&](func::FuncOp fn) {
         if (!fn->hasAttr("accelerator")) return;
         Region &region = fn.getBody();
         if (region.empty()) return;
-        int res_mii = neura::calculateResMii(region, architecture);
+        
         auto cycles = neura::collectRecurrenceCycles(region);
-        int rec_mii = 1;
-        for (auto &cycle : cycles)
-          rec_mii = std::max(rec_mii, cycle.length);
-        compiled_ii = std::max({compiled_ii, res_mii, rec_mii});
-        // cp_depth from ALAP.
         std::set<Operation *> critical_ops;
         for (auto &cycle : cycles)
           for (Operation *op : cycle.operations) critical_ops.insert(op);
@@ -689,66 +709,54 @@ private:
       });
     }
 
-    // Optionally run MapToAcceleratorPass to get the true compiled_ii.
-    //
-    // Guards:
-    //   1. All non-Reserve operand producers must be DataMovOp (mapper asserts
-    //      otherwise).
-    //   2. Kernel must be small enough (<= kMapperOpLimit ops) to avoid
-    //      exponential backtracking blowup during speculative profiling.
-    //
-    // If either guard fails, we keep the ResMII/RecMII values computed above.
-    constexpr int kMapperOpLimit = 150;
-    bool all_data_movs_ok = true;
+    // Run MapToAcceleratorPass to get the true compiled_ii. We enforce this to 
+    // always succeed to get authentic mapping values rather than using
+    // analytical estimates that ignore routing bottlenecks.
+
     int total_mapped_ops = 0;
     dst_module.walk([&](func::FuncOp fn) {
       if (!fn->hasAttr("accelerator")) return;
       fn.walk([&](Operation *op) {
-        if (isa<func::ReturnOp>(op)) return;
-        total_mapped_ops++;
-        if (isa<neura::ReserveOp, neura::DataMovOp, neura::CtrlMovOp>(op))
-          return;
-        for (Value operand : op->getOperands()) {
-          Operation *producer = operand.getDefiningOp();
-          if (!producer) continue;
-          if (!isa<neura::DataMovOp, neura::ReserveOp,
-                   neura::PhiStartOp, neura::GrantOnceOp,
-                   neura::GrantPredicateOp, neura::YieldOp,
-                   neura::KernelOp>(producer))
-            all_data_movs_ok = false;
-        }
+        if (!isa<func::ReturnOp>(op)) total_mapped_ops++;
       });
     });
 
-    llvm::errs() << "[profileTask] mapper guard: total_ops=" << total_mapped_ops
-                 << " all_data_movs=" << all_data_movs_ok << "\n";
+    llvm::errs() << "[profileTask] MapToAcceleratorPass: total_ops=" << total_mapped_ops << "\n";
 
-    if (all_data_movs_ok && total_mapped_ops <= kMapperOpLimit) {
-      // Run MapToAcceleratorPass in a fresh pass manager on the already-lowered
-      // dst_module (pre-mapper pipeline already ran above).
-      PassManager pm2(ctx);
-      pm2.enableVerifier(false);
-      pm2.addPass(neura::createMapToAcceleratorPass());
-
-      if (succeeded(pm2.run(dst_module))) {
-        // Read the true compiled_ii from mapping_info (overrides ResMII/RecMII).
-        // compiled_ii and cp_depth are already initialized from the pre-mapper
-        // ResMII/RecMII analysis above; mapper result takes precedence.
-        dst_module.walk([&](func::FuncOp fn) {
-          if (!fn->hasAttr("accelerator")) return;
-          if (auto mapping_info =
-                  fn->getAttrOfType<DictionaryAttr>(neura::attr::kMappingInfo)) {
-            if (auto ii_attr =
-                    mapping_info.getAs<IntegerAttr>(neura::attr::kCompiledII))
-              compiled_ii = (int)ii_attr.getInt(); // authoritative value
-          }
-        });
-        return success();
-      }
-      // Mapper failed for all II values — keep ResMII/RecMII from above.
+    if (total_mapped_ops > 200) {
+      llvm::errs() << "[profileTask] WARNING: Kernel too large (" << total_mapped_ops 
+                   << " ops). Skipping MapToAcceleratorPass to avoid infinite backtracking. "
+                   << "Falling back to analytical max(res_mii, rec_mii).\n";
+      return success(); // Keep the analytical compiled_ii computed above
     }
 
-    // Fallback already computed via ResMII/RecMII above; nothing more to do.
+    // Run MapToAcceleratorPass
+    PassManager pm2(ctx);
+    pm2.enableVerifier(false);
+    neura::MapToAcceleratorOptions map_options;
+    map_options.x_tiles = x_tiles;
+    map_options.y_tiles = y_tiles;
+    map_options.valid_tiles = valid_tiles;
+    pm2.addPass(neura::createMapToAcceleratorPass(map_options));
+
+    if (failed(pm2.run(dst_module))) {
+      llvm::errs() << "[profileTask] WARNING: MapToAcceleratorPass failed! "
+                   << "Falling back to analytical max(res_mii, rec_mii).\n";
+      return success();
+    }
+
+    // Read the true compiled_ii from mapping_info.
+    dst_module.walk([&](func::FuncOp fn) {
+      if (!fn->hasAttr("accelerator")) return;
+      if (auto mapping_info = fn->getAttrOfType<DictionaryAttr>(neura::attr::kMappingInfo)) {
+        if (auto ii_attr = mapping_info.getAs<IntegerAttr>(neura::attr::kCompiledII)) {
+          int actual_ii = (int)ii_attr.getInt();
+          compiled_ii = actual_ii; // authoritative value
+          llvm::errs() << "[profileTask] mapper returned real II = " << actual_ii << "\n";
+        }
+      }
+    });
+
     return success();
   }
 
@@ -757,8 +765,18 @@ private:
   /// fails. Uses ResMII/RecMII analysis and critical path depth on whatever
   /// Neura ops were successfully created.
   void extractMetricsFromPartialIR(ModuleOp tmp_module,
-                                   int &out_ii, int &out_cp_depth) {
-    const neura::Architecture &architecture = neura::getArchitecture();
+                                   int &out_ii, int &out_cp_depth,
+                                   int x_tiles = 0, int y_tiles = 0) {
+    // Use custom architecture if tile dimensions are specified, otherwise
+    // fall back to global singleton.
+    std::unique_ptr<neura::Architecture> custom_arch;
+    const neura::Architecture *arch_ptr = &neura::getArchitecture();
+    if (x_tiles > 0 && y_tiles > 0) {
+      custom_arch = neura::getArchitecture().cloneWithNewDimensions(
+          y_tiles, x_tiles);
+      arch_ptr = custom_arch.get();
+    }
+    const neura::Architecture &architecture = *arch_ptr;
 
     int res_mii = 1;
     int rec_mii = 1;
@@ -797,6 +815,7 @@ private:
     llvm::errs() << "[profileTask] (partial) ii=" << out_ii
                  << " (res_mii=" << res_mii
                  << ", rec_mii=" << rec_mii
+                 << ", tiles=" << architecture.getNumTiles()
                  << "), steps=" << out_cp_depth << "\n";
   }
 
@@ -895,9 +914,25 @@ public:
       // Speculatively test new cgra_count by reprofiling in downstream pipeline.
       bottleneck->cgra_count = new_cgra_count;
       bottleneck->shape = pickBestShape(new_cgra_count);
+
+      llvm::errs()
+          << "  Balance: trying Task " << bottleneck->id << " ("
+          << bottleneck->op.getTaskName().str()
+          << ") cgra_count=" << old_cgra_count << "->" << new_cgra_count
+          << ", shape=" << bottleneck->shape.describe(new_cgra_count)
+          << ", old ii=" << old_ii << ", steps=" << old_steps
+          << ", lat=" << old_latency << "\n";
+
       profile_fn(bottleneck, bottleneck->op);
       
       int64_t new_latency = bottleneck->estimatedLatency();
+
+      llvm::errs()
+          << "  Balance: result ii=" << bottleneck->ii
+          << ", steps=" << bottleneck->steps
+          << ", new_lat=" << new_latency
+          << (new_latency < old_latency ? " ACCEPTED" : " REJECTED")
+          << "\n";
 
       if (new_latency < old_latency) {
         changed = true;

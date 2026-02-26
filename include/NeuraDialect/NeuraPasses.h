@@ -24,6 +24,7 @@ std::unique_ptr<mlir::Pass> createAssignAcceleratorPass();
 std::unique_ptr<mlir::Pass> createTransformCtrlToDataFlowPass();
 std::unique_ptr<mlir::Pass> createLeveragePredicatedValuePass();
 std::unique_ptr<mlir::Pass> createMapToAcceleratorPass();
+std::unique_ptr<mlir::Pass> createMapToAcceleratorPass(const MapToAcceleratorOptions &options);
 std::unique_ptr<mlir::Pass> createGenerateCodePass();
 std::unique_ptr<mlir::Pass> createCanonicalizeReturnPass();
 std::unique_ptr<mlir::Pass> createCanonicalizeLiveInPass();

@@ -494,6 +494,12 @@ public:
   // Checks if the architecture supports counter operations.
   bool canSupportCounter() const;
 
+  // Clones the architecture but with new per-cgra dimensions.
+  // The provided tile_overrides will be appended to the existing ones.
+  std::unique_ptr<Architecture> cloneWithNewDimensions(
+      int new_per_cgra_rows, int new_per_cgra_columns,
+      const std::vector<TileOverride> &additional_overrides = {}) const;
+
 private:
   // Helper methods for constructor initialization.
   void initializeTiles(int rows, int columns);
@@ -532,6 +538,13 @@ private:
   int per_cgra_rows_;
   int per_cgra_columns_;
   int max_ctrl_mem_items_;
+
+  BaseTopology multi_cgra_base_topology_;
+  BaseTopology per_cgra_base_topology_;
+  TileDefaults tile_defaults_;
+  std::vector<TileOverride> tile_overrides_;
+  LinkDefaults link_defaults_;
+  std::vector<LinkOverride> link_overrides_;
 };
 
 // Function for getting the architecture object.
