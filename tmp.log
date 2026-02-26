@@ -1,0 +1,151 @@
+[mlir-neura-opt] Architecture specification file: arch_spec/architecture.yaml
+=== SALT Structure ===
+Loop [0,16) step=1 | body_ops=3 | children=0
+Loop [0,8) step=1 | body_ops=0 | children=1
+  Loop [0,8) step=1 | body_ops=4 | children=0
+=== Extracted 2 MCT(s) ===
+MCT 0: [0,16) 
+MCT 1: [0,8) [0,8) 
+
+===Converting function: parallel_nested_example===
+
+Analyzing memref accesses for loop:
+affine.for %arg5 = 0 to 16 {
+  %0 = affine.load %arg0[%arg5] : memref<16xf32>
+  %1 = arith.mulf %0, %arg4 : f32
+  affine.store %1, %arg0[%arg5] : memref<16xf32>
+}
+
+Analyzing memref accesses for loop:
+affine.for %arg6 = 0 to 8 {
+  %0 = affine.load %arg1[%arg5, %arg6] : memref<8x8xf32>
+  %1 = affine.load %arg2[%arg5, %arg6] : memref<8x8xf32>
+  %2 = arith.mulf %0, %1 : f32
+  affine.store %2, %arg3[%arg5, %arg6] : memref<8x8xf32>
+}
+
+Analyzing memref accesses for loop:
+affine.for %arg5 = 0 to 8 {
+  affine.for %arg6 = 0 to 8 {
+    %0 = affine.load %arg1[%arg5, %arg6] : memref<8x8xf32>
+    %1 = affine.load %arg2[%arg5, %arg6] : memref<8x8xf32>
+    %2 = arith.mulf %0, %1 : f32
+    affine.store %2, %arg3[%arg5, %arg6] : memref<8x8xf32>
+  }
+}
+ops_to_process:
+affine.for %arg5 = 0 to 16 {
+  %0 = affine.load %arg0[%arg5] : memref<16xf32>
+  %1 = arith.mulf %0, %arg4 : f32
+  affine.store %1, %arg0[%arg5] : memref<16xf32>
+}
+affine.for %arg5 = 0 to 8 {
+  affine.for %arg6 = 0 to 8 {
+    %0 = affine.load %arg1[%arg5, %arg6] : memref<8x8xf32>
+    %1 = affine.load %arg2[%arg5, %arg6] : memref<8x8xf32>
+    %2 = arith.mulf %0, %1 : f32
+    affine.store %2, %arg3[%arg5, %arg6] : memref<8x8xf32>
+  }
+}
+func.return
+Read memrefs for loop:
+affine.for %arg5 = 0 to 16 {
+  %0 = affine.load %arg0[%arg5] : memref<16xf32>
+  %1 = arith.mulf %0, %arg4 : f32
+  affine.store %1, %arg0[%arg5] : memref<16xf32>
+}
+<block argument> of type 'memref<16xf32>' at index: 0
+Written memrefs for loop:
+affine.for %arg5 = 0 to 16 {
+  %0 = affine.load %arg0[%arg5] : memref<16xf32>
+  %1 = arith.mulf %0, %arg4 : f32
+  affine.store %1, %arg0[%arg5] : memref<16xf32>
+}
+<block argument> of type 'memref<16xf32>' at index: 0
+External values for loop:
+affine.for %arg5 = 0 to 16 {
+  %0 = affine.load %arg0[%arg5] : memref<16xf32>
+  %1 = arith.mulf %0, %arg4 : f32
+  affine.store %1, %arg0[%arg5] : memref<16xf32>
+}
+<block argument> of type 'f32' at index: 4
+Read memrefs for loop:
+affine.for %arg5 = 0 to 8 {
+  affine.for %arg6 = 0 to 8 {
+    %0 = affine.load %arg1[%arg5, %arg6] : memref<8x8xf32>
+    %1 = affine.load %arg2[%arg5, %arg6] : memref<8x8xf32>
+    %2 = arith.mulf %0, %1 : f32
+    affine.store %2, %arg3[%arg5, %arg6] : memref<8x8xf32>
+  }
+}
+<block argument> of type 'memref<8x8xf32>' at index: 1
+<block argument> of type 'memref<8x8xf32>' at index: 2
+Written memrefs for loop:
+affine.for %arg5 = 0 to 8 {
+  affine.for %arg6 = 0 to 8 {
+    %0 = affine.load %arg1[%arg5, %arg6] : memref<8x8xf32>
+    %1 = affine.load %arg2[%arg5, %arg6] : memref<8x8xf32>
+    %2 = arith.mulf %0, %1 : f32
+    affine.store %2, %arg3[%arg5, %arg6] : memref<8x8xf32>
+  }
+}
+<block argument> of type 'memref<8x8xf32>' at index: 3
+External values for loop:
+affine.for %arg5 = 0 to 8 {
+  affine.for %arg6 = 0 to 8 {
+    %0 = affine.load %arg1[%arg5, %arg6] : memref<8x8xf32>
+    %1 = affine.load %arg2[%arg5, %arg6] : memref<8x8xf32>
+    %2 = arith.mulf %0, %1 : f32
+    affine.store %2, %arg3[%arg5, %arg6] : memref<8x8xf32>
+  }
+}
+=== ResourceAwareTaskOptimization on parallel_nested_example ===
+Failed to open architecture specification file: arch_spec/architecture.yaml
+LLVM ERROR: [neura-compiler] Failed to get architecture.
+PLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.
+Stack dump:
+0.	Program arguments: build/tools/mlir-neura-opt/mlir-neura-opt test/multi-cgra/taskflow/parallel-nested/parallel-nested.mlir --affine-loop-tree-serialization --convert-affine-to-taskflow --resource-aware-task-optimization
+ #0 0x000055b1bce1fc98 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) (build/tools/mlir-neura-opt/mlir-neura-opt+0x3973c98)
+ #1 0x000055b1bce1d71e llvm::sys::RunSignalHandlers() (build/tools/mlir-neura-opt/mlir-neura-opt+0x397171e)
+ #2 0x000055b1bce2032d SignalHandler(int) Signals.cpp:0:0
+ #3 0x00007f256c0c5420 __restore_rt (/lib/x86_64-linux-gnu/libpthread.so.0+0x14420)
+ #4 0x00007f256bbb600b raise /build/glibc-LcI20x/glibc-2.31/signal/../sysdeps/unix/sysv/linux/raise.c:51:1
+ #5 0x00007f256bb95859 abort /build/glibc-LcI20x/glibc-2.31/stdlib/abort.c:81:7
+ #6 0x000055b1bcd9b61f llvm::report_fatal_error(llvm::Twine const&, bool) (build/tools/mlir-neura-opt/mlir-neura-opt+0x38ef61f)
+ #7 0x000055b1bcd9b436 (build/tools/mlir-neura-opt/mlir-neura-opt+0x38ef436)
+ #8 0x000055b1b98083f9 mlir::neura::getArchitecture()::'lambda'()::operator()() const /home/x/shiran/Project/dataflow/tools/mlir-neura-opt/mlir-neura-opt.cpp:44:0
+ #9 0x000055b1b98084f9 mlir::neura::getArchitecture() /home/x/shiran/Project/dataflow/tools/mlir-neura-opt/mlir-neura-opt.cpp:45:0
+#10 0x000055b1bbf6a7a4 (anonymous namespace)::ConstructHyperblockFromTaskPass::runOnOperation() /home/x/shiran/Project/dataflow/lib/TaskflowDialect/Transforms/ConstructHyperblockFromTaskPass.cpp:608:62
+#11 0x000055b1bc0107d6 mlir::detail::OpToOpPassAdaptor::run(mlir::Pass*, mlir::Operation*, mlir::AnalysisManager, bool, unsigned int) (build/tools/mlir-neura-opt/mlir-neura-opt+0x2b647d6)
+#12 0x000055b1bc011100 mlir::detail::OpToOpPassAdaptor::runPipeline(mlir::OpPassManager&, mlir::Operation*, mlir::AnalysisManager, bool, unsigned int, mlir::PassInstrumentor*, mlir::PassInstrumentation::PipelineParentInfo const*) (build/tools/mlir-neura-opt/mlir-neura-opt+0x2b65100)
+#13 0x000055b1bc01690e auto void mlir::parallelForEach<__gnu_cxx::__normal_iterator<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo*, std::vector<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo, std::allocator<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo>>>, mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::$_0>(mlir::MLIRContext*, __gnu_cxx::__normal_iterator<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo*, std::vector<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo, std::allocator<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo>>>, __gnu_cxx::__normal_iterator<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo*, std::vector<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo, std::allocator<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo>>>, mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::$_0&&)::'lambda'(__gnu_cxx::__normal_iterator<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo*, std::vector<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo, std::allocator<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo>>>&&)::operator()<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo&>(__gnu_cxx::__normal_iterator<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo*, std::vector<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo, std::allocator<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo>>>&&) const Pass.cpp:0:0
+#14 0x000055b1bc012a3b mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool) (build/tools/mlir-neura-opt/mlir-neura-opt+0x2b66a3b)
+#15 0x000055b1bc01092f mlir::detail::OpToOpPassAdaptor::run(mlir::Pass*, mlir::Operation*, mlir::AnalysisManager, bool, unsigned int) (build/tools/mlir-neura-opt/mlir-neura-opt+0x2b6492f)
+#16 0x000055b1bc011100 mlir::detail::OpToOpPassAdaptor::runPipeline(mlir::OpPassManager&, mlir::Operation*, mlir::AnalysisManager, bool, unsigned int, mlir::PassInstrumentor*, mlir::PassInstrumentation::PipelineParentInfo const*) (build/tools/mlir-neura-opt/mlir-neura-opt+0x2b65100)
+#17 0x000055b1bc0139e2 mlir::PassManager::run(mlir::Operation*) (build/tools/mlir-neura-opt/mlir-neura-opt+0x2b679e2)
+#18 0x000055b1bbe7736a (anonymous namespace)::TaskDependencyGraph::profileTask((anonymous namespace)::TaskGraphNode*, mlir::taskflow::TaskflowTaskOp) /home/x/shiran/Project/dataflow/lib/TaskflowDialect/Transforms/Optimizations/ResourceAwareTaskOptimizationPass.cpp:277:17
+#19 0x000055b1bbe76305 (anonymous namespace)::TaskDependencyGraph::build(mlir::func::FuncOp)::'lambda'(mlir::taskflow::TaskflowTaskOp)::operator()(mlir::taskflow::TaskflowTaskOp) const /home/x/shiran/Project/dataflow/lib/TaskflowDialect/Transforms/Optimizations/ResourceAwareTaskOptimizationPass.cpp:114:68
+#20 0x000055b1bbe80a85 _ZZN4mlir6detail4walkILNS_9WalkOrderE1ENS_15ForwardIteratorEZN12_GLOBAL__N_119TaskDependencyGraph5buildENS_4func6FuncOpEEUlNS_8taskflow14TaskflowTaskOpEE_S9_vEENSt9enable_ifIXaantsrSt11disjunctionIJSt7is_sameIT2_PNS_9OperationEESD_ISE_PNS_6RegionEESD_ISE_PNS_5BlockEEEE5valuesrSD_IT3_vE5valueESP_E4typeESG_OT1_ENKUlSG_E_clESG_ /home/x/shiran/llvm-project/mlir/include/mlir/IR/Visitors.h:336:20
+#21 0x000055b1bbe83fba _ZN4llvm12function_refIFvPN4mlir9OperationEEE11callback_fnIZNS1_6detail4walkILNS1_9WalkOrderE1ENS1_15ForwardIteratorEZN12_GLOBAL__N_119TaskDependencyGraph5buildENS1_4func6FuncOpEEUlNS1_8taskflow14TaskflowTaskOpEE_SG_vEENSt9enable_ifIXaantsrSt11disjunctionIJSt7is_sameIT2_S3_ESK_ISL_PNS1_6RegionEESK_ISL_PNS1_5BlockEEEE5valuesrSK_IT3_vE5valueESU_E4typeES3_OT1_EUlS3_E_EEvlS3_ /home/x/shiran/llvm-project/llvm/include/llvm/ADT/STLFunctionalExtras.h:47:40
+#22 0x000055b1b990553e void mlir::detail::walk<mlir::ForwardIterator>(mlir::Operation*, llvm::function_ref<void (mlir::Operation*)>, mlir::WalkOrder) (build/tools/mlir-neura-opt/mlir-neura-opt+0x45953e)
+#23 0x000055b1bbe80afa _ZN4mlir6detail4walkILNS_9WalkOrderE1ENS_15ForwardIteratorEZN12_GLOBAL__N_119TaskDependencyGraph5buildENS_4func6FuncOpEEUlNS_8taskflow14TaskflowTaskOpEE_S9_vEENSt9enable_ifIXaantsrSt11disjunctionIJSt7is_sameIT2_PNS_9OperationEESD_ISE_PNS_6RegionEESD_ISE_PNS_5BlockEEEE5valuesrSD_IT3_vE5valueESP_E4typeESG_OT1_ /home/x/shiran/llvm-project/mlir/include/mlir/IR/Visitors.h:341:38
+#24 0x000055b1bbe7ecfc _ZN4mlir9Operation4walkILNS_9WalkOrderE1ENS_15ForwardIteratorEZN12_GLOBAL__N_119TaskDependencyGraph5buildENS_4func6FuncOpEEUlNS_8taskflow14TaskflowTaskOpEE_vEENSt9enable_ifIXeqsrN4llvm15function_traitsINSt5decayIT1_E4typeEXsrSt8is_classISH_E5valueEEE8num_argsLi1EET2_E4typeEOSF_ /home/x/shiran/llvm-project/mlir/include/mlir/IR/Operation.h:799:75
+#25 0x000055b1bbe7d80d _ZN4mlir7OpState4walkILNS_9WalkOrderE1ENS_15ForwardIteratorEZN12_GLOBAL__N_119TaskDependencyGraph5buildENS_4func6FuncOpEEUlNS_8taskflow14TaskflowTaskOpEE_vEENSt9enable_ifIXeqsrN4llvm15function_traitsINSt5decayIT1_E4typeEXsrSt8is_classISH_E5valueEEE8num_argsLi1EET2_E4typeEOSF_ /home/x/shiran/llvm-project/mlir/include/mlir/IR/OpDefinition.h:166:68
+#26 0x000055b1bbe76702 (anonymous namespace)::TaskDependencyGraph::build(mlir::func::FuncOp) /home/x/shiran/Project/dataflow/lib/TaskflowDialect/Transforms/Optimizations/ResourceAwareTaskOptimizationPass.cpp:137:27
+#27 0x000055b1bbe7c6ef (anonymous namespace)::ResourceAwareTaskOptimizationPass::runOnOperation() /home/x/shiran/Project/dataflow/lib/TaskflowDialect/Transforms/Optimizations/ResourceAwareTaskOptimizationPass.cpp:1231:28
+#28 0x000055b1bc0107d6 mlir::detail::OpToOpPassAdaptor::run(mlir::Pass*, mlir::Operation*, mlir::AnalysisManager, bool, unsigned int) (build/tools/mlir-neura-opt/mlir-neura-opt+0x2b647d6)
+#29 0x000055b1bc011100 mlir::detail::OpToOpPassAdaptor::runPipeline(mlir::OpPassManager&, mlir::Operation*, mlir::AnalysisManager, bool, unsigned int, mlir::PassInstrumentor*, mlir::PassInstrumentation::PipelineParentInfo const*) (build/tools/mlir-neura-opt/mlir-neura-opt+0x2b65100)
+#30 0x000055b1bc01690e auto void mlir::parallelForEach<__gnu_cxx::__normal_iterator<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo*, std::vector<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo, std::allocator<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo>>>, mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::$_0>(mlir::MLIRContext*, __gnu_cxx::__normal_iterator<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo*, std::vector<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo, std::allocator<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo>>>, __gnu_cxx::__normal_iterator<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo*, std::vector<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo, std::allocator<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo>>>, mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::$_0&&)::'lambda'(__gnu_cxx::__normal_iterator<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo*, std::vector<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo, std::allocator<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo>>>&&)::operator()<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo&>(__gnu_cxx::__normal_iterator<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo*, std::vector<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo, std::allocator<mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool)::OpPMInfo>>>&&) const Pass.cpp:0:0
+#31 0x000055b1bc012a3b mlir::detail::OpToOpPassAdaptor::runOnOperationAsyncImpl(bool) (build/tools/mlir-neura-opt/mlir-neura-opt+0x2b66a3b)
+#32 0x000055b1bc01092f mlir::detail::OpToOpPassAdaptor::run(mlir::Pass*, mlir::Operation*, mlir::AnalysisManager, bool, unsigned int) (build/tools/mlir-neura-opt/mlir-neura-opt+0x2b6492f)
+#33 0x000055b1bc011100 mlir::detail::OpToOpPassAdaptor::runPipeline(mlir::OpPassManager&, mlir::Operation*, mlir::AnalysisManager, bool, unsigned int, mlir::PassInstrumentor*, mlir::PassInstrumentation::PipelineParentInfo const*) (build/tools/mlir-neura-opt/mlir-neura-opt+0x2b65100)
+#34 0x000055b1bc0139e2 mlir::PassManager::run(mlir::Operation*) (build/tools/mlir-neura-opt/mlir-neura-opt+0x2b679e2)
+#35 0x000055b1bc00c6aa performActions(llvm::raw_ostream&, std::shared_ptr<llvm::SourceMgr> const&, mlir::MLIRContext*, mlir::MlirOptMainConfig const&) MlirOptMain.cpp:0:0
+#36 0x000055b1bc00c2fd llvm::LogicalResult llvm::function_ref<llvm::LogicalResult (std::unique_ptr<llvm::MemoryBuffer, std::default_delete<llvm::MemoryBuffer>>, llvm::raw_ostream&)>::callback_fn<mlir::MlirOptMain(llvm::raw_ostream&, std::unique_ptr<llvm::MemoryBuffer, std::default_delete<llvm::MemoryBuffer>>, mlir::DialectRegistry&, mlir::MlirOptMainConfig const&)::$_0>(long, std::unique_ptr<llvm::MemoryBuffer, std::default_delete<llvm::MemoryBuffer>>, llvm::raw_ostream&) MlirOptMain.cpp:0:0
+#37 0x000055b1bc1610f5 mlir::splitAndProcessBuffer(std::unique_ptr<llvm::MemoryBuffer, std::default_delete<llvm::MemoryBuffer>>, llvm::function_ref<llvm::LogicalResult (std::unique_ptr<llvm::MemoryBuffer, std::default_delete<llvm::MemoryBuffer>>, llvm::raw_ostream&)>, llvm::raw_ostream&, llvm::StringRef, llvm::StringRef) (build/tools/mlir-neura-opt/mlir-neura-opt+0x2cb50f5)
+#38 0x000055b1bc0052d5 mlir::MlirOptMain(llvm::raw_ostream&, std::unique_ptr<llvm::MemoryBuffer, std::default_delete<llvm::MemoryBuffer>>, mlir::DialectRegistry&, mlir::MlirOptMainConfig const&) (build/tools/mlir-neura-opt/mlir-neura-opt+0x2b592d5)
+#39 0x000055b1bc00557f mlir::MlirOptMain(int, char**, llvm::StringRef, llvm::StringRef, mlir::DialectRegistry&) (build/tools/mlir-neura-opt/mlir-neura-opt+0x2b5957f)
+#40 0x000055b1bc0058be mlir::MlirOptMain(int, char**, llvm::StringRef, mlir::DialectRegistry&) (build/tools/mlir-neura-opt/mlir-neura-opt+0x2b598be)
+#41 0x000055b1b98089d4 main /home/x/shiran/Project/dataflow/tools/mlir-neura-opt/mlir-neura-opt.cpp:121:0
+#42 0x00007f256bb97083 __libc_start_main /build/glibc-LcI20x/glibc-2.31/csu/../csu/libc-start.c:342:3
+#43 0x000055b1b98081be _start (build/tools/mlir-neura-opt/mlir-neura-opt+0x35c1be)

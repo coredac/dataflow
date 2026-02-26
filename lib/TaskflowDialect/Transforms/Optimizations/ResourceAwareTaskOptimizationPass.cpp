@@ -331,8 +331,12 @@ public:
 
   /// Public wrapper for profileTask — used by UtilizationFuser to re-profile
   /// fused tasks with the real downstream Neura pipeline.
-  void profileTaskPublic(TaskGraphNode *node, TaskflowTaskOp task) {
-    profileTask(node, task);
+  /// When skip_mapper=true, only ResMII/RecMII analytical estimates are used
+  /// (no MapToAcceleratorPass). This is safe for speculative balance checks
+  /// where the mapper may backtrack indefinitely on larger tile arrays.
+  void profileTaskPublic(TaskGraphNode *node, TaskflowTaskOp task,
+                         bool skip_mapper = false) {
+    profileTask(node, task, skip_mapper);
   }
 
 private:
@@ -359,7 +363,12 @@ private:
   ///     mapping pipeline to get real compiled_ii from MapToAcceleratorPass.
   /// ASSERTS if any phase fails — compiled_ii must come from the downstream
   /// pipeline, never from a silent fallback.
-  void profileTask(TaskGraphNode *node, TaskflowTaskOp task) {
+  ///
+  /// skip_mapper: when true, skip MapToAcceleratorPass and use only
+  ///   ResMII/RecMII analytical estimates. Safe for speculative balance probes
+  ///   where the mapper may loop indefinitely on large tile arrays.
+  void profileTask(TaskGraphNode *node, TaskflowTaskOp task,
+                   bool skip_mapper = false) {
     MLIRContext *ctx = task.getContext();
     OpBuilder builder(ctx);
     Location loc = task.getLoc();
@@ -428,7 +437,7 @@ private:
         TaskGraphNode tmp_node(/*id=*/0, tmp_task);
         tmp_node.cgra_count = node->cgra_count;
         tmp_node.shape = node->shape;
-        this->profileTask(&tmp_node, tmp_task);
+        this->profileTask(&tmp_node, tmp_task, skip_mapper);
 
         total_ii = std::max(total_ii, tmp_node.ii);
         total_steps += tmp_node.steps;
@@ -562,7 +571,8 @@ private:
       if (succeeded(
               runNeuraPipelineOnKernel(ctx, kernel, phase2_module,
                                       compiled_ii, cp_depth,
-                                      x_tiles, y_tiles, valid_tiles))) {
+                                      x_tiles, y_tiles, valid_tiles,
+                                      skip_mapper))) {
         llvm::errs() << "[profileTask] kernel in " << task.getTaskName()
                      << ": compiled_ii=" << compiled_ii
                      << ", cp_depth=" << cp_depth << "\n";
@@ -600,6 +610,9 @@ private:
   ///   multi-CGRA tile grid rather than the default 1-CGRA singleton.
   /// valid_tiles: explicit comma-separated tile list for non-rectangular shapes.
   ///   Empty string means "use the full x_tiles × y_tiles rectangle".
+  /// skip_mapper: when true, skip MapToAcceleratorPass entirely and rely only
+  ///   on ResMII/RecMII analytical estimates. Used for speculative balance
+  ///   probes to prevent infinite mapper backtracking on larger tile arrays.
   LogicalResult runNeuraPipelineOnKernel(MLIRContext *ctx,
                                          neura::KernelOp kernel,
                                          ModuleOp dst_module,
@@ -607,7 +620,8 @@ private:
                                          int &cp_depth,
                                          int x_tiles = 0,
                                          int y_tiles = 0,
-                                         const std::string &valid_tiles = "") {
+                                         const std::string &valid_tiles = "",
+                                         bool skip_mapper = false) {
     Location loc = kernel.getLoc();
     OpBuilder builder(ctx);
     builder.setInsertionPointToStart(dst_module.getBody());
@@ -743,14 +757,22 @@ private:
     // Optionally run MapToAcceleratorPass to get the true compiled_ii.
     //
     // Guards (Option C — safe default to prevent backtracking timeout):
-    //   1. All non-Reserve operand producers must be DataMovOp (mapper asserts
+    //   1. skip_mapper=true: caller explicitly requests analytical-only (e.g.
+    //      speculative balance probes where the mapper may loop indefinitely).
+    //   2. All non-Reserve operand producers must be DataMovOp (mapper asserts
     //      otherwise).
-    //   2. Kernel must be small enough (<= kMapperOpLimit ops) to avoid
+    //   3. Kernel must be small enough (<= kMapperOpLimit ops) to avoid
     //      exponential backtracking blowup during speculative profiling.
     //
-    // If either guard fails, the ResMII/RecMII values computed above serve as
+    // If any guard fires, the ResMII/RecMII values computed above serve as
     // the analytical lower-bound estimate (under-estimates true II on smaller
     // arrays, but are safe and instant).
+    if (skip_mapper) {
+      llvm::errs() << "[profileTask] Skipping mapper (analytical-only mode). "
+                   << "Using analytical compiled_ii=" << compiled_ii << "\n";
+      return success();
+    }
+
     constexpr int kMapperOpLimit = 150;
     bool all_data_movs_ok = true;
     int total_mapped_ops = 0;
@@ -1589,11 +1611,17 @@ struct ResourceAwareTaskOptimizationPass
       }
 
       // Phase 2: Latency-Aware Pipeline Balance.
-      // Pass profile_fn so the balancer can speculatively re-profile each
-      // bottleneck task with its new CGRA count and roll back if there is no
-      // latency improvement.
+      // Use analytical-only profiling for speculative balance probes.
+      // The mapper is skipped to prevent infinite backtracking on large tile
+      // arrays. ResMII/RecMII estimates are sufficient to decide if adding a
+      // CGRA reduces the bottleneck's II (RecMII-bound tasks will correctly
+      // show no improvement; ResMII-bound tasks will show proportional gains).
+      auto balance_profile_fn = [&graph](TaskGraphNode *node,
+                                         TaskflowTaskOp task) {
+        graph.profileTaskPublic(node, task, /*skip_mapper=*/true);
+      };
       PipelineBalancer balancer;
-      bool balance_changed = balancer.balance(graph, profile_fn);
+      bool balance_changed = balancer.balance(graph, balance_profile_fn);
 
       // Writes cgra_count, ii, steps, and trip_count back to IR during
       // iterations so that the next iteration's graph.build() reads them

@@ -1,0 +1,19 @@
+module {
+  func.func @parallel_nested_example(%arg0: memref<16xf32>, %arg1: memref<8x8xf32>, %arg2: memref<8x8xf32>, %arg3: memref<8x8xf32>, %arg4: f32) {
+    affine.for %arg5 = 0 to 16 {
+      %0 = affine.load %arg0[%arg5] : memref<16xf32>
+      %1 = arith.mulf %0, %arg4 : f32
+      affine.store %1, %arg0[%arg5] : memref<16xf32>
+    }
+    affine.for %arg5 = 0 to 8 {
+      affine.for %arg6 = 0 to 8 {
+        %0 = affine.load %arg1[%arg5, %arg6] : memref<8x8xf32>
+        %1 = affine.load %arg2[%arg5, %arg6] : memref<8x8xf32>
+        %2 = arith.mulf %0, %1 : f32
+        affine.store %2, %arg3[%arg5, %arg6] : memref<8x8xf32>
+      }
+    }
+    return
+  }
+}
+

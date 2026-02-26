@@ -1,0 +1,3 @@
+[mlir-neura-opt] No architecture specification file provided, using default configuration
+=== ResourceAwareTaskOptimization on parallel_nested_example ===
+TaskDependencyGraph: 0 tasks
