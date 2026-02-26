@@ -683,37 +683,22 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // STREAM-NEXT: }
 
 
-// RESOPT:      func.func @
-// RESOPT-SAME: tile_occupation_map = "+---+---+---+---+\0A| 0 | 1 | 2 | 3 |\0A+---+---+---+---+\0A| 4 | 5 | . | . |\0A+---+---+---+---+\0A| . | . | . | . |\0A+---+---+---+---+\0A| . | . | . | . |\0A+---+---+---+---+\0A(6/16 CGRAs used, 10 free)"
 // RESOPT:      %write_outputs:3 = taskflow.task @Task_1_Task_0_Task_2_utilfused_utilfused
 // RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 6 : i64, steps = 21 : i64, tile_shape = "1x1", trip_count = 6400 : i64}
-// RESOPT:      taskflow.yield writes(%arg2, %arg3, %arg4 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>)
+// RESOPT:      taskflow.yield writes(%alloc_3, %alloc, %alloc_4 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>)
 // RESOPT:      %write_outputs_5 = taskflow.task @Task_3
-// RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 4 : i64, steps = 10 : i64, tile_shape = "1x1", trip_count = 2359296 : i64}
-// RESOPT:      taskflow.yield writes(%arg3 : memref<1x8x8x64xf32>)
+// RESOPT-SAME: {cgra_count = 11 : i32, compiled_ii = 4 : i64, steps = 10 : i64, tile_shape = "1x11(non-rect, 11 CGRAs in 1x11 bbox)", trip_count = 2359296 : i64}
+// RESOPT:      taskflow.yield writes(%write_outputs#2 : memref<1x8x8x64xf32>)
 // RESOPT:      %write_outputs_9:2 = taskflow.task @Task_4_Task_5_fused_Task_7_utilfused
 // RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 5 : i64, steps = 16 : i64, tile_shape = "1x1", trip_count = 6400 : i64}
-// RESOPT:      taskflow.yield writes(%arg2, %arg3 : memref<1x64x8x8xf32>, memref<1x10x10x64xf32>)
+// RESOPT:      taskflow.yield writes(%alloc_6, %alloc_8 : memref<1x64x8x8xf32>, memref<1x10x10x64xf32>)
 // RESOPT:      %write_outputs_11:2 = taskflow.task @Task_6_Task_8_utilfused
 // RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 6 : i64, steps = 14 : i64, tile_shape = "1x1", trip_count = 4096 : i64}
-// RESOPT:      taskflow.yield writes(%arg2, %arg3 : memref<1x8x8x64xf32>, memref<1x8x8x64xf32>)
+// RESOPT:      taskflow.yield writes(%alloc_7, %alloc_10 : memref<1x8x8x64xf32>, memref<1x8x8x64xf32>)
 // RESOPT:      %write_outputs_12 = taskflow.task @Task_9
 // RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 4 : i64, steps = 10 : i64, tile_shape = "1x1", trip_count = 2359296 : i64}
-// RESOPT:      taskflow.yield writes(%arg3 : memref<1x8x8x64xf32>)
+// RESOPT:      taskflow.yield writes(%write_outputs_11#1 : memref<1x8x8x64xf32>)
 // RESOPT:      %write_outputs_14 = taskflow.task @Task_10_Task_11_Task_12_fused_fused
 // RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 4 : i64, steps = 10 : i64, tile_shape = "1x1", trip_count = 4096 : i64}
-// RESOPT:      taskflow.yield writes(%arg3 : memref<1x64x8x8xf32>)
+// RESOPT:      taskflow.yield writes(%alloc_13 : memref<1x64x8x8xf32>)
 // RESOPT:      return %write_outputs_14 : memref<1x64x8x8xf32>
-
-
-// Tile Occupation Map:
-// +---+---+---+---+
-// | 0 | 1 | 2 | 3 |
-// +---+---+---+---+
-// | 4 | 5 | . | . |
-// +---+---+---+---+
-// | . | . | . | . |
-// +---+---+---+---+
-// | . | . | . | . |
-// +---+---+---+---+
-// (6/16 CGRAs used, 10 free)

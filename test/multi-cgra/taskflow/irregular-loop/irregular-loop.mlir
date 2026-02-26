@@ -363,24 +363,9 @@ module attributes {} {
 // PLACEMENT:      taskflow.task @Task_2
 // PLACEMENT-SAME: task_mapping_info = {cgra_positions = [{col = 0 : i32, row = 1 : i32}], read_sram_locations = [{col = 1 : i32, row = 1 : i32}], write_sram_locations = [{col = 0 : i32, row = 1 : i32}]}
 
-// RESOPT:      func.func @
-// RESOPT-SAME: tile_occupation_map = "+---+---+---+---+\0A| 0 | 1 | 2 | . |\0A+---+---+---+---+\0A| . | . | . | . |\0A+---+---+---+---+\0A| . | . | . | . |\0A+---+---+---+---+\0A| . | . | . | . |\0A+---+---+---+---+\0A(3/16 CGRAs used, 13 free)"
 // RESOPT:      %value_outputs = taskflow.task @Task_0
 // RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 6 : i64, steps = 7 : i64, tile_shape = "1x1", trip_count = 5 : i64}
 // RESOPT:      %write_outputs = taskflow.task @Task_1
 // RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 7 : i64, steps = 8 : i64, tile_shape = "1x1", trip_count = 32 : i64}
 // RESOPT:      %write_outputs_1 = taskflow.task @Task_2
-// RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 10 : i64, steps = 12 : i64, tile_shape = "1x1", trip_count = 32 : i64}
-
-
-// Tile Occupation Map:
-// +---+---+---+---+
-// | 0 | 1 | 2 | . |
-// +---+---+---+---+
-// | . | . | . | . |
-// +---+---+---+---+
-// | . | . | . | . |
-// +---+---+---+---+
-// | . | . | . | . |
-// +---+---+---+---+
-// (3/16 CGRAs used, 13 free)
+// RESOPT-SAME: {cgra_count = 14 : i32, compiled_ii = 10 : i64, steps = 12 : i64, tile_shape = "1x14(non-rect, 14 CGRAs in 1x14 bbox)", trip_count = 32 : i64}
