@@ -88,7 +88,7 @@ def MemoryAccessStreamingFusion : Pass<"memory-access-streaming-fusion", "func::
 }
 
 def ResourceAwareTaskOptimization : Pass<"resource-aware-task-optimization", "func::FuncOp"> {
-  let summary = "Balances pipeline latency and fuses independent tasks for CGRA utilization";
+  let summary = "Balances pipeline latency and fuses independent tasks for CGRA utilization.";
   let description = [{
     Two-phase optimization:
     1. Utilization Fusion: merges independent (no-edge) tasks, selecting pairs
@@ -97,7 +97,7 @@ def ResourceAwareTaskOptimization : Pass<"resource-aware-task-optimization", "fu
        More CGRAs combine tile arrays into larger arrays for mapping, potentially
        lowering compiled_ii.  Latency model: II * (trip_count - 1) + steps.
     Targets a 4x4 CGRA grid (16 CGRAs).  Validates shapes (rect, L, T, offset).
-    compiled_ii must come from the downstream Neura pipeline (asserts on failure).
+    Compiled_ii must come from the downstream Neura pipeline (asserts on failure).
   }];
   let constructor = "taskflow::createResourceAwareTaskOptimizationPass()";
   let dependentDialects = [

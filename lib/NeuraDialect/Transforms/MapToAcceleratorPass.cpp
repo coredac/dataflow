@@ -79,15 +79,15 @@ struct MapToAcceleratorPass
       llvm::cl::init(true)};
   Option<int> x_tiles{
       *this, "x-tiles",
-      llvm::cl::desc("Override Number of tiles in X dimension (0 = default)"),
+      llvm::cl::desc("Override number of tiles in X dimension (0 = default)."),
       llvm::cl::init(0)};
   Option<int> y_tiles{
       *this, "y-tiles",
-      llvm::cl::desc("Override Number of tiles in Y dimension (0 = default)"),
+      llvm::cl::desc("Override number of tiles in Y dimension (0 = default)."),
       llvm::cl::init(0)};
   Option<std::string> valid_tiles{
       *this, "valid-tiles",
-      llvm::cl::desc("Comma separated list of valid tile coords x_y,x_y to support non-rectangular shapes"),
+      llvm::cl::desc("Comma separated list of valid tile coords x_y,x_y to support non-rectangular shapes."),
       llvm::cl::init("")};
 
   // Configures mapping strategy and mode based on command-line options.
@@ -256,15 +256,15 @@ struct MapToAcceleratorPass
     }
 
     // Filters out operations inside fused_op regions.
-    // Only map the fused_op itself, not the operations within its region
+    // Only map the fused_op itself, not the operations within its region.
     std::vector<Operation *> filtered_ops;
     int skipped_count = 0;
     for (Operation *op : topologically_sorted_ops) {
       Operation *parent_op = op->getParentOp();
-      // Check if parent is a fused_op by checking operation name
+      // Check if parent is a fused_op by checking operation name.
       if (parent_op &&
           parent_op->getName().getStringRef().contains(attr::val::kOpFused)) {
-        // Skip operations inside fused_op region
+        // Skip operations inside fused_op region.
         llvm::outs() << "[MapToAcceleratorPass] Skipping op inside fused_op: "
                      << *op << "\n";
         skipped_count++;
@@ -307,9 +307,9 @@ struct MapToAcceleratorPass
       MappingState mapping_state(architecture, ii, is_spatial_only);
       if (mapping_strategy->map(sorted_ops_with_alap_levels, critical_ops,
                                 architecture, mapping_state)) {
-        // success
+        // Success.
         if (dumpMappingTable) {
-          // logs to stderr
+          // Logs to stderr.
           mapping_state.dumpOpToLocs();
         }
         mapping_state.encodeMappingState();
@@ -382,7 +382,7 @@ struct MapToAcceleratorPass
         llvm::SmallVector<llvm::StringRef, 4> coords;
         llvm::StringRef(valid_tiles.getValue()).split(coords, ',');
         
-        // Default: mark all tiles as non-existent first if valid_tiles provided
+        // Default: mark all tiles as non-existent first if valid_tiles provided.
         for (int y = 0; y < y_tiles.getValue(); ++y) {
           for (int x = 0; x < x_tiles.getValue(); ++x) {
             TileOverride to;
@@ -393,7 +393,7 @@ struct MapToAcceleratorPass
           }
         }
         
-        // Then mark the valid ones as existent
+        // Then mark the valid ones as existent.
         for (llvm::StringRef coord : coords) {
           auto pair = coord.split('_');
           int x, y;

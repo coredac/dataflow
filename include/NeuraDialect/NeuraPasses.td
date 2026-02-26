@@ -56,9 +56,9 @@ def MapToAccelerator : Pass<"map-to-accelerator", "ModuleOp"> {
     This pass performs mapping from Neura operations to accelerator.
   }];
   let options = [
-    Option<"x_tiles", "x-tiles", "int", /*default=*/"0", "Number of tiles in X dimension">,
-    Option<"y_tiles", "y-tiles", "int", /*default=*/"0", "Number of tiles in Y dimension">,
-    Option<"valid_tiles", "valid-tiles", "std::string", /*default=*/"\"\"", "Comma separated list of valid tile coords x_y,x_y to support non-rectangular shapes">
+    Option<"x_tiles", "x-tiles", "int", /*default=*/"0", "Number of tiles in X dimension.">,
+    Option<"y_tiles", "y-tiles", "int", /*default=*/"0", "Number of tiles in Y dimension.">,
+    Option<"valid_tiles", "valid-tiles", "std::string", /*default=*/"\"\"", "Comma separated list of valid tile coords x_y,x_y to support non-rectangular shapes.">
   ];
   let constructor = "neura::createMapToAcceleratorPass()";
 }

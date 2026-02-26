@@ -61,12 +61,12 @@ constexpr int kTotalCGRAs = kGridRows * kGridCols; // 16
 constexpr int kMaxBalanceIterations = 100;
 constexpr int kPerCgraRows = 4;  // Tile rows per single CGRA.
 constexpr int kPerCgraCols = 4;  // Tile cols per single CGRA.
- 
- // Sentinel value: 0 means "not yet profiled". After profileTask() runs,
+
+// Sentinel value: 0 means "not yet profiled". After profileTask() runs,
 // both steps and ii MUST be > 0. An assert fires if profiling fails.
- constexpr int64_t kUnprofiled = 0;
+constexpr int64_t kUnprofiled = 0;
  
- //===----------------------------------------------------------------------===//
+//===----------------------------------------------------------------------===//
 // CGRA Shape Utilities
 //===----------------------------------------------------------------------===//
 

@@ -494,8 +494,8 @@ public:
   // Checks if the architecture supports counter operations.
   bool canSupportCounter() const;
 
-  // Clones the architecture but with new per-cgra dimensions.
-  // The provided tile_overrides will be appended to the existing ones.
+  /// Clones the architecture but with new per-cgra dimensions.
+  /// The provided tile_overrides will be appended to the existing ones.
   std::unique_ptr<Architecture> cloneWithNewDimensions(
       int new_per_cgra_rows, int new_per_cgra_columns,
       const std::vector<TileOverride> &additional_overrides = {}) const;
