@@ -141,5 +141,5 @@ module {
 // PLACEMENT-SAME: task_mapping_info = {cgra_positions = [{col = 1 : i32, row = 0 : i32}], read_sram_locations = [{col = 1 : i32, row = 0 : i32}, {col = 1 : i32, row = 0 : i32}], write_sram_locations = [{col = 1 : i32, row = 0 : i32}]}
 
 // RESOPT:      %write_outputs:2 = taskflow.task @Task_0_Task_1_utilfused
-// RESOPT-SAME: {cgra_count = 10 : i32, ii = 7 : i64, steps = 16 : i64, trip_count = 80 : i64}
+// RESOPT-SAME: {cgra_count = 16 : i32, compiled_ii = 7 : i64, steps = 16 : i64, tile_shape = "4x4", trip_count = 64 : i64}
 // RESOPT:      taskflow.yield writes(%arg8, %arg9 : memref<16xf32>, memref<8x8xf32>)

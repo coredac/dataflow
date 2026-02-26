@@ -1,15 +1,13 @@
 //===- ResourceAwareTaskOptimizationPass.cpp - Pipeline Balance & Fusion --===//
-//
 // This pass performs two-phase optimization on the task graph:
-// 1. Utilization Fusion: merges independent (no-edge) tasks into a single task
-//    to free up CGRA resources.
-// 2. Latency-Aware Balance: allocates extra CGRAs to critical-path bottleneck
-//    tasks using the pipelined latency model:
-//      latency = II * (ceil(trip_count / cgra_count) - 1) + steps
-//    where II and steps are obtained via speculative lowering to the Neura
-//    dialect (running the full downstream pipeline on a cloned module).
+// 1. Utilization Fusion: merges independent (no-edge) tasks, selecting pairs
+//    that minimize |trip_count_a - trip_count_b| for balanced utilization.
+// 2. Pipeline Balance: allocates extra CGRAs to critical-path bottleneck tasks.
+//    More CGRAs combine tile arrays into larger arrays for mapping, potentially
+//    lowering compiled_ii.  Latency model: II * (trip_count - 1) + steps.
 //
-// Targets a hardcoded 4x4 CGRA grid (16 CGRAs total).
+// Targets a 4x4 CGRA grid (16 CGRAs total). Validates shapes (rect, L, T, offset).
+// Compiled_ii must come from the downstream pipeline (asserts on failure).
 //
 //===----------------------------------------------------------------------===//
 
@@ -61,10 +59,96 @@ constexpr int kGridRows = 4;
 constexpr int kGridCols = 4;
 constexpr int kTotalCGRAs = kGridRows * kGridCols; // 16
 constexpr int kMaxBalanceIterations = 100;
+constexpr int kPerCgraRows = 4;  // Tile rows per single CGRA.
+constexpr int kPerCgraCols = 4;  // Tile cols per single CGRA.
+ 
+ // Sentinel value: 0 means "not yet profiled". After profileTask() runs,
+// both steps and ii MUST be > 0. An assert fires if profiling fails.
+ constexpr int64_t kUnprofiled = 0;
+ 
+ //===----------------------------------------------------------------------===//
+// CGRA Shape Utilities
+//===----------------------------------------------------------------------===//
 
-// Sentinel value: 0 means "not yet profiled". After profileTask() runs,
-// both steps and ii MUST be > 0. An assert fires if profiling fails silently.
-constexpr int64_t kUnprofiled = 0;
+/// Represents a tile shape on the 4×4 CGRA grid.
+/// For rectangular shapes, rows × cols = cgra_count.
+/// Non-rectangular shapes (L, T, diagonal offset) are also valid on the 4×4
+/// grid but are represented by their bounding box with a note on layout.
+struct CGRAShape {
+  int rows;  // Number of CGRA rows in the bounding box.
+  int cols;  // Number of CGRA columns in the bounding box.
+  bool rectangular;  // True if this is a perfect rectangle.
+  int area() const { return rows * cols; }
+
+  std::string describe(int cgra_count) const {
+    std::string s = std::to_string(rows) + "x" + std::to_string(cols);
+    if (!rectangular) {
+      s += "(non-rect, " + std::to_string(cgra_count) + " CGRAs in " +
+           std::to_string(rows) + "x" + std::to_string(cols) + " bbox)";
+    }
+    return s;
+  }
+};
+
+/// Returns all valid rectangular shapes for `cgra_count` CGRAs.
+static SmallVector<CGRAShape> getRectangularShapes(int cgra_count) {
+  SmallVector<CGRAShape> shapes;
+  for (int r = 1; r <= kGridRows; ++r) {
+    for (int c = 1; c <= kGridCols; ++c) {
+      if (r * c == cgra_count) {
+        shapes.push_back({r, c, /*rectangular=*/true});
+      }
+    }
+  }
+  return shapes;
+}
+
+/// Returns true if `cgra_count` CGRAs can fit on the 4×4 grid.
+/// On a 4×4 grid (16 cells), any count 1..16 can always be arranged as
+/// a connected shape (rectangle, L-shape, T-shape, diagonal offset, etc.).
+static bool canFitOnGrid(int cgra_count) {
+  return cgra_count >= 1 && cgra_count <= kTotalCGRAs;
+}
+
+/// Picks the best shape for display/profiling.
+/// Prefers rectangular shapes (most square-ish). If no rectangle exists,
+/// returns a non-rectangular bounding-box representation.
+static CGRAShape pickBestShape(int cgra_count) {
+  auto rect_shapes = getRectangularShapes(cgra_count);
+  if (!rect_shapes.empty()) {
+    return *std::min_element(rect_shapes.begin(), rect_shapes.end(),
+        [](const CGRAShape &a, const CGRAShape &b) {
+          return std::abs(a.rows - a.cols) < std::abs(b.rows - b.cols);
+        });
+  }
+  // Non-rectangular: find smallest bounding box that contains cgra_count cells.
+  CGRAShape best = {kGridRows, kGridCols, false};
+  for (int r = 1; r <= kGridRows; ++r) {
+    for (int c = 1; c <= kGridCols; ++c) {
+      if (r * c >= cgra_count && r * c < best.area()) {
+        best = {r, c, false};
+      }
+    }
+  }
+  return best;
+}
+
+/// Prints all valid shape options for a given cgra_count.
+static void printShapeOptions(int cgra_count) {
+  auto rect = getRectangularShapes(cgra_count);
+  llvm::errs() << "    Valid shapes for " << cgra_count << " CGRAs: ";
+  if (!rect.empty()) {
+    for (size_t i = 0; i < rect.size(); ++i) {
+      if (i > 0) llvm::errs() << ", ";
+      llvm::errs() << rect[i].rows << "x" << rect[i].cols << "(rect)";
+    }
+  }
+  if (rect.empty() || cgra_count > 4) {
+    if (!rect.empty()) llvm::errs() << ", ";
+    llvm::errs() << "L/T/offset shapes also valid";
+  }
+  llvm::errs() << "\n";
+}
 
 //===----------------------------------------------------------------------===//
 // Task Dependency Graph
@@ -74,9 +158,10 @@ struct TaskGraphNode {
   size_t id;
   TaskflowTaskOp op;
   int64_t trip_count = 1;
-  int64_t steps = kUnprofiled;  // Pipeline depth (critical path through DFG).
-  int64_t ii = kUnprofiled;     // Initiation interval = max(ResMII, RecMII).
+  int64_t steps = kUnprofiled;
+  int64_t ii = kUnprofiled;
   int cgra_count = 1;
+  CGRAShape shape = {1, 1, true};
 
   // Dependency edges (both SSA and memory).
   SmallVector<TaskGraphNode *> predecessors;
@@ -85,11 +170,9 @@ struct TaskGraphNode {
   TaskGraphNode(size_t id, TaskflowTaskOp op) : id(id), op(op) {}
 
   /// Returns estimated task latency using the pipelined execution model:
-  ///   latency = II * (ceil(trip_count / cgra_count) - 1) + steps.
+  ///   latency = II * (trip_count - 1) + steps.
   int64_t estimatedLatency() const {
-    int64_t iterations_per_cgra =
-        (trip_count + cgra_count - 1) / cgra_count;
-    return ii * (iterations_per_cgra - 1) + steps;
+    return ii * (trip_count - 1) + steps;
   }
 };
 
@@ -106,7 +189,7 @@ public:
       
       // If the task already has profiling attributes (e.g., from fusion),
       // skip expensive speculative lowering and use those directly.
-      bool has_precomputed = task->hasAttr("ii") && task->hasAttr("steps");
+      bool has_precomputed = task->hasAttr("compiled_ii") && task->hasAttr("steps");
       if (!has_precomputed) {
         // Speculative lowering to Neura to get real metrics.
         profileTask(node.get(), task);
@@ -123,7 +206,7 @@ public:
       if (auto attr = task->getAttrOfType<IntegerAttr>("steps")) {
         node->steps = attr.getInt();
       }
-      if (auto attr = task->getAttrOfType<IntegerAttr>("ii")) {
+      if (auto attr = task->getAttrOfType<IntegerAttr>("compiled_ii")) {
         node->ii = attr.getInt();
       }
       if (auto attr = task->getAttrOfType<IntegerAttr>("cgra_count")) {
@@ -145,21 +228,37 @@ public:
       }
     }
 
-    // 3. Builds memory edges (read-after-write and write-after-write).
+    // 3. Builds memory edges (RAW, WAR, WAW).
     DenseMap<Value, SmallVector<TaskGraphNode *>> memref_writers;
+    DenseMap<Value, SmallVector<TaskGraphNode *>> memref_readers;
     for (auto &node : nodes) {
       for (Value memref : node->op.getOriginalWriteMemrefs()) {
         memref_writers[memref].push_back(node.get());
+      }
+      for (Value memref : node->op.getOriginalReadMemrefs()) {
+        memref_readers[memref].push_back(node.get());
       }
     }
     // RAW edges: writer -> reader.
     for (auto &node : nodes) {
       for (Value memref : node->op.getOriginalReadMemrefs()) {
-        if (memref_writers.count(memref)) {
-          for (auto *writer : memref_writers[memref]) {
-            if (writer != node.get()) {
-              addEdge(writer, node.get());
-            }
+        if (!memref_writers.count(memref)) continue;
+        for (auto *writer : memref_writers[memref]) {
+          if (writer != node.get() &&
+              writer->op->isBeforeInBlock(node->op.getOperation())) {
+            addEdge(writer, node.get());
+          }
+        }
+      }
+    }
+    // WAR edges: reader -> writer (anti-dependency, preserves read-before-write).
+    for (auto &[memref, writers] : memref_writers) {
+      if (!memref_readers.count(memref)) continue;
+      for (auto *reader : memref_readers[memref]) {
+        for (auto *writer : writers) {
+          if (reader != writer &&
+              reader->op->isBeforeInBlock(writer->op.getOperation())) {
+            addEdge(reader, writer);
           }
         }
       }
@@ -251,19 +350,17 @@ private:
   ///   Phase 2: Clone each kernel body into a standalone func::FuncOp with
   ///     accelerator="neura" attribute, then run the full Neura lowering +
   ///     mapping pipeline to get real compiled_ii from MapToAcceleratorPass.
-  void profileTask(TaskGraphNode *node, TaskflowTaskOp task) {
+  /// ASSERTS if any phase fails — compiled_ii must come from the downstream
+  /// pipeline, never from a silent fallback.
+  void profileTaskImpl(TaskGraphNode *node, TaskflowTaskOp task) {
     MLIRContext *ctx = task.getContext();
     OpBuilder builder(ctx);
     Location loc = task.getLoc();
 
     auto parent_func = task->getParentOfType<func::FuncOp>();
-    if (!parent_func) {
-      llvm::errs() << "[profileTask] WARNING: task has no parent func, "
-                      "skipping profiling\n";
-      node->ii = 1;
-      node->steps = 1;
-      return;
-    }
+    assert(parent_func &&
+           "[profileTask] FATAL: task has no parent func::FuncOp. "
+           "compiled_ii must come from downstream pipeline.");
 
     // ================================================================
     // Phase 1: Taskflow -> Neura conversion (get neura.kernel ops)
@@ -320,11 +417,10 @@ private:
       pm.addPass(mlir::createConvertTaskflowToNeuraPass());
 
       if (failed(pm.run(phase1_module))) {
-        llvm::errs() << "[profileTask] Phase 1 (Taskflow->Neura) failed for "
-                     << task.getTaskName() << ", using defaults\n";
-        node->ii = 1;
-        node->steps = 1;
         phase1_module.erase();
+        assert(false &&
+               "[profileTask] FATAL: Phase 1 (Taskflow->Neura) failed. "
+               "compiled_ii must come from downstream pipeline.");
         return;
       }
     }
@@ -337,11 +433,10 @@ private:
     phase1_module.walk([&](neura::KernelOp k) { kernels.push_back(k); });
 
     if (kernels.empty()) {
-      llvm::errs() << "[profileTask] No kernels found after Phase 1 for "
-                   << task.getTaskName() << ", using defaults\n";
-      node->ii = 1;
-      node->steps = 1;
       phase1_module.erase();
+      assert(false &&
+             "[profileTask] FATAL: No kernels found after Phase 1. "
+             "compiled_ii must come from downstream pipeline.");
       return;
     }
 
@@ -373,7 +468,10 @@ private:
       phase2_module.erase();
     }
 
-    node->ii = (best_compiled_ii > 0) ? best_compiled_ii : 1;
+    assert(best_compiled_ii > 0 &&
+           "[profileTask] FATAL: compiled_ii is 0 after downstream pipeline. "
+           "All profiling paths must produce a valid compiled_ii > 0.");
+    node->ii = best_compiled_ii;
     node->steps = std::max(best_cp_depth, 1);
 
     llvm::errs() << "[profileTask] " << task.getTaskName()
@@ -683,7 +781,7 @@ public:
     bool changed = false;
 
     for (int iter = 0; iter < kMaxBalanceIterations; ++iter) {
-      int total_cgras = graph.totalCGRAs();
+      int total_cgras = graph.getTotalAllocatedCGRAs();
       if (total_cgras >= kTotalCGRAs) {
         break;
       }
@@ -698,65 +796,33 @@ public:
         break;
       }
 
-      // Checks if incrementing cgra_count actually reduces latency
-      // using pipelined model: II * (ceil(trip/cgra) - 1) + steps.
-      int64_t current_latency = bottleneck->estimatedLatency();
+      // Checks if incrementing cgra_count is feasible on the 4×4 grid.
       int new_cgra_count = bottleneck->cgra_count + 1;
-      int64_t new_iterations =
-          (bottleneck->trip_count + new_cgra_count - 1) / new_cgra_count;
-      int64_t new_latency =
-          bottleneck->ii * (new_iterations - 1) + bottleneck->steps;
-
-      if (new_latency >= current_latency) {
-        // No improvement — this bottleneck is saturated. Try skipping it.
-        // Use a secondary search excluding saturated nodes.
+      if (!canFitOnGrid(new_cgra_count)) {
+        // No valid shape fits on the grid — skip this bottleneck.
         llvm::DenseSet<TaskGraphNode *> ignored_nodes;
         ignored_nodes.insert(bottleneck);
-        bool found_alternative = false;
-
-        while (graph.totalCGRAs() < kTotalCGRAs) {
-          TaskGraphNode *alt = findBottleneck(graph, ignored_nodes);
-          if (!alt) break;
-
-          int64_t alt_lat = alt->estimatedLatency();
-          int alt_new = alt->cgra_count + 1;
-          int64_t alt_new_iters =
-              (alt->trip_count + alt_new - 1) / alt_new;
-          int64_t alt_new_lat =
-              alt->ii * (alt_new_iters - 1) + alt->steps;
-
-          if (alt_new_lat >= alt_lat) {
-            ignored_nodes.insert(alt);
-            continue;
-          }
-
-          alt->cgra_count = alt_new;
-          changed = true;
-          found_alternative = true;
-
-          llvm::errs()
-              << "  Balance: Task " << alt->id << " ("
-              << alt->op.getTaskName().str()
-              << ") cgra_count=" << alt_new
-              << ", latency: " << alt_lat << " -> " << alt_new_lat
-              << ", total_cgras=" << graph.totalCGRAs() << "\n";
-          break; // Recompute critical path from the top.
-        }
-
-        if (!found_alternative) break;
         continue;
       }
 
       // Allocates one more CGRA to the bottleneck.
+      // The benefit comes from mapping on a larger tile array, which may
+      // yield a lower compiled_ii — the actual II improvement is determined
+      // by re-profiling via the downstream pipeline.
+      int64_t old_latency = bottleneck->estimatedLatency();
       bottleneck->cgra_count = new_cgra_count;
+      bottleneck->shape = pickBestShape(new_cgra_count);
       changed = true;
 
       llvm::errs()
           << "  Balance: Task " << bottleneck->id << " ("
           << bottleneck->op.getTaskName().str()
           << ") cgra_count=" << new_cgra_count
-          << ", latency: " << current_latency << " -> " << new_latency
-          << ", total_cgras=" << graph.totalCGRAs() << "\n";
+          << ", shape=" << bottleneck->shape.describe(new_cgra_count)
+          << ", tile_array=" << (bottleneck->shape.rows * kPerCgraRows)
+          << "x" << (bottleneck->shape.cols * kPerCgraCols)
+          << ", latency: " << old_latency
+          << ", total_cgras=" << graph.getTotalAllocatedCGRAs() << "\n";
     }
 
     return changed;
@@ -869,7 +935,8 @@ public:
 // Utilization Fusion
 //===----------------------------------------------------------------------===//
 /// Merges independent tasks (no edge in either direction) into a single task
-/// to reduce total CGRA count.
+/// to reduce total CGRA count.  Fusion candidates are chosen to minimize
+/// |trip_count_a - trip_count_b| for balanced utilization.
 
 class UtilizationFuser {
 public:
@@ -897,7 +964,9 @@ public:
 
 private:
   /// Finds the best pair of independent tasks to fuse.
-  /// Prioritizes tasks with smallest combined trip count.
+  /// Selects the pair with the most balanced trip_count (minimizes
+  /// |trip_count_a - trip_count_b|) to avoid wasting computation when
+  /// the fused task executes both loop nests concurrently on the shared array.
   std::optional<std::pair<TaskGraphNode *, TaskGraphNode *>>
   findBestFusionCandidate(TaskDependencyGraph &graph) {
     TaskGraphNode *best_a = nullptr;
@@ -926,9 +995,10 @@ private:
           continue;
         }
 
-        // Fusing only saves if total CGRAs > kTotalCGRAs or we want to
-        // minimize CGRA usage. Each fusion removes one CGRA slot.
-        int64_t cost = a->trip_count + b->trip_count;
+        // Utilization metric: minimize |trip_count_a - trip_count_b|.
+        // Balanced trip counts mean less wasted computation when fused
+        // tasks execute concurrently on the shared tile array.
+        int64_t cost = std::abs(a->trip_count - b->trip_count);
         if (cost < best_cost) {
           best_cost = cost;
           best_a = a;
@@ -1166,8 +1236,9 @@ private:
     }
 
     // Step 10: Sets fused attributes for the latency model.
-    // trip_count: sum of both (sequential execution).
-    int64_t fused_trip = node_a->trip_count + node_b->trip_count;
+    // trip_count: max of both, since independent tasks execute concurrently
+    // on the shared tile array.
+    int64_t fused_trip = std::max(node_a->trip_count, node_b->trip_count);
     fused_task->setAttr("trip_count",
                         OpBuilder(fused_task).getI64IntegerAttr(fused_trip));
 
@@ -1250,7 +1321,7 @@ private:
 
       fused_task->setAttr("steps",
                           OpBuilder(fused_task).getI64IntegerAttr(total_steps));
-      fused_task->setAttr("ii",
+      fused_task->setAttr("compiled_ii",
                           OpBuilder(fused_task).getI64IntegerAttr(total_ii));
     }
 
@@ -1364,12 +1435,12 @@ struct ResourceAwareTaskOptimizationPass
       // Expose TaskDependencyGraph::profileTask to UtilizationFuser via a
       // lambda so fused tasks get real ResMII/RecMII profiling.
       auto profile_fn = [&graph](TaskGraphNode *node, TaskflowTaskOp task) {
-        graph.profileTaskPublic(node, task);
+        graph.profileTask(node, task);
       };
       bool fuse_changed = fuser.fuse(func, graph, profile_fn);
 
       llvm::errs() << "[ResourceAware] After fusion: total_cgras="
-                   << graph.totalCGRAs() << "\n";
+                   << graph.getTotalAllocatedCGRAs() << "\n";
 
       // Rebuild graph after fusion (tasks may have been erased/created).
       if (fuse_changed) {
@@ -1390,7 +1461,7 @@ struct ResourceAwareTaskOptimizationPass
           node->op->setAttr(
               "cgra_count", b.getI32IntegerAttr(node->cgra_count));
           if (node->ii != kUnprofiled) {
-            node->op->setAttr("ii", b.getI64IntegerAttr(node->ii));
+            node->op->setAttr("compiled_ii", b.getI64IntegerAttr(node->ii));
           }
           if (node->steps != kUnprofiled) {
             node->op->setAttr("steps", b.getI64IntegerAttr(node->steps));
@@ -1409,7 +1480,7 @@ struct ResourceAwareTaskOptimizationPass
       }
 
       llvm::errs() << "[ResourceAware] After balance: total_cgras="
-                   << graph.totalCGRAs() << "\n";
+                   << graph.getTotalAllocatedCGRAs() << "\n";
 
       if (!balance_changed && !fuse_changed) {
         // Converged — write ALL attributes (cgra_count, ii, steps) to IR
@@ -1418,24 +1489,51 @@ struct ResourceAwareTaskOptimizationPass
         // graph node and must be persisted here.
         for (auto &node : graph.nodes) {
           OpBuilder b(node->op);
+          node->shape = pickBestShape(node->cgra_count);
           node->op->setAttr("cgra_count",
                             b.getI32IntegerAttr(node->cgra_count));
-          node->op->setAttr("ii",
+          node->op->setAttr("compiled_ii",
                             b.getI64IntegerAttr(node->ii));
           node->op->setAttr("steps",
                             b.getI64IntegerAttr(node->steps));
           node->op->setAttr("trip_count",
                             b.getI64IntegerAttr(node->trip_count));
+          // Write tile_shape attribute for downstream passes.
+          std::string shape_str =
+              node->shape.describe(node->cgra_count);
+          node->op->setAttr("tile_shape", b.getStringAttr(shape_str));
         }
         break;
       }
     }
 
-    // Final validation.
+    // Final validation and tile occupation summary.
     {
       TaskDependencyGraph final_graph;
       final_graph.build(func);
-      int final_total = final_graph.totalCGRAs();
+      int final_total = final_graph.getTotalAllocatedCGRAs();
+
+      llvm::errs() << "\n=== Tile Occupation Summary (4x4 CGRA Grid) ===\n";
+      for (auto &node : final_graph.nodes) {
+        auto shape = pickBestShape(node->cgra_count);
+        int tile_rows = shape.rows * kPerCgraRows;
+        int tile_cols = shape.cols * kPerCgraCols;
+        llvm::errs()
+            << "  " << node->op.getTaskName()
+            << ": cgra_count=" << node->cgra_count
+            << ", shape=" << shape.describe(node->cgra_count)
+            << ", tile_array=" << tile_rows << "x" << tile_cols
+            << ", compiled_ii=" << node->ii
+            << ", steps=" << node->steps
+            << ", trip_count=" << node->trip_count
+            << "\n";
+        printShapeOptions(node->cgra_count);
+      }
+      llvm::errs() << "  Total: " << final_total << "/" << kTotalCGRAs
+                   << " CGRAs used, " << (kTotalCGRAs - final_total)
+                   << " free\n";
+      llvm::errs() << "================================================\n";
+
       llvm::errs() << "[ResourceAware] Final: " << final_graph.nodes.size()
                    << " tasks, " << final_total << " CGRAs\n";
       assert(final_total <= kTotalCGRAs &&
