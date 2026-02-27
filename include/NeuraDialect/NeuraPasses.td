@@ -54,11 +54,40 @@ def MapToAccelerator : Pass<"map-to-accelerator", "ModuleOp"> {
   let summary = "Map Neura operations onto a given accelerator";
   let description = [{
     This pass performs mapping from Neura operations to accelerator.
+
+    x-tiles and y-tiles specify the **tile** dimensions of the target array
+    (not the CGRA count).  Each CGRA contains a per_cgra_rows × per_cgra_cols
+    tile grid (currently 4×4).  So for a single CGRA, x-tiles=4 y-tiles=4;
+    for a 1×2 rectangular pair, x-tiles=8 y-tiles=4; etc.
+
+    When x-tiles=0 and y-tiles=0 (the default), the global Architecture
+    singleton determines the tile grid — this is equivalent to a single CGRA.
+
+    Examples:
+      Single CGRA (default):
+        --map-to-accelerator
+      1×3 rectangular (3 CGRAs in a row):
+        --map-to-accelerator x-tiles=12 y-tiles=4
+      T-shape (4 CGRAs: top row of 3 + centre below):
+        --map-to-accelerator x-tiles=12 y-tiles=8 \
+            valid-tiles="0_0,1_0,2_0,3_0,4_0,5_0,6_0,7_0,8_0,9_0,10_0,11_0,\
+                         4_1,5_1,6_1,7_1,4_4,5_4,6_4,7_4,4_5,5_5,6_5,7_5"
   }];
   let options = [
-    Option<"x_tiles", "x-tiles", "int", /*default=*/"0", "Number of tiles in X dimension.">,
-    Option<"y_tiles", "y-tiles", "int", /*default=*/"0", "Number of tiles in Y dimension.">,
-    Option<"valid_tiles", "valid-tiles", "std::string", /*default=*/"\"\"", "Comma separated list of valid tile coords x_y,x_y to support non-rectangular shapes.">
+    Option<"x_tiles", "x-tiles", "int", /*default=*/"0",
+           "Total number of tiles in the X dimension of the target array "
+           "(not the number of CGRAs).  Each CGRA contributes per_cgra_cols "
+           "tiles.  0 means use the global Architecture singleton (1 CGRA).">,
+    Option<"y_tiles", "y-tiles", "int", /*default=*/"0",
+           "Total number of tiles in the Y dimension of the target array "
+           "(not the number of CGRAs).  Each CGRA contributes per_cgra_rows "
+           "tiles.  0 means use the global Architecture singleton (1 CGRA).">,
+    Option<"valid_tiles", "valid-tiles", "std::string", /*default=*/"\"\"",
+           "Comma-separated list of tile coordinates (x_y) that are actually "
+           "present in the array, used for non-rectangular CGRA shapes such as "
+           "L-blocks or T-blocks. Empty string means all tiles in the "
+           "x-tiles x y-tiles rectangle are valid. "
+           "Example: 0_0,1_0,0_1 selects three tiles forming an L-shape.">
   ];
   let constructor = "neura::createMapToAcceleratorPass()";
 }

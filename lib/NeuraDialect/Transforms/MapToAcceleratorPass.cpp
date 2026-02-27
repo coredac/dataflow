@@ -256,15 +256,15 @@ struct MapToAcceleratorPass
     }
 
     // Filters out operations inside fused_op regions.
-    // Only map the fused_op itself, not the operations within its region.
+    // Only maps the fused_op itself, not the operations within its region.
     std::vector<Operation *> filtered_ops;
     int skipped_count = 0;
     for (Operation *op : topologically_sorted_ops) {
       Operation *parent_op = op->getParentOp();
-      // Check if parent is a fused_op by checking operation name.
+      // Checks if the parent is a fused_op by inspecting the operation name.
       if (parent_op &&
           parent_op->getName().getStringRef().contains(attr::val::kOpFused)) {
-        // Skip operations inside fused_op region.
+        // Skips operations inside a fused_op region.
         llvm::outs() << "[MapToAcceleratorPass] Skipping op inside fused_op: "
                      << *op << "\n";
         skipped_count++;
@@ -407,6 +407,12 @@ struct MapToAcceleratorPass
         }
       }
 
+      // Builds a custom architecture with the requested tile dimensions.
+      // For non-rectangular shapes, tiles marked existence=false are removed
+      // by applyTileOverrides (which calls removeTile) BEFORE createLinks
+      // runs.  createMeshLinks/createLinkIfValid then check coord_to_tile_
+      // and skip absent tiles, so no links are ever created to/from
+      // non-existent tiles — boundary connectivity is handled correctly.
       custom_arch = global_arch.cloneWithNewDimensions(
         y_tiles.getValue(), x_tiles.getValue(), additional_overrides);
       target_arch = custom_arch.get();
@@ -457,11 +463,8 @@ struct MapToAcceleratorPass
 
 namespace mlir::neura {
 
-std::unique_ptr<Pass> createMapToAcceleratorPass() {
-  return std::make_unique<MapToAcceleratorPass>();
-}
-
-std::unique_ptr<Pass> createMapToAcceleratorPass(const MapToAcceleratorOptions &options) {
+std::unique_ptr<Pass> createMapToAcceleratorPass(
+    const MapToAcceleratorOptions &options) {
   return std::make_unique<MapToAcceleratorPass>(options);
 }
 

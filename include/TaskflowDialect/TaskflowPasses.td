@@ -96,7 +96,17 @@ def ResourceAwareTaskOptimization : Pass<"resource-aware-task-optimization", "fu
     2. Pipeline Balance: allocates extra CGRAs to critical-path bottleneck tasks.
        More CGRAs combine tile arrays into larger arrays for mapping, potentially
        lowering compiled_ii.  Latency model: II * (trip_count - 1) + steps.
-    Targets a 4x4 CGRA grid (16 CGRAs).  Validates shapes (rect, L, T, offset).
+    Targets a 4x4 CGRA grid (16 CGRAs total, one CGRA per cell).
+    Currently a single task may be allocated at most 4 CGRAs.
+    Supported CGRA array shapes for a task (all fit within the 4×4 grid):
+      - rect : a perfect rectangle, e.g. 1×1, 1×2, 2×1, 1×3, 3×1, 2×2, 1×4, 4×1.
+      - L    : an L-shaped block of 3 or 4 CGRAs, e.g.
+                 3 CGRAs: (0,0)(1,0)(0,1) — two in a row + one below-left.
+                 4 CGRAs: (0,0)(0,1)(0,2)(1,2) — three in a column + one offset.
+      - T    : a T-shaped block of 4 CGRAs, e.g.
+                 (0,0)(1,0)(2,0)(1,1) — three in a row + one below centre.
+    Non-rectangular shapes are represented by their bounding box plus an
+    explicit tile list that enumerates only the occupied CGRA positions.
     Compiled_ii must come from the downstream Neura pipeline (asserts on failure).
   }];
   let constructor = "taskflow::createResourceAwareTaskOptimizationPass()";

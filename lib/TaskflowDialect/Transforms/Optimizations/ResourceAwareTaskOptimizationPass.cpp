@@ -6,7 +6,8 @@
 //    More CGRAs combine tile arrays into larger arrays for mapping, potentially
 //    lowering compiled_ii.  Latency model: II * (trip_count - 1) + steps.
 //
-// Targets a 4x4 CGRA grid (16 CGRAs total). Validates shapes (rect, L, T, offset).
+// Targets a 4x4 CGRA grid (16 CGRAs total).  Each task may use up to 4 CGRAs.
+// Supported per-task shapes: rect (1×1..4×1/1×4/2×2), L (3 or 4 CGRAs), T (4 CGRAs).
 // Compiled_ii must come from the downstream pipeline (asserts on failure).
 //
 //===----------------------------------------------------------------------===//
@@ -55,12 +56,11 @@ namespace {
 // Constants
 //===----------------------------------------------------------------------===//
 
-constexpr int kGridRows = 4;
-constexpr int kGridCols = 4;
-constexpr int kTotalCGRAs = kGridRows * kGridCols; // 16
+constexpr int kCgraGridRows = 4;
+constexpr int kCgraGridCols = 4;
+constexpr int kTotalCGRAs = kCgraGridRows * kCgraGridCols; // 16
 constexpr int kMaxBalanceIterations = 100;
-constexpr int kPerCgraRows = 4;  // Tile rows per single CGRA.
-constexpr int kPerCgraCols = 4;  // Tile cols per single CGRA.
+constexpr int kMaxCgrasPerTask = 4;  // Max CGRAs allocatable to a single task.
 
 // Sentinel value: 0 means "not yet profiled". After profileTask() runs,
 // both steps and ii MUST be > 0. An assert fires if profiling fails.
@@ -70,55 +70,101 @@ constexpr int64_t kUnprofiled = 0;
 // CGRA Shape Utilities
 //===----------------------------------------------------------------------===//
 
-/// Represents a tile shape on the 4×4 CGRA grid.
-/// For rectangular shapes, rows × cols = cgra_count.
-/// Non-rectangular shapes (L, T, diagonal offset) are also valid on the 4×4
-/// grid but are represented by their bounding box with a note on layout.
+/// Represents a CGRA allocation shape on the grid.
+///
+/// For rectangular shapes: rows × cols == cgra_count, and `cgra_positions`
+/// is empty (all cells in the bounding box are used).
+///
+/// For non-rectangular shapes (L, T): `cgra_positions` stores the explicit
+/// (col, row) coordinates of the occupied CGRAs.  `rows`/`cols` give the
+/// bounding box so that tile-level x_tiles/y_tiles can be computed.
 struct CGRAShape {
-  int rows;  // Number of CGRA rows in the bounding box.
-  int cols;  // Number of CGRA columns in the bounding box.
-  bool rectangular;  // True if this is a perfect rectangle.
+  int rows;  // Bounding-box CGRA rows.
+  int cols;  // Bounding-box CGRA columns.
+  bool is_rectangular;  // True if all cells in the bbox are used.
+  /// Explicit CGRA positions for non-rectangular shapes.
+  /// Each pair is (col, row) in CGRA coordinates.  Empty for rectangles.
+  SmallVector<std::pair<int, int>> cgra_positions;
+
   int area() const { return rows * cols; }
 
   /// Returns a human-readable description for log messages only (not IR).
   std::string describe(int cgra_count) const {
     std::string s = std::to_string(rows) + "x" + std::to_string(cols);
-    if (!rectangular) {
-      s += "(non-rect, " + std::to_string(cgra_count) + " CGRAs in " +
-           std::to_string(rows) + "x" + std::to_string(cols) + " bbox)";
+    if (!is_rectangular) {
+      s += "(non-rect, " + std::to_string(cgra_count) + " CGRAs:";
+      for (auto &[c, r] : cgra_positions)
+        s += " (" + std::to_string(c) + "," + std::to_string(r) + ")";
+      s += ")";
     }
     return s;
   }
 
-  /// Returns the simple "NxM" string written into the IR tile_shape attribute.
+  /// Returns the shape string written into the IR tile_shape attribute.
+  /// For rectangular shapes: "NxM" (e.g. "2x2").
+  /// For non-rectangular shapes: "NxM[(c0,r0)(c1,r1)...]" listing only the
+  /// occupied CGRA positions so that downstream passes can reconstruct the
+  /// exact valid tile set for multi-CGRA mapping.
   std::string irAttr() const {
-    return std::to_string(rows) + "x" + std::to_string(cols);
+    std::string s = std::to_string(rows) + "x" + std::to_string(cols);
+    if (!is_rectangular && !cgra_positions.empty()) {
+      s += "[";
+      for (auto &[c, r] : cgra_positions)
+        s += "(" + std::to_string(c) + "," + std::to_string(r) + ")";
+      s += "]";
+    }
+    return s;
   }
 };
 
 /// Returns all valid rectangular shapes for `cgra_count` CGRAs.
 static SmallVector<CGRAShape> getRectangularShapes(int cgra_count) {
   SmallVector<CGRAShape> shapes;
-  for (int r = 1; r <= kGridRows; ++r) {
-    for (int c = 1; c <= kGridCols; ++c) {
+  for (int r = 1; r <= kCgraGridRows; ++r) {
+    for (int c = 1; c <= kCgraGridCols; ++c) {
       if (r * c == cgra_count) {
-        shapes.push_back({r, c, /*rectangular=*/true});
+        shapes.push_back({r, c, /*is_rectangular=*/true, /*cgra_positions=*/{}});
       }
     }
   }
   return shapes;
 }
 
-/// Returns true if `cgra_count` CGRAs can fit on the 4×4 grid.
-/// On a 4×4 grid (16 cells), any count 1..16 can always be arranged as
-/// a connected shape (rectangle, L-shape, T-shape, diagonal offset, etc.).
+/// Returns true if `cgra_count` CGRAs can fit on the grid and does not
+/// exceed the per-task limit.
 static bool canFitOnGrid(int cgra_count) {
-  return cgra_count >= 1 && cgra_count <= kTotalCGRAs;
+  return cgra_count >= 1 && cgra_count <= kMaxCgrasPerTask;
+}
+
+/// Returns the set of non-rectangular shapes for `cgra_count` CGRAs.
+/// Currently defined for cgra_count == 3 (L-shape) and cgra_count == 4
+/// (L-shape and T-shape variants).  Each shape's coordinates are chosen
+/// so the bounding box is as small as possible.
+static SmallVector<CGRAShape> getNonRectangularShapes(int cgra_count) {
+  SmallVector<CGRAShape> shapes;
+
+  if (cgra_count == 3) {
+    // L-shape 3 CGRAs: (0,0)(1,0)(0,1) — bbox 2×2
+    shapes.push_back({2, 2, false, {{0,0},{1,0},{0,1}}});
+  }
+
+  if (cgra_count == 4) {
+    // T-shape: three in a row + one below centre
+    //   (0,0)(1,0)(2,0)(1,1)  — bbox 2×3
+    shapes.push_back({2, 3, false, {{0,0},{1,0},{2,0},{1,1}}});
+
+    // L-shape: three in a column + one offset
+    //   (0,0)(0,1)(0,2)(1,2)  — bbox 3×2
+    shapes.push_back({3, 2, false, {{0,0},{0,1},{0,2},{1,2}}});
+  }
+
+  return shapes;
 }
 
 /// Picks the best shape for display/profiling.
-/// Prefers rectangular shapes (most square-ish). If no rectangle exists,
-/// returns a non-rectangular bounding-box representation.
+/// Prefers rectangular shapes (most square-ish).  If no rectangle exists
+/// (e.g. cgra_count == 3), picks the non-rectangular shape with the
+/// smallest bounding box.
 static CGRAShape pickBestShape(int cgra_count) {
   auto rect_shapes = getRectangularShapes(cgra_count);
   if (!rect_shapes.empty()) {
@@ -127,12 +173,20 @@ static CGRAShape pickBestShape(int cgra_count) {
           return std::abs(a.rows - a.cols) < std::abs(b.rows - b.cols);
         });
   }
-  // Non-rectangular: find smallest bounding box that contains cgra_count cells.
-  CGRAShape best = {kGridRows, kGridCols, false};
-  for (int r = 1; r <= kGridRows; ++r) {
-    for (int c = 1; c <= kGridCols; ++c) {
+  // Try defined non-rectangular shapes.
+  auto non_rect = getNonRectangularShapes(cgra_count);
+  if (!non_rect.empty()) {
+    return *std::min_element(non_rect.begin(), non_rect.end(),
+        [](const CGRAShape &a, const CGRAShape &b) {
+          return a.area() < b.area();
+        });
+  }
+  // Fallback: smallest bounding box (should not be reached for 1..4 CGRAs).
+  CGRAShape best = {kCgraGridRows, kCgraGridCols, false, {}};
+  for (int r = 1; r <= kCgraGridRows; ++r) {
+    for (int c = 1; c <= kCgraGridCols; ++c) {
       if (r * c >= cgra_count && r * c < best.area()) {
-        best = {r, c, false};
+        best = {r, c, false, {}};
       }
     }
   }
@@ -144,15 +198,14 @@ static CGRAShape pickBestShape(int cgra_count) {
 [[maybe_unused]] static void printShapeOptions(int cgra_count) {
   auto rect = getRectangularShapes(cgra_count);
   llvm::errs() << "    Valid shapes for " << cgra_count << " CGRAs: ";
-  if (!rect.empty()) {
-    for (size_t i = 0; i < rect.size(); ++i) {
-      if (i > 0) llvm::errs() << ", ";
-      llvm::errs() << rect[i].rows << "x" << rect[i].cols << "(rect)";
-    }
+  for (size_t i = 0; i < rect.size(); ++i) {
+    if (i > 0) llvm::errs() << ", ";
+    llvm::errs() << rect[i].rows << "x" << rect[i].cols << "(rect)";
   }
-  if (rect.empty() || cgra_count > 4) {
-    if (!rect.empty()) llvm::errs() << ", ";
-    llvm::errs() << "L/T/offset shapes also valid";
+  auto non_rect = getNonRectangularShapes(cgra_count);
+  for (auto &s : non_rect) {
+    if (!rect.empty() || &s != &non_rect.front()) llvm::errs() << ", ";
+    llvm::errs() << s.describe(cgra_count);
   }
   llvm::errs() << "\n";
 }
@@ -228,58 +281,38 @@ public:
     for (auto &consumer : nodes) {
       for (Value operand : consumer->op.getValueInputs()) {
         if (auto producer_op = operand.getDefiningOp<TaskflowTaskOp>()) {
-          if (auto *producer = op_to_node[producer_op]) {
+          if (auto *producer = op_to_node[producer_op.getOperation()]) {
             addEdge(producer, consumer.get());
           }
         }
       }
     }
 
-    // 3. Builds memory edges (RAW, WAR, WAW).
-    DenseMap<Value, SmallVector<TaskGraphNode *>> memref_writers;
-    DenseMap<Value, SmallVector<TaskGraphNode *>> memref_readers;
-    for (auto &node : nodes) {
-      for (Value memref : node->op.getOriginalWriteMemrefs()) {
-        memref_writers[memref].push_back(node.get());
-      }
-      for (Value memref : node->op.getOriginalReadMemrefs()) {
-        memref_readers[memref].push_back(node.get());
-      }
-    }
-    // RAW edges: writer -> reader.
-    for (auto &node : nodes) {
-      for (Value memref : node->op.getOriginalReadMemrefs()) {
-        if (!memref_writers.count(memref)) continue;
-        for (auto *writer : memref_writers[memref]) {
-          if (writer != node.get() &&
-              writer->op->isBeforeInBlock(node->op.getOperation())) {
-            addEdge(writer, node.get());
+    // 3. Builds memory edges via SSA def-use on write_outputs.
+    //
+    //   RAW  (write → read):  producer's write_output consumed via
+    //          consumer's read_memrefs.
+    //   WAW  (write → write): producer's write_output consumed via
+    //          consumer's write_memrefs (chain write).
+    //   WAR  (read → write):  any task that consumed a memref via
+    //          read_memrefs and whose write_output is then passed to
+    //          another task's write_memrefs is already captured by the
+    //          write chain above; the ordering is preserved by the SSA
+    //          chain itself.
+    for (auto &consumer : nodes) {
+      // RAW: producer wrote a memref that this task reads.
+      for (Value memref : consumer->op.getReadMemrefs()) {
+        if (auto producer_op = memref.getDefiningOp<TaskflowTaskOp>()) {
+          if (auto *producer = op_to_node[producer_op.getOperation()]) {
+            addEdge(producer, consumer.get());
           }
         }
       }
-    }
-    // WAR edges: reader -> writer (anti-dependency, preserves read-before-write).
-    for (auto &[memref, writers] : memref_writers) {
-      if (!memref_readers.count(memref)) continue;
-      for (auto *reader : memref_readers[memref]) {
-        for (auto *writer : writers) {
-          if (reader != writer &&
-              reader->op->isBeforeInBlock(writer->op.getOperation())) {
-            addEdge(reader, writer);
-          }
-        }
-      }
-    }
-    // WAW edges: earlier writer -> later writer (preserves write order).
-    for (auto &[memref, writers] : memref_writers) {
-      for (size_t i = 0; i < writers.size(); ++i) {
-        for (size_t j = i + 1; j < writers.size(); ++j) {
-          auto *a = writers[i];
-          auto *b = writers[j];
-          if (a->op->isBeforeInBlock(b->op.getOperation())) {
-            addEdge(a, b);
-          } else {
-            addEdge(b, a);
+      // WAW: producer wrote a memref that this task also writes.
+      for (Value memref : consumer->op.getWriteMemrefs()) {
+        if (auto producer_op = memref.getDefiningOp<TaskflowTaskOp>()) {
+          if (auto *producer = op_to_node[producer_op.getOperation()]) {
+            addEdge(producer, consumer.get());
           }
         }
       }
@@ -557,27 +590,26 @@ private:
     int best_cp_depth = 1;
 
     // Compute tile dimensions for the target CGRA shape.
-    // For rectangular shapes: x_tiles = cols * per_cgra_cols,
-    //                         y_tiles = rows * per_cgra_rows.
-    // For non-rectangular (L/T): enumerate the exact tiles occupied.
-    int x_tiles = node->shape.cols * neura::getArchitecture().getPerCgraColumns();
-    int y_tiles = node->shape.rows * neura::getArchitecture().getPerCgraRows();
+    // Bounding box in tiles: x_tiles = cols * per_cgra_cols,
+    //                        y_tiles = rows * per_cgra_rows.
+    int per_cgra_cols = neura::getArchitecture().getPerCgraColumns();
+    int per_cgra_rows = neura::getArchitecture().getPerCgraRows();
+    int x_tiles = node->shape.cols * per_cgra_cols;
+    int y_tiles = node->shape.rows * per_cgra_rows;
     std::string valid_tiles;
-    if (!node->shape.rectangular) {
-      // Build an explicit tile list for the cgra_count CGRAs that actually fit.
-      int cgras_added = 0;
+    if (!node->shape.is_rectangular) {
+      // Build an explicit tile list from the shape's CGRA positions.
+      // Each CGRA at position (cgra_c, cgra_r) contributes a per_cgra_cols ×
+      // per_cgra_rows block of tiles.
       llvm::raw_string_ostream os(valid_tiles);
-      for (int r = 0; r < node->shape.rows && cgras_added < node->cgra_count; ++r) {
-        for (int c = 0; c < node->shape.cols && cgras_added < node->cgra_count; ++c) {
-          for (int tr = 0; tr < neura::getArchitecture().getPerCgraRows(); ++tr) {
-            for (int tc = 0; tc < neura::getArchitecture().getPerCgraColumns(); ++tc) {
-              if (!os.str().empty()) os << ",";
-              os << (c * neura::getArchitecture().getPerCgraColumns() + tc)
-                 << "_"
-                 << (r * neura::getArchitecture().getPerCgraRows() + tr);
-            }
+      for (auto &[cgra_c, cgra_r] : node->shape.cgra_positions) {
+        for (int tr = 0; tr < per_cgra_rows; ++tr) {
+          for (int tc = 0; tc < per_cgra_cols; ++tc) {
+            if (!os.str().empty()) os << ",";
+            os << (cgra_c * per_cgra_cols + tc)
+               << "_"
+               << (cgra_r * per_cgra_rows + tr);
           }
-          ++cgras_added;
         }
       }
     }
@@ -1047,8 +1079,10 @@ public:
           << bottleneck->op.getTaskName().str()
           << ") cgra_count=" << old_cgra_count << "->" << new_cgra_count
           << ", shape=" << bottleneck->shape.describe(new_cgra_count)
-          << ", tile_array=" << (bottleneck->shape.rows * kPerCgraRows)
-          << "x" << (bottleneck->shape.cols * kPerCgraCols)
+          << ", tile_array="
+          << (bottleneck->shape.rows * neura::getArchitecture().getPerCgraRows())
+          << "x"
+          << (bottleneck->shape.cols * neura::getArchitecture().getPerCgraColumns())
           << ", old_ii=" << old_ii << ", old_lat=" << old_latency << "\n";
 
       profile_fn(bottleneck, bottleneck->op);
@@ -1164,6 +1198,8 @@ public:
       for (auto &node : graph.nodes) {
         if (ignored.count(node.get())) continue;
         if (node->cgra_count >= node->trip_count) continue;
+        // Per-task CGRA limit: no point trying to add more.
+        if (node->cgra_count >= kMaxCgrasPerTask) continue;
 
         int64_t depth_from = from_source_cache[node.get()];
         int64_t depth_to = to_sink_cache[node.get()];
@@ -1725,19 +1761,19 @@ struct ResourceAwareTaskOptimizationPass
       // Tasks are labelled '0','1','2',... ; free cells shown as '.'.
       // grid[row][col] == -1 means free.
       std::vector<std::vector<int>> combined_grid(
-          kGridRows, std::vector<int>(kGridCols, -1));
+          kCgraGridRows, std::vector<int>(kCgraGridCols, -1));
 
       // Pack tasks onto the grid left-to-right, top-to-bottom.
       int next_col = 0, next_row = 0;
       int task_idx = 0;
 
-      llvm::errs() << "\n=== Tile Occupation Summary (4x" << kGridCols
+      llvm::errs() << "\n=== Tile Occupation Summary (4x" << kCgraGridCols
                    << " CGRA Grid) ===\n";
 
       for (auto &node : final_graph.nodes) {
         auto shape = pickBestShape(node->cgra_count);
-        int tile_rows = shape.rows * kPerCgraRows;
-        int tile_cols = shape.cols * kPerCgraCols;
+        int tile_rows = shape.rows * neura::getArchitecture().getPerCgraRows();
+        int tile_cols = shape.cols * neura::getArchitecture().getPerCgraColumns();
 
         // Per-task grid (shape.rows x shape.cols bbox, filled up to cgra_count).
         llvm::errs() << "\n  [" << task_idx << "] " << node->op.getTaskName()
@@ -1771,13 +1807,13 @@ struct ResourceAwareTaskOptimizationPass
 
         // Place onto combined grid (pack sequentially).
         int placed = 0;
-        for (int r = next_row; r < kGridRows && placed < node->cgra_count; ++r) {
+        for (int r = next_row; r < kCgraGridRows && placed < node->cgra_count; ++r) {
           for (int c = (r == next_row ? next_col : 0);
-               c < kGridCols && placed < node->cgra_count; ++c) {
+               c < kCgraGridCols && placed < node->cgra_count; ++c) {
             combined_grid[r][c] = task_idx;
             next_row = r;
             next_col = c + 1;
-            if (next_col >= kGridCols) { next_col = 0; next_row = r + 1; }
+            if (next_col >= kCgraGridCols) { next_col = 0; next_row = r + 1; }
             ++placed;
           }
         }
@@ -1785,14 +1821,14 @@ struct ResourceAwareTaskOptimizationPass
       }
 
       // Print combined 4xN grid.
-      llvm::errs() << "\n  Combined 4x" << kGridCols << " Grid"
+      llvm::errs() << "\n  Combined 4x" << kCgraGridCols << " Grid"
                    << " (" << final_total << "/" << kTotalCGRAs << " used):\n";
       llvm::errs() << "  +";
-      for (int c = 0; c < kGridCols; ++c) llvm::errs() << "---+";
+      for (int c = 0; c < kCgraGridCols; ++c) llvm::errs() << "---+";
       llvm::errs() << "\n";
-      for (int r = 0; r < kGridRows; ++r) {
+      for (int r = 0; r < kCgraGridRows; ++r) {
         llvm::errs() << "  |";
-        for (int c = 0; c < kGridCols; ++c) {
+        for (int c = 0; c < kCgraGridCols; ++c) {
           int t = combined_grid[r][c];
           if (t < 0)
             llvm::errs() << " . |";
@@ -1801,7 +1837,7 @@ struct ResourceAwareTaskOptimizationPass
         }
         llvm::errs() << "\n";
         llvm::errs() << "  +";
-        for (int c = 0; c < kGridCols; ++c) llvm::errs() << "---+";
+        for (int c = 0; c < kCgraGridCols; ++c) llvm::errs() << "---+";
         llvm::errs() << "\n";
       }
       llvm::errs() << "  (" << (kTotalCGRAs - final_total) << " free)\n";
