@@ -1705,14 +1705,14 @@ struct ResourceAwareTaskOptimizationPass
           node->op->setAttr(
               "cgra_count", b.getI32IntegerAttr(node->cgra_count));
           if (node->ii != kUnprofiled) {
-            node->op->setAttr("compiled_ii", b.getI64IntegerAttr(node->ii));
+            node->op->setAttr("compiled_ii", b.getI32IntegerAttr(node->ii));
           }
           if (node->steps != kUnprofiled) {
-            node->op->setAttr("steps", b.getI64IntegerAttr(node->steps));
+            node->op->setAttr("steps", b.getI32IntegerAttr(node->steps));
           }
           if (node->trip_count > 0) {
             node->op->setAttr("trip_count",
-                              b.getI64IntegerAttr(node->trip_count));
+                              b.getI32IntegerAttr(node->trip_count));
           }
           if (balance_changed && node->cgra_count > 1) {
             llvm::errs() << "  [Balance] " << node->op.getTaskName()
@@ -1737,11 +1737,11 @@ struct ResourceAwareTaskOptimizationPass
           node->op->setAttr("cgra_count",
                             b.getI32IntegerAttr(node->cgra_count));
           node->op->setAttr("compiled_ii",
-                            b.getI64IntegerAttr(node->ii));
+                            b.getI32IntegerAttr(node->ii));
           node->op->setAttr("steps",
-                            b.getI64IntegerAttr(node->steps));
+                            b.getI32IntegerAttr(node->steps));
           node->op->setAttr("trip_count",
-                            b.getI64IntegerAttr(node->trip_count));
+                            b.getI32IntegerAttr(node->trip_count));
           // Write tile_shape attribute: simple "NxM" bounding-box string.
           // The detailed occupancy diagram is printed in the summary below.
           std::string shape_str = node->shape.irAttr();

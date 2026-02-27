@@ -365,17 +365,17 @@ module attributes {} {
 
 // CGRA Tile Occupation after RESOPT (4x4 grid, col x row):
 // +---+---+---+---+
-// | F | F | . | . |   row=0: Task_0_Task_1_utilfused (tile_shape="1x2", cgra_count=2)
+// | 0 | 0 | . | . |   row=0: Task_0_Task_1_utilfused (tile_shape="1x2", cgra_count=2)
 // +---+---+---+---+
-// | 2 | . | . | . |   row=1: Task_2 (tile_shape="1x1", cgra_count=1)
-// +---+---+---+---+
-// | . | . | . | . |
+// | 1 | . | . | . |   row=1: Task_2 (tile_shape="1x1", cgra_count=1)
 // +---+---+---+---+
 // | . | . | . | . |
 // +---+---+---+---+
-// 3/16 CGRAs used
+// | . | . | . | . |
+// +---+---+---+---+
+// 0=Task_0_Task_1_utilfused, 1=Task_2; 3/16 CGRAs used
 
 // RESOPT:      %write_outputs, %value_outputs = taskflow.task @Task_0_Task_1_utilfused
-// RESOPT-SAME: {cgra_count = 2 : i32, compiled_ii = 4 : i64, steps = 15 : i64, tile_shape = "1x2", trip_count = 32 : i64}
+// RESOPT-SAME: {cgra_count = 2 : i32, compiled_ii = 4 : i32, steps = 15 : i32, tile_shape = "1x2", trip_count = 32 : i32}
 // RESOPT:      %write_outputs_1 = taskflow.task @Task_2
-// RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 10 : i64, steps = 12 : i64, tile_shape = "1x1", trip_count = 32 : i64}
+// RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 10 : i32, steps = 12 : i32, tile_shape = "1x1", trip_count = 32 : i32}
