@@ -108,7 +108,23 @@ def ResourceAwareTaskOptimization : Pass<"resource-aware-task-optimization", "fu
     Non-rectangular shapes are represented by their bounding box plus an
     explicit tile list that enumerates only the occupied CGRA positions.
     Compiled_ii must come from the downstream Neura pipeline (asserts on failure).
+
+    Use --estimation-mode to control how task II/steps are estimated:
+      compiled   (default): runs the full Neura lowering + mapping pipeline
+                  for accurate compiled_ii and steps.
+      analytical : uses only ResMII/RecMII analytical estimates without
+                  running the mapper — much faster but less accurate.
+                  Useful for rapid design-space exploration.
+    Example:
+      --resource-aware-task-optimization estimation-mode=analytical
   }];
+  let options = [
+    Option<"estimationMode", "estimation-mode", "std::string",
+           /*default=*/"\"compiled\"",
+           "Profiling estimation mode: 'compiled' (default) runs the full "
+           "Neura lowering + mapping pipeline; 'analytical' uses only "
+           "ResMII/RecMII analytical estimates (faster but less accurate).">
+  ];
   let constructor = "taskflow::createResourceAwareTaskOptimizationPass()";
   let dependentDialects = [
     "mlir::affine::AffineDialect",

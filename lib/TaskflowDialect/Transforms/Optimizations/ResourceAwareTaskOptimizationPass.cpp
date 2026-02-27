@@ -78,7 +78,7 @@ constexpr int64_t kUnprofiled = 0;
 /// For non-rectangular shapes (L, T): `cgra_positions` stores the explicit
 /// (col, row) coordinates of the occupied CGRAs.  `rows`/`cols` give the
 /// bounding box so that tile-level x_tiles/y_tiles can be computed.
-struct CGRAShape {
+struct CgraShape {
   int rows;  // Bounding-box CGRA rows.
   int cols;  // Bounding-box CGRA columns.
   bool is_rectangular;  // True if all cells in the bbox are used.
@@ -118,8 +118,8 @@ struct CGRAShape {
 };
 
 /// Returns all valid rectangular shapes for `cgra_count` CGRAs.
-static SmallVector<CGRAShape> getRectangularShapes(int cgra_count) {
-  SmallVector<CGRAShape> shapes;
+static SmallVector<CgraShape> getRectangularShapes(int cgra_count) {
+  SmallVector<CgraShape> shapes;
   for (int r = 1; r <= kCgraGridRows; ++r) {
     for (int c = 1; c <= kCgraGridCols; ++c) {
       if (r * c == cgra_count) {
@@ -140,8 +140,8 @@ static bool canFitOnGrid(int cgra_count) {
 /// Currently defined for cgra_count == 3 (L-shape) and cgra_count == 4
 /// (L-shape and T-shape variants).  Each shape's coordinates are chosen
 /// so the bounding box is as small as possible.
-static SmallVector<CGRAShape> getNonRectangularShapes(int cgra_count) {
-  SmallVector<CGRAShape> shapes;
+static SmallVector<CgraShape> getNonRectangularShapes(int cgra_count) {
+  SmallVector<CgraShape> shapes;
 
   if (cgra_count == 3) {
     // L-shape 3 CGRAs: (0,0)(1,0)(0,1) — bbox 2×2
@@ -165,11 +165,11 @@ static SmallVector<CGRAShape> getNonRectangularShapes(int cgra_count) {
 /// Prefers rectangular shapes (most square-ish).  If no rectangle exists
 /// (e.g. cgra_count == 3), picks the non-rectangular shape with the
 /// smallest bounding box.
-static CGRAShape pickBestShape(int cgra_count) {
+static CgraShape pickBestShape(int cgra_count) {
   auto rect_shapes = getRectangularShapes(cgra_count);
   if (!rect_shapes.empty()) {
     return *std::min_element(rect_shapes.begin(), rect_shapes.end(),
-        [](const CGRAShape &a, const CGRAShape &b) {
+        [](const CgraShape &a, const CgraShape &b) {
           return std::abs(a.rows - a.cols) < std::abs(b.rows - b.cols);
         });
   }
@@ -177,12 +177,12 @@ static CGRAShape pickBestShape(int cgra_count) {
   auto non_rect = getNonRectangularShapes(cgra_count);
   if (!non_rect.empty()) {
     return *std::min_element(non_rect.begin(), non_rect.end(),
-        [](const CGRAShape &a, const CGRAShape &b) {
+        [](const CgraShape &a, const CgraShape &b) {
           return a.area() < b.area();
         });
   }
   // Fallback: smallest bounding box (should not be reached for 1..4 CGRAs).
-  CGRAShape best = {kCgraGridRows, kCgraGridCols, false, {}};
+  CgraShape best = {kCgraGridRows, kCgraGridCols, false, {}};
   for (int r = 1; r <= kCgraGridRows; ++r) {
     for (int c = 1; c <= kCgraGridCols; ++c) {
       if (r * c >= cgra_count && r * c < best.area()) {
@@ -191,23 +191,6 @@ static CGRAShape pickBestShape(int cgra_count) {
     }
   }
   return best;
-}
-
-/// Prints all valid shape options for a given cgra_count.
-/// (Kept for optional debug use; not called in the main path.)
-[[maybe_unused]] static void printShapeOptions(int cgra_count) {
-  auto rect = getRectangularShapes(cgra_count);
-  llvm::errs() << "    Valid shapes for " << cgra_count << " CGRAs: ";
-  for (size_t i = 0; i < rect.size(); ++i) {
-    if (i > 0) llvm::errs() << ", ";
-    llvm::errs() << rect[i].rows << "x" << rect[i].cols << "(rect)";
-  }
-  auto non_rect = getNonRectangularShapes(cgra_count);
-  for (auto &s : non_rect) {
-    if (!rect.empty() || &s != &non_rect.front()) llvm::errs() << ", ";
-    llvm::errs() << s.describe(cgra_count);
-  }
-  llvm::errs() << "\n";
 }
 
 //===----------------------------------------------------------------------===//
@@ -221,7 +204,7 @@ struct TaskGraphNode {
   int64_t steps = kUnprofiled;
   int64_t ii = kUnprofiled;
   int cgra_count = 1;
-  CGRAShape shape = {1, 1, true};
+  CgraShape shape = {1, 1, true};
 
   // Dependency edges (both SSA and memory).
   SmallVector<TaskGraphNode *> predecessors;
@@ -241,7 +224,7 @@ public:
   SmallVector<std::unique_ptr<TaskGraphNode>> nodes;
   DenseMap<Operation *, TaskGraphNode *> op_to_node;
 
-  void build(func::FuncOp func) {
+  void build(func::FuncOp func, bool skip_mapper = false) {
     // 1. Creates TaskGraphNodes.
     size_t task_id = 0;
     func.walk([&](TaskflowTaskOp task) {
@@ -252,7 +235,7 @@ public:
       bool has_precomputed = task->hasAttr("compiled_ii") && task->hasAttr("steps");
       if (!has_precomputed) {
         // Speculative lowering to Neura to get real metrics.
-        profileTask(node.get(), task);
+        profileTask(node.get(), task, skip_mapper);
       }
 
       // Reads existing trip_count attribute if set by fusion.
@@ -262,7 +245,7 @@ public:
         node->trip_count = computeTripCount(task);
       }
       
-      // Override with explicit attributes if present (e.g. from manual tuning).
+      // Overrides with explicit attributes if present (e.g. from manual tuning).
       if (auto attr = task->getAttrOfType<IntegerAttr>("steps")) {
         node->steps = attr.getInt();
       }
@@ -331,15 +314,16 @@ public:
   }
 
   /// Returns true if there is any (direct or transitive) dependency from
-  /// \p from to \p to.
-  bool hasDependency(TaskGraphNode *from, TaskGraphNode *to) const {
-    if (from == to) return true;
+  /// source_node to dest_node.
+  bool hasDependency(TaskGraphNode *source_node,
+                     TaskGraphNode *dest_node) const {
+    if (source_node == dest_node) return true;
     DenseSet<TaskGraphNode *> visited;
     SmallVector<TaskGraphNode *> worklist;
-    worklist.push_back(from);
+    worklist.push_back(source_node);
     while (!worklist.empty()) {
       auto *current = worklist.pop_back_val();
-      if (current == to) return true;
+      if (current == dest_node) return true;
       if (!visited.insert(current).second) continue;
       for (auto *succ : current->successors) {
         worklist.push_back(succ);
@@ -399,8 +383,10 @@ private:
   /// pipeline, never from a silent fallback.
   ///
   /// skip_mapper: when true, skip MapToAcceleratorPass and use only
-  ///   ResMII/RecMII analytical estimates. Safe for speculative balance probes
-  ///   where the mapper may loop indefinitely on large tile arrays.
+  ///   ResMII/RecMII analytical estimates.  This is set by the
+  ///   --estimation-mode=analytical pass option, or internally for speculative
+  ///   balance probes where the mapper may loop indefinitely on large tile
+  ///   arrays.
   void profileTask(TaskGraphNode *node, TaskflowTaskOp task,
                    bool skip_mapper = false) {
     MLIRContext *ctx = task.getContext();
@@ -1068,7 +1054,7 @@ public:
       int64_t old_latency = bottleneck->estimatedLatency();
       int64_t old_ii     = bottleneck->ii;
       int64_t old_steps  = bottleneck->steps;
-      CGRAShape old_shape = bottleneck->shape;
+      CgraShape old_shape = bottleneck->shape;
 
       // Speculatively apply the new CGRA count and re-profile.
       bottleneck->cgra_count = new_cgra_count;
@@ -1609,6 +1595,10 @@ struct ResourceAwareTaskOptimizationPass
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
       ResourceAwareTaskOptimizationPass)
 
+  ResourceAwareTaskOptimizationPass() = default;
+  ResourceAwareTaskOptimizationPass(const ResourceAwareTaskOptimizationPass &other)
+      : PassWrapper(other) {}
+
   StringRef getArgument() const override {
     return "resource-aware-task-optimization";
   }
@@ -1631,18 +1621,37 @@ struct ResourceAwareTaskOptimizationPass
     registry.insert<taskflow::TaskflowDialect>();
   }
 
+  /// Estimation mode for profiling task II / steps.
+  ///   "compiled" (default): runs the full Neura lowering + mapping pipeline
+  ///       to obtain accurate compiled_ii and steps from MapToAcceleratorPass.
+  ///   "analytical": uses only ResMII / RecMII analytical estimates without
+  ///       running the mapper.  Much faster but less accurate — useful for
+  ///       rapid design-space exploration or when the mapper is unavailable.
+  Option<std::string> estimationMode{
+      *this, "estimation-mode",
+      llvm::cl::desc(
+          "Profiling estimation mode: 'compiled' (default) runs the full "
+          "Neura lowering + mapping pipeline for accurate II/steps; "
+          "'analytical' uses only ResMII/RecMII analytical estimates "
+          "(faster but less accurate)."),
+      llvm::cl::init("compiled")};
+
   void runOnOperation() override {
     func::FuncOp func = getOperation();
 
+    bool use_analytical = (estimationMode.getValue() == "analytical");
+
     llvm::errs() << "=== ResourceAwareTaskOptimization on "
-                 << func.getName() << " ===\n";
+                 << func.getName()
+                 << " (estimation-mode=" << estimationMode.getValue()
+                 << ") ===\n";
 
     constexpr int kMaxOuterIterations = 10;
 
     for (int outer = 0; outer < kMaxOuterIterations; ++outer) {
       // Rebuilds graph from current IR state.
       TaskDependencyGraph graph;
-      graph.build(func);
+      graph.build(func, use_analytical);
 
       if (graph.nodes.empty()) {
         return;
@@ -1668,9 +1677,11 @@ struct ResourceAwareTaskOptimizationPass
       // Fuse independent tasks to free up CGRA budget for balance.
       UtilizationFuser fuser;
       // Expose TaskDependencyGraph::profileTask to UtilizationFuser via a
-      // lambda so fused tasks get real ResMII/RecMII profiling.
-      auto profile_fn = [&graph](TaskGraphNode *node, TaskflowTaskOp task) {
-        graph.profileTaskPublic(node, task);
+      // lambda so fused tasks get real profiling.  In analytical mode, the
+      // mapper is skipped entirely (only ResMII/RecMII estimates are used).
+      auto profile_fn = [&graph, use_analytical](TaskGraphNode *node,
+                                                  TaskflowTaskOp task) {
+        graph.profileTaskPublic(node, task, /*skip_mapper=*/use_analytical);
       };
       bool fuse_changed = fuser.fuse(func, graph, profile_fn);
 
@@ -1680,15 +1691,15 @@ struct ResourceAwareTaskOptimizationPass
       // Rebuild graph after fusion (tasks may have been erased/created).
       if (fuse_changed) {
         graph = TaskDependencyGraph();
-        graph.build(func);
+        graph.build(func, use_analytical);
       }
 
       // Phase 2: Latency-Aware Pipeline Balance.
-      // Use analytical-only profiling for speculative balance probes.
-      // The mapper is skipped to prevent infinite backtracking on large tile
-      // arrays. ResMII/RecMII estimates are sufficient to decide if adding a
-      // CGRA reduces the bottleneck's II (RecMII-bound tasks will correctly
-      // show no improvement; ResMII-bound tasks will show proportional gains).
+      // Balance probes always use analytical-only profiling (skip_mapper=true)
+      // regardless of estimation-mode, because the mapper may backtrack
+      // indefinitely on speculative larger tile arrays.  ResMII/RecMII
+      // estimates are sufficient to decide if adding a CGRA reduces the
+      // bottleneck's II.
       auto balance_profile_fn = [&graph](TaskGraphNode *node,
                                          TaskflowTaskOp task) {
         graph.profileTaskPublic(node, task, /*skip_mapper=*/true);
@@ -1754,7 +1765,7 @@ struct ResourceAwareTaskOptimizationPass
     // Final validation and tile occupation summary with visual 4x4 grid.
     {
       TaskDependencyGraph final_graph;
-      final_graph.build(func);
+      final_graph.build(func, use_analytical);
       int final_total = final_graph.getTotalAllocatedCGRAs();
 
       // Assign each task a single character label for the combined grid.
