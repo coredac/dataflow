@@ -35,6 +35,7 @@
 
 // RUN: mlir-neura-opt %s --affine-loop-tree-serialization \
 // RUN: --convert-affine-to-taskflow \
+// RUN: --construct-hyperblock-from-task \
 // RUN: --resource-aware-task-optimization \
 // RUN: --architecture-spec=%S/../../../arch_spec/architecture.yaml \
 // RUN: -o %t.resopt.mlir

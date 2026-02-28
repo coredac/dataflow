@@ -8,6 +8,7 @@
 // RUN: FileCheck %s --input-file=%t.taskflow.mlir --check-prefixes=TASKFLOW
 
 // RUN: mlir-neura-opt %t.taskflow.mlir \
+// RUN: --construct-hyperblock-from-task \
 // RUN: --resource-aware-task-optimization \
 // RUN: --architecture-spec=%S/../../../arch_spec/architecture.yaml \
 // RUN: -o %t.resopt.mlir

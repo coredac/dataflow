@@ -399,39 +399,115 @@ private:
            "compiled_ii must come from downstream pipeline.");
 
     // ================================================================
-    // Split-Profiling for Multi-Body Tasks (e.g. after utilization fusion)
+    // Split-Profiling for Multi-Hyperblock Tasks (e.g. after utilization fusion)
     // ================================================================
     // ConvertTaskflowToNeura asserts hyperblock_count==1. If a task body
-    // contains more than one top-level op (loop nest), we split it back into
-    // individual single-loop tasks, profile each independently, and take
-    // max(ii) / sum(steps) as the combined metrics.
-    SmallVector<Operation *> body_ops;
-    Block &task_body = task.getBody().front();
-    for (auto &op : task_body.getOperations()) {
-      if (!isa<TaskflowYieldOp>(op))
-        body_ops.push_back(&op);
-    }
+    // contains more than one counter+hyperblock chain (e.g. after fusion),
+    // we split it back into individual single-chain tasks, profile each
+    // independently, and take max(ii) / sum(steps) as the combined metrics.
+    SmallVector<TaskflowHyperblockOp> hyperblocks;
+    task.walk([&](TaskflowHyperblockOp hb) { hyperblocks.push_back(hb); });
 
-    if (body_ops.size() > 1) {
+    if (hyperblocks.size() > 1) {
       int64_t total_ii = 1;
       int64_t total_steps = 0;
 
-      for (Operation *loop_op : body_ops) {
-        OpBuilder tmp_builder(task.getOperation());
+      llvm::errs() << "[split-profile] Fused task IR dump:\n";
+      task.dump();
 
-        // Determine value_output_types for the throwaway split task.
-        // Most loop ops produce no values, so value_output_types is empty.
-        // However, affine.for with iter_args produces reduction results that
-        // ConstructHyperblockFromTask propagates through the hyperblock and
-        // ConvertTaskflowToNeura wires into the neura.kernel.  If we don't
-        // declare matching value_output_types on the tmp_task, the downstream
-        // pipeline will either fail or produce no kernel, crashing the
-        // profiler.  We therefore mirror the loop's result types.
-        SmallVector<Type> split_value_output_types;
-        if (auto affine_for = dyn_cast<affine::AffineForOp>(loop_op)) {
-          for (Type t : affine_for.getResultTypes())
-            split_value_output_types.push_back(t);
+      // For each hyperblock, find its entire counter chain (all ancestor ops
+      // up to the task body level) and clone them into a temporary task.
+      Block &task_body = task.getBody().front();
+
+      for (TaskflowHyperblockOp hb : hyperblocks) {
+        // Collect all ops in this chain: walk from the hyperblock upward
+        // through parent_index links to find all counter ops, then include
+        // the hyperblock itself.
+        SmallVector<Operation *> chain_ops;
+        DenseSet<Operation *> chain_set;
+
+        // Find all counters that are ancestors of this hyperblock by tracing
+        // hyperblock.indices -> counter -> counter.parent_index etc.
+        std::function<void(Operation *)> collectAncestors;
+        collectAncestors = [&](Operation *op) {
+          if (!op || chain_set.contains(op)) return;
+          if (!task.getOperation()->isAncestor(op)) return;
+          if (op == task.getOperation()) return;
+          if (op->getParentOp() == task.getOperation() ||
+              isa<affine::AffineForOp>(op) ||
+              isa<scf::ForOp>(op)) {
+            chain_set.insert(op);
+            chain_ops.push_back(op);
+          }
+          // Trace operand defining ops that are counters or loops in the task body.
+          for (Value operand : op->getOperands()) {
+            if (auto *def = operand.getDefiningOp()) {
+              if ((isa<TaskflowCounterOp>(def) || isa<affine::AffineForOp>(def) || isa<scf::ForOp>(def)) &&
+                  task.getOperation()->isAncestor(def)) {
+                collectAncestors(def);
+              }
+            }
+          }
+          // Also collect the parent op if it's a loop.
+          Operation *parentOp = op->getParentOp();
+          if (parentOp && parentOp != task.getOperation() && task.getOperation()->isAncestor(parentOp)) {
+            collectAncestors(parentOp);
+          }
+        };
+
+        // Start from the hyperblock and trace upward.
+        llvm::errs() << "[split-profile] hyperblock operands: "
+                     << hb->getNumOperands() << "\n";
+        for (Value v : hb->getOperands()) {
+          if (auto *def = v.getDefiningOp()) {
+            llvm::errs() << "[split-profile]   operand def: " << def->getName()
+                         << " parentOp: " << def->getParentOp()->getName()
+                         << " isCounter: " << isa<TaskflowCounterOp>(def)
+                         << " sameParent: "
+                         << (def->getParentOp() == task.getOperation()) << "\n";
+          } else {
+            llvm::errs() << "[split-profile]   operand is block arg\n";
+          }
         }
+        collectAncestors(hb.getOperation());
+
+        // We only care about operations at the top-level of the task,
+        // because cloning a top-level operation (like a loop) will naturally
+        // clone its entire region (including the nested hyperblock).
+        SetVector<Operation *> top_level_chain;
+        for (Operation *op : chain_ops) {
+          Operation *topLevelOp = op;
+          while (topLevelOp && topLevelOp->getBlock() != &task_body) {
+            topLevelOp = topLevelOp->getParentOp();
+          }
+          if (topLevelOp) {
+            top_level_chain.insert(topLevelOp);
+          }
+        }
+
+        // Sort top_level_chain in original IR order for correct cloning.
+        SmallVector<Operation *> chain_ops_sorted(top_level_chain.begin(), top_level_chain.end());
+        llvm::sort(chain_ops_sorted, [](Operation *a, Operation *b) {
+          return a->isBeforeInBlock(b);
+        });
+
+        // Determine value_output_types by finding if the original yield uses any values
+        // produced by operations inside our top_level_chain.
+        auto orig_yield = cast<TaskflowYieldOp>(task_body.getTerminator());
+        SmallVector<Type> split_value_output_types;
+        for (Value v : orig_yield.getValueResults()) {
+          if (auto *defOp = v.getDefiningOp()) {
+            Operation *topLevelDef = defOp;
+            while (topLevelDef && topLevelDef->getBlock() != &task_body) {
+              topLevelDef = topLevelDef->getParentOp();
+            }
+            if (topLevelDef && top_level_chain.count(topLevelDef)) {
+              split_value_output_types.push_back(v.getType());
+            }
+          }
+        }
+
+        OpBuilder tmp_builder(task.getOperation());
 
         auto tmp_task = tmp_builder.create<TaskflowTaskOp>(
             task.getLoc(),
@@ -455,19 +531,34 @@ private:
                                            tmp_body->getArguments()))
           arg_map.map(orig, repl);
 
-        Operation *cloned_op = body_builder.clone(*loop_op, arg_map);
+        // Clone only the ops in this chain.
+        llvm::errs() << "[split-profile] top_level chain_ops count: " << chain_ops_sorted.size()
+                     << " for hyperblock in " << task.getTaskName() << "\n";
+        for (Operation *op : chain_ops_sorted) {
+          llvm::errs() << "[split-profile]   cloning: " << op->getName() << "\n";
+          body_builder.clone(*op, arg_map);
+        }
 
         SmallVector<Value> yield_writes;
         for (size_t i = 0; i < task.getWriteMemrefs().size(); ++i)
           yield_writes.push_back(
               tmp_body->getArgument(task.getReadMemrefs().size() + i));
 
-        // Collect value results from the cloned loop (iter_args results).
-        // These must be yielded so the task's value_outputs match.
+        // Collect value results from the cloned operations.
         SmallVector<Value> yield_vals;
-        for (Value res : cloned_op->getResults())
-          yield_vals.push_back(res);
-
+        for (Value v : orig_yield.getValueResults()) {
+          if (auto *defOp = v.getDefiningOp()) {
+            Operation *topLevelDef = defOp;
+            while (topLevelDef && topLevelDef->getBlock() != &task_body) {
+              topLevelDef = topLevelDef->getParentOp();
+            }
+            if (topLevelDef && top_level_chain.count(topLevelDef)) {
+              if (Value cloned_val = arg_map.lookupOrNull(v)) {
+                yield_vals.push_back(cloned_val);
+              }
+            }
+          }
+        }
         body_builder.create<TaskflowYieldOp>(task.getLoc(), yield_writes,
                                              yield_vals);
 
@@ -478,7 +569,18 @@ private:
         TaskGraphNode tmp_node(/*id=*/0, tmp_task);
         tmp_node.cgra_count = node->cgra_count;
         tmp_node.shape = node->shape;
+
+        llvm::errs() << "[split-profile] === BEFORE recursive profileTask ===\n";
+        llvm::errs() << "[split-profile] Original fused task IR:\n";
+        task.dump();
+        llvm::errs() << "[split-profile] tmp_task IR:\n";
+        tmp_task.dump();
+
         this->profileTask(&tmp_node, tmp_task, skip_mapper);
+
+        llvm::errs() << "[split-profile] === AFTER recursive profileTask ===\n";
+        llvm::errs() << "[split-profile] Original fused task IR:\n";
+        task.dump();
 
         total_ii = std::max(total_ii, tmp_node.ii);
         total_steps += tmp_node.steps;
@@ -497,12 +599,17 @@ private:
     // ================================================================
     // Phase 1: Taskflow -> Neura conversion (get neura.kernel ops)
     // ================================================================
+    // The pass now runs after construct-hyperblock-from-task, so task bodies
+    // already contain counter + hyperblock ops.  We only need to run
+    // classify-counters + convert-taskflow-to-neura to get kernels.
+    //
     // We clone the entire parent function but then strip all tasks EXCEPT the
-    // one being profiled. This is critical because utilization-fused tasks
-    // contain multiple hyperblocks, which causes ConvertTaskflowToNeura to
-    // assert (hyperblock_count == 1). By keeping only the target task, Phase 1
-    // processes just the single task we care about.
+    // one being profiled to avoid multi-task interference in the conversion.
     auto phase1_module = ModuleOp::create(loc);
+    
+    llvm::errs() << "[profileTask DEBUG] Task before Phase 1:\n";
+    task.dump();
+
     {
       OpBuilder mod_builder(ctx);
       mod_builder.setInsertionPointToStart(phase1_module.getBody());
@@ -523,10 +630,6 @@ private:
         for (auto t : to_erase) {
           // Replace all results with undef-like values so uses don't dangle.
           for (OpResult res : t->getResults()) {
-            // Create a placeholder value so uses don't dangle.
-            // Use UnrealizedConversionCastOp as a universal placeholder that
-            // works for any type (memref, index, integer, float, etc.)
-            // without needing type-specific logic. Verifier is disabled.
             OpBuilder b(t);
             Value placeholder =
                 b.create<UnrealizedConversionCastOp>(t.getLoc(),
@@ -540,13 +643,20 @@ private:
       }
     }
 
+    llvm::errs() << "[profileTask DEBUG] Task after Phase 1 clone:\n";
+    task.dump();
+
     {
       PassManager pm(ctx);
       pm.enableVerifier(false);
-      pm.addNestedPass<func::FuncOp>(
-          taskflow::createConstructHyperblockFromTaskPass());
+      // Task bodies already contain counter + hyperblock ops (the pass runs
+      // after construct-hyperblock-from-task in the pipeline), so we skip
+      // that conversion and go straight to classify-counters + neura.
       pm.addPass(taskflow::createClassifyCountersPass());
       pm.addPass(mlir::createConvertTaskflowToNeuraPass());
+
+      llvm::errs() << "[profileTask] === BEFORE pm.run(phase1_module) for "
+                   << task.getTaskName() << " ===\n";
 
       if (failed(pm.run(phase1_module))) {
         phase1_module.erase();
@@ -555,6 +665,9 @@ private:
                "compiled_ii must come from downstream pipeline.");
         return;
       }
+
+      llvm::errs() << "[profileTask DEBUG] Task after Phase 1 pm.run:\n";
+      task.dump();
     }
 
     // ================================================================
@@ -565,6 +678,10 @@ private:
     phase1_module.walk([&](neura::KernelOp k) { kernels.push_back(k); });
 
     if (kernels.empty()) {
+      llvm::errs() << "[profileTask] DEBUG: Phase 1 produced no kernels for "
+                   << task.getTaskName() << "\n";
+      llvm::errs() << "[profileTask] DEBUG: Phase 1 module dump:\n";
+      phase1_module.dump();
       phase1_module.erase();
       assert(false &&
              "[profileTask] FATAL: No kernels found after Phase 1. "
@@ -950,52 +1067,118 @@ private:
 
   // Computes total trip count for a task.
   //
-  // Walks the task body and for each top-level affine.for, computes the
-  // product of the entire nested loop structure (perfectly-nested multiply).
-  // For multiple sequential top-level loops, sums their individual products
-  // (they execute sequentially, not as a combined iteration space).
+  // After construct-hyperblock-from-task, the task body contains
+  // taskflow.counter ops and taskflow.hyperblock ops instead of affine.for.
+  // The trip count is the product of all counter ranges in the counter chain.
+  //
+  // For each root counter (no parent_index), walks its chain of child counters
+  // and multiplies all (upper_bound - lower_bound) / step values.
+  // Multiple independent counter chains are summed (they are sequential).
   //
   // Examples:
-  //   for i=0..10 { for j=0..20 { } }  → 10 * 20 = 200
-  //   for i=0..10 { }; for j=0..5 { }  → 10 + 5 = 15
+  //   counter(0, 10, 1) -> counter(0, 20, 1) -> hyperblock  → 10 * 20 = 200
+  //   counter(0, 10, 1); counter(0, 5, 1)  → 10 + 5 = 15
   static int64_t computeTripCount(TaskflowTaskOp task) {
-    int64_t total = 0;
-    // Only visit top-level affine.for ops in the task body (not nested ones).
-    Block &body = task.getBody().front();
-    for (Operation &op : body.getOperations()) {
-      if (auto for_op = dyn_cast<affine::AffineForOp>(op)) {
-        total += computeNestedTripCount(for_op);
-      }
-    }
-    // If no affine.for found, default to 1.
-    return (total > 0) ? total : 1;
-  }
+    // Collect all counter ops in the task body.
+    SmallVector<TaskflowCounterOp> all_counters;
+    task.walk([&](TaskflowCounterOp c) { all_counters.push_back(c); });
 
-  // Recursively computes the trip count of a nested loop structure.
-  // Multiplies the current loop's trip count by the maximum nested sub-loop
-  // trip count (for perfectly nested structures, this is the product of all
-  // loop bounds).
-  static int64_t computeNestedTripCount(affine::AffineForOp for_op) {
-    int64_t this_trip = 1;
-    if (for_op.hasConstantBounds()) {
-      int64_t lb = for_op.getConstantLowerBound();
-      int64_t ub = for_op.getConstantUpperBound();
-      int64_t step = for_op.getStepAsInt();
-      int64_t count = (ub - lb + step - 1) / step;
-      if (count > 0)
-        this_trip = count;
+    if (all_counters.empty()) {
+      std::function<int64_t(Region&)> getLoopsTripCount = [&](Region &region) -> int64_t {
+        int64_t total = 0;
+        for (Block &block : region.getBlocks()) {
+          for (Operation &op : block.getOperations()) {
+            if (auto affineFor = dyn_cast<affine::AffineForOp>(op)) {
+              int64_t count = 1;
+              if (affineFor.hasConstantBounds()) {
+                int64_t lb = affineFor.getConstantLowerBound();
+                int64_t ub = affineFor.getConstantUpperBound();
+                int64_t step = affineFor.getStepAsInt();
+                count = (step > 0) ? (ub - lb + step - 1) / step : 1;
+              }
+              int64_t children = 0;
+              for (Region &r : op.getRegions()) children += getLoopsTripCount(r);
+              total += count * (children > 0 ? children : 1);
+            } else if (auto scfFor = dyn_cast<scf::ForOp>(op)) {
+              int64_t count = 1;
+              auto lbOpt = getConstantIntValue(scfFor.getLowerBound());
+              auto ubOpt = getConstantIntValue(scfFor.getUpperBound());
+              auto stepOpt = getConstantIntValue(scfFor.getStep());
+              if (lbOpt && ubOpt && stepOpt) {
+                count = (*stepOpt > 0) ? (*ubOpt - *lbOpt + *stepOpt - 1) / *stepOpt : 1;
+              }
+              int64_t children = 0;
+              for (Region &r : op.getRegions()) children += getLoopsTripCount(r);
+              total += count * (children > 0 ? children : 1);
+            } else if (op.getNumRegions() > 0) {
+              int64_t children = 0;
+              for (Region &r : op.getRegions()) children += getLoopsTripCount(r);
+              total += children;
+            }
+          }
+        }
+        return total;
+      };
+
+      int64_t total = getLoopsTripCount(task.getRegion());
+      return total > 0 ? total : 1;
     }
-    // Recurse into nested loops: sum of all direct-child loop trip counts
-    // (for sequential inner loops), then multiply by this loop's trip.
-    int64_t inner_total = 0;
-    for (Operation &inner_op : for_op.getBody()->getOperations()) {
-      if (auto inner_for = dyn_cast<affine::AffineForOp>(inner_op)) {
-        inner_total += computeNestedTripCount(inner_for);
+
+    // Build a map from counter result -> counter op for parent chain traversal.
+    // Also find root counters (no parent_index).
+    SmallVector<TaskflowCounterOp> root_counters;
+    DenseMap<Value, TaskflowCounterOp> result_to_counter;
+    for (auto c : all_counters) {
+      // Counter op produces an induction variable result.
+      if (c->getNumResults() > 0)
+        result_to_counter[c->getResult(0)] = c;
+      if (!c.getParentIndex())
+        root_counters.push_back(c);
+    }
+
+    // For each root counter, compute the product of its chain.
+    int64_t total = 0;
+    for (auto root : root_counters) {
+      int64_t chain_product = 1;
+
+      // Walk all counters and multiply those in this root's chain.
+      // A counter belongs to this chain if it IS the root, or its
+      // parent_index traces back to the root.
+      for (auto c : all_counters) {
+        int64_t lb = c.getLowerBound().getSExtValue();
+        int64_t ub = c.getUpperBound().getSExtValue();
+        int64_t step = c.getStep().getSExtValue();
+        int64_t count = (step > 0) ? (ub - lb + step - 1) / step : 1;
+        if (count < 1) count = 1;
+
+        if (c == root) {
+          chain_product *= count;
+        } else if (c.getParentIndex()) {
+          // Check if this counter's parent is in the same chain.
+          // Walk up to see if we reach the root.
+          Value parent = c.getParentIndex();
+          bool in_chain = false;
+          // Simple check: if parent is the root's result, it's in chain.
+          // For deeper nesting, trace iteratively.
+          while (parent) {
+            auto it = result_to_counter.find(parent);
+            if (it == result_to_counter.end())
+              break;
+            TaskflowCounterOp parent_counter = it->second;
+            if (parent_counter == root) {
+              in_chain = true;
+              break;
+            }
+            parent = parent_counter.getParentIndex();
+          }
+          if (in_chain)
+            chain_product *= count;
+        }
       }
+      total += chain_product;
     }
-    // If no inner loops, trip count is just this loop's count.
-    // If inner loops exist, multiply: this_trip * inner_total.
-    return (inner_total > 0) ? this_trip * inner_total : this_trip;
+
+    return (total > 0) ? total : 1;
   }
 
 };
@@ -1340,6 +1523,10 @@ private:
 
     llvm::errs() << "  [Fuse] Merging " << task_a.getTaskName() << " + "
                  << task_b.getTaskName() << "\n";
+    llvm::errs() << "[Fuse] task_a body before fusion:\n";
+    task_a.dump();
+    llvm::errs() << "[Fuse] task_b body before fusion:\n";
+    task_b.dump();
 
     // Compute the correct insertion point: must be after all operands of
     // both tasks are defined, but before any consumer of either task's
@@ -1519,6 +1706,8 @@ private:
     }
 
     // Step 10: Sets fused attributes for the latency model.
+    llvm::errs() << "[performFusion] Fused task IR after creation:\n";
+    fused_task.dump();
     // trip_count: max of both, since independent tasks execute concurrently
     // on the shared tile array.
     int64_t fused_trip = std::max(node_a->trip_count, node_b->trip_count);
@@ -1645,6 +1834,9 @@ struct ResourceAwareTaskOptimizationPass
                  << func.getName()
                  << " (estimation-mode=" << estimationMode.getValue()
                  << ") ===\n";
+
+    llvm::errs() << "[RESOPT] Input IR at start of runOnOperation:\n";
+    func.dump();
 
     constexpr int kMaxOuterIterations = 10;
 
