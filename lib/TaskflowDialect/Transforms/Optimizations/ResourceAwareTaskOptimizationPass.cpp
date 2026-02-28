@@ -70,25 +70,25 @@ constexpr int64_t kUnprofiled = 0;
 // CGRA Shape Utilities
 //===----------------------------------------------------------------------===//
 
-/// Represents a CGRA allocation shape on the grid.
-///
-/// For rectangular shapes: rows × cols == cgra_count, and `cgra_positions`
-/// is empty (all cells in the bounding box are used).
-///
-/// For non-rectangular shapes (L, T): `cgra_positions` stores the explicit
-/// (col, row) coordinates of the occupied CGRAs.  `rows`/`cols` give the
-/// bounding box so that tile-level x_tiles/y_tiles can be computed.
+// Represents a CGRA allocation shape on the grid.
+//
+// For rectangular shapes: rows × cols == cgra_count, and `cgra_positions`
+// is empty (all cells in the bounding box are used).
+//
+// For non-rectangular shapes (L, T): `cgra_positions` stores the explicit
+// (col, row) coordinates of the occupied CGRAs.  `rows`/`cols` give the
+// bounding box so that tile-level x_tiles/y_tiles can be computed.
 struct CgraShape {
   int rows;  // Bounding-box CGRA rows.
   int cols;  // Bounding-box CGRA columns.
   bool is_rectangular;  // True if all cells in the bbox are used.
-  /// Explicit CGRA positions for non-rectangular shapes.
-  /// Each pair is (col, row) in CGRA coordinates.  Empty for rectangles.
+  // Explicit CGRA positions for non-rectangular shapes.
+  // Each pair is (col, row) in CGRA coordinates.  Empty for rectangles.
   SmallVector<std::pair<int, int>> cgra_positions;
 
   int area() const { return rows * cols; }
 
-  /// Returns a human-readable description for log messages only (not IR).
+  // Returns a human-readable description for log messages only (not IR).
   std::string describe(int cgra_count) const {
     std::string s = std::to_string(rows) + "x" + std::to_string(cols);
     if (!is_rectangular) {
@@ -100,11 +100,11 @@ struct CgraShape {
     return s;
   }
 
-  /// Returns the shape string written into the IR tile_shape attribute.
-  /// For rectangular shapes: "NxM" (e.g. "2x2").
-  /// For non-rectangular shapes: "NxM[(c0,r0)(c1,r1)...]" listing only the
-  /// occupied CGRA positions so that downstream passes can reconstruct the
-  /// exact valid tile set for multi-CGRA mapping.
+  // Returns the shape string written into the IR tile_shape attribute.
+  // For rectangular shapes: "NxM" (e.g. "2x2").
+  // For non-rectangular shapes: "NxM[(c0,r0)(c1,r1)...]" listing only the
+  // occupied CGRA positions so that downstream passes can reconstruct the
+  // exact valid tile set for multi-CGRA mapping.
   std::string irAttr() const {
     std::string s = std::to_string(rows) + "x" + std::to_string(cols);
     if (!is_rectangular && !cgra_positions.empty()) {
@@ -117,7 +117,7 @@ struct CgraShape {
   }
 };
 
-/// Returns all valid rectangular shapes for `cgra_count` CGRAs.
+// Returns all valid rectangular shapes for `cgra_count` CGRAs.
 static SmallVector<CgraShape> getRectangularShapes(int cgra_count) {
   SmallVector<CgraShape> shapes;
   for (int r = 1; r <= kCgraGridRows; ++r) {
@@ -130,16 +130,16 @@ static SmallVector<CgraShape> getRectangularShapes(int cgra_count) {
   return shapes;
 }
 
-/// Returns true if `cgra_count` CGRAs can fit on the grid and does not
-/// exceed the per-task limit.
+// Returns true if `cgra_count` CGRAs can fit on the grid and does not
+// exceed the per-task limit.
 static bool canFitOnGrid(int cgra_count) {
   return cgra_count >= 1 && cgra_count <= kMaxCgrasPerTask;
 }
 
-/// Returns the set of non-rectangular shapes for `cgra_count` CGRAs.
-/// Currently defined for cgra_count == 3 (L-shape) and cgra_count == 4
-/// (L-shape and T-shape variants).  Each shape's coordinates are chosen
-/// so the bounding box is as small as possible.
+// Returns the set of non-rectangular shapes for `cgra_count` CGRAs.
+// Currently defined for cgra_count == 3 (L-shape) and cgra_count == 4
+// (L-shape and T-shape variants).  Each shape's coordinates are chosen
+// so the bounding box is as small as possible.
 static SmallVector<CgraShape> getNonRectangularShapes(int cgra_count) {
   SmallVector<CgraShape> shapes;
 
@@ -161,10 +161,10 @@ static SmallVector<CgraShape> getNonRectangularShapes(int cgra_count) {
   return shapes;
 }
 
-/// Picks the best shape for display/profiling.
-/// Prefers rectangular shapes (most square-ish).  If no rectangle exists
-/// (e.g. cgra_count == 3), picks the non-rectangular shape with the
-/// smallest bounding box.
+// Picks the best shape for display/profiling.
+// Prefers rectangular shapes (most square-ish).  If no rectangle exists
+// (e.g. cgra_count == 3), picks the non-rectangular shape with the
+// smallest bounding box.
 static CgraShape pickBestShape(int cgra_count) {
   auto rect_shapes = getRectangularShapes(cgra_count);
   if (!rect_shapes.empty()) {
@@ -212,8 +212,8 @@ struct TaskGraphNode {
 
   TaskGraphNode(size_t id, TaskflowTaskOp op) : id(id), op(op) {}
 
-  /// Returns estimated task latency using the pipelined execution model:
-  ///   latency = II * (trip_count - 1) + steps.
+  // Returns estimated task latency using the pipelined execution model:
+  //   latency = II * (trip_count - 1) + steps.
   int64_t estimatedLatency() const {
     return ii * (trip_count - 1) + steps;
   }
@@ -313,8 +313,8 @@ public:
     }
   }
 
-  /// Returns true if there is any (direct or transitive) dependency from
-  /// source_node to dest_node.
+  // Returns true if there is any (direct or transitive) dependency from
+  // source_node to dest_node.
   bool hasDependency(TaskGraphNode *source_node,
                      TaskGraphNode *dest_node) const {
     if (source_node == dest_node) return true;
@@ -332,13 +332,13 @@ public:
     return false;
   }
 
-  /// Returns true if a and b are completely independent (no path in either
-  /// direction).
+  // Returns true if a and b are completely independent (no path in either
+  // direction).
   bool areIndependent(TaskGraphNode *a, TaskGraphNode *b) const {
     return !hasDependency(a, b) && !hasDependency(b, a);
   }
 
-  /// Returns total CGRAs allocated.
+  // Returns total CGRAs allocated.
   int getTotalAllocatedCGRAs() const {
     int total = 0;
     for (auto &node : nodes) {
@@ -347,11 +347,11 @@ public:
     return total;
   }
 
-  /// Public wrapper for profileTask — used by UtilizationFuser to re-profile
-  /// fused tasks with the real downstream Neura pipeline.
-  /// When skip_mapper=true, only ResMII/RecMII analytical estimates are used
-  /// (no MapToAcceleratorPass). This is safe for speculative balance checks
-  /// where the mapper may backtrack indefinitely on larger tile arrays.
+  // Public wrapper for profileTask — used by UtilizationFuser to re-profile
+  // fused tasks with the real downstream Neura pipeline.
+  // When skip_mapper=true, only ResMII/RecMII analytical estimates are used
+  // (no MapToAcceleratorPass). This is safe for speculative balance checks
+  // where the mapper may backtrack indefinitely on larger tile arrays.
   void profileTaskPublic(TaskGraphNode *node, TaskflowTaskOp task,
                          bool skip_mapper = false) {
     profileTask(node, task, skip_mapper);
@@ -368,25 +368,25 @@ private:
     }
   }
 
-  /// Performs speculative lowering of a single TaskflowTaskOp through the
-  /// real downstream pipeline to extract compiled_ii and steps.
-  ///
-  /// Two-phase approach (inspired by PR #251 FuseKernelPass):
-  ///   Phase 1: Taskflow->Neura conversion on cloned parent function
-  ///     construct-hyperblock -> classify-counters -> convert-taskflow-to-neura
-  ///     This produces neura.kernel ops (IsolatedFromAbove).
-  ///
-  ///   Phase 2: Clone each kernel body into a standalone func::FuncOp with
-  ///     accelerator="neura" attribute, then run the full Neura lowering +
-  ///     mapping pipeline to get real compiled_ii from MapToAcceleratorPass.
-  /// ASSERTS if any phase fails — compiled_ii must come from the downstream
-  /// pipeline, never from a silent fallback.
-  ///
-  /// skip_mapper: when true, skip MapToAcceleratorPass and use only
-  ///   ResMII/RecMII analytical estimates.  This is set by the
-  ///   --estimation-mode=analytical pass option, or internally for speculative
-  ///   balance probes where the mapper may loop indefinitely on large tile
-  ///   arrays.
+  // Performs speculative lowering of a single TaskflowTaskOp through the
+  // real downstream pipeline to extract compiled_ii and steps.
+  //
+  // Two-phase approach (inspired by PR #251 FuseKernelPass):
+  //   Phase 1: Taskflow->Neura conversion on cloned parent function
+  //     construct-hyperblock -> classify-counters -> convert-taskflow-to-neura
+  //     This produces neura.kernel ops (IsolatedFromAbove).
+  //
+  //   Phase 2: Clone each kernel body into a standalone func::FuncOp with
+  //     accelerator="neura" attribute, then run the full Neura lowering +
+  //     mapping pipeline to get real compiled_ii from MapToAcceleratorPass.
+  // ASSERTS if any phase fails — compiled_ii must come from the downstream
+  // pipeline, never from a silent fallback.
+  //
+  // skip_mapper: when true, skip MapToAcceleratorPass and use only
+  //   ResMII/RecMII analytical estimates.  This is set by the
+  //   --estimation-mode=analytical pass option, or internally for speculative
+  //   balance probes where the mapper may loop indefinitely on large tile
+  //   arrays.
   void profileTask(TaskGraphNode *node, TaskflowTaskOp task,
                    bool skip_mapper = false) {
     MLIRContext *ctx = task.getContext();
@@ -641,18 +641,18 @@ private:
     phase1_module.erase();
   }
 
-  /// Clones a neura.kernel body into a standalone func::FuncOp inside
-  /// dst_module, then runs the full Neura lowering + mapping pipeline.
-  /// Returns success if MapToAccelerator ran and produced compiled_ii.
-  ///
-  /// x_tiles / y_tiles: total tile dimensions of the target CGRA array.
-  ///   These are passed to MapToAcceleratorPass so it maps onto the correct
-  ///   multi-CGRA tile grid rather than the default 1-CGRA singleton.
-  /// valid_tiles: explicit comma-separated tile list for non-rectangular shapes.
-  ///   Empty string means "use the full x_tiles × y_tiles rectangle".
-  /// skip_mapper: when true, skip MapToAcceleratorPass entirely and rely only
-  ///   on ResMII/RecMII analytical estimates. Used for speculative balance
-  ///   probes to prevent infinite mapper backtracking on larger tile arrays.
+  // Clones a neura.kernel body into a standalone func::FuncOp inside
+  // dst_module, then runs the full Neura lowering + mapping pipeline.
+  // Returns success if MapToAccelerator ran and produced compiled_ii.
+  //
+  // x_tiles / y_tiles: total tile dimensions of the target CGRA array.
+  //   These are passed to MapToAcceleratorPass so it maps onto the correct
+  //   multi-CGRA tile grid rather than the default 1-CGRA singleton.
+  // valid_tiles: explicit comma-separated tile list for non-rectangular shapes.
+  //   Empty string means "use the full x_tiles × y_tiles rectangle".
+  // skip_mapper: when true, skip MapToAcceleratorPass entirely and rely only
+  //   on ResMII/RecMII analytical estimates. Used for speculative balance
+  //   probes to prevent infinite mapper backtracking on larger tile arrays.
   LogicalResult runNeuraPipelineOnKernel(MLIRContext *ctx,
                                          neura::KernelOp kernel,
                                          ModuleOp dst_module,
@@ -888,13 +888,13 @@ private:
   }
 
 
-  /// Extracts metrics from partially-lowered Neura IR when the full pipeline
-  /// fails. Uses ResMII/RecMII analysis and critical path depth on whatever
-  /// Neura ops were successfully created.
-  ///
-  /// x_tiles / y_tiles: if > 0, use a custom architecture sized to this tile
-  ///   array so that ResMII reflects the real resource pool for multi-CGRA
-  ///   shapes. Falls back to the global singleton (1-CGRA) otherwise.
+  // Extracts metrics from partially-lowered Neura IR when the full pipeline
+  // fails. Uses ResMII/RecMII analysis and critical path depth on whatever
+  // Neura ops were successfully created.
+  //
+  // x_tiles / y_tiles: if > 0, use a custom architecture sized to this tile
+  //   array so that ResMII reflects the real resource pool for multi-CGRA
+  //   shapes. Falls back to the global singleton (1-CGRA) otherwise.
   void extractMetricsFromPartialIR(ModuleOp tmp_module,
                                    int &out_ii, int &out_cp_depth,
                                    int x_tiles = 0, int y_tiles = 0) {
@@ -948,16 +948,16 @@ private:
                  << "), steps=" << out_cp_depth << "\n";
   }
 
-  /// Computes total trip count for a task.
-  ///
-  /// Walks the task body and for each top-level affine.for, computes the
-  /// product of the entire nested loop structure (perfectly-nested multiply).
-  /// For multiple sequential top-level loops, sums their individual products
-  /// (they execute sequentially, not as a combined iteration space).
-  ///
-  /// Examples:
-  ///   for i=0..10 { for j=0..20 { } }  → 10 * 20 = 200
-  ///   for i=0..10 { }; for j=0..5 { }  → 10 + 5 = 15
+  // Computes total trip count for a task.
+  //
+  // Walks the task body and for each top-level affine.for, computes the
+  // product of the entire nested loop structure (perfectly-nested multiply).
+  // For multiple sequential top-level loops, sums their individual products
+  // (they execute sequentially, not as a combined iteration space).
+  //
+  // Examples:
+  //   for i=0..10 { for j=0..20 { } }  → 10 * 20 = 200
+  //   for i=0..10 { }; for j=0..5 { }  → 10 + 5 = 15
   static int64_t computeTripCount(TaskflowTaskOp task) {
     int64_t total = 0;
     // Only visit top-level affine.for ops in the task body (not nested ones).
@@ -971,10 +971,10 @@ private:
     return (total > 0) ? total : 1;
   }
 
-  /// Recursively computes the trip count of a nested loop structure.
-  /// Multiplies the current loop's trip count by the maximum nested sub-loop
-  /// trip count (for perfectly nested structures, this is the product of all
-  /// loop bounds).
+  // Recursively computes the trip count of a nested loop structure.
+  // Multiplies the current loop's trip count by the maximum nested sub-loop
+  // trip count (for perfectly nested structures, this is the product of all
+  // loop bounds).
   static int64_t computeNestedTripCount(affine::AffineForOp for_op) {
     int64_t this_trip = 1;
     if (for_op.hasConstantBounds()) {
@@ -1003,23 +1003,23 @@ private:
 //===----------------------------------------------------------------------===//
 // Pipeline Balancer
 //===----------------------------------------------------------------------===//
-/// Identifies critical-path bottlenecks and allocates extra CGRAs.
+// Identifies critical-path bottlenecks and allocates extra CGRAs.
 
 class PipelineBalancer {
 public:
   using ProfileFn = std::function<void(TaskGraphNode *, TaskflowTaskOp)>;
 
-  /// Runs pipeline balance on the graph.
-  ///
-  /// For each iteration, speculatively increments the bottleneck task's
-  /// cgra_count by 1 and re-profiles it via profile_fn. If the new estimated
-  /// latency is lower, the change is accepted; otherwise it is reverted and
-  /// the node is marked saturated (no further CGRA additions help it).
-  ///
-  /// This avoids blindly assigning more CGRAs without checking whether the
-  /// larger array actually produces a better compiled_ii.
-  ///
-  /// Returns true if any changes were accepted.
+  // Runs pipeline balance on the graph.
+  //
+  // For each iteration, speculatively increments the bottleneck task's
+  // cgra_count by 1 and re-profiles it via profile_fn. If the new estimated
+  // latency is lower, the change is accepted; otherwise it is reverted and
+  // the node is marked saturated (no further CGRA additions help it).
+  //
+  // This avoids blindly assigning more CGRAs without checking whether the
+  // larger array actually produces a better compiled_ii.
+  //
+  // Returns true if any changes were accepted.
   bool balance(TaskDependencyGraph &graph, ProfileFn profile_fn) {
     bool changed = false;
     // Tracks nodes for which adding one more CGRA did not reduce latency.
@@ -1103,7 +1103,7 @@ public:
   }
 
   private:
-    /// Computes the weighted critical path length from a given node to any sink.
+    // Computes the weighted critical path length from a given node to any sink.
     int64_t computeCriticalPathFrom(TaskGraphNode *node,
                                     DenseMap<TaskGraphNode *, int64_t> &cache) {
       auto it = cache.find(node);
@@ -1122,8 +1122,8 @@ public:
       return path;
     }
 
-    /// Computes the longest path from any source to the given node
-    /// (depth_from_source). Uses dynamic programming with memoization.
+    // Computes the longest path from any source to the given node
+    // (depth_from_source). Uses dynamic programming with memoization.
     int64_t computeDepthFromSource(TaskGraphNode *node,
                                    DenseMap<TaskGraphNode *, int64_t> &cache) {
       auto it = cache.find(node);
@@ -1145,21 +1145,21 @@ public:
       return depth;
     }
 
-    /// Finds the bottleneck node on the critical path using full slack analysis.
-    ///
-    /// For each node, slack is defined as:
-    ///   slack(node) = global_critical_path
-    ///                 - depth_from_source(node)
-    ///                 - depth_to_sink(node)
-    ///                 + node->estimatedLatency()
-    ///
-    /// where depth_from_source includes the node's own latency, and
-    /// depth_to_sink (computeCriticalPathFrom) also includes the node's own
-    /// latency, so we add it back once to avoid double-counting.
-    ///
-    /// A node is on the critical path iff slack == 0.
-    /// Among critical-path nodes, the one with highest individual latency
-    /// is the bottleneck (reducing its latency most benefits the pipeline).
+    // Finds the bottleneck node on the critical path using full slack analysis.
+    //
+    // For each node, slack is defined as:
+    //   slack(node) = global_critical_path
+    //                 - depth_from_source(node)
+    //                 - depth_to_sink(node)
+    //                 + node->estimatedLatency()
+    //
+    // where depth_from_source includes the node's own latency, and
+    // depth_to_sink (computeCriticalPathFrom) also includes the node's own
+    // latency, so we add it back once to avoid double-counting.
+    //
+    // A node is on the critical path iff slack == 0.
+    // Among critical-path nodes, the one with highest individual latency
+    // is the bottleneck (reducing its latency most benefits the pipeline).
     TaskGraphNode *findBottleneck(TaskDependencyGraph &graph,
                                   const llvm::DenseSet<TaskGraphNode *> &ignored) {
       llvm::DenseMap<TaskGraphNode *, int64_t> to_sink_cache;
@@ -1210,17 +1210,17 @@ public:
 //===----------------------------------------------------------------------===//
 // Utilization Fusion
 //===----------------------------------------------------------------------===//
-/// Merges independent tasks (no edge in either direction) into a single task
-/// to reduce total CGRA count.  Fusion candidates are chosen to minimize
-/// |trip_count_a - trip_count_b| for balanced utilization.
+// Merges independent tasks (no edge in either direction) into a single task
+// to reduce total CGRA count.  Fusion candidates are chosen to minimize
+// |trip_count_a - trip_count_b| for balanced utilization.
 
 class UtilizationFuser {
 public:
   using ProfileFn = std::function<void(TaskGraphNode *, TaskflowTaskOp)>;
 
-  /// Runs utilization fusion. Returns true if any fusions occurred.
-  /// Only performs ONE fusion per call — the caller should rebuild the graph
-  /// and call again if more fusions are desired.
+  // Runs utilization fusion. Returns true if any fusions occurred.
+  // Only performs ONE fusion per call — the caller should rebuild the graph
+  // and call again if more fusions are desired.
   bool fuse(func::FuncOp func, TaskDependencyGraph &graph,
             ProfileFn profile_fn) {
     auto pair = findBestFusionCandidate(graph);
@@ -1239,10 +1239,10 @@ public:
   }
 
 private:
-  /// Finds the best pair of independent tasks to fuse.
-  /// Selects the pair with the most balanced trip_count (minimizes
-  /// |trip_count_a - trip_count_b|) to avoid wasting computation when
-  /// the fused task executes both loop nests concurrently on the shared array.
+  // Finds the best pair of independent tasks to fuse.
+  // Selects the pair with the most balanced trip_count (minimizes
+  // |trip_count_a - trip_count_b|) to avoid wasting computation when
+  // the fused task executes both loop nests concurrently on the shared array.
   std::optional<std::pair<TaskGraphNode *, TaskGraphNode *>>
   findBestFusionCandidate(TaskDependencyGraph &graph) {
     TaskGraphNode *best_a = nullptr;
@@ -1281,10 +1281,10 @@ private:
     return std::make_pair(best_a, best_b);
   }
 
-  /// Checks whether fusing tasks a and b is safe w.r.t. dominance.
-  /// Returns false if any other task positioned between a and b in the IR
-  /// has a dependency (edge) on either a or b — because moving the fused
-  /// task would break that intermediate dependency.
+  // Checks whether fusing tasks a and b is safe w.r.t. dominance.
+  // Returns false if any other task positioned between a and b in the IR
+  // has a dependency (edge) on either a or b — because moving the fused
+  // task would break that intermediate dependency.
   bool canSafelyFuse(TaskGraphNode *a, TaskGraphNode *b,
                      TaskDependencyGraph &graph) {
     auto *task_a = a->op.getOperation();
@@ -1318,8 +1318,8 @@ private:
     return true;
   }
 
-  /// Performs IR-level fusion of two independent tasks.
-  /// Creates a new task with sequential concatenation of both loop nests.
+  // Performs IR-level fusion of two independent tasks.
+  // Creates a new task with sequential concatenation of both loop nests.
   bool performFusion(func::FuncOp func, TaskGraphNode *node_a,
                      TaskGraphNode *node_b, TaskDependencyGraph &graph,
                      ProfileFn profile_fn) {
@@ -1553,7 +1553,7 @@ private:
     return true;
   }
 
-  /// Finds the index of a value in a list.
+  // Finds the index of a value in a list.
   unsigned findOperandIndex(const SmallVector<Value> &list, Value v) {
     for (unsigned i = 0; i < list.size(); ++i) {
       if (list[i] == v) return i;
@@ -1561,9 +1561,9 @@ private:
     llvm_unreachable("Value not found in operand list");
   }
 
-  /// Replaces results of an original task with corresponding results from the
-  /// fused task. Handles both write outputs (memrefs) and value outputs
-  /// (reductions, iter_args).
+  // Replaces results of an original task with corresponding results from the
+  // fused task. Handles both write outputs (memrefs) and value outputs
+  // (reductions, iter_args).
   void replaceTaskResults(TaskflowTaskOp orig_task, TaskflowTaskOp fused_task,
                           const SmallVector<Value> &merged_write_memrefs,
                           unsigned value_output_offset) {
@@ -1621,12 +1621,12 @@ struct ResourceAwareTaskOptimizationPass
     registry.insert<taskflow::TaskflowDialect>();
   }
 
-  /// Estimation mode for profiling task II / steps.
-  ///   "compiled" (default): runs the full Neura lowering + mapping pipeline
-  ///       to obtain accurate compiled_ii and steps from MapToAcceleratorPass.
-  ///   "analytical": uses only ResMII / RecMII analytical estimates without
-  ///       running the mapper.  Much faster but less accurate — useful for
-  ///       rapid design-space exploration or when the mapper is unavailable.
+  // Estimation mode for profiling task II / steps.
+  //   "compiled" (default): runs the full Neura lowering + mapping pipeline
+  //       to obtain accurate compiled_ii and steps from MapToAcceleratorPass.
+  //   "analytical": uses only ResMII / RecMII analytical estimates without
+  //       running the mapper.  Much faster but less accurate — useful for
+  //       rapid design-space exploration or when the mapper is unavailable.
   Option<std::string> estimationMode{
       *this, "estimation-mode",
       llvm::cl::desc(

@@ -494,19 +494,19 @@ public:
   // Checks if the architecture supports counter operations.
   bool canSupportCounter() const;
 
-  /// Clones the architecture but with new per-cgra dimensions.
-  /// The provided tile_overrides will be appended to the existing ones.
-  ///
-  /// Example — create an 8×4 tile array (2×1 CGRA rectangle) with all tiles
-  /// present:
-  ///   auto arch_2x1 = getArchitecture().cloneWithNewDimensions(8, 4);
-  ///
-  /// Example — create a 12×8 bounding box for a T-shape (4 CGRAs) where only
-  /// specific tiles are valid:
-  ///   std::vector<TileOverride> overrides;
-  ///   // First mark all tiles as non-existent, then mark valid ones existent.
-  ///   // (see MapToAcceleratorPass for the full valid_tiles parsing logic)
-  ///   auto arch_T = getArchitecture().cloneWithNewDimensions(8, 12, overrides);
+  // Clones the architecture but with new per-cgra dimensions.
+  // The provided tile_overrides will be appended to the existing ones.
+  //
+  // Example — create an 8×4 tile array (2×1 CGRA rectangle) with all tiles
+  // present:
+  //   auto arch_2x1 = getArchitecture().cloneWithNewDimensions(8, 4);
+  //
+  // Example — create a 12×8 bounding box for a T-shape (4 CGRAs) where only
+  // specific tiles are valid:
+  //   std::vector<TileOverride> overrides;
+  //   // First mark all tiles as non-existent, then mark valid ones existent.
+  //   // (see MapToAcceleratorPass for the full valid_tiles parsing logic)
+  //   auto arch_T = getArchitecture().cloneWithNewDimensions(8, 12, overrides);
   std::unique_ptr<Architecture> cloneWithNewDimensions(
       int new_per_cgra_rows, int new_per_cgra_columns,
       const std::vector<TileOverride> &additional_overrides = {}) const;
