@@ -165,6 +165,13 @@ static SmallVector<CgraShape> getNonRectangularShapes(int cgra_count) {
 // Prefers rectangular shapes (most square-ish).  If no rectangle exists
 // (e.g. cgra_count == 3), picks the non-rectangular shape with the
 // smallest bounding box.
+// TODO: For cgra_count <= 4, getRectangularShapes always finds a valid rectangle
+// (e.g., 1x3 or 3x1 for 3), so the non-rectangular fallback (L-shape, T-shape)
+// is currently dead code. We might want to prefer non-rectangular shapes like 2x2 L-shape
+// over 1x3 for better communication latency.
+//
+// TODO: This function only picks a localized shape for a single task.
+// It does not check if the global 4x4 CGRA grid is fully occupied or manage placement conflicts.
 static CgraShape pickBestShape(int cgra_count) {
   auto rect_shapes = getRectangularShapes(cgra_count);
   if (!rect_shapes.empty()) {
@@ -399,298 +406,180 @@ private:
            "compiled_ii must come from downstream pipeline.");
 
     // ================================================================
-    // Split-Profiling for Multi-Hyperblock Tasks (e.g. after utilization fusion)
+    // Kernel-Level Profiling for Multi-Hyperblock Tasks
     // ================================================================
-    // ConvertTaskflowToNeura asserts hyperblock_count==1. If a task body
-    // contains more than one counter+hyperblock chain (e.g. after fusion),
-    // we split it back into individual single-chain tasks, profile each
-    // independently, and take max(ii) / sum(steps) as the combined metrics.
+    // When utilization fuser merges independent tasks, the resulting
+    // TaskflowTask contains multiple counter+hyperblock chains.
+    // ConvertTaskflowToNeuraPass (Phase 1) expects exactly one hyperblock
+    // per task.
+    //
+    // Solution: lower each hyperblock to a neura.kernel independently by
+    // cloning the parent function once per hyperblock, keeping only that
+    // hyperblock in the cloned task.  Each clone passes Phase 1 cleanly
+    // (one hyperblock per task), producing one neura.kernel.  All kernels
+    // are then profiled via Phase 2 (runNeuraPipelineOnKernel) and results
+    // are combined: max(ii) / sum(steps).
+    //
+    // This performs fusion at the kernel level: each hyperblock is
+    // independently lowered to a kernel and profiled on the real hardware
+    // model, without manual chain reconstruction.
     SmallVector<TaskflowHyperblockOp> hyperblocks;
     task.walk([&](TaskflowHyperblockOp hb) { hyperblocks.push_back(hb); });
 
-    if (hyperblocks.size() > 1) {
-      int64_t total_ii = 1;
-      int64_t total_steps = 0;
-
-      llvm::errs() << "[split-profile] Fused task IR dump:\n";
-      task.dump();
-
-      // For each hyperblock, find its entire counter chain (all ancestor ops
-      // up to the task body level) and clone them into a temporary task.
-      Block &task_body = task.getBody().front();
-
-      for (TaskflowHyperblockOp hb : hyperblocks) {
-        // Collect all ops in this chain: walk from the hyperblock upward
-        // through parent_index links to find all counter ops, then include
-        // the hyperblock itself.
-        SmallVector<Operation *> chain_ops;
-        DenseSet<Operation *> chain_set;
-
-        // Find all counters that are ancestors of this hyperblock by tracing
-        // hyperblock.indices -> counter -> counter.parent_index etc.
-        std::function<void(Operation *)> collectAncestors;
-        collectAncestors = [&](Operation *op) {
-          if (!op || chain_set.contains(op)) return;
-          if (!task.getOperation()->isAncestor(op)) return;
-          if (op == task.getOperation()) return;
-          if (op->getParentOp() == task.getOperation() ||
-              isa<affine::AffineForOp>(op) ||
-              isa<scf::ForOp>(op)) {
-            chain_set.insert(op);
-            chain_ops.push_back(op);
-          }
-          // Trace operand defining ops that are counters or loops in the task body.
-          for (Value operand : op->getOperands()) {
-            if (auto *def = operand.getDefiningOp()) {
-              if ((isa<TaskflowCounterOp>(def) || isa<affine::AffineForOp>(def) || isa<scf::ForOp>(def)) &&
-                  task.getOperation()->isAncestor(def)) {
-                collectAncestors(def);
-              }
-            }
-          }
-          // Also collect the parent op if it's a loop.
-          Operation *parentOp = op->getParentOp();
-          if (parentOp && parentOp != task.getOperation() && task.getOperation()->isAncestor(parentOp)) {
-            collectAncestors(parentOp);
-          }
-        };
-
-        // Start from the hyperblock and trace upward.
-        llvm::errs() << "[split-profile] hyperblock operands: "
-                     << hb->getNumOperands() << "\n";
-        for (Value v : hb->getOperands()) {
-          if (auto *def = v.getDefiningOp()) {
-            llvm::errs() << "[split-profile]   operand def: " << def->getName()
-                         << " parentOp: " << def->getParentOp()->getName()
-                         << " isCounter: " << isa<TaskflowCounterOp>(def)
-                         << " sameParent: "
-                         << (def->getParentOp() == task.getOperation()) << "\n";
-          } else {
-            llvm::errs() << "[split-profile]   operand is block arg\n";
-          }
-        }
-        collectAncestors(hb.getOperation());
-
-        // We only care about operations at the top-level of the task,
-        // because cloning a top-level operation (like a loop) will naturally
-        // clone its entire region (including the nested hyperblock).
-        SetVector<Operation *> top_level_chain;
-        for (Operation *op : chain_ops) {
-          Operation *topLevelOp = op;
-          while (topLevelOp && topLevelOp->getBlock() != &task_body) {
-            topLevelOp = topLevelOp->getParentOp();
-          }
-          if (topLevelOp) {
-            top_level_chain.insert(topLevelOp);
-          }
-        }
-
-        // Sort top_level_chain in original IR order for correct cloning.
-        SmallVector<Operation *> chain_ops_sorted(top_level_chain.begin(), top_level_chain.end());
-        llvm::sort(chain_ops_sorted, [](Operation *a, Operation *b) {
-          return a->isBeforeInBlock(b);
-        });
-
-        // Determine value_output_types by finding if the original yield uses any values
-        // produced by operations inside our top_level_chain.
-        auto orig_yield = cast<TaskflowYieldOp>(task_body.getTerminator());
-        SmallVector<Type> split_value_output_types;
-        for (Value v : orig_yield.getValueResults()) {
-          if (auto *defOp = v.getDefiningOp()) {
-            Operation *topLevelDef = defOp;
-            while (topLevelDef && topLevelDef->getBlock() != &task_body) {
-              topLevelDef = topLevelDef->getParentOp();
-            }
-            if (topLevelDef && top_level_chain.count(topLevelDef)) {
-              split_value_output_types.push_back(v.getType());
-            }
-          }
-        }
-
-        OpBuilder tmp_builder(task.getOperation());
-
-        auto tmp_task = tmp_builder.create<TaskflowTaskOp>(
-            task.getLoc(),
-            task.getWriteOutputs().getTypes(),
-            /*value_output_types=*/split_value_output_types,
-            task.getReadMemrefs(),
-            task.getWriteMemrefs(),
-            task.getValueInputs(),
-            (task.getTaskName().str() + "__split_profile__").c_str(),
-            task.getOriginalReadMemrefs(),
-            task.getOriginalWriteMemrefs());
-
-        Block *tmp_body = new Block();
-        tmp_task.getBody().push_back(tmp_body);
-        for (BlockArgument arg : task_body.getArguments())
-          tmp_body->addArgument(arg.getType(), arg.getLoc());
-
-        OpBuilder body_builder = OpBuilder::atBlockEnd(tmp_body);
-        IRMapping arg_map;
-        for (auto [orig, repl] : llvm::zip(task_body.getArguments(),
-                                           tmp_body->getArguments()))
-          arg_map.map(orig, repl);
-
-        // Clone only the ops in this chain.
-        llvm::errs() << "[split-profile] top_level chain_ops count: " << chain_ops_sorted.size()
-                     << " for hyperblock in " << task.getTaskName() << "\n";
-        for (Operation *op : chain_ops_sorted) {
-          llvm::errs() << "[split-profile]   cloning: " << op->getName() << "\n";
-          body_builder.clone(*op, arg_map);
-        }
-
-        SmallVector<Value> yield_writes;
-        for (size_t i = 0; i < task.getWriteMemrefs().size(); ++i)
-          yield_writes.push_back(
-              tmp_body->getArgument(task.getReadMemrefs().size() + i));
-
-        // Collect value results from the cloned operations.
-        SmallVector<Value> yield_vals;
-        for (Value v : orig_yield.getValueResults()) {
-          if (auto *defOp = v.getDefiningOp()) {
-            Operation *topLevelDef = defOp;
-            while (topLevelDef && topLevelDef->getBlock() != &task_body) {
-              topLevelDef = topLevelDef->getParentOp();
-            }
-            if (topLevelDef && top_level_chain.count(topLevelDef)) {
-              if (Value cloned_val = arg_map.lookupOrNull(v)) {
-                yield_vals.push_back(cloned_val);
-              }
-            }
-          }
-        }
-        body_builder.create<TaskflowYieldOp>(task.getLoc(), yield_writes,
-                                             yield_vals);
-
-        // Inherit cgra_count so the split task profiles with the same tile array.
-        tmp_task->setAttr("cgra_count",
-                          tmp_builder.getI32IntegerAttr(node->cgra_count));
-
-        TaskGraphNode tmp_node(/*id=*/0, tmp_task);
-        tmp_node.cgra_count = node->cgra_count;
-        tmp_node.shape = node->shape;
-
-        llvm::errs() << "[split-profile] === BEFORE recursive profileTask ===\n";
-        llvm::errs() << "[split-profile] Original fused task IR:\n";
-        task.dump();
-        llvm::errs() << "[split-profile] tmp_task IR:\n";
-        tmp_task.dump();
-
-        this->profileTask(&tmp_node, tmp_task, skip_mapper);
-
-        llvm::errs() << "[split-profile] === AFTER recursive profileTask ===\n";
-        llvm::errs() << "[split-profile] Original fused task IR:\n";
-        task.dump();
-
-        total_ii = std::max(total_ii, tmp_node.ii);
-        total_steps += tmp_node.steps;
-
-        tmp_task.erase();
-      }
-
-      node->ii = total_ii;
-      node->steps = std::max(total_steps, (int64_t)1);
-      llvm::errs() << "[profileTask] split-profile result for "
-                   << task.getTaskName() << ": compiled_ii=" << node->ii
-                   << ", steps=" << node->steps << "\n";
-      return;
-    }
-
-    // ================================================================
-    // Phase 1: Taskflow -> Neura conversion (get neura.kernel ops)
-    // ================================================================
-    // The pass now runs after construct-hyperblock-from-task, so task bodies
-    // already contain counter + hyperblock ops.  We only need to run
-    // classify-counters + convert-taskflow-to-neura to get kernels.
+    // Collects all kernels from per-hyperblock Phase 1 lowering.
+    // For single-hyperblock tasks, this is one clone + one Phase 1 run.
+    // For multi-hyperblock tasks, one clone per hyperblock.
     //
-    // We clone the entire parent function but then strip all tasks EXCEPT the
-    // one being profiled to avoid multi-task interference in the conversion.
-    auto phase1_module = ModuleOp::create(loc);
-    
-    llvm::errs() << "[profileTask DEBUG] Task before Phase 1:\n";
-    task.dump();
+    // Each entry: (phase1_module owning the kernel, kernel op pointer).
+    SmallVector<std::pair<ModuleOp, neura::KernelOp>> all_kernels;
 
-    {
-      OpBuilder mod_builder(ctx);
-      mod_builder.setInsertionPointToStart(phase1_module.getBody());
-      IRMapping clone_mapping;
-      mod_builder.clone(*parent_func, clone_mapping);
+    bool is_multi_hb = (hyperblocks.size() > 1);
 
-      // Find the cloned copy of the target task and erase all others.
-      Operation *cloned_target = clone_mapping.lookupOrNull(task.getOperation());
-      func::FuncOp cloned_func = nullptr;
-      phase1_module.walk([&](func::FuncOp f) { cloned_func = f; });
-      if (cloned_func) {
-        SmallVector<TaskflowTaskOp> to_erase;
-        cloned_func.walk([&](TaskflowTaskOp t) {
-          if (t.getOperation() != cloned_target) {
-            to_erase.push_back(t);
-          }
-        });
-        for (auto t : to_erase) {
-          // Replace all results with undef-like values so uses don't dangle.
-          for (OpResult res : t->getResults()) {
-            OpBuilder b(t);
-            Value placeholder =
-                b.create<UnrealizedConversionCastOp>(t.getLoc(),
-                                                     res.getType(),
-                                                     ValueRange{})
-                    .getResult(0);
-            res.replaceAllUsesWith(placeholder);
-          }
-          t.erase();
-        }
-      }
+    if (is_multi_hb) {
+      llvm::errs() << "[kernel-level-profile] Fused task with "
+                   << hyperblocks.size() << " hyperblocks: "
+                   << task.getTaskName() << "\n";
     }
 
-    llvm::errs() << "[profileTask DEBUG] Task after Phase 1 clone:\n";
-    task.dump();
+    for (size_t hb_idx = 0; hb_idx < hyperblocks.size(); ++hb_idx) {
+      // ================================================================
+      // Phase 1: Taskflow -> Neura conversion (get neura.kernel ops)
+      // ================================================================
+      // Clone the entire parent function.  For multi-hyperblock tasks,
+      // strip all hyperblocks EXCEPT the one at hb_idx from the cloned
+      // task so that ConvertTaskflowToNeuraPass sees exactly one hyperblock.
+      auto phase1_module = ModuleOp::create(loc);
 
-    {
-      PassManager pm(ctx);
-      pm.enableVerifier(false);
-      // Task bodies already contain counter + hyperblock ops (the pass runs
-      // after construct-hyperblock-from-task in the pipeline), so we skip
-      // that conversion and go straight to classify-counters + neura.
-      pm.addPass(taskflow::createClassifyCountersPass());
-      pm.addPass(mlir::createConvertTaskflowToNeuraPass());
+      {
+        OpBuilder mod_builder(ctx);
+        mod_builder.setInsertionPointToStart(phase1_module.getBody());
+        IRMapping clone_mapping;
+        mod_builder.clone(*parent_func, clone_mapping);
 
-      llvm::errs() << "[profileTask] === BEFORE pm.run(phase1_module) for "
-                   << task.getTaskName() << " ===\n";
+        // Find the cloned copy of the target task and erase all other tasks.
+        Operation *cloned_target = clone_mapping.lookupOrNull(task.getOperation());
+        func::FuncOp cloned_func = nullptr;
+        phase1_module.walk([&](func::FuncOp f) { cloned_func = f; });
+        if (cloned_func) {
+          SmallVector<TaskflowTaskOp> to_erase;
+          cloned_func.walk([&](TaskflowTaskOp t) {
+            if (t.getOperation() != cloned_target) {
+              to_erase.push_back(t);
+            }
+          });
+          for (auto t : to_erase) {
+            for (OpResult res : t->getResults()) {
+              OpBuilder b(t);
+              Value placeholder =
+                  b.create<UnrealizedConversionCastOp>(t.getLoc(),
+                                                       res.getType(),
+                                                       ValueRange{})
+                      .getResult(0);
+              res.replaceAllUsesWith(placeholder);
+            }
+            t.erase();
+          }
 
-      if (failed(pm.run(phase1_module))) {
+          // For multi-hyperblock tasks: erase all hyperblocks except the
+          // one at hb_idx from the cloned task.  This ensures
+          // ConvertTaskflowToNeuraPass sees exactly one hyperblock per task.
+          if (is_multi_hb && cloned_target) {
+            auto cloned_task = cast<TaskflowTaskOp>(cloned_target);
+            SmallVector<TaskflowHyperblockOp> cloned_hbs;
+            cloned_task.walk([&](TaskflowHyperblockOp hb) {
+              cloned_hbs.push_back(hb);
+            });
+
+            for (size_t i = 0; i < cloned_hbs.size(); ++i) {
+              if (i == hb_idx) continue;
+              auto hb_to_erase = cloned_hbs[i];
+              // Replaces all results with placeholders so uses don't dangle.
+              for (OpResult res : hb_to_erase->getResults()) {
+                OpBuilder b(hb_to_erase);
+                Value placeholder =
+                    b.create<UnrealizedConversionCastOp>(
+                         hb_to_erase.getLoc(), res.getType(), ValueRange{})
+                        .getResult(0);
+                res.replaceAllUsesWith(placeholder);
+              }
+              // Finds the top-level op in the task body that contains this
+              // hyperblock and erases the entire chain (counter + hyperblock).
+              Block &cloned_task_body = cloned_task.getBody().front();
+              Operation *top_level_op = hb_to_erase.getOperation();
+              while (top_level_op->getBlock() != &cloned_task_body) {
+                top_level_op = top_level_op->getParentOp();
+              }
+              // Erases the entire top-level op (counter chain + nested hb).
+              for (OpResult res : top_level_op->getResults()) {
+                OpBuilder b(top_level_op);
+                Value placeholder =
+                    b.create<UnrealizedConversionCastOp>(
+                         top_level_op->getLoc(), res.getType(), ValueRange{})
+                        .getResult(0);
+                res.replaceAllUsesWith(placeholder);
+              }
+              top_level_op->erase();
+            }
+
+            llvm::errs() << "[kernel-level-profile] Cloned task for hb_idx="
+                         << hb_idx << ":\n";
+            cloned_task.dump();
+          }
+        }
+      }
+
+      {
+        PassManager pm(ctx);
+        pm.enableVerifier(false);
+        pm.addPass(taskflow::createClassifyCountersPass());
+        pm.addPass(mlir::createConvertTaskflowToNeuraPass());
+
+        llvm::errs() << "[profileTask] === BEFORE pm.run(phase1_module) for "
+                     << task.getTaskName()
+                     << (is_multi_hb ? " hb_idx=" + std::to_string(hb_idx) : "")
+                     << " ===\n";
+
+        if (failed(pm.run(phase1_module))) {
+          phase1_module.erase();
+          assert(false &&
+                 "[profileTask] FATAL: Phase 1 (Taskflow->Neura) failed. "
+                 "compiled_ii must come from downstream pipeline.");
+          return;
+        }
+      }
+
+      // Collect kernels produced by this Phase 1 run.
+      SmallVector<neura::KernelOp> kernels_in_module;
+      phase1_module.walk([&](neura::KernelOp k) {
+        kernels_in_module.push_back(k);
+      });
+
+      if (kernels_in_module.empty()) {
+        llvm::errs() << "[profileTask] DEBUG: Phase 1 produced no kernels for "
+                     << task.getTaskName()
+                     << (is_multi_hb ? " hb_idx=" + std::to_string(hb_idx) : "")
+                     << "\n";
+        llvm::errs() << "[profileTask] DEBUG: Phase 1 module dump:\n";
+        phase1_module.dump();
         phase1_module.erase();
         assert(false &&
-               "[profileTask] FATAL: Phase 1 (Taskflow->Neura) failed. "
+               "[profileTask] FATAL: No kernels found after Phase 1. "
                "compiled_ii must come from downstream pipeline.");
         return;
       }
 
-      llvm::errs() << "[profileTask DEBUG] Task after Phase 1 pm.run:\n";
-      task.dump();
+      for (neura::KernelOp k : kernels_in_module) {
+        all_kernels.push_back({phase1_module, k});
+      }
     }
 
     // ================================================================
     // Phase 2: For each kernel, clone body -> func -> run Neura pipeline
     // ================================================================
-    // Collect all neura.kernel ops created by Phase 1.
-    SmallVector<neura::KernelOp> kernels;
-    phase1_module.walk([&](neura::KernelOp k) { kernels.push_back(k); });
-
-    if (kernels.empty()) {
-      llvm::errs() << "[profileTask] DEBUG: Phase 1 produced no kernels for "
-                   << task.getTaskName() << "\n";
-      llvm::errs() << "[profileTask] DEBUG: Phase 1 module dump:\n";
-      phase1_module.dump();
-      phase1_module.erase();
-      assert(false &&
-             "[profileTask] FATAL: No kernels found after Phase 1. "
-             "compiled_ii must come from downstream pipeline.");
-      return;
-    }
-
     int best_compiled_ii = 0;
     int best_cp_depth = 1;
+    // For multi-hyperblock tasks: sum steps across hyperblocks.
+    int64_t sum_cp_depth = 0;
 
     // Compute tile dimensions for the target CGRA shape.
     // Bounding box in tiles: x_tiles = cols * per_cgra_cols,
@@ -717,7 +606,7 @@ private:
       }
     }
 
-    for (neura::KernelOp kernel : kernels) {
+    for (auto &[owning_module, kernel] : all_kernels) {
       // Create a fresh module with a standalone func containing the kernel
       // body. All downstream Neura passes walk func::FuncOp with
       // accelerator="neura", so we package the kernel body as such.
@@ -741,7 +630,13 @@ private:
       }
 
       best_compiled_ii = std::max(best_compiled_ii, compiled_ii);
-      best_cp_depth = std::max(best_cp_depth, cp_depth);
+      // For multi-hyperblock: sum steps (each hyperblock contributes
+      // independently); for single-hyperblock: take max as before.
+      if (is_multi_hb) {
+        sum_cp_depth += cp_depth;
+      } else {
+        best_cp_depth = std::max(best_cp_depth, cp_depth);
+      }
       phase2_module.erase();
     }
 
@@ -749,13 +644,26 @@ private:
            "[profileTask] FATAL: compiled_ii is 0 after downstream pipeline. "
            "All profiling paths must produce a valid compiled_ii > 0.");
     node->ii = best_compiled_ii;
-    node->steps = std::max(best_cp_depth, 1);
+    // Multi-hyperblock: steps = sum of per-hyperblock steps (sequential).
+    // Single-hyperblock: steps = max across kernels (from a single Phase 1).
+    node->steps = is_multi_hb ? std::max(sum_cp_depth, (int64_t)1)
+                              : std::max(best_cp_depth, 1);
 
     llvm::errs() << "[profileTask] " << task.getTaskName()
                  << ": compiled_ii=" << node->ii
-                 << ", steps=" << node->steps << "\n";
+                 << ", steps=" << node->steps
+                 << (is_multi_hb ? " (kernel-level-profile, sum_steps)"
+                                 : "")
+                 << "\n";
 
-    phase1_module.erase();
+    // Erase all Phase 1 modules (one per hyperblock for multi-hb,
+    // or one for single-hb).
+    DenseSet<Operation *> erased_modules;
+    for (auto &[owning_module, kernel] : all_kernels) {
+      if (erased_modules.insert(owning_module.getOperation()).second) {
+        owning_module.erase();
+      }
+    }
   }
 
   // Clones a neura.kernel body into a standalone func::FuncOp inside
@@ -783,7 +691,7 @@ private:
     OpBuilder builder(ctx);
     builder.setInsertionPointToStart(dst_module.getBody());
 
-    // Build function signature: all kernel inputs + iter_args as arguments.
+    // Builds function signature: all kernel inputs + iter_args as arguments.
     Region &kernel_body = kernel.getBody();
     if (kernel_body.empty())
       return failure();
@@ -800,11 +708,11 @@ private:
     auto wrapper_func = builder.create<func::FuncOp>(
         loc, "__speculative_kernel__", func_type);
 
-    // Tag as neura accelerator — all downstream passes check this.
+    // Tags as neura accelerator — all downstream passes check this.
     wrapper_func->setAttr("accelerator",
                           builder.getStringAttr("neura"));
 
-    // Clone the entire kernel region (all blocks) into the func body.
+    // Clones the entire kernel region (all blocks) into the func body.
     Region &func_region = wrapper_func.getBody();
     IRMapping mapping;
     kernel_body.cloneInto(&func_region, mapping);
@@ -823,7 +731,7 @@ private:
       }
     }
 
-    // Run the full Neura lowering + dataflow pipeline.
+    // Runs the full Neura lowering + dataflow pipeline.
     // Pipeline order follows the reference tests in
     // test/multi-cgra/kernel_mapping/ (fir, relu, loop-in-kernel).
     PassManager pm(ctx);
@@ -1503,6 +1411,23 @@ private:
 
   // Performs IR-level fusion of two independent tasks.
   // Creates a new task with sequential concatenation of both loop nests.
+  //
+  // TODO: Refactor this to perform fusion at the KERNEL level rather than Taskflow level.
+  //
+  // Pipeline context:
+  //   1. ...streaming-fusion -> 2. construct-hyperblock -> 3. THIS PASS (ResOpt)
+  //   4. classify-counters -> 5. convert-taskflow-to-neura -> 6. map-on-cgra
+  //
+  // The current logic clones TaskflowCounterOp and TaskflowHyperblockOp directly at step 3.
+  // This produces a "multi-hyperblock" TaskflowTask that triggers an assertion failure
+  // in convert-taskflow-to-neura (step 5), which expects exactly one hyperblock per task.
+  //
+  // Architectural Shift:
+  // Move fusion logic to operate on neura.kernel ops. Each candidate task should be
+  // independently lowered to a kernel (Phase 1) within this pass, and then these
+  // pre-lowered kernels should be fused into a single task. This ensures the output 
+  // IR is compliant with the downstream pipeline and enables accurate profiling on 
+  // the fused hardware model.
   bool performFusion(func::FuncOp func, TaskGraphNode *node_a,
                      TaskGraphNode *node_b, TaskDependencyGraph &graph,
                      ProfileFn profile_fn) {
@@ -1715,8 +1640,10 @@ private:
                         OpBuilder(fused_task).getI64IntegerAttr(fused_trip));
 
     // Profile the fused task to get real ii and steps.
-    // profileTask handles multi-body tasks by splitting them into per-loop-nest
-    // temporary tasks internally, so we can call it directly here.
+    // profileTask handles multi-hyperblock tasks via kernel-level profiling:
+    // each hyperblock is independently lowered to a neura.kernel and profiled
+    // through the real downstream pipeline, then results are combined as
+    // max(ii) / sum(steps).
     {
       TaskGraphNode fused_node(/*id=*/0, fused_task);
       fused_node.trip_count = fused_trip;
