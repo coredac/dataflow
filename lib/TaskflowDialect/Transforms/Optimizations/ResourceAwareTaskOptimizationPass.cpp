@@ -415,19 +415,14 @@ private:
     // ================================================================
     // Kernel-Level Profiling for Multi-Hyperblock Tasks
     // ================================================================
-    // When utilization fuser merges independent tasks, the resulting
-    // TaskflowTask contains multiple counter+hyperblock chains.
-    // ConvertTaskflowToNeuraPass (Phase 1) expects exactly one hyperblock
-    // per task.
-    //
-    // Solution: lower each hyperblock to a neura.kernel independently by
+    // Lowers each hyperblock to a neura.kernel independently by
     // cloning the parent function once per hyperblock, keeping only that
     // hyperblock in the cloned task.  Each clone passes Phase 1 cleanly
     // (one hyperblock per task), producing one neura.kernel.  All kernels
     // are then profiled via Phase 2 (runNeuraPipelineOnKernel) and results
     // are combined: max(ii) / sum(steps).
     //
-    // This performs fusion at the kernel level: each hyperblock is
+    // Performs fusion at the kernel level: each hyperblock is
     // independently lowered to a kernel and profiled on the real hardware
     // model, without manual chain reconstruction.
     SmallVector<TaskflowHyperblockOp> hyperblocks;
@@ -568,7 +563,7 @@ private:
         }
       }
 
-      // Collect kernels produced by this Phase 1 run.
+      // Collects kernels produced by this Phase 1 run.
       SmallVector<neura::KernelOp> kernels_in_module;
       phase1_module.walk([&](neura::KernelOp k) {
         kernels_in_module.push_back(k);
@@ -758,14 +753,13 @@ private:
     PassManager pm(ctx);
     pm.enableVerifier(false);
 
-    // Standard MLIR lowering: affine -> scf -> cf -> llvm.
-    // Required because kernel body from Phase 1 may still contain scf.for,
-    // affine.for, etc. These must become cf/llvm ops before Neura lowering.
-    pm.addPass(mlir::createLowerAffinePass());        // affine -> scf
+    // Standard MLIR lowering: scf -> cf -> llvm.
+    // Required because kernel body from Phase 1 may still contain scf.for.
+    // These must become cf/llvm ops before Neura lowering.
     pm.addPass(mlir::createConvertSCFToCFPass());      // scf -> cf
     pm.addPass(mlir::createConvertControlFlowToLLVMPass()); // cf -> llvm
 
-    // Neura lowering passes (handle affine/arith/memref/llvm -> neura).
+    // Neura lowering passes (handle arith/memref/llvm -> neura).
     pm.addPass(neura::createAssignAcceleratorPass());
     pm.addPass(mlir::createLowerMemRefToNeuraPass());
     pm.addPass(mlir::createLowerArithToNeuraPass());
@@ -797,12 +791,12 @@ private:
       return failure();
     }
 
-    // Extract ResMII/RecMII from the post-InsertDataMov Neura IR. These are
+    // Extracts ResMII/RecMII from the post-InsertDataMov Neura IR. These are
     // the authoritative lower-bounds and the fallback metrics when the mapper
     // is skipped. We compute them now (before MapToAccelerator modifies the IR
     // with dfg_id attrs) so that the fallback always uses the same IR.
     //
-    // Use a custom architecture sized to the actual tile array
+    // Uses a custom architecture sized to the actual tile array
     // (x_tiles × y_tiles) so ResMII reflects the real resource pool.
     // Fall back to the global singleton if tile dims are not specified.
     {
@@ -994,120 +988,68 @@ private:
                  << "), steps=" << out_cp_depth << "\n";
   }
 
-  // Computes total trip count for a task.
+  // Estimates the total trip count of a task by analyzing counter ops.
   //
-  // After construct-hyperblock-from-task, the task body contains
-  // taskflow.counter ops and taskflow.hyperblock ops instead of affine.for.
-  // The trip count is the product of all counter ranges in the counter chain.
-  //
-  // For each root counter (no parent_index), walks its chain of child counters
-  // and multiplies all (upper_bound - lower_bound) / step values.
-  // Multiple independent counter chains are summed (they are sequential).
-  //
-  // Examples:
-  //   counter(0, 10, 1) -> counter(0, 20, 1) -> hyperblock  → 10 * 20 = 200
-  //   counter(0, 10, 1); counter(0, 5, 1)  → 10 + 5 = 15
+  // Note: This function expects that all loop structures have been lowered
+  // to taskflow.counter ops by previous passes (such as LoopPerfection and
+  // ConstructHyperblockFromTask). It no longer searches for affine.for or
+  // scf.for within the TaskflowTask body.
   static int64_t computeTripCount(TaskflowTaskOp task) {
-    // Collect all counter ops in the task body.
+    // Collects all counter ops in the task body.
     SmallVector<TaskflowCounterOp> all_counters;
     task.walk([&](TaskflowCounterOp c) { all_counters.push_back(c); });
 
     if (all_counters.empty()) {
-      std::function<int64_t(Region&)> getLoopsTripCount = [&](Region &region) -> int64_t {
-        int64_t total = 0;
-        for (Block &block : region.getBlocks()) {
-          for (Operation &op : block.getOperations()) {
-            if (auto affineFor = dyn_cast<affine::AffineForOp>(op)) {
-              int64_t count = 1;
-              if (affineFor.hasConstantBounds()) {
-                int64_t lb = affineFor.getConstantLowerBound();
-                int64_t ub = affineFor.getConstantUpperBound();
-                int64_t step = affineFor.getStepAsInt();
-                count = (step > 0) ? (ub - lb + step - 1) / step : 1;
-              }
-              int64_t children = 0;
-              for (Region &r : op.getRegions()) children += getLoopsTripCount(r);
-              total += count * (children > 0 ? children : 1);
-            } else if (auto scfFor = dyn_cast<scf::ForOp>(op)) {
-              int64_t count = 1;
-              auto lbOpt = getConstantIntValue(scfFor.getLowerBound());
-              auto ubOpt = getConstantIntValue(scfFor.getUpperBound());
-              auto stepOpt = getConstantIntValue(scfFor.getStep());
-              if (lbOpt && ubOpt && stepOpt) {
-                count = (*stepOpt > 0) ? (*ubOpt - *lbOpt + *stepOpt - 1) / *stepOpt : 1;
-              }
-              int64_t children = 0;
-              for (Region &r : op.getRegions()) children += getLoopsTripCount(r);
-              total += count * (children > 0 ? children : 1);
-            } else if (op.getNumRegions() > 0) {
-              int64_t children = 0;
-              for (Region &r : op.getRegions()) children += getLoopsTripCount(r);
-              total += children;
-            }
-          }
-        }
-        return total;
-      };
-
-      int64_t total = getLoopsTripCount(task.getRegion());
-      return total > 0 ? total : 1;
+      return 1;
     }
 
-    // Build a map from counter result -> counter op for parent chain traversal.
-    // Also find root counters (no parent_index).
+    // Builds a map from counter result -> counter op for chain traversal.
+    llvm::DenseMap<Value, TaskflowCounterOp> result_to_counter;
     SmallVector<TaskflowCounterOp> root_counters;
-    DenseMap<Value, TaskflowCounterOp> result_to_counter;
     for (auto c : all_counters) {
-      // Counter op produces an induction variable result.
       if (c->getNumResults() > 0)
         result_to_counter[c->getResult(0)] = c;
       if (!c.getParentIndex())
         root_counters.push_back(c);
     }
 
-    // For each root counter, compute the product of its chain.
-    int64_t total = 0;
+    int64_t total_trip_count = 0;
     for (auto root : root_counters) {
-      int64_t chain_product = 1;
-
-      // Walk all counters and multiply those in this root's chain.
-      // A counter belongs to this chain if it IS the root, or its
-      // parent_index traces back to the root.
+      // Computes the trip count for this sequential counter chain.
+      int64_t chain_trip_count = 1;
+      
+      // We need to multiply all counters that belong to this chain.
+      // For simplicity, we can do a second pass: a counter is in this
+      // root's chain if tracing its parents leads to this root.
       for (auto c : all_counters) {
-        int64_t lb = c.getLowerBound().getSExtValue();
-        int64_t ub = c.getUpperBound().getSExtValue();
-        int64_t step = c.getStep().getSExtValue();
-        int64_t count = (step > 0) ? (ub - lb + step - 1) / step : 1;
-        if (count < 1) count = 1;
-
+        bool in_this_chain = false;
         if (c == root) {
-          chain_product *= count;
-        } else if (c.getParentIndex()) {
-          // Check if this counter's parent is in the same chain.
-          // Walk up to see if we reach the root.
-          Value parent = c.getParentIndex();
-          bool in_chain = false;
-          // Simple check: if parent is the root's result, it's in chain.
-          // For deeper nesting, trace iteratively.
-          while (parent) {
-            auto it = result_to_counter.find(parent);
-            if (it == result_to_counter.end())
-              break;
-            TaskflowCounterOp parent_counter = it->second;
-            if (parent_counter == root) {
-              in_chain = true;
+          in_this_chain = true;
+        } else {
+          Value current_parent = c.getParentIndex();
+          while (current_parent) {
+            auto it = result_to_counter.find(current_parent);
+            if (it == result_to_counter.end()) break;
+            if (it->second == root) {
+              in_this_chain = true;
               break;
             }
-            parent = parent_counter.getParentIndex();
+            current_parent = it->second.getParentIndex();
           }
-          if (in_chain)
-            chain_product *= count;
+        }
+
+        if (in_this_chain) {
+          int64_t lb = c.getLowerBound().getSExtValue();
+          int64_t ub = c.getUpperBound().getSExtValue();
+          int64_t step = c.getStep().getSExtValue();
+          int64_t count = (step > 0) ? (ub - lb + step - 1) / step : 1;
+          chain_trip_count *= std::max<int64_t>(count, 1);
         }
       }
-      total += chain_product;
+      total_trip_count += chain_trip_count;
     }
 
-    return (total > 0) ? total : 1;
+    return std::max<int64_t>(total_trip_count, 1);
   }
 
 };
@@ -1157,18 +1099,27 @@ public:
       int new_cgra_count = old_cgra_count + 1;
 
       // Check if incrementing cgra_count is feasible on the 4×4 grid.
+      // TODO: This currently only checks the capacity (total CGRA count). Ideally, 
+      // we should invoke a global placement pass (aka MapTaskOnCgraPass) here to 
+      // verify if the speculatively increased CGRA count and its proposed shape 
+      // actually fit on the 4x4 grid alongside other previously allocated tasks.
+      //
+      // Currently, MapTaskOnCgraPass does not support multi-CGRA task placement. 
+      // Once it does, we should call it here; if global placement fails for the 
+      // "best" shape, we should backtrack and try alternative shapes before 
+      // saturating the node.
       if (!canFitOnGrid(new_cgra_count)) {
         saturated_nodes.insert(bottleneck);
         continue;
       }
 
-      // Save state for potential rollback.
+      // Saves state for potential rollback.
       int64_t old_latency = bottleneck->estimatedLatency();
       int64_t old_ii     = bottleneck->ii;
       int64_t old_steps  = bottleneck->steps;
       CgraShape old_shape = bottleneck->shape;
 
-      // Speculatively apply the new CGRA count and re-profile.
+      // Speculatively applies the new CGRA count and re-profiles.
       bottleneck->cgra_count = new_cgra_count;
       bottleneck->shape = pickBestShape(new_cgra_count);
 
@@ -1566,8 +1517,6 @@ private:
     // ================================================================
     // Kernel-Level Fusion (Steps 6-9)
     // ================================================================
-    // Instead of cloning counter+hyperblock ops (which creates multi-
-    // hyperblock tasks violating ConvertTaskflowToNeuraPass), we:
     //   1. For each original task, run Phase 1 (classify-counters +
     //      convert-taskflow-to-neura) to get neura.kernel ops.
     //   2. Clone the resulting kernels into the fused task body.
@@ -1616,7 +1565,7 @@ private:
         }
       }
 
-      // Run Phase 1: classify-counters + convert-taskflow-to-neura.
+      // Runs Phase 1: classify-counters + convert-taskflow-to-neura.
       {
         PassManager pm(ctx);
         pm.enableVerifier(false);
@@ -1632,7 +1581,7 @@ private:
         }
       }
 
-      // Retrieve the task after Phase 1 passes.
+      // Retrieves the task after Phase 1 passes.
       TaskflowTaskOp phase1_task = nullptr;
       phase1_module.walk([&](TaskflowTaskOp t) {
         if (t.getTaskName() == orig_task.getTaskName()) {
@@ -1706,9 +1655,8 @@ private:
     SmallVector<neura::KernelOp> cloned_kernels_a;
     SmallVector<neura::KernelOp> cloned_kernels_b;
 
-    // Clone operations from phase1_task_a.
+    // Clones operations from phase1_task_a.
     {
-      llvm::errs() << "DUMPING PHASE 1 TASK A:\n"; phase1_task_a.dump();
       IRMapping mapping = buildPhase1ToFusedMapping(task_a, phase1_task_a);
       OpBuilder body_builder = OpBuilder::atBlockEnd(body);
       for (auto &op : phase1_task_a.getBody().front().getOperations()) {
@@ -1718,7 +1666,7 @@ private:
       }
     }
 
-    // Clone operations from phase1_task_b.
+    // Clones operations from phase1_task_b.
     {
       IRMapping mapping = buildPhase1ToFusedMapping(task_b, phase1_task_b);
       OpBuilder body_builder = OpBuilder::atBlockEnd(body);
@@ -2019,7 +1967,7 @@ struct ResourceAwareTaskOptimizationPass
                    << graph.getTotalAllocatedCGRAs() << "\n";
 
       if (!balance_changed && !fuse_changed) {
-        // Converged — write ALL attributes (cgra_count, ii, steps) to IR
+        // Converged — writes ALL attributes (cgra_count, ii, steps) to IR
         // for every task. Non-fused tasks only got cgra_count written during
         // intermediate iterations; ii, steps, and trip_count live only in the
         // graph node and must be persisted here.
@@ -2043,7 +1991,7 @@ struct ResourceAwareTaskOptimizationPass
       }
     }
 
-    // Final validation and tile occupation summary with visual 4x4 grid.
+    // Performs final validation and tile occupation summary with visual 4x4 grid.
     {
       TaskDependencyGraph final_graph;
       final_graph.build(func, use_analytical);
