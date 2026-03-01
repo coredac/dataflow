@@ -753,13 +753,14 @@ private:
     PassManager pm(ctx);
     pm.enableVerifier(false);
 
-    // Standard MLIR lowering: scf -> cf -> llvm.
-    // Required because kernel body from Phase 1 may still contain scf.for.
-    // These must become cf/llvm ops before Neura lowering.
-    pm.addPass(mlir::createConvertSCFToCFPass());      // scf -> cf
+    // Standard MLIR lowering: affine -> scf -> cf -> llvm.
+    // Required because kernel body from Phase 1 may still contain scf.for,
+    // affine.for, etc. These must become cf/llvm ops before Neura lowering.
+    pm.addPass(mlir::createLowerAffinePass());          // affine -> scf
+    pm.addPass(mlir::createConvertSCFToCFPass());       // scf -> cf
     pm.addPass(mlir::createConvertControlFlowToLLVMPass()); // cf -> llvm
 
-    // Neura lowering passes (handle arith/memref/llvm -> neura).
+    // Neura lowering passes (handle affine/arith/memref/llvm -> neura).
     pm.addPass(neura::createAssignAcceleratorPass());
     pm.addPass(mlir::createLowerMemRefToNeuraPass());
     pm.addPass(mlir::createLowerArithToNeuraPass());
@@ -988,68 +989,120 @@ private:
                  << "), steps=" << out_cp_depth << "\n";
   }
 
-  // Estimates the total trip count of a task by analyzing counter ops.
+  // Computes total trip count for a task.
   //
-  // Note: This function expects that all loop structures have been lowered
-  // to taskflow.counter ops by previous passes (such as LoopPerfection and
-  // ConstructHyperblockFromTask). It no longer searches for affine.for or
-  // scf.for within the TaskflowTask body.
+  // After construct-hyperblock-from-task, the task body contains
+  // taskflow.counter ops and taskflow.hyperblock ops instead of affine.for.
+  // The trip count is the product of all counter ranges in the counter chain.
+  //
+  // For each root counter (no parent_index), walks its chain of child counters
+  // and multiplies all (upper_bound - lower_bound) / step values.
+  // Multiple independent counter chains are summed (they are sequential).
+  //
+  // Examples:
+  //   counter(0, 10, 1) -> counter(0, 20, 1) -> hyperblock  → 10 * 20 = 200
+  //   counter(0, 10, 1); counter(0, 5, 1)  → 10 + 5 = 15
   static int64_t computeTripCount(TaskflowTaskOp task) {
     // Collects all counter ops in the task body.
     SmallVector<TaskflowCounterOp> all_counters;
     task.walk([&](TaskflowCounterOp c) { all_counters.push_back(c); });
 
     if (all_counters.empty()) {
-      return 1;
+      std::function<int64_t(Region&)> getLoopsTripCount = [&](Region &region) -> int64_t {
+        int64_t total = 0;
+        for (Block &block : region.getBlocks()) {
+          for (Operation &op : block.getOperations()) {
+            if (auto affineFor = dyn_cast<affine::AffineForOp>(op)) {
+              int64_t count = 1;
+              if (affineFor.hasConstantBounds()) {
+                int64_t lb = affineFor.getConstantLowerBound();
+                int64_t ub = affineFor.getConstantUpperBound();
+                int64_t step = affineFor.getStepAsInt();
+                count = (step > 0) ? (ub - lb + step - 1) / step : 1;
+              }
+              int64_t children = 0;
+              for (Region &r : op.getRegions()) children += getLoopsTripCount(r);
+              total += count * (children > 0 ? children : 1);
+            } else if (auto scfFor = dyn_cast<scf::ForOp>(op)) {
+              int64_t count = 1;
+              auto lbOpt = getConstantIntValue(scfFor.getLowerBound());
+              auto ubOpt = getConstantIntValue(scfFor.getUpperBound());
+              auto stepOpt = getConstantIntValue(scfFor.getStep());
+              if (lbOpt && ubOpt && stepOpt) {
+                count = (*stepOpt > 0) ? (*ubOpt - *lbOpt + *stepOpt - 1) / *stepOpt : 1;
+              }
+              int64_t children = 0;
+              for (Region &r : op.getRegions()) children += getLoopsTripCount(r);
+              total += count * (children > 0 ? children : 1);
+            } else if (op.getNumRegions() > 0) {
+              int64_t children = 0;
+              for (Region &r : op.getRegions()) children += getLoopsTripCount(r);
+              total += children;
+            }
+          }
+        }
+        return total;
+      };
+
+      int64_t total = getLoopsTripCount(task.getRegion());
+      return total > 0 ? total : 1;
     }
 
-    // Builds a map from counter result -> counter op for chain traversal.
-    llvm::DenseMap<Value, TaskflowCounterOp> result_to_counter;
+    // Builds a map from counter result -> counter op for parent chain traversal.
+    // Also finds root counters (no parent_index).
     SmallVector<TaskflowCounterOp> root_counters;
+    DenseMap<Value, TaskflowCounterOp> result_to_counter;
     for (auto c : all_counters) {
+      // Counter op produces an induction variable result.
       if (c->getNumResults() > 0)
         result_to_counter[c->getResult(0)] = c;
       if (!c.getParentIndex())
         root_counters.push_back(c);
     }
 
-    int64_t total_trip_count = 0;
+    // For each root counter, computes the product of its chain.
+    int64_t total = 0;
     for (auto root : root_counters) {
-      // Computes the trip count for this sequential counter chain.
-      int64_t chain_trip_count = 1;
-      
-      // We need to multiply all counters that belong to this chain.
-      // For simplicity, we can do a second pass: a counter is in this
-      // root's chain if tracing its parents leads to this root.
+      int64_t chain_product = 1;
+
+      // Walks all counters and multiplies those in this root's chain.
+      // A counter belongs to this chain if it IS the root, or its
+      // parent_index traces back to the root.
       for (auto c : all_counters) {
-        bool in_this_chain = false;
+        int64_t lb = c.getLowerBound().getSExtValue();
+        int64_t ub = c.getUpperBound().getSExtValue();
+        int64_t step = c.getStep().getSExtValue();
+        int64_t count = (step > 0) ? (ub - lb + step - 1) / step : 1;
+        if (count < 1) count = 1;
+
         if (c == root) {
-          in_this_chain = true;
-        } else {
-          Value current_parent = c.getParentIndex();
-          while (current_parent) {
-            auto it = result_to_counter.find(current_parent);
-            if (it == result_to_counter.end()) break;
-            if (it->second == root) {
-              in_this_chain = true;
+          chain_product *= count;
+        } else if (c.getParentIndex()) {
+          // Checks if this counter's parent is in the same chain.
+          // Walks up to see if we reach the root.
+          Value parent = c.getParentIndex();
+          bool in_chain = false;
+          // Simple check: if parent is the root's result, it's in chain.
+          // For deeper nesting, traces iteratively.
+          while (parent) {
+            auto it = result_to_counter.find(parent);
+            if (it == result_to_counter.end())
+              break;
+            TaskflowCounterOp parent_counter = it->second;
+            if (parent_counter == root) {
+              in_chain = true;
               break;
             }
-            current_parent = it->second.getParentIndex();
+            parent = parent_counter.getParentIndex();
           }
-        }
-
-        if (in_this_chain) {
-          int64_t lb = c.getLowerBound().getSExtValue();
-          int64_t ub = c.getUpperBound().getSExtValue();
-          int64_t step = c.getStep().getSExtValue();
-          int64_t count = (step > 0) ? (ub - lb + step - 1) / step : 1;
-          chain_trip_count *= std::max<int64_t>(count, 1);
+          if (in_chain)
+            chain_product *= count;
         }
       }
-      total_trip_count += chain_trip_count;
+      total += chain_product;
     }
 
-    return std::max<int64_t>(total_trip_count, 1);
+    return (total > 0) ? total : 1;
   }
 
 };
