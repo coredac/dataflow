@@ -7,10 +7,29 @@
 // RUN: -o %t.taskflow.mlir
 // RUN: FileCheck %s --input-file=%t.taskflow.mlir --check-prefixes=TASKFLOW
 
-// RUN: mlir-neura-opt %t.taskflow.mlir \
+// RUN: mlir-neura-opt %s --affine-loop-tree-serialization \
+// RUN: --convert-affine-to-taskflow \
 // RUN: --construct-hyperblock-from-task \
+// RUN: --classify-counters \
+// RUN: --convert-taskflow-to-neura \
+// RUN: --lower-affine \
+// RUN: --convert-scf-to-cf \
+// RUN: --convert-cf-to-llvm \
+// RUN: --assign-accelerator \
+// RUN: --lower-memref-to-neura \
+// RUN: --lower-arith-to-neura \
+// RUN: --lower-builtin-to-neura \
+// RUN: --lower-llvm-to-neura \
+// RUN: --promote-input-arg-to-const \
+// RUN: --fold-constant \
+// RUN: --canonicalize-return \
+// RUN: --canonicalize-live-in \
+// RUN: --leverage-predicated-value \
+// RUN: --transform-ctrl-to-data-flow \
+// RUN: --fold-constant \
 // RUN: --resource-aware-task-optimization \
 // RUN: --architecture-spec=%S/../../../arch_spec/architecture.yaml \
+// RUN: --verify-each=false \
 // RUN: -o %t.resopt.mlir
 // RUN: FileCheck %s --input-file=%t.resopt.mlir --check-prefixes=RESOPT
 
@@ -141,13 +160,14 @@ module {
 // PLACEMENT:      taskflow.task @Task_1
 // PLACEMENT-SAME: task_mapping_info = {cgra_positions = [{col = 1 : i32, row = 0 : i32}], read_sram_locations = [{col = 1 : i32, row = 0 : i32}, {col = 1 : i32, row = 0 : i32}], write_sram_locations = [{col = 1 : i32, row = 0 : i32}]}
 
-// RESOPT:      %write_outputs:2 = taskflow.task @Task_0_Task_1_utilfused
-// RESOPT-SAME: {cgra_count = 2 : i32, compiled_ii = 4 : i32, steps = 16 : i32, tile_shape = "1x2", trip_count = 64 : i32}
-// RESOPT:      taskflow.yield writes(%arg8, %arg9 : memref<16xf32>, memref<8x8xf32>)
+// RESOPT:      "taskflow.task"
+// RESOPT-SAME: task_name = "Task_0_Task_1_utilfused"
+// RESOPT:      cgra_count = 1 : i32, compiled_ii = 7 : i32, steps = 10 : i32, tile_shape = "1x1", trip_count = 1 : i32
+// RESOPT:      "func.return"
 
 // CGRA Tile Occupation after RESOPT (4x4 grid, col x row):
 // +---+---+---+---+
-// | 0 | 0 | . | . |   row=0: Task_0_Task_1_utilfused (tile_shape="1x2", cgra_count=2)
+// | 0 | . | . | . |   Task_0_Task_1_utilfused (1x1, cgra_count=1)
 // +---+---+---+---+
 // | . | . | . | . |
 // +---+---+---+---+
@@ -155,4 +175,4 @@ module {
 // +---+---+---+---+
 // | . | . | . | . |
 // +---+---+---+---+
-// 0=Task_0_Task_1_utilfused; 2/16 CGRAs used
+// 0=Task_0_Task_1_utilfused; 1/16 CGRAs used

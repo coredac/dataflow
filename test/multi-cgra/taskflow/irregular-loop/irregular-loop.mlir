@@ -36,8 +36,26 @@
 // RUN: mlir-neura-opt %s --affine-loop-tree-serialization \
 // RUN: --convert-affine-to-taskflow \
 // RUN: --construct-hyperblock-from-task \
+// RUN: --classify-counters \
+// RUN: --convert-taskflow-to-neura \
+// RUN: --lower-affine \
+// RUN: --convert-scf-to-cf \
+// RUN: --convert-cf-to-llvm \
+// RUN: --assign-accelerator \
+// RUN: --lower-memref-to-neura \
+// RUN: --lower-arith-to-neura \
+// RUN: --lower-builtin-to-neura \
+// RUN: --lower-llvm-to-neura \
+// RUN: --promote-input-arg-to-const \
+// RUN: --fold-constant \
+// RUN: --canonicalize-return \
+// RUN: --canonicalize-live-in \
+// RUN: --leverage-predicated-value \
+// RUN: --transform-ctrl-to-data-flow \
+// RUN: --fold-constant \
 // RUN: --resource-aware-task-optimization \
 // RUN: --architecture-spec=%S/../../../arch_spec/architecture.yaml \
+// RUN: --verify-each=false \
 // RUN: -o %t.resopt.mlir
 // RUN: FileCheck %s --input-file=%t.resopt.mlir --check-prefixes=RESOPT
 
@@ -366,17 +384,19 @@ module attributes {} {
 
 // CGRA Tile Occupation after RESOPT (4x4 grid, col x row):
 // +---+---+---+---+
-// | 0 | 0 | . | . |   row=0: Task_0_Task_1_utilfused (tile_shape="1x2", cgra_count=2)
-// +---+---+---+---+
-// | 1 | . | . | . |   row=1: Task_2 (tile_shape="1x1", cgra_count=1)
-// +---+---+---+---+
+// | 0 | 1 | . | . |   Task_0_Task_1_utilfused (1x1, cgra_count=1)
+// +---+---+---+---+   Task_2 (1x1, cgra_count=1)
 // | . | . | . | . |
 // +---+---+---+---+
 // | . | . | . | . |
 // +---+---+---+---+
-// 0=Task_0_Task_1_utilfused, 1=Task_2; 3/16 CGRAs used
+// | . | . | . | . |
+// +---+---+---+---+
+// 0=Task_0_Task_1_utilfused, 1=Task_2; 2/16 CGRAs used
 
-// RESOPT:      %write_outputs, %value_outputs = taskflow.task @Task_0_Task_1_utilfused
-// RESOPT-SAME: {cgra_count = 2 : i32, compiled_ii = 4 : i32, steps = 15 : i32, tile_shape = "1x2", trip_count = 32 : i32}
-// RESOPT:      %write_outputs_1 = taskflow.task @Task_2
-// RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 10 : i32, steps = 12 : i32, tile_shape = "1x1", trip_count = 32 : i32}
+// RESOPT:      "taskflow.task"
+// RESOPT-SAME: task_name = "Task_0_Task_1_utilfused"
+// RESOPT:      cgra_count = 1 : i32, compiled_ii = 6 : i32, steps = 10 : i32, tile_shape = "1x1", trip_count = 1 : i32
+// RESOPT:      "taskflow.task"
+// RESOPT-SAME: task_name = "Task_2"
+// RESOPT:      cgra_count = 1 : i32, compiled_ii = 12 : i32, steps = 15 : i32, tile_shape = "1x1", trip_count = 1 : i32

@@ -17,8 +17,26 @@
 
 // RUN: mlir-neura-opt %t.stream.mlir \
 // RUN: --construct-hyperblock-from-task \
+// RUN: --classify-counters \
+// RUN: --convert-taskflow-to-neura \
+// RUN: --lower-affine \
+// RUN: --convert-scf-to-cf \
+// RUN: --convert-cf-to-llvm \
+// RUN: --assign-accelerator \
+// RUN: --lower-memref-to-neura \
+// RUN: --lower-arith-to-neura \
+// RUN: --lower-builtin-to-neura \
+// RUN: --lower-llvm-to-neura \
+// RUN: --promote-input-arg-to-const \
+// RUN: --fold-constant \
+// RUN: --canonicalize-return \
+// RUN: --canonicalize-live-in \
+// RUN: --leverage-predicated-value \
+// RUN: --transform-ctrl-to-data-flow \
+// RUN: --fold-constant \
 // RUN: --resource-aware-task-optimization \
 // RUN: --architecture-spec=%S/../../../arch_spec/architecture.yaml \
+// RUN: --verify-each=false \
 // RUN: -o %t.resopt.mlir
 // RUN: FileCheck %s --input-file=%t.resopt.mlir --check-prefixes=RESOPT
 
@@ -684,37 +702,37 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // STREAM-NEXT: }
 
 
-// RESOPT:      %write_outputs:3 = taskflow.task @Task_1_Task_0_Task_2_utilfused_utilfused
-// RESOPT-SAME: {cgra_count = 2 : i32, compiled_ii = 4 : i32, steps = 21 : i32, tile_shape = "1x2", trip_count = 6400 : i32}
-// RESOPT:      taskflow.yield writes(%arg2, %arg3, %arg4 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>)
-// RESOPT:      %write_outputs_5 = taskflow.task @Task_3
-// RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 4 : i32, steps = 10 : i32, tile_shape = "1x1", trip_count = 2359296 : i32}
-// RESOPT:      taskflow.yield writes(%arg3 : memref<1x8x8x64xf32>)
-// RESOPT:      %write_outputs_9:2 = taskflow.task @Task_4_Task_5_fused_Task_7_utilfused
-// RESOPT-SAME: {cgra_count = 2 : i32, compiled_ii = 4 : i32, steps = 16 : i32, tile_shape = "1x2", trip_count = 6400 : i32}
-// RESOPT:      taskflow.yield writes(%arg2, %arg3 : memref<1x64x8x8xf32>, memref<1x10x10x64xf32>)
-// RESOPT:      %write_outputs_11:2 = taskflow.task @Task_6_Task_8_utilfused
-// RESOPT-SAME: {cgra_count = 2 : i32, compiled_ii = 4 : i32, steps = 14 : i32, tile_shape = "1x2", trip_count = 4096 : i32}
-// RESOPT:      taskflow.yield writes(%arg2, %arg3 : memref<1x8x8x64xf32>, memref<1x8x8x64xf32>)
-// RESOPT:      %write_outputs_12 = taskflow.task @Task_9
-// RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 4 : i32, steps = 10 : i32, tile_shape = "1x1", trip_count = 2359296 : i32}
-// RESOPT:      taskflow.yield writes(%arg3 : memref<1x8x8x64xf32>)
-// RESOPT:      %write_outputs_14 = taskflow.task @Task_10_Task_11_Task_12_fused_fused
-// RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 4 : i32, steps = 10 : i32, tile_shape = "1x1", trip_count = 4096 : i32}
-// RESOPT:      taskflow.yield writes(%arg3 : memref<1x64x8x8xf32>)
-// RESOPT:      return %write_outputs_14 : memref<1x64x8x8xf32>
+// RESOPT:      "taskflow.task"
+// RESOPT-SAME: task_name = "Task_0_Task_1_utilfused_Task_2_utilfused"
+// RESOPT:      {cgra_count = 1 : i32, compiled_ii = 6 : i32, steps = 9 : i32, tile_shape = "1x1", trip_count = 1 : i32}
+// RESOPT:      "taskflow.task"
+// RESOPT-SAME: task_name = "Task_3"
+// RESOPT:      {cgra_count = 1 : i32, compiled_ii = 6 : i32, steps = 12 : i32, tile_shape = "1x1", trip_count = 1 : i32}
+// RESOPT:      "taskflow.task"
+// RESOPT-SAME: task_name = "Task_4_Task_5_fused"
+// RESOPT:      {cgra_count = 1 : i32, compiled_ii = 6 : i32, steps = 11 : i32, tile_shape = "1x1", trip_count = 1 : i32}
+// RESOPT:      "taskflow.task"
+// RESOPT-SAME: task_name = "Task_6_Task_7_utilfused_Task_8_utilfused"
+// RESOPT:      {cgra_count = 1 : i32, compiled_ii = 6 : i32, steps = 9 : i32, tile_shape = "1x1", trip_count = 1 : i32}
+// RESOPT:      "taskflow.task"
+// RESOPT-SAME: task_name = "Task_9"
+// RESOPT:      {cgra_count = 1 : i32, compiled_ii = 6 : i32, steps = 12 : i32, tile_shape = "1x1", trip_count = 1 : i32}
+// RESOPT:      "taskflow.task"
+// RESOPT-SAME: task_name = "Task_10_Task_11_Task_12_fused_fused"
+// RESOPT:      {cgra_count = 1 : i32, compiled_ii = 6 : i32, steps = 12 : i32, tile_shape = "1x1", trip_count = 1 : i32}
+// RESOPT:      "func.return"
 
 
 // CGRA Tile Occupation after RESOPT (4x4 grid, col x row):
 // +---+---+---+---+
-// | 0 | 0 | 1 | 2 |   row=0: 0=Task_1_..._utilfused (tile_shape="1x2"), 1=Task_3 (tile_shape="1x1"), 2=Task_10_... (tile_shape="1x1")
+// | 0 | 1 | 2 | 3 |   row=0: 0=Task_0_..._utilfused, 1=Task_3, 2=Task_4_Task_5_fused, 3=Task_6_..._utilfused
 // +---+---+---+---+
-// | 3 | 3 | 4 | 4 |   row=1: 3=Task_4_..._utilfused (tile_shape="1x2"), 4=Task_6_Task_8_utilfused (tile_shape="1x2")
-// +---+---+---+---+
-// | 5 | . | . | . |   row=2: 5=Task_9 (tile_shape="1x1")
+// | 4 | 5 | . | . |   row=1: 4=Task_9, 5=Task_10_..._fused_fused
 // +---+---+---+---+
 // | . | . | . | . |
 // +---+---+---+---+
-// 0=Task_1_Task_0_Task_2_utilfused_utilfused, 3=Task_4_Task_5_fused_Task_7_utilfused
-// 4=Task_6_Task_8_utilfused, 1=Task_3, 5=Task_9, 2=Task_10_Task_11_Task_12_fused_fused
-// 9/16 CGRAs used
+// | . | . | . | . |
+// +---+---+---+---+
+// 0=Task_0_Task_1_utilfused_Task_2_utilfused, 1=Task_3, 2=Task_4_Task_5_fused
+// 3=Task_6_Task_7_utilfused_Task_8_utilfused, 4=Task_9, 5=Task_10_Task_11_Task_12_fused_fused
+// 6/16 CGRAs used

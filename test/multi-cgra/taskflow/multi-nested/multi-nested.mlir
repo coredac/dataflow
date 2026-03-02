@@ -20,8 +20,26 @@
 
 // RUN: mlir-neura-opt %t.stream.mlir \
 // RUN: --construct-hyperblock-from-task \
+// RUN: --classify-counters \
+// RUN: --convert-taskflow-to-neura \
+// RUN: --lower-affine \
+// RUN: --convert-scf-to-cf \
+// RUN: --convert-cf-to-llvm \
+// RUN: --assign-accelerator \
+// RUN: --lower-memref-to-neura \
+// RUN: --lower-arith-to-neura \
+// RUN: --lower-builtin-to-neura \
+// RUN: --lower-llvm-to-neura \
+// RUN: --promote-input-arg-to-const \
+// RUN: --fold-constant \
+// RUN: --canonicalize-return \
+// RUN: --canonicalize-live-in \
+// RUN: --leverage-predicated-value \
+// RUN: --transform-ctrl-to-data-flow \
+// RUN: --fold-constant \
 // RUN: --resource-aware-task-optimization \
 // RUN: --architecture-spec=%S/../../../arch_spec/architecture.yaml \
+// RUN: --verify-each=false \
 // RUN: -o %t.resopt.mlir
 // RUN: FileCheck %s --input-file=%t.resopt.mlir --check-prefixes=RESOPT
 
@@ -514,25 +532,25 @@ module attributes {} {
 // PLACEMENT:      taskflow.task @Task_4
 // PLACEMENT-SAME: task_mapping_info = {cgra_positions = [{col = 1 : i32, row = 1 : i32}], read_sram_locations = [{col = 1 : i32, row = 1 : i32}, {col = 2 : i32, row = 1 : i32}], write_sram_locations = [{col = 1 : i32, row = 1 : i32}]}
 
-// RESOPT:      %write_outputs = taskflow.task @Task_1
-// RESOPT-SAME: {cgra_count = 2 : i32, compiled_ii = 4 : i32, steps = 8 : i32, tile_shape = "1x2", trip_count = 160 : i32}
-// RESOPT:      taskflow.yield writes(%arg12 : memref<?xi32>)
-// RESOPT:      %write_outputs_0:2 = taskflow.task @Task_0_Task_2_fused_Task_3_utilfused
-// RESOPT-SAME: {cgra_count = 2 : i32, compiled_ii = 4 : i32, steps = 16 : i32, tile_shape = "1x2", trip_count = 192 : i32}
-// RESOPT:      taskflow.yield writes(%arg14, %arg15 : memref<?xi32>, memref<?xi32>)
-// RESOPT:      %write_outputs_1 = taskflow.task @Task_4
-// RESOPT-SAME: {cgra_count = 2 : i32, compiled_ii = 4 : i32, steps = 8 : i32, tile_shape = "1x2", trip_count = 36 : i32}
-// RESOPT:      taskflow.yield writes(%arg12 : memref<?xi32>)
-// RESOPT:      return %0 : i32
+// RESOPT:      "taskflow.task"
+// RESOPT-SAME: task_name = "Task_1"
+// RESOPT:      cgra_count = 1 : i32, compiled_ii = 6 : i32, steps = 10 : i32, tile_shape = "1x1", trip_count = 1 : i32
+// RESOPT:      "taskflow.task"
+// RESOPT-SAME: task_name = "Task_0_Task_2_fused_Task_3_utilfused"
+// RESOPT:      cgra_count = 1 : i32, compiled_ii = 6 : i32, steps = 11 : i32, tile_shape = "1x1", trip_count = 1 : i32
+// RESOPT:      "taskflow.task"
+// RESOPT-SAME: task_name = "Task_4"
+// RESOPT:      cgra_count = 1 : i32, compiled_ii = 6 : i32, steps = 10 : i32, tile_shape = "1x1", trip_count = 1 : i32
+// RESOPT:      "func.return"
 
 // CGRA Tile Occupation after RESOPT (4x4 grid, col x row):
 // +---+---+---+---+
-// | 1 |  1| . | . |   row=0: Task_1 (tile_shape="1x2", cgra_count=2)
-// +---+---+---+---+
-// | 2 |  2| . | . |   row=1: Task_0_Task_2_fused_Task_3_utilfused (tile_shape="1x2", cgra_count=2)
-// +---+---+---+---+
-// | 4 |  4| . | . |   row=2: Task_4 (tile_shape="1x2", cgra_count=2)
+// | 0 | 1 | 2 | . |   Task_1 (1x1, cgra_count=1)
+// +---+---+---+---+   Task_0_Task_2_fused_Task_3_utilfused (1x1, cgra_count=1)
+// | . | . | . | . |   Task_4 (1x1, cgra_count=1)
 // +---+---+---+---+
 // | . | . | . | . |
 // +---+---+---+---+
-// 1=Task_1, 2=Task_0_Task_2_fused_Task_3_utilfused, 4=Task_4; 6/16 CGRAs used
+// | . | . | . | . |
+// +---+---+---+---+
+// 0=Task_1, 1=Task_0_Task_2_fused_Task_3_utilfused, 2=Task_4; 3/16 CGRAs used

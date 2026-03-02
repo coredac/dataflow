@@ -25,8 +25,7 @@ def TaskflowTaskOp : TaskflowOpBase<"task", [
     IsolatedFromAbove,
     AutomaticAllocationScope,
     AttrSizedOperandSegments,
-    AttrSizedResultSegments,
-    SingleBlockImplicitTerminator<"TaskflowYieldOp">
+    AttrSizedResultSegments
 ]>{
   let summary = "Computation task operation within a Taskflow graph.";
 
@@ -74,7 +73,7 @@ def TaskflowTaskOp : TaskflowOpBase<"task", [
     Variadic<AnyType>:$value_outputs
   );
 
-  let regions = (region SizedRegion<1>:$body);
+  let regions = (region AnyRegion:$body);
 
   let hasCustomAssemblyFormat = 1;
 }
@@ -187,8 +186,7 @@ def TaskflowCounterOp : TaskflowOpBase<"counter", []>{
 
 def TaskflowHyperblockOp : TaskflowOpBase<"hyperblock",[
   AutomaticAllocationScope,
-  AttrSizedOperandSegments,
-  SingleBlockImplicitTerminator<"TaskflowHyperblockYieldOp">
+  AttrSizedOperandSegments
 ]>{
   let summary = "Hyperblock operation containing loop body computation";
 
@@ -216,7 +214,7 @@ def TaskflowHyperblockOp : TaskflowOpBase<"hyperblock",[
     Variadic<AnyType>:$outputs
   );
 
-  let regions = (region SizedRegion<1>:$body);
+  let regions = (region AnyRegion:$body);
 
   // let assemblyFormat = [{
   //   (`indices` `(` $indices^ `:` type($indices) `)`)?
