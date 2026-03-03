@@ -37,6 +37,7 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
+#include <cmath>
 
 using namespace mlir;
 using namespace mlir::taskflow;
@@ -47,7 +48,7 @@ namespace {
 // Operand helpers
 //===----------------------------------------------------------------------===//
 
-/// Collects unique values from two ranges into a deduped vector with index map.
+// Collects unique values from two ranges into a deduped vector with index map.
 static void collectUnique(ValueRange a, ValueRange b,
                           SmallVectorImpl<Value> &result,
                           llvm::SmallDenseMap<Value, unsigned> &idx_map) {
@@ -57,21 +58,10 @@ static void collectUnique(ValueRange a, ValueRange b,
 }
 
 //===----------------------------------------------------------------------===//
-// Profitability
-//===----------------------------------------------------------------------===//
-
-/// Placeholder: always permits fusion. MII-based profitability analysis is
-/// disabled pending pipeline support for scf.for inside hyperblocks.
-static bool isFusionProfitable(TaskflowTaskOp, TaskflowTaskOp,
-                               bool, Value = nullptr) {
-  return true;
-}
-
-//===----------------------------------------------------------------------===//
 // Counter chain & hyperblock utilities
 //===----------------------------------------------------------------------===//
 
-/// Extracts all TaskflowCounterOps from a task body in definition order.
+// Extracts all TaskflowCounterOps from a task body in definition order.
 static SmallVector<TaskflowCounterOp>
 extractCounterChain(TaskflowTaskOp task) {
   SmallVector<TaskflowCounterOp> chain;
@@ -81,7 +71,7 @@ extractCounterChain(TaskflowTaskOp task) {
   return chain;
 }
 
-/// Returns true if two counter chains have identical bounds and steps.
+// Returns true if two counter chains have identical bounds and steps.
 static bool counterChainsMatch(SmallVectorImpl<TaskflowCounterOp> &a,
                                SmallVectorImpl<TaskflowCounterOp> &b) {
   if (a.size() != b.size()) return false;
@@ -97,8 +87,8 @@ static bool counterChainsMatch(SmallVectorImpl<TaskflowCounterOp> &a,
   return true;
 }
 
-/// Finds the single TaskflowHyperblockOp in a task body. Returns nullptr
-/// if none or multiple exist.
+// Finds the single TaskflowHyperblockOp in a task body. Returns nullptr
+// if none or multiple exist.
 static TaskflowHyperblockOp findHyperblock(TaskflowTaskOp task) {
   TaskflowHyperblockOp result = nullptr;
   for (Operation &op : task.getBody().front()) {
@@ -110,8 +100,8 @@ static TaskflowHyperblockOp findHyperblock(TaskflowTaskOp task) {
   return result;
 }
 
-/// Finds the single scf::ForOp in a hyperblock body. Returns nullptr
-/// if none or multiple exist.
+// Finds the single scf::ForOp in a hyperblock body. Returns nullptr
+// if none or multiple exist.
 static scf::ForOp findInnerForOp(TaskflowHyperblockOp hb) {
   scf::ForOp result = nullptr;
   for (auto &op : hb.getBody().front()) {
@@ -123,8 +113,8 @@ static scf::ForOp findInnerForOp(TaskflowHyperblockOp hb) {
   return result;
 }
 
-/// Returns true if two scf::ForOp loops have identical constant bounds
-/// and step.
+// Returns true if two scf::ForOp loops have identical constant bounds
+// and step.
 static bool scfForBoundsMatch(scf::ForOp a, scf::ForOp b) {
   auto get_const = [](Value v) -> std::optional<int64_t> {
     if (auto cst = v.getDefiningOp<arith::ConstantIndexOp>())
@@ -142,14 +132,14 @@ static bool scfForBoundsMatch(scf::ForOp a, scf::ForOp b) {
 // Legality checks
 //===----------------------------------------------------------------------===//
 
-/// Returns true if task1 dominates task2 in the same block.
+// Returns true if task1 dominates task2 in the same block.
 static bool canFuseTasks(TaskflowTaskOp t1, TaskflowTaskOp t2) {
   return t1 && t2 && t1 != t2 &&
          t1->getBlock() == t2->getBlock() &&
          t1->isBeforeInBlock(t2);
 }
 
-/// Returns true if any write output of the producer feeds the consumer.
+// Returns true if any write output of the producer feeds the consumer.
 static bool hasProducerConsumerRelation(TaskflowTaskOp producer,
                                        TaskflowTaskOp consumer) {
   for (Value r : producer.getWriteOutputs()) {
@@ -161,7 +151,7 @@ static bool hasProducerConsumerRelation(TaskflowTaskOp producer,
   return false;
 }
 
-/// Returns true if tasks share at least one input with no data dependency.
+// Returns true if tasks share at least one input with no data dependency.
 static bool areSiblingTasks(TaskflowTaskOp t1, TaskflowTaskOp t2) {
   llvm::SmallPtrSet<Value, 8> t1_mem;
   for (Value v : t1.getReadMemrefs())  t1_mem.insert(v);
@@ -178,7 +168,7 @@ static bool areSiblingTasks(TaskflowTaskOp t1, TaskflowTaskOp t2) {
          !hasProducerConsumerRelation(t2, t1);
 }
 
-/// Returns true if any op between producer and consumer uses producer's results.
+// Returns true if any op between producer and consumer uses producer's results.
 static bool hasInterveningUses(TaskflowTaskOp producer,
                                TaskflowTaskOp consumer) {
   llvm::SmallPtrSet<Value, 8> results;
@@ -195,7 +185,7 @@ static bool hasInterveningUses(TaskflowTaskOp producer,
   return false;
 }
 
-/// Returns true if all outputs of the task have at most one use.
+// Returns true if all outputs of the task have at most one use.
 static bool hasOnlySingleUseOutputs(TaskflowTaskOp task) {
   for (Value r : task.getWriteOutputs())
     if (!r.hasOneUse() && !r.use_empty()) return false;
@@ -204,8 +194,19 @@ static bool hasOnlySingleUseOutputs(TaskflowTaskOp task) {
   return true;
 }
 
-/// Returns true if two tasks have compatible loop structures for merging.
-/// Handles both counter-chain and scf.for-inside-hyperblock cases.
+// Clones non-structural ops from a task body (skips counters, hyperblocks,
+// and yields).
+static void cloneTaskBodyMiscOps(Block &body, OpBuilder &builder,
+                                 IRMapping &mapping) {
+  for (Operation &op : body) {
+    if (isa<TaskflowCounterOp, TaskflowHyperblockOp, TaskflowYieldOp>(&op))
+      continue;
+    builder.clone(op, mapping);
+  }
+}
+
+// Returns true if two tasks have compatible loop structures for merging.
+// Handles both counter-chain and scf.for-inside-hyperblock cases.
 static bool haveMatchingLoopStructure(TaskflowTaskOp t1, TaskflowTaskOp t2) {
   auto hb1 = findHyperblock(t1), hb2 = findHyperblock(t2);
   if (!hb1 || !hb2) return false;
@@ -230,9 +231,9 @@ static bool haveMatchingLoopStructure(TaskflowTaskOp t1, TaskflowTaskOp t2) {
 // Producer-consumer fusion
 //===----------------------------------------------------------------------===//
 
-/// Fuses a producer into its consumer by merging their counter chains and
-/// hyperblock bodies into a single task with direct SSA value forwarding
-/// for the intermediate memref.
+// Fuses a producer into its consumer by merging their counter chains and
+// hyperblock bodies into a single task with direct SSA value forwarding
+// for the intermediate memref.
 static TaskflowTaskOp
 fuseProducerConsumerTasks(TaskflowTaskOp producer, TaskflowTaskOp consumer,
                          Value intermediate_memref, OpBuilder &builder) {
@@ -340,16 +341,8 @@ fuseProducerConsumerTasks(TaskflowTaskOp producer, TaskflowTaskOp consumer,
 
   // Clones non-counter, non-hyperblock, non-yield ops from both task bodies
   // (e.g. arith.constant for loop bounds).
-  for (Operation &op : prod_body) {
-    if (isa<TaskflowCounterOp, TaskflowHyperblockOp, TaskflowYieldOp>(&op))
-      continue;
-    builder.clone(op, mapping);
-  }
-  for (Operation &op : cons_body) {
-    if (isa<TaskflowCounterOp, TaskflowHyperblockOp, TaskflowYieldOp>(&op))
-      continue;
-    builder.clone(op, mapping);
-  }
+  cloneTaskBodyMiscOps(prod_body, builder, mapping);
+  cloneTaskBodyMiscOps(cons_body, builder, mapping);
 
   // Locates both hyperblocks.
   auto prod_hb = findHyperblock(producer);
@@ -484,8 +477,8 @@ fuseProducerConsumerTasks(TaskflowTaskOp producer, TaskflowTaskOp consumer,
 // Sibling fusion
 //===----------------------------------------------------------------------===//
 
-/// Fuses two sibling tasks by merging their counter chains and hyperblock
-/// bodies into a single task with deduplicated inputs.
+// Fuses two sibling tasks by merging their counter chains and hyperblock
+// bodies into a single task with deduplicated inputs.
 static TaskflowTaskOp fuseSiblingTasks(TaskflowTaskOp t1, TaskflowTaskOp t2,
                                        OpBuilder &builder) {
   Location loc = t1.getLoc();
@@ -558,16 +551,8 @@ static TaskflowTaskOp fuseSiblingTasks(TaskflowTaskOp t1, TaskflowTaskOp t2,
   Block &t2_body = t2.getBody().front();
   IRMapping mapping2;
   mapBlockArgs(t2, mapping2);
-  for (Operation &op : t1_body) {
-    if (isa<TaskflowCounterOp, TaskflowHyperblockOp, TaskflowYieldOp>(&op))
-      continue;
-    builder.clone(op, mapping);
-  }
-  for (Operation &op : t2_body) {
-    if (isa<TaskflowCounterOp, TaskflowHyperblockOp, TaskflowYieldOp>(&op))
-      continue;
-    builder.clone(op, mapping2);
-  }
+  cloneTaskBodyMiscOps(t1_body, builder, mapping);
+  cloneTaskBodyMiscOps(t2_body, builder, mapping2);
 
   // Locates both hyperblocks.
   auto hb1 = findHyperblock(t1), hb2 = findHyperblock(t2);
@@ -663,11 +648,336 @@ static TaskflowTaskOp fuseSiblingTasks(TaskflowTaskOp t1, TaskflowTaskOp t2,
 }
 
 //===----------------------------------------------------------------------===//
+// Profitability analysis
+//===----------------------------------------------------------------------===//
+
+// Represents metrics for evaluating fusion profitability.
+struct FusionMetrics {
+  int rec_mii = 1;
+  int res_mii = 1;
+  int max_fanout = 0;
+  int num_ops = 0;
+};
+
+// Calculates the maximum fanout across all ops in a region.
+static int calculateMaxFanoutInRegion(Region &region) {
+  int max_fanout = 0;
+  region.walk([&](Operation *op) {
+    for (Value result : op->getResults()) {
+      int fanout = std::distance(result.use_begin(), result.use_end());
+      max_fanout = std::max(max_fanout, fanout);
+    }
+  });
+  return max_fanout;
+}
+
+// Runs the taskflow-to-neura pipeline on a cloned module and computes
+// MII metrics on the resulting "test_fused_kernel" function.
+static FusionMetrics computeRealMetrics(
+    ModuleOp test_module, const neura::Architecture &architecture) {
+  FusionMetrics metrics;
+  auto cloned = test_module.clone();
+
+  // Phase 1: converts taskflow ops to neura kernels.
+  {
+    PassManager pm(cloned.getContext());
+    pm.addPass(taskflow::createClassifyCountersPass());
+    pm.addPass(createConvertTaskflowToNeuraPass());
+    pm.enableVerifier(false);
+    if (failed(pm.run(cloned))) {
+      metrics.rec_mii = 100;
+      metrics.res_mii = 100;
+      cloned.erase();
+      return metrics;
+    }
+  }
+
+  // Converts func.return to neura.return for accelerator-marked functions
+  // so that the subsequent neura passes can process them correctly.
+  cloned.walk([&](func::ReturnOp ret) {
+    auto func_op = ret->getParentOfType<func::FuncOp>();
+    if (!func_op || !func_op->getAttrOfType<StringAttr>("accelerator")) {
+      return;
+    }
+    OpBuilder builder(ret);
+    auto neura_ret = builder.create<neura::ReturnOp>(ret.getLoc(), ret.getOperands());
+    if (ret.getNumOperands() > 0) {
+      neura_ret->setAttr("return_type", builder.getStringAttr("value"));
+    } else {
+      neura_ret->setAttr("return_type", builder.getStringAttr("void"));
+    }
+    ret.erase();
+  });
+
+  // Phase 2: runs the neura compilation pipeline.
+  {
+    PassManager pm(cloned.getContext());
+    pm.addPass(neura::createAssignAcceleratorPass());
+    pm.addPass(createLowerArithToNeuraPass());
+    pm.addPass(createLowerMemRefToNeuraPass());
+    pm.addPass(neura::createCanonicalizeReturnPass());
+    pm.addPass(neura::createCanonicalizeCastPass());
+    pm.addPass(neura::createPromoteInputArgToConstPass());
+    pm.addPass(neura::createCanonicalizeLiveInPass());
+    pm.addPass(neura::createLeveragePredicatedValuePass());
+    pm.addPass(neura::createTransformCtrlToDataFlowPass());
+    pm.enableVerifier(false);
+    if (failed(pm.run(cloned))) {
+      metrics.rec_mii = 100;
+      metrics.res_mii = 100;
+      cloned.erase();
+      return metrics;
+    }
+  }
+
+  cloned.walk([&](func::FuncOp func_op) {
+    if (func_op.getName() != "test_fused_kernel") {
+      return;
+    }
+    metrics.res_mii = neura::calculateResMii(func_op.getBody(), architecture);
+    auto cycles = neura::collectRecurrenceCycles(func_op.getBody());
+    metrics.rec_mii = 1;
+    for (const auto &cycle : cycles) {
+      metrics.rec_mii = std::max(metrics.rec_mii, cycle.length);
+    }
+    int num_ops = 0;
+    func_op.walk([&](Operation *op) {
+      if (!isa<func::FuncOp>(op) && !op->hasTrait<OpTrait::IsTerminator>()) {
+        ++num_ops;
+      }
+    });
+    metrics.num_ops = num_ops;
+    if (!func_op.getBody().empty()) {
+      metrics.max_fanout = calculateMaxFanoutInRegion(func_op.getBody());
+    }
+  });
+
+  cloned.erase();
+  return metrics;
+}
+
+// Creates a test module containing a single task wrapped in a function.
+static ModuleOp createTestModuleForTask(TaskflowTaskOp task) {
+  MLIRContext *ctx = task->getContext();
+  OpBuilder builder(ctx);
+  Location loc = builder.getUnknownLoc();
+  auto module = ModuleOp::create(loc);
+  builder.setInsertionPointToStart(module.getBody());
+
+  // Collects unique operand values from the task.
+  llvm::SetVector<Value> unique_operands;
+  for (Value v : task->getOperands()) {
+    unique_operands.insert(v);
+  }
+
+  SmallVector<Type> input_types;
+  for (Value v : unique_operands) {
+    input_types.push_back(v.getType());
+  }
+  SmallVector<Type> output_types;
+  for (Value v : task->getResults()) {
+    output_types.push_back(v.getType());
+  }
+  if (input_types.empty()) {
+    input_types.push_back(builder.getI64Type());
+  }
+  if (output_types.empty()) {
+    output_types.push_back(builder.getI64Type());
+  }
+
+  auto func_type = builder.getFunctionType(input_types, output_types);
+  auto func_op = builder.create<func::FuncOp>(loc, "test_fused_kernel", func_type);
+  func_op->setAttr("accelerator", builder.getStringAttr("neura"));
+
+  Block *entry = func_op.addEntryBlock();
+  builder.setInsertionPointToStart(entry);
+
+  IRMapping mapping;
+  for (auto [i, v] : llvm::enumerate(unique_operands)) {
+    mapping.map(v, entry->getArgument(i));
+  }
+
+  auto *cloned = builder.clone(*task.getOperation(), mapping);
+  auto cloned_task = cast<TaskflowTaskOp>(cloned);
+
+  SmallVector<Value> ret;
+  for (Value v : cloned_task->getResults()) {
+    ret.push_back(v);
+  }
+  if (ret.empty()) {
+    ret.push_back(entry->getArgument(0));
+  }
+  builder.create<func::ReturnOp>(loc, ret);
+  return module;
+}
+
+// Computes metrics for a single task by running the neura pipeline.
+static FusionMetrics computeSingleTaskMetrics(
+    TaskflowTaskOp task, const neura::Architecture &architecture) {
+  auto module = createTestModuleForTask(task);
+  FusionMetrics metrics = computeRealMetrics(module, architecture);
+  module.erase();
+  return metrics;
+}
+
+// Creates a test module with two tasks fused together.
+static ModuleOp createFusedTestModule(
+    TaskflowTaskOp task1, TaskflowTaskOp task2,
+    bool is_producer_consumer, Value intermediate_memref) {
+  MLIRContext *ctx = task1->getContext();
+  OpBuilder builder(ctx);
+  Location loc = builder.getUnknownLoc();
+  auto module = ModuleOp::create(loc);
+  builder.setInsertionPointToStart(module.getBody());
+
+  // Collects unique external values (excludes task1's results used by task2).
+  llvm::SetVector<Value> unique_vals;
+  for (Value v : task1->getOperands()) {
+    unique_vals.insert(v);
+  }
+  for (Value v : task2->getOperands()) {
+    unique_vals.insert(v);
+  }
+  for (Value v : task1->getResults()) {
+    unique_vals.remove(v);
+  }
+
+  SmallVector<Type> input_types;
+  for (Value v : unique_vals) {
+    input_types.push_back(v.getType());
+  }
+  if (input_types.empty()) {
+    input_types.push_back(builder.getI64Type());
+  }
+
+  // Placeholder output type; the fused task's results drive the actual return.
+  SmallVector<Type> output_types;
+  output_types.push_back(builder.getI64Type());                       
+
+  auto func_type = builder.getFunctionType(input_types, output_types);
+  auto func_op = builder.create<func::FuncOp>(loc, "test_fused_kernel", func_type);
+  func_op->setAttr("accelerator", builder.getStringAttr("neura"));
+
+  Block *entry = func_op.addEntryBlock();
+  builder.setInsertionPointToStart(entry);
+
+  IRMapping mapping;
+  for (auto [i, v] : llvm::enumerate(unique_vals)) {
+    mapping.map(v, entry->getArgument(i));
+  }
+
+  // Clones task1.
+  auto *ct1_op = builder.clone(*task1.getOperation(), mapping);
+  auto ct1 = cast<TaskflowTaskOp>(ct1_op);
+
+  // Maps task1's results so task2's operands resolve correctly.
+  for (auto [orig, cloned] : llvm::zip(task1->getResults(), ct1->getResults())) {
+    mapping.map(orig, cloned);
+  }
+
+  // Clones task2.
+  auto *ct2_op = builder.clone(*task2.getOperation(), mapping);
+  auto ct2 = cast<TaskflowTaskOp>(ct2_op);
+
+  // Resolves the cloned intermediate memref.
+  Value cloned_intermediate;
+  if (is_producer_consumer && intermediate_memref) {
+    cloned_intermediate = mapping.lookupOrDefault(intermediate_memref);
+  }
+
+  // Fuses the cloned tasks.
+  TaskflowTaskOp fused;
+  if (is_producer_consumer) {
+    fused = fuseProducerConsumerTasks(ct1, ct2, cloned_intermediate, builder);
+  } else {
+    fused = fuseSiblingTasks(ct1, ct2, builder);
+  }
+
+  // Fixes the function return type and creates a return op.
+  SmallVector<Value> ret;
+  for (Value v : fused->getResults()) {
+    ret.push_back(v);
+  }
+  if (ret.empty()) {
+    ret.push_back(entry->getArgument(0));
+  }
+
+  // Removes placeholder return type and rebuilds with actual types.
+  SmallVector<Type> real_output_types;
+  for (Value v : ret) {
+    real_output_types.push_back(v.getType());
+  }
+  func_op.setFunctionType(builder.getFunctionType(input_types, real_output_types));
+  builder.create<func::ReturnOp>(loc, ret);
+
+  // Erases un-fused clones (consumer first to drop uses of producer results).
+  ct2->erase();
+  ct1->erase();
+  return module;
+}
+
+// Computes metrics for the fused version of two tasks.
+static FusionMetrics computeFusedTaskMetrics(
+    TaskflowTaskOp task1, TaskflowTaskOp task2,
+    bool is_producer_consumer, Value intermediate_memref,
+    const neura::Architecture &architecture) {
+  auto module = createFusedTestModule(task1, task2, is_producer_consumer, intermediate_memref);
+  FusionMetrics metrics = computeRealMetrics(module, architecture);
+  module.erase();
+  return metrics;
+}
+
+// Estimates the effective MII considering utilization and fanout penalties.
+static int estimateMII(const FusionMetrics &metrics, int total_tiles) {
+  const float alpha = 0.5f;
+  const float beta = 0.5f;
+  int mii = std::max(metrics.rec_mii, metrics.res_mii);
+  float utilization_factor = 1.0f + alpha * (metrics.num_ops / static_cast<float>(total_tiles));
+  float fanout_factor = 1.0f + beta * std::max(metrics.max_fanout - 4, 0);
+  return static_cast<int>(std::ceil(utilization_factor * fanout_factor * mii));
+}
+
+// Checks if fusion is profitable by comparing estimated MII of the fused
+// task against the individual tasks. For producer-consumer fusion, the
+// unfused MII is the sum (sequential execution); for sibling fusion, it
+// is the max (independent execution).
+static bool isFusionProfitable(TaskflowTaskOp task1, TaskflowTaskOp task2,
+                               bool is_producer_consumer,
+                               Value intermediate = nullptr) {
+  neura::Architecture architecture(1, 1);
+  int total_tiles = architecture.getNumTiles();
+
+  FusionMetrics m1 = computeSingleTaskMetrics(task1, architecture);
+  FusionMetrics m2 = computeSingleTaskMetrics(task2, architecture);
+  FusionMetrics fused = computeFusedTaskMetrics(task1, task2, is_producer_consumer, intermediate, architecture);
+
+  int mii_1 = estimateMII(m1, total_tiles);
+  int mii_2 = estimateMII(m2, total_tiles);
+  int mii_fused = estimateMII(fused, total_tiles);
+
+  // Uses raw MII (max of recurrence and resource MII) for the core
+  // comparison, since the estimateMII utilization penalty is additive
+  // and already reflected in res_mii.
+  int raw_1 = std::max(m1.rec_mii, m1.res_mii);
+  int raw_2 = std::max(m2.rec_mii, m2.res_mii);
+  int raw_fused = std::max(fused.rec_mii, fused.res_mii);
+  int unfused_mii = is_producer_consumer ? (raw_1 + raw_2) : std::max(raw_1, raw_2);
+  bool profitable = raw_fused <= unfused_mii;
+
+  llvm::errs() << "[fuse-task] Profitability:"
+               << " m1(rec=" << m1.rec_mii << " res=" << m1.res_mii << " ops=" << m1.num_ops << " fan=" << m1.max_fanout << " mii=" << mii_1 << ")"
+               << " m2(rec=" << m2.rec_mii << " res=" << m2.res_mii << " ops=" << m2.num_ops << " fan=" << m2.max_fanout << " mii=" << mii_2 << ")"
+               << " fused(rec=" << fused.rec_mii << " res=" << fused.res_mii << " ops=" << fused.num_ops << " fan=" << fused.max_fanout << " mii=" << mii_fused << ")"
+               << " -> " << (profitable ? "PROFITABLE" : "REJECTED") << "\n";
+  return profitable;
+}
+
+//===----------------------------------------------------------------------===//
 // Rewrite patterns
 //===----------------------------------------------------------------------===//
 
-/// Fuses a producer task into its consumer when the producer's output feeds
-/// directly into the consumer and the loop structures match.
+// Fuses a producer task into its consumer when the producer's output feeds
+// directly into the consumer and the loop structures match.
 struct ProducerConsumerTaskFusion
     : public OpRewritePattern<TaskflowTaskOp> {
   using OpRewritePattern::OpRewritePattern;
@@ -711,7 +1021,7 @@ struct ProducerConsumerTaskFusion
   }
 };
 
-/// Fuses sibling tasks that share inputs and have matching loop structures.
+// Fuses sibling tasks that share inputs and have matching loop structures.
 struct SiblingTaskFusion : public OpRewritePattern<TaskflowTaskOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -753,8 +1063,8 @@ struct SiblingTaskFusion : public OpRewritePattern<TaskflowTaskOp> {
 // Pass definition
 //===----------------------------------------------------------------------===//
 
-/// Applies producer-consumer and sibling task fusion using MII-based
-/// profitability analysis and loop body merging.
+// Applies producer-consumer and sibling task fusion using MII-based
+// profitability analysis and loop body merging.
 struct FuseTaskPass
     : public PassWrapper<FuseTaskPass, OperationPass<func::FuncOp>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(FuseTaskPass)
@@ -767,6 +1077,8 @@ struct FuseTaskPass
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<LLVM::LLVMDialect, func::FuncDialect,
                     arith::ArithDialect, memref::MemRefDialect,
+                    scf::SCFDialect, cf::ControlFlowDialect,
+                    math::MathDialect, affine::AffineDialect,
                     neura::NeuraDialect, taskflow::TaskflowDialect>();
   }
 

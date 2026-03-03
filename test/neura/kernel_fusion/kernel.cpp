@@ -1,10 +1,12 @@
-// Test cases for FuseKernelPass
+// Test cases for FuseTaskPass
 //
 // Build workflow using Polygeist:
-//   1. cgeist kernel_fusion.cpp -S -O2       -> SCF loops (kernel_fusion_scf.mlir)
-//   2. polygeist-opt --raise-scf-to-affine   -> Affine loops (kernel_fusion_affine.mlir)
-//   3. mlir-neura-opt --wrap-loop-in-kernel  -> neura.kernel ops (kernel_fusion_wrapped.mlir)
-//   4. mlir-neura-opt --fuse-kernel          -> Fused kernels (kernel_fusion_fused.mlir)
+//   1. cgeist kernel.cpp -S -O2                          -> SCF loops
+//   2. polygeist-opt --raise-scf-to-affine                -> Affine loops
+//   3. mlir-neura-opt --affine-loop-tree-serialization \
+//        --convert-affine-to-taskflow \
+//        --construct-hyperblock-from-task                  -> taskflow.task ops
+//   4. mlir-neura-opt --fuse-task                         -> Fused tasks
 
 #define N 64
 
