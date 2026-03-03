@@ -28,13 +28,12 @@ struct InsertDataMovForNeuraOps : public RewritePattern {
     // ops by earlier passes (LowerArithToNeura, etc.) before this pass runs.
     if (op->getDialect()->getNamespace() != accel::kNeuraTarget ||
         isa<neura::DataMovOp>(op) ||
-        // ReserveOp pre-allocates a memory slot (e.g., for loop-carried
-        // state or output buffers).  It is not a computation node and its
-        // result is a memory reference, not a data value — wrapping it in
-        // DataMovOp would insert a spurious data-movement for a slot that
-        // has no value to move yet.  Consumers of ReserveOp results that
-        // do need a mov will handle this themselves (see the
-        // isa<neura::ReserveOp>(producer) guard below).
+        // ReserveOp creates a loop-carried placeholder in the dataflow
+        // recurrence cycle: %v = neura.reserve; neura.ctrl_mov %next -> %v.
+        // Its result must NOT be wrapped in DataMovOp, because ctrl_mov needs
+        // a direct reference to the same SSA value used by phi_start.
+        // Inserting a DataMovOp between reserve and its consumers would break
+        // the ctrl_mov→reserve back-edge and corrupt the recurrence cycle.
         isa<neura::ReserveOp>(op) ||
         isa<neura::KernelOp>(op) ||
         isa<neura::FusedOp>(op)) {
@@ -104,8 +103,9 @@ struct InsertDataMovForNeuraOps : public RewritePattern {
     for (Value operand : op->getOperands()) {
       Operation *producer = operand.getDefiningOp();
 
-      // Skips adding mov for any operand that comes from a reserve op or
-      // already from data_mov.
+      // Does NOT wrap operands that come from reserve: the reserve result
+      // is the recurrence back-edge target for ctrl_mov.  Wrapping it would
+      // produce a new SSA value, breaking the ctrl_mov→reserve cycle.
       if (producer && (isa<neura::ReserveOp>(producer) ||
                        isa<neura::DataMovOp>(producer))) {
         new_operands.push_back(operand);

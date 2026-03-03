@@ -168,7 +168,7 @@ module {
 
 // CGRA Tile Occupation after RESOPT (4x4 grid, col x row):
 // +---+---+---+---+
-// | 0 | 0 | . | . |   0: Task_0_Task_1_utilfused (1x2, cgra_count=2)
+// | 0 | 0 | . | . |   row=0: Task_0_Task_1_utilfused (1x2, cgra_count=2)
 // +---+---+---+---+
 // | . | . | . | . |
 // +---+---+---+---+

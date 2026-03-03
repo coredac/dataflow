@@ -788,118 +788,18 @@ private:
 
   // Computes total trip count for a task.
   //
-  // Post-lowering, the task body contains taskflow.counter ops and
-  // neura.kernel ops.  The trip count is computed from:
-  //   1. taskflow.counter ops (product of counter chain ranges), or
-  //   2. neura.counter ops inside kernels (if no taskflow.counter exists).
+  // This pass runs after the full lowering pipeline (including
+  // --transform-ctrl-to-data-flow), so taskflow.counter and neura.counter
+  // ops have already been consumed.  The trip count is extracted from the
+  // post-CF-lowered representation:
+  //   - Outer loop bounds: arith.cmpi (predicate=slt, rhs = constant upper
+  //     bound) in the task body blocks.
+  //   - Inner kernel bounds: neura.icmp (cmpType="slt", rhs_value attribute)
+  //     inside neura.kernel regions.
   //
-  // For each root counter (no parent_index), walks its chain of child counters
-  // and multiplies all (upper_bound - lower_bound) / step values.
-  // Multiple independent counter chains execute concurrently, so the trip
-  // count is max(chain_product) across chains.
+  // Trip count = product(outer bounds) × product(inner bounds).
   static int64_t computeTripCount(TaskflowTaskOp task) {
-    // ---------------------------------------------------------------
-    // Strategy 1: taskflow.counter ops (pre-neura-lowering IR).
-    // ---------------------------------------------------------------
-    SmallVector<TaskflowCounterOp> all_counters;
-    task.walk([&](TaskflowCounterOp c) { all_counters.push_back(c); });
-
-    if (!all_counters.empty()) {
-      SmallVector<TaskflowCounterOp> root_counters;
-      DenseMap<Value, TaskflowCounterOp> result_to_counter;
-      for (auto c : all_counters) {
-        if (c->getNumResults() > 0)
-          result_to_counter[c->getResult(0)] = c;
-        if (!c.getParentIndex())
-          root_counters.push_back(c);
-      }
-
-      int64_t total = 0;
-      for (auto root : root_counters) {
-        int64_t chain_product = 1;
-        for (auto c : all_counters) {
-          int64_t lb = c.getLowerBound().getSExtValue();
-          int64_t ub = c.getUpperBound().getSExtValue();
-          int64_t step = c.getStep().getSExtValue();
-          int64_t count = (step > 0) ? (ub - lb + step - 1) / step : 1;
-          if (count < 1) count = 1;
-
-          if (c == root) {
-            chain_product *= count;
-          } else if (c.getParentIndex()) {
-            Value parent = c.getParentIndex();
-            bool in_chain = false;
-            while (parent) {
-              auto it = result_to_counter.find(parent);
-              if (it == result_to_counter.end()) break;
-              TaskflowCounterOp parent_counter = it->second;
-              if (parent_counter == root) { in_chain = true; break; }
-              parent = parent_counter.getParentIndex();
-            }
-            if (in_chain) chain_product *= count;
-          }
-        }
-        total = std::max(total, chain_product);
-      }
-      return (total > 0) ? total : 1;
-    }
-
-    // ---------------------------------------------------------------
-    // Strategy 2: neura.counter ops (post convert-taskflow-to-neura,
-    //             but before transform-ctrl-to-data-flow).
-    //
-    // Each neura.kernel inside the task holds its own independent counter
-    // chain.  Kernels are scheduled sequentially in the task (one executes
-    // after the other), so the total trip count is the SUM of per-kernel
-    // products (unlike Strategy 1 counter chains, which are concurrent and
-    // therefore use max).
-    //
-    // NOTE: Multi-hyperblock tasks are not permitted (one task = one kernel).
-    // The loop below should therefore encounter exactly one kernel.
-    // ---------------------------------------------------------------
-    SmallVector<neura::CounterOp> neura_counters;
-    task.walk([&](neura::CounterOp nc) { neura_counters.push_back(nc); });
-
-    if (!neura_counters.empty()) {
-      int64_t total = 0;
-      int64_t kernel_count = 0;
-      task.walk([&](neura::KernelOp kernel) {
-        kernel_count++;
-        int64_t kernel_trip = 1;
-        bool has_leaf = false;
-        kernel.walk([&](neura::CounterOp nc) {
-          if (auto ct = nc->getAttrOfType<StringAttr>("counter_type")) {
-            if (ct.getValue() == "leaf" || ct.getValue() == "relay" ||
-                ct.getValue() == "root") {
-              auto lb = nc.getLowerBound().getSExtValue();
-              auto ub = nc.getUpperBound().getSExtValue();
-              auto step = nc.getStep().getSExtValue();
-              int64_t count = (step > 0) ? (ub - lb + step - 1) / step : 1;
-              kernel_trip *= (count > 0 ? count : 1);
-              if (ct.getValue() == "leaf") has_leaf = true;
-            }
-          }
-        });
-        if (has_leaf) total += kernel_trip;
-      });
-      assert(kernel_count <= 1 &&
-             "[computeTripCount] multi-hyperblock tasks are not allowed; "
-             "each task must contain exactly one neura.kernel");
-      return total > 0 ? total : 1;
-    }
-
-    // ---------------------------------------------------------------
-    // Strategy 3: Post-CF-lowering + post-transform-ctrl-to-data-flow.
-    // Outer loops are arith.cmpi (predicate=slt) + llvm.cond_br in multi-
-    // block task body.  Inner kernel loop is neura.icmp (cmpType="slt")
-    // with rhs_value attribute inside neura.kernel.
-    //
-    // Trip count = product of all outer loop bounds × inner kernel bound.
-    // We only count bounds in the task's own blocks (not inside kernels)
-    // for the outer product, then multiply by kernel inner bounds.
-    // ---------------------------------------------------------------
     int64_t outer_product = 1;
-
     // Walk only the task body blocks (skip nested kernel regions).
     for (Block &block : task.getBody()) {
       for (Operation &op : block) {
@@ -982,7 +882,7 @@ public:
         break;
       }
 
-      // Find the bottleneck: the node on the critical path with highest
+      // Finds the bottleneck: the node on the critical path with highest
       // estimated latency. We recompute the critical path every iteration
       // because adding CGRAs to the previous bottleneck may shift the
       // critical path to a different node.
@@ -1504,19 +1404,19 @@ private:
     auto mergeClonedEntry = [&](Block *cloned_entry, IRMapping &mapping,
                                 TaskflowTaskOp orig_task) {
       Block &orig_entry = orig_task.getBody().front();
-      // Replace all uses of cloned entry block args.
+      // Replaces all uses of cloned entry block args.
       for (unsigned i = 0; i < cloned_entry->getNumArguments(); ++i) {
         Value cloned_arg = cloned_entry->getArgument(i);
         Value mapped_arg = mapping.lookupOrDefault(orig_entry.getArgument(i));
         cloned_arg.replaceAllUsesWith(mapped_arg);
       }
-      // Splice all ops from cloned entry into our entry block (before
+      // Splices all ops from cloned entry into our entry block (before
       // any terminator of entry_block, if present).
       entry_block->getOperations().splice(
           entry_block->end(), cloned_entry->getOperations());
-      // Redirect any branches that target cloned_entry to entry_block.
+      // Redirects any branches that target cloned_entry to entry_block.
       cloned_entry->replaceAllUsesWith(entry_block);
-      // Erase the now-empty cloned entry block.
+      // Erases the now-empty cloned entry block.
       cloned_entry->erase();
     };
 
@@ -1549,7 +1449,7 @@ private:
       // blocks — we can check if a kernel's parent block was mapped from
       // task_a or task_b's blocks.
       for (auto k : fused_kernels) {
-        // Check if this kernel's entry block was cloned from kernel_a
+        // Checks if this kernel's entry block was cloned from kernel_a
         bool is_from_a = false;
         for (Block &orig_blk : orig_kernel_a.getBody()) {
           if (mapping_a.lookupOrNull(&orig_blk) == &k.getBody().front()) {
@@ -1576,7 +1476,7 @@ private:
     // Both cloned kernels already have their inputs properly mapped
     // (through cloneInto), so their inputs reference fused task values.
 
-    // Build merged kernel inputs from the cloned kernels' inputs.
+    // Builds merged kernel inputs from the cloned kernels' inputs.
     SmallVector<Value> merged_kernel_inputs;
     auto addKernelInputs = [&](neura::KernelOp kernel) {
       for (Value inp : kernel.getInputs()) {
@@ -1621,14 +1521,14 @@ private:
     for (Value v : merged_iter_args)
       kernel_body->addArgument(v.getType(), task_a.getLoc());
 
-    // Build kernel block arg mapping for each source cloned kernel.
+    // Builds kernel block arg mapping for each source cloned kernel.
     auto buildKernelArgMapping =
         [&](neura::KernelOp kernel, unsigned iter_offset) -> IRMapping {
       IRMapping km;
       Block &src_entry = kernel.getBody().front();
       unsigned src_idx = 0;
 
-      // Map kernel input args.
+      // Maps kernel input args.
       for (Value inp : kernel.getInputs()) {
         auto it = llvm::find(merged_kernel_inputs, inp);
         assert(it != merged_kernel_inputs.end());
@@ -1638,7 +1538,7 @@ private:
         src_idx++;
       }
 
-      // Map iter_args.
+      // Maps iter_args.
       for (unsigned i = 0; i < kernel.getIterArgsInit().size(); ++i) {
         km.map(src_entry.getArgument(src_idx + i),
                kernel_body->getArgument(
@@ -1653,7 +1553,7 @@ private:
     IRMapping kernel_mapping_b = buildKernelArgMapping(
         cloned_kernel_b, cloned_kernel_a.getIterArgsInit().size());
 
-    // Clone DFG ops from both cloned kernels into the fused kernel body.
+    // Clones DFG ops from both cloned kernels into the fused kernel body.
     {
       OpBuilder kb = OpBuilder::atBlockEnd(kernel_body);
       for (auto &op : cloned_kernel_a.getBody().front().getOperations()) {
@@ -1665,7 +1565,7 @@ private:
         kb.clone(op, kernel_mapping_b);
       }
 
-      // Create the combined neura.yield.
+      // Creates the combined neura.yield.
       SmallVector<Value> merged_iter_args_next;
       SmallVector<Value> merged_results;
       if (auto yield_a = dyn_cast<neura::YieldOp>(
@@ -1746,61 +1646,156 @@ private:
       for (unsigned i = 0; i < task_b.getValueOutputs().size(); ++i)
         yield_values.push_back(fused_kernel.getResult(val_idx++));
 
-      // Erases all cloned yields and create one new yield in an exit block.
-      // If the fused task is single-block, just append the yield.
-      // If multi-block, create an exit block and redirect.
-
-      // First erase all existing yields.
-      for (auto y : cloned_yields) {
-        // Replace the yield with a branch to the exit block if we're
-        // in a multi-block scenario. For now, just erase them.
-        y.erase();
-      }
-
-      // Checks if there's a natural "last" block. After erasing yields,
-      // some blocks may be empty (no terminator). We need to add the
-      // merged yield as the terminator of each such block, or create
-      // a common exit block.
+      // Task bodies after CF lowering look like:
+      //   ^bb0(entry): ops... llvm.br ^bb1
+      //   ^bb1(loop header): arith.cmpi → llvm.cond_br ^bb2, ^bb3
+      //   ^bb2(loop body): neura.kernel, llvm.br ^bb1
+      //   ^bb3(loop exit): taskflow.yield
       //
-      // Simple approach: find all blocks without terminators and add
-      // a yield to each one. Since both tasks are independent, both
-      // yield blocks should eventually execute.
-      // However, for correct semantics, we only need ONE yield.
-      // The control flow from task_a and task_b are independent —
-      // but they were merged into one region, so both control flows
-      // exist. We need to ensure both complete before yielding.
+      // After cloning both task regions into the fused task, we have two
+      // independent control-flow sub-graphs, each with its own exit block
+      // containing a taskflow.yield.  Because the two tasks are independent,
+      // their DFGs are already placed side-by-side inside the same fused
+      // neura.kernel (see kernel merge above).  However, the surrounding
+      // control-flow (loop counter increments, cond_br, llvm.br) is still
+      // present in the outer task blocks.
       //
-      // For single-block tasks (common case): both sets of ops are in
-      // entry_block, we just add the yield at the end.
+      // We cannot simply leave two yields in the fused region — a
+      // taskflow.task must have exactly one yield.  The correct approach is
+      // to CHAIN the two control flows:
       //
-      // For multi-block tasks: we need to chain the control flows.
-      // After task_a's control flow completes (reaches its exit block),
-      // branch to task_b's entry. After task_b completes, yield.
+      //   task_a_exit_block → (erase its yield, add llvm.br to task_b_entry)
+      //   task_b_exit_block → keep its yield (becomes the single fused yield)
+      //
+      // "task_a_entry" is the first cloned block from task_a that lives in
+      // the fused region (but not entry_block — that is our hand-crafted
+      // merged entry block).  After mergeClonedEntry(), the cloned entry
+      // blocks were spliced into entry_block; the *first non-entry* block of
+      // task_a's cloned sub-graph is task_a's loop-header (^bb1).  We
+      // stored the cloned entry blocks before erasing them, so we reconstruct
+      // task_a's first "continuation" block by looking at the branch target
+      // of the last op in entry_block that came from task_a — but the
+      // simplest approach is:
+      //
+      //  • cloned_yields[0] is the yield from task_a (the earlier task).
+      //  • cloned_yields[1] is the yield from task_b.
+      //  (cloneInto preserves order: task_a's blocks come first.)
+      //
+      // For the SINGLE-BLOCK case (entry_block has no extra blocks), both
+      // task bodies were fully inlined into entry_block.  We erase both
+      // yields and place one merged yield at the end.
+      //
+      // For the MULTI-BLOCK case:
+      //  1. Find task_a's exit block (the block holding cloned_yields[0]).
+      //  2. Find task_b's continuation entry (the block to which task_a's
+      //     outer loop should jump after task_a finishes — i.e., the first
+      //     non-entry block of task_b's cloned sub-graph).  Since
+      //     mergeClonedEntry already spliced task_b's entry ops into
+      //     entry_block, task_b's "first real block" is the successor of
+      //     task_b's cloned entry — which was remapped to entry_block.
+      //     Therefore, the first block in the fused region that is NOT
+      //     entry_block and is NOT part of task_a's sub-graph is the start
+      //     of task_b's sub-graph.
+      //  3. Erase the yield from task_a's exit block and insert an
+      //     unconditional branch (llvm.br) to task_b's first block.
+      //  4. Replace the yield in task_b's exit block with the merged yield.
 
-      // Finds blocks without terminators (yield was erased).
-      SmallVector<Block *> unterminated_blocks;
-      for (Block &blk : fused_task.getBody()) {
-        if (blk.empty() || !blk.back().hasTrait<OpTrait::IsTerminator>()) {
-          unterminated_blocks.push_back(&blk);
-        }
-      }
-
-      if (unterminated_blocks.empty()) {
-        // All blocks are properly terminated (shouldn't happen if yields
-        // were erased). Add yield to entry_block as safety fallback.
-        OpBuilder tb = OpBuilder::atBlockEnd(entry_block);
+      if (cloned_yields.size() == 1) {
+        // Single yield (single-block fused task, or task_b had no yield).
+        // Replaces it with the merged yield.
+        OpBuilder tb(cloned_yields[0]);
         tb.create<TaskflowYieldOp>(fused_task.getLoc(), yield_writes,
                                    yield_values);
+        cloned_yields[0].erase();
+      } else if (cloned_yields.size() == 2) {
+        // Two yields: chain task_a's exit → task_b's first block, keep
+        // only task_b's yield (updated to merged outputs).
+
+        Block *exit_a = cloned_yields[0]->getBlock();
+        (void)cloned_yields[1]->getBlock(); // exit_b — not used directly
+
+        // Finds the first block of task_b's cloned sub-graph.  These are the
+        // blocks in the fused region that are NOT entry_block and are NOT
+        // reachable from entry_block through task_a's control flow only.
+        // The easiest identification: collect all blocks reachable from
+        // entry_block without going through exit_a's successors, then the
+        // first block NOT in that set (and not entry_block) is task_b's
+        // entry continuation.
+        //
+        // Simpler heuristic that works for the current IR structure:
+        // task_a's sub-graph blocks are added to the region first (cloneInto
+        // for task_a ran first), then task_b's.  So the block immediately
+        // following task_a's last block in region order is task_b's first
+        // continuation block.
+        //
+        // We identify task_a's block set via BFS from entry_block, staying
+        // within blocks that end with llvm.br/llvm.cond_br (i.e., stop at
+        // exit_a since its yield was not yet erased).
+        llvm::DenseSet<Block *> task_a_blocks;
+        {
+          SmallVector<Block *> worklist;
+          worklist.push_back(entry_block);
+          while (!worklist.empty()) {
+            Block *cur = worklist.pop_back_val();
+            if (!task_a_blocks.insert(cur).second) continue;
+            if (cur == exit_a) continue; // don't cross task_a's exit
+            for (Block *succ : cur->getSuccessors())
+              worklist.push_back(succ);
+          }
+        }
+
+        // task_b's first continuation block: first block in region order
+        // that is not in task_a_blocks and is not entry_block.
+        Block *task_b_first = nullptr;
+        for (Block &blk : fused_task.getBody()) {
+          if (&blk != entry_block && !task_a_blocks.count(&blk)) {
+            task_b_first = &blk;
+            break;
+          }
+        }
+
+        if (task_b_first) {
+          // Replaces task_a's yield with an unconditional llvm.br to task_b.
+          // We build it via OperationState to avoid a dependency on the
+          // LLVM dialect C++ headers (the LLVM dialect is not linked here).
+          OpBuilder tb_a(cloned_yields[0]);
+          OperationState br_state(fused_task.getLoc(), "llvm.br");
+          br_state.addSuccessors(task_b_first);
+          br_state.addAttribute(
+              "operandSegmentSizes",
+              tb_a.getDenseI32ArrayAttr({0}));
+          tb_a.create(br_state);
+          cloned_yields[0].erase();
+        } else {
+          // Fallback: task_b had no extra blocks — just erase task_a's yield.
+          cloned_yields[0].erase();
+        }
+
+        // Replaces task_b's yield with the merged yield.
+        OpBuilder tb_b(cloned_yields[1]);
+        tb_b.create<TaskflowYieldOp>(fused_task.getLoc(), yield_writes,
+                                     yield_values);
+        cloned_yields[1].erase();
       } else {
-        // Adds a taskflow.yield to each unterminated block. Since all
-        // control flow paths must terminate with a yield, and both
-        // tasks' yields produce the same fused outputs (write_memrefs
-        // and value outputs from the fused kernel), each unterminated
-        // block gets an identical yield.
-        for (Block *blk : unterminated_blocks) {
-          OpBuilder tb = OpBuilder::atBlockEnd(blk);
+        // Unexpected number of yields — fall back to single exit block.
+        // Erase all yields, create a new exit block with the merged yield,
+        // and redirect all unterminated blocks to it.
+        Block *exit_block = new Block();
+        fused_task.getBody().push_back(exit_block);
+        {
+          OpBuilder tb = OpBuilder::atBlockEnd(exit_block);
           tb.create<TaskflowYieldOp>(fused_task.getLoc(), yield_writes,
                                      yield_values);
+        }
+        for (auto y : cloned_yields) {
+          OpBuilder tb(y);
+          OperationState br_state(fused_task.getLoc(), "llvm.br");
+          br_state.addSuccessors(exit_block);
+          br_state.addAttribute(
+              "operandSegmentSizes",
+              tb.getDenseI32ArrayAttr({0}));
+          tb.create(br_state);
+          y.erase();
         }
       }
     }
@@ -1813,7 +1808,7 @@ private:
     fused_task->setAttr("trip_count",
                         OpBuilder(fused_task).getI64IntegerAttr(fused_trip));
 
-    // Profile the fused task to get real ii and steps.
+    // Profiles the fused task to get real ii and steps.
     // The fused kernel contains the combined DFG from both original kernels.
     {
       TaskGraphNode fused_node(/*id=*/0, fused_task);
@@ -2054,7 +2049,7 @@ struct ResourceAwareTaskOptimizationPass
                             b.getI32IntegerAttr(node->steps));
           node->op->setAttr("trip_count",
                             b.getI32IntegerAttr(node->trip_count));
-          // Write tile_shape attribute: simple "NxM" bounding-box string.
+          // Writes tile_shape attribute: simple "NxM" bounding-box string.
           // The detailed occupancy diagram is printed in the summary below.
           std::string shape_str = node->shape.irAttr();
           node->op->setAttr("tile_shape", b.getStringAttr(shape_str));
@@ -2069,13 +2064,13 @@ struct ResourceAwareTaskOptimizationPass
       final_graph.build(func, use_analytical);
       int final_total = final_graph.getTotalAllocatedCGRAs();
 
-      // Assign each task a single character label for the combined grid.
+      // Assigns each task a single character label for the combined grid.
       // Tasks are labelled '0','1','2',... ; free cells shown as '.'.
       // grid[row][col] == -1 means free.
       std::vector<std::vector<int>> combined_grid(
           kCgraGridRows, std::vector<int>(kCgraGridCols, -1));
 
-      // Pack tasks onto the grid left-to-right, top-to-bottom.
+      // Packs tasks onto the grid left-to-right, top-to-bottom.
       int next_col = 0, next_row = 0;
       int task_idx = 0;
 
@@ -2096,7 +2091,7 @@ struct ResourceAwareTaskOptimizationPass
                      << "  steps=" << node->steps
                      << "  trip_count=" << node->trip_count << "\n";
 
-        // Draw a per-task bounding-box grid (shape.rows x shape.cols).
+        // Draws a per-task bounding-box grid (shape.rows x shape.cols).
         int remaining = node->cgra_count;
         llvm::errs() << "      +" ;
         for (int c = 0; c < shape.cols; ++c) llvm::errs() << "---+";
@@ -2117,7 +2112,7 @@ struct ResourceAwareTaskOptimizationPass
           llvm::errs() << "\n";
         }
 
-        // Place onto combined grid (pack sequentially).
+        // Places onto combined grid (pack sequentially).
         int placed = 0;
         for (int r = next_row; r < kCgraGridRows && placed < node->cgra_count; ++r) {
           for (int c = (r == next_row ? next_col : 0);
@@ -2132,7 +2127,7 @@ struct ResourceAwareTaskOptimizationPass
         ++task_idx;
       }
 
-      // Print combined 4xN grid.
+      // Prints combined 4xN grid.
       llvm::errs() << "\n  Combined 4x" << kCgraGridCols << " Grid"
                    << " (" << final_total << "/" << kTotalCGRAs << " used):\n";
       llvm::errs() << "  +";
