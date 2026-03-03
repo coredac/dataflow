@@ -798,109 +798,153 @@ private:
   // Multiple independent counter chains execute concurrently, so the trip
   // count is max(chain_product) across chains.
   static int64_t computeTripCount(TaskflowTaskOp task) {
-    // Collects all counter ops in the task body.
+    // ---------------------------------------------------------------
+    // Strategy 1: taskflow.counter ops (pre-neura-lowering IR).
+    // ---------------------------------------------------------------
     SmallVector<TaskflowCounterOp> all_counters;
     task.walk([&](TaskflowCounterOp c) { all_counters.push_back(c); });
 
-    if (all_counters.empty()) {
-      // Post-neura-lowering path: task bodies contain neura.kernel ops with
-      // neura.counter ops instead of taskflow.counter ops.
-      // Compute trip count as the product of all "leaf" neura.counter ranges
-      // across all kernels (each kernel has one leaf counter chain driving
-      // the innermost loop).  Multiple independent kernels are summed.
-      SmallVector<neura::CounterOp> leaf_counters;
-      task.walk([&](neura::CounterOp nc) {
-        if (auto ct = nc->getAttrOfType<StringAttr>("counter_type"))
-          if (ct.getValue() == "leaf")
-            leaf_counters.push_back(nc);
-      });
+    if (!all_counters.empty()) {
+      SmallVector<TaskflowCounterOp> root_counters;
+      DenseMap<Value, TaskflowCounterOp> result_to_counter;
+      for (auto c : all_counters) {
+        if (c->getNumResults() > 0)
+          result_to_counter[c->getResult(0)] = c;
+        if (!c.getParentIndex())
+          root_counters.push_back(c);
+      }
 
-      if (!leaf_counters.empty()) {
-        // For each kernel, find all its leaf counters and multiply their
-        // ranges, then sum across kernels.
-        int64_t total = 0;
-        task.walk([&](neura::KernelOp kernel) {
-          int64_t kernel_trip = 1;
-          bool has_leaf = false;
-          kernel.walk([&](neura::CounterOp nc) {
-            if (auto ct = nc->getAttrOfType<StringAttr>("counter_type")) {
-              if (ct.getValue() == "leaf" || ct.getValue() == "relay" ||
-                  ct.getValue() == "root") {
-                auto lb = nc.getLowerBound().getSExtValue();
-                auto ub = nc.getUpperBound().getSExtValue();
-                auto step = nc.getStep().getSExtValue();
-                int64_t count = (step > 0) ? (ub - lb + step - 1) / step : 1;
-                kernel_trip *= (count > 0 ? count : 1);
-                if (ct.getValue() == "leaf")
-                  has_leaf = true;
+      int64_t total = 0;
+      for (auto root : root_counters) {
+        int64_t chain_product = 1;
+        for (auto c : all_counters) {
+          int64_t lb = c.getLowerBound().getSExtValue();
+          int64_t ub = c.getUpperBound().getSExtValue();
+          int64_t step = c.getStep().getSExtValue();
+          int64_t count = (step > 0) ? (ub - lb + step - 1) / step : 1;
+          if (count < 1) count = 1;
+
+          if (c == root) {
+            chain_product *= count;
+          } else if (c.getParentIndex()) {
+            Value parent = c.getParentIndex();
+            bool in_chain = false;
+            while (parent) {
+              auto it = result_to_counter.find(parent);
+              if (it == result_to_counter.end()) break;
+              TaskflowCounterOp parent_counter = it->second;
+              if (parent_counter == root) { in_chain = true; break; }
+              parent = parent_counter.getParentIndex();
+            }
+            if (in_chain) chain_product *= count;
+          }
+        }
+        total = std::max(total, chain_product);
+      }
+      return (total > 0) ? total : 1;
+    }
+
+    // ---------------------------------------------------------------
+    // Strategy 2: neura.counter ops (post convert-taskflow-to-neura,
+    //             but before transform-ctrl-to-data-flow).
+    //
+    // Each neura.kernel inside the task holds its own independent counter
+    // chain.  Kernels are scheduled sequentially in the task (one executes
+    // after the other), so the total trip count is the SUM of per-kernel
+    // products (unlike Strategy 1 counter chains, which are concurrent and
+    // therefore use max).
+    //
+    // NOTE: Multi-hyperblock tasks are not permitted (one task = one kernel).
+    // The loop below should therefore encounter exactly one kernel.
+    // ---------------------------------------------------------------
+    SmallVector<neura::CounterOp> neura_counters;
+    task.walk([&](neura::CounterOp nc) { neura_counters.push_back(nc); });
+
+    if (!neura_counters.empty()) {
+      int64_t total = 0;
+      int64_t kernel_count = 0;
+      task.walk([&](neura::KernelOp kernel) {
+        kernel_count++;
+        int64_t kernel_trip = 1;
+        bool has_leaf = false;
+        kernel.walk([&](neura::CounterOp nc) {
+          if (auto ct = nc->getAttrOfType<StringAttr>("counter_type")) {
+            if (ct.getValue() == "leaf" || ct.getValue() == "relay" ||
+                ct.getValue() == "root") {
+              auto lb = nc.getLowerBound().getSExtValue();
+              auto ub = nc.getUpperBound().getSExtValue();
+              auto step = nc.getStep().getSExtValue();
+              int64_t count = (step > 0) ? (ub - lb + step - 1) / step : 1;
+              kernel_trip *= (count > 0 ? count : 1);
+              if (ct.getValue() == "leaf") has_leaf = true;
+            }
+          }
+        });
+        if (has_leaf) total += kernel_trip;
+      });
+      assert(kernel_count <= 1 &&
+             "[computeTripCount] multi-hyperblock tasks are not allowed; "
+             "each task must contain exactly one neura.kernel");
+      return total > 0 ? total : 1;
+    }
+
+    // ---------------------------------------------------------------
+    // Strategy 3: Post-CF-lowering + post-transform-ctrl-to-data-flow.
+    // Outer loops are arith.cmpi (predicate=slt) + llvm.cond_br in multi-
+    // block task body.  Inner kernel loop is neura.icmp (cmpType="slt")
+    // with rhs_value attribute inside neura.kernel.
+    //
+    // Trip count = product of all outer loop bounds × inner kernel bound.
+    // We only count bounds in the task's own blocks (not inside kernels)
+    // for the outer product, then multiply by kernel inner bounds.
+    // ---------------------------------------------------------------
+    int64_t outer_product = 1;
+
+    // Walk only the task body blocks (skip nested kernel regions).
+    for (Block &block : task.getBody()) {
+      for (Operation &op : block) {
+        // Match arith.cmpi with slt predicate (predicate = 2).
+        if (op.getName().getStringRef() == "arith.cmpi") {
+          auto pred_attr = op.getAttrOfType<IntegerAttr>("predicate");
+          if (!pred_attr || pred_attr.getInt() != 2) // 2 = slt
+            continue;
+
+          // The RHS operand should be a constant (upper bound).
+          if (op.getNumOperands() < 2) continue;
+          Value rhs = op.getOperand(1);
+          if (auto def = rhs.getDefiningOp()) {
+            if (def->getName().getStringRef() == "arith.constant") {
+              if (auto val = def->getAttrOfType<IntegerAttr>("value")) {
+                int64_t bound = val.getInt();
+                if (bound > 0) {
+                  outer_product *= bound;
+                }
               }
             }
-          });
-          if (has_leaf)
-            total += kernel_trip;
-        });
-        return total > 0 ? total : 1;
-      }
-
-      // No counters found at all — default to 1.
-      return 1;
-    }
-
-    // Builds a map from counter result -> counter op for parent chain traversal.
-    // Also finds root counters (no parent_index).
-    SmallVector<TaskflowCounterOp> root_counters;
-    DenseMap<Value, TaskflowCounterOp> result_to_counter;
-    for (auto c : all_counters) {
-      // Counter op produces an induction variable result.
-      if (c->getNumResults() > 0)
-        result_to_counter[c->getResult(0)] = c;
-      if (!c.getParentIndex())
-        root_counters.push_back(c);
-    }
-
-    // For each root counter, computes the product of its chain.
-    // Independent chains execute concurrently, so take max.
-    int64_t total = 0;
-    for (auto root : root_counters) {
-      int64_t chain_product = 1;
-
-      // Walks all counters and multiplies those in this root's chain.
-      // A counter belongs to this chain if it IS the root, or its
-      // parent_index traces back to the root.
-      for (auto c : all_counters) {
-        int64_t lb = c.getLowerBound().getSExtValue();
-        int64_t ub = c.getUpperBound().getSExtValue();
-        int64_t step = c.getStep().getSExtValue();
-        int64_t count = (step > 0) ? (ub - lb + step - 1) / step : 1;
-        if (count < 1) count = 1;
-
-        if (c == root) {
-          chain_product *= count;
-        } else if (c.getParentIndex()) {
-          // Checks if this counter's parent is in the same chain.
-          // Walks up to see if we reach the root.
-          Value parent = c.getParentIndex();
-          bool in_chain = false;
-          // Simple check: if parent is the root's result, it's in chain.
-          // For deeper nesting, traces iteratively.
-          while (parent) {
-            auto it = result_to_counter.find(parent);
-            if (it == result_to_counter.end())
-              break;
-            TaskflowCounterOp parent_counter = it->second;
-            if (parent_counter == root) {
-              in_chain = true;
-              break;
-            }
-            parent = parent_counter.getParentIndex();
           }
-          if (in_chain)
-            chain_product *= count;
         }
       }
-      total = std::max(total, chain_product);
     }
 
+    // Extract inner kernel bounds from neura.icmp with rhs_value.
+    int64_t inner_product = 1;
+    task.walk([&](neura::KernelOp kernel) {
+      kernel.walk([&](Operation *op) {
+        if (op->getName().getStringRef() == "neura.icmp") {
+          auto cmp_type = op->getAttrOfType<StringAttr>("cmpType");
+          if (!cmp_type || cmp_type.getValue() != "slt") return;
+
+          if (auto rhs_val = op->getAttrOfType<IntegerAttr>("rhs_value")) {
+            int64_t bound = rhs_val.getInt();
+            if (bound > 0) {
+              inner_product *= bound;
+            }
+          }
+        }
+      });
+    });
+
+    int64_t total = outer_product * inner_product;
     return (total > 0) ? total : 1;
   }
 
@@ -1261,10 +1305,6 @@ private:
 
     llvm::errs() << "  [Fuse] Merging " << task_a.getTaskName() << " + "
                  << task_b.getTaskName() << "\n";
-    llvm::errs() << "[Fuse] task_a body before fusion:\n";
-    task_a.dump();
-    llvm::errs() << "[Fuse] task_b body before fusion:\n";
-    task_b.dump();
 
     // Computes the correct insertion point: must be after all operands of
     // both tasks are defined, but before any consumer of either task's
@@ -1767,8 +1807,6 @@ private:
 
 
     // Step 10: Sets fused attributes for the latency model.
-    llvm::errs() << "[performFusion] Fused task IR after creation:\n";
-    fused_task.dump();
     // trip_count: max of both, since independent tasks execute concurrently
     // on the shared tile array.
     int64_t fused_trip = std::max(node_a->trip_count, node_b->trip_count);

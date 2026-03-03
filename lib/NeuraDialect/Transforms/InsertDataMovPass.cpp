@@ -28,6 +28,13 @@ struct InsertDataMovForNeuraOps : public RewritePattern {
     // ops by earlier passes (LowerArithToNeura, etc.) before this pass runs.
     if (op->getDialect()->getNamespace() != accel::kNeuraTarget ||
         isa<neura::DataMovOp>(op) ||
+        // ReserveOp pre-allocates a memory slot (e.g., for loop-carried
+        // state or output buffers).  It is not a computation node and its
+        // result is a memory reference, not a data value — wrapping it in
+        // DataMovOp would insert a spurious data-movement for a slot that
+        // has no value to move yet.  Consumers of ReserveOp results that
+        // do need a mov will handle this themselves (see the
+        // isa<neura::ReserveOp>(producer) guard below).
         isa<neura::ReserveOp>(op) ||
         isa<neura::KernelOp>(op) ||
         isa<neura::FusedOp>(op)) {

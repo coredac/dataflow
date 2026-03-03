@@ -34,6 +34,7 @@
 // RUN: FileCheck %s --input-file=%t.placement.mlir --check-prefixes=PLACEMENT
 
 // RUN: mlir-neura-opt %s --affine-loop-tree-serialization \
+// RUN: --affine-loop-perfection \
 // RUN: --convert-affine-to-taskflow \
 // RUN: --construct-hyperblock-from-task \
 // RUN: --classify-counters \
@@ -396,7 +397,7 @@ module attributes {} {
 
 // RESOPT:      "taskflow.task"
 // RESOPT-SAME: task_name = "Task_0_Task_1_utilfused"
-// RESOPT:      cgra_count = 1 : i32, compiled_ii = 6 : i32, steps = 10 : i32, tile_shape = "1x1", trip_count = 1 : i32
+// RESOPT:      cgra_count = 1 : i32, compiled_ii = 6 : i32, steps = 11 : i32, tile_shape = "1x1", trip_count = 32 : i32
 // RESOPT:      "taskflow.task"
 // RESOPT-SAME: task_name = "Task_2"
-// RESOPT:      cgra_count = 1 : i32, compiled_ii = 12 : i32, steps = 15 : i32, tile_shape = "1x1", trip_count = 1 : i32
+// RESOPT:      cgra_count = 1 : i32, compiled_ii = 12 : i32, steps = 15 : i32, tile_shape = "1x1", trip_count = 32 : i32

@@ -8,6 +8,7 @@
 // RUN: FileCheck %s --input-file=%t.taskflow.mlir --check-prefixes=TASKFLOW
 
 // RUN: mlir-neura-opt %s --affine-loop-tree-serialization \
+// RUN: --affine-loop-perfection \
 // RUN: --convert-affine-to-taskflow \
 // RUN: --construct-hyperblock-from-task \
 // RUN: --classify-counters \
@@ -162,12 +163,12 @@ module {
 
 // RESOPT:      "taskflow.task"
 // RESOPT-SAME: task_name = "Task_0_Task_1_utilfused"
-// RESOPT:      cgra_count = 1 : i32, compiled_ii = 7 : i32, steps = 10 : i32, tile_shape = "1x1", trip_count = 1 : i32
+// RESOPT:      cgra_count = 2 : i32, compiled_ii = 6 : i32, steps = 10 : i32, tile_shape = "1x2", trip_count = 64 : i32
 // RESOPT:      "func.return"
 
 // CGRA Tile Occupation after RESOPT (4x4 grid, col x row):
 // +---+---+---+---+
-// | 0 | . | . | . |   Task_0_Task_1_utilfused (1x1, cgra_count=1)
+// | 0 | 0 | . | . |   0: Task_0_Task_1_utilfused (1x2, cgra_count=2)
 // +---+---+---+---+
 // | . | . | . | . |
 // +---+---+---+---+
