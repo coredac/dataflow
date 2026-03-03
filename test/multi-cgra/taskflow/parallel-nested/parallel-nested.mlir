@@ -28,9 +28,8 @@
 // RUN: --leverage-predicated-value \
 // RUN: --transform-ctrl-to-data-flow \
 // RUN: --fold-constant \
-// RUN: --resource-aware-task-optimization \
-// RUN: --architecture-spec=%S/../../../arch_spec/architecture.yaml \
-// RUN: --verify-each=false \
+// RUN: '--resource-aware-task-optimization=balance-skip-mapper=false' \
+// RUN: --architecture-spec=%S/../../../arch_spec/architecture_with_counter.yaml \
 // RUN: -o %t.resopt.mlir
 // RUN: FileCheck %s --input-file=%t.resopt.mlir --check-prefixes=RESOPT
 
@@ -161,14 +160,13 @@ module {
 // PLACEMENT:      taskflow.task @Task_1
 // PLACEMENT-SAME: task_mapping_info = {cgra_positions = [{col = 1 : i32, row = 0 : i32}], read_sram_locations = [{col = 1 : i32, row = 0 : i32}, {col = 1 : i32, row = 0 : i32}], write_sram_locations = [{col = 1 : i32, row = 0 : i32}]}
 
-// RESOPT:      "taskflow.task"
-// RESOPT-SAME: task_name = "Task_0_Task_1_utilfused"
-// RESOPT:      cgra_count = 2 : i32, compiled_ii = 6 : i32, steps = 10 : i32, tile_shape = "1x2", trip_count = 64 : i32
-// RESOPT:      "func.return"
+// RESOPT:      taskflow.task @Task_0_Task_1_utilfused
+// RESOPT:      cgra_count = 1 : i32, compiled_ii = 2 : i32, steps = 4 : i32, tile_shape = "1x1", trip_count = 64 : i32
+// RESOPT:      return
 
 // CGRA Tile Occupation after RESOPT (4x4 grid, col x row):
 // +---+---+---+---+
-// | 0 | 0 | . | . |   row=0: Task_0_Task_1_utilfused (1x2, cgra_count=2)
+// | 0 | . | . | . |   row=0: Task_0_Task_1_utilfused (1x1, cgra_count=1)
 // +---+---+---+---+
 // | . | . | . | . |
 // +---+---+---+---+

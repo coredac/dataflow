@@ -54,8 +54,8 @@
 // RUN: --leverage-predicated-value \
 // RUN: --transform-ctrl-to-data-flow \
 // RUN: --fold-constant \
-// RUN: --resource-aware-task-optimization \
-// RUN: --architecture-spec=%S/../../../arch_spec/architecture.yaml \
+// RUN: '--resource-aware-task-optimization=balance-skip-mapper=false' \
+// RUN: --architecture-spec=%S/../../../arch_spec/architecture_with_counter.yaml \
 // RUN: --verify-each=false \
 // RUN: -o %t.resopt.mlir
 // RUN: FileCheck %s --input-file=%t.resopt.mlir --check-prefixes=RESOPT
@@ -397,7 +397,7 @@ module attributes {} {
 
 // RESOPT:      "taskflow.task"
 // RESOPT-SAME: task_name = "Task_0_Task_1_utilfused"
-// RESOPT:      cgra_count = 1 : i32, compiled_ii = 6 : i32, steps = 11 : i32, tile_shape = "1x1", trip_count = 32 : i32
+// RESOPT:      cgra_count = 1 : i32, compiled_ii = 3 : i32, steps = 5 : i32, tile_shape = "1x1", trip_count = 32 : i32
 // RESOPT:      "taskflow.task"
 // RESOPT-SAME: task_name = "Task_2"
-// RESOPT:      cgra_count = 1 : i32, compiled_ii = 12 : i32, steps = 15 : i32, tile_shape = "1x1", trip_count = 32 : i32
+// RESOPT:      cgra_count = 1 : i32, compiled_ii = 1 : i32, steps = 7 : i32, tile_shape = "1x1", trip_count = 32 : i32
