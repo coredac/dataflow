@@ -1061,14 +1061,14 @@ public:
       llvm::DenseMap<TaskGraphNode *, int64_t> to_sink_cache;
       llvm::DenseMap<TaskGraphNode *, int64_t> from_source_cache;
 
-      // Compute depth_to_sink for all nodes (via computeCriticalPathFrom).
+      // Computes depth_to_sink for all nodes (via computeCriticalPathFrom).
       int64_t global_critical_path = 0;
       for (auto &node : graph.nodes) {
         int64_t cp = computeCriticalPathFrom(node.get(), to_sink_cache);
         global_critical_path = std::max(global_critical_path, cp);
       }
 
-      // Compute depth_from_source for all nodes.
+      // Computes depth_from_source for all nodes.
       for (auto &node : graph.nodes) {
         computeDepthFromSource(node.get(), from_source_cache);
       }
@@ -1869,26 +1869,14 @@ struct ResourceAwareTaskOptimizationPass
         // for every task. Non-fused tasks only got cgra_count written during
         // intermediate iterations; ii, steps, and trip_count live only in the
         // graph node and must be persisted here.
-
-        // If balance probes used analytical estimates (balance_skip=true) but
-        // we are in compiled mode, re-profile balanced tasks with the real
-        // mapper to get accurate final compiled_ii / steps values.
-        if (balance_skip && !use_analytical) {
-          for (auto &node : graph.nodes) {
-            if (node->cgra_count > 1) {
-              node->shape = pickBestShape(node->cgra_count);
-              llvm::errs() << "[Converge] Re-profiling balanced task "
-                           << node->op.getTaskName()
-                           << " with mapper (cgra_count="
-                           << node->cgra_count << ")\n";
-              graph.profileTaskPublic(node.get(), node->op,
-                                      /*skip_mapper=*/false);
-              llvm::errs() << "[Converge] " << node->op.getTaskName()
-                           << ": compiled_ii=" << node->ii
-                           << ", steps=" << node->steps << "\n";
-            }
-          }
-        }
+        //
+        // Note: no re-profiling is done here.  When balance-skip-mapper=true
+        // (the default), the balance phase uses analytical estimates; those
+        // are the values written to the final IR.  When
+        // balance-skip-mapper=false, the balance phase already ran the real
+        // mapper for each speculative probe, so the graph already contains
+        // accurate compiled_ii / steps values.  Either way, the converged
+        // graph state is authoritative and written directly to IR.
 
         for (auto &node : graph.nodes) {
           OpBuilder b(node->op);

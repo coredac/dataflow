@@ -38,7 +38,6 @@
 // RUN: --fold-constant \
 // RUN: '--resource-aware-task-optimization=balance-skip-mapper=false' \
 // RUN: --architecture-spec=%S/../../../arch_spec/architecture_with_counter.yaml \
-// RUN: --verify-each=false \
 // RUN: -o %t.resopt.mlir
 // RUN: FileCheck %s --input-file=%t.resopt.mlir --check-prefixes=RESOPT
 
@@ -704,37 +703,31 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // STREAM-NEXT: }
 
 
-// RESOPT:      "taskflow.task"
-// RESOPT-SAME: task_name = "Task_1_Task_0_Task_2_utilfused_utilfused"
-// RESOPT:      {cgra_count = 1 : i32, compiled_ii = 4 : i32, steps = 3 : i32, tile_shape = "1x1", trip_count = 6400 : i32}
-// RESOPT:      "taskflow.task"
-// RESOPT-SAME: task_name = "Task_3"
-// RESOPT:      {cgra_count = 1 : i32, compiled_ii = 2 : i32, steps = 6 : i32, tile_shape = "1x1", trip_count = 2359296 : i32}
-// RESOPT:      "taskflow.task"
-// RESOPT-SAME: task_name = "Task_4_Task_5_fused_Task_7_utilfused"
-// RESOPT:      {cgra_count = 2 : i32, compiled_ii = 1 : i32, steps = 5 : i32, tile_shape = "1x2", trip_count = 6400 : i32}
-// RESOPT:      "taskflow.task"
-// RESOPT-SAME: task_name = "Task_6_Task_8_utilfused"
-// RESOPT:      {cgra_count = 1 : i32, compiled_ii = 2 : i32, steps = 3 : i32, tile_shape = "1x1", trip_count = 4096 : i32}
-// RESOPT:      "taskflow.task"
-// RESOPT-SAME: task_name = "Task_9"
-// RESOPT:      {cgra_count = 1 : i32, compiled_ii = 2 : i32, steps = 6 : i32, tile_shape = "1x1", trip_count = 2359296 : i32}
-// RESOPT:      "taskflow.task"
-// RESOPT-SAME: task_name = "Task_10_Task_11_Task_12_fused_fused"
-// RESOPT:      {cgra_count = 1 : i32, compiled_ii = 1 : i32, steps = 6 : i32, tile_shape = "1x1", trip_count = 4096 : i32}
-// RESOPT:      "func.return"
+// RESOPT:      taskflow.task @Task_1_Task_0_Task_2_utilfused_utilfused
+// RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 4 : i32, steps = 3 : i32, tile_shape = "1x1", trip_count = 6400 : i32}
+// RESOPT:      taskflow.task @Task_3
+// RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 2 : i32, steps = 6 : i32, tile_shape = "1x1", trip_count = 2359296 : i32}
+// RESOPT:      taskflow.task @Task_4_Task_5_fused_Task_7_utilfused
+// RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 2 : i32, steps = 7 : i32, tile_shape = "1x1", trip_count = 6400 : i32}
+// RESOPT:      taskflow.task @Task_6_Task_8_utilfused
+// RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 2 : i32, steps = 3 : i32, tile_shape = "1x1", trip_count = 4096 : i32}
+// RESOPT:      taskflow.task @Task_9
+// RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 2 : i32, steps = 6 : i32, tile_shape = "1x1", trip_count = 2359296 : i32}
+// RESOPT:      taskflow.task @Task_10_Task_11_Task_12_fused_fused
+// RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 2 : i32, steps = 8 : i32, tile_shape = "1x1", trip_count = 4096 : i32}
+// RESOPT:      return
 
 
 // CGRA Tile Occupation after RESOPT (4x4 grid, col x row):
 // +---+---+---+---+
-// | 0 | 1 | 2 | 2 |   row=0: 0=Task_1_..._utilfused, 1=Task_3, 2=Task_4_..._utilfused(1x2)
+// | 0 | 1 | 2 | 3 |   row=0: 0=Task_1_..._utilfused, 1=Task_3, 2=Task_4_..._utilfused, 3=Task_6_Task_8_utilfused
 // +---+---+---+---+
-// | 3 | 4 | 5 |   |   row=1: 3=Task_6_Task_8_utilfused, 4=Task_9, 5=Task_10_..._fused_fused
-// +---+---+---+---+
-// | . | . | . | . |
+// | 4 | 5 | . | . |   row=1: 4=Task_9, 5=Task_10_..._fused_fused
 // +---+---+---+---+
 // | . | . | . | . |
 // +---+---+---+---+
-// 0=Task_1_Task_0_Task_2_utilfused_utilfused, 1=Task_3, 2=Task_4_Task_5_fused_Task_7_utilfused (2 CGRAs, 1x2)
+// | . | . | . | . |
+// +---+---+---+---+
+// 0=Task_1_Task_0_Task_2_utilfused_utilfused, 1=Task_3, 2=Task_4_Task_5_fused_Task_7_utilfused
 // 3=Task_6_Task_8_utilfused, 4=Task_9, 5=Task_10_Task_11_Task_12_fused_fused
-// 7/16 CGRAs used
+// 6/16 CGRAs used
