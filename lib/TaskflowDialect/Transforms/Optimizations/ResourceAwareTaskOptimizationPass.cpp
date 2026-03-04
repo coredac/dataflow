@@ -156,7 +156,7 @@ static SmallVector<CgraShape> getNonRectangularShapes(int cgra_count) {
 // between nodes) to minimize communication latency. In cases of identical bounding
 // box area, we prefer more square-like bounds over long rectangles.
 //
-// Note: This function only picks a localized shape for an idealized single task mapping.
+// TODO: This function only picks a localized shape for an idealized single task mapping.
 // Global placement and conflict resolution across multiple tasks is legitimately deferred 
 // to downstream map-on-cgra pass, as speculative profiling assumes unconstrained placement.
 static CgraShape pickBestShape(int cgra_count) {
@@ -249,7 +249,7 @@ public:
         node->trip_count = computeTripCount(task);
       }
       
-      // Overrides with explicit attributes if present (e.g. from manual tuning).
+      // Overrides with explicit attributes if present.
       if (auto attr = task->getAttrOfType<IntegerAttr>("steps")) {
         node->steps = attr.getInt();
       }
@@ -275,17 +275,7 @@ public:
       }
     }
 
-    // 3. Builds memory edges via SSA def-use on write_outputs.
-    //
-    //   RAW  (write → read):  producer's write_output consumed via
-    //          consumer's read_memrefs.
-    //   WAW  (write → write): producer's write_output consumed via
-    //          consumer's write_memrefs (chain write).
-    //   WAR  (read → write):  any task that consumed a memref via
-    //          read_memrefs and whose write_output is then passed to
-    //          another task's write_memrefs is already captured by the
-    //          write chain above; the ordering is preserved by the SSA
-    //          chain itself.
+    // 3. Builds memory edges.
     for (auto &consumer : nodes) {
       // RAW: producer wrote a memref that this task reads.
       for (Value memref : consumer->op.getReadMemrefs()) {
@@ -351,7 +341,7 @@ public:
     return total;
   }
 
-  // Public wrapper for profileTask — used by UtilizationFuser to re-profile
+  // Public wrapper for profileTask: used by UtilizationFuser to re-profile
   // fused tasks with the real downstream Neura pipeline.
   // When skip_mapper=true, only ResMII/RecMII analytical estimates are used
   // (no MapToAcceleratorPass). This is safe for speculative balance checks
@@ -372,24 +362,9 @@ private:
     }
   }
 
-  // Profiles a single TaskflowTaskOp to extract compiled_ii and steps.
-  //
-  // Precondition: the pass runs AFTER full taskflow→neura lowering +
-  // dataflow transformation, so each task body contains exactly one
-  // neura.kernel op in dataflow IR.
-  //
-  // This method clones the task, extracts the kernel, wraps it in a
-  // standalone func::FuncOp with accelerator="neura", and runs
-  // InsertDataMov + MapToAcceleratorPass to obtain real compiled_ii.
-  //
-  // ASSERTS if no kernel is found or if more than one kernel exists —
-  // the pass must run post-lowering with exactly one kernel per task.
-  //
-  // skip_mapper: when true, skip MapToAcceleratorPass and use only
-  //   ResMII/RecMII analytical estimates.  This is set by the
-  //   --estimation-mode=analytical pass option, or internally for speculative
-  //   balance probes where the mapper may loop indefinitely on large tile
-  //   arrays.
+  // Profiles a single TaskflowTaskOp: clones the task, wraps the kernel in a
+  // standalone func, and runs InsertDataMov + MapToAcceleratorPass to obtain
+  // ii.  skip_mapper: use only ResMII/RecMII analytical estimates.
   void profileTask(TaskGraphNode *node, TaskflowTaskOp task,
                    bool skip_mapper = false) {
     MLIRContext *ctx = task.getContext();
@@ -401,50 +376,35 @@ private:
            "[profileTask] FATAL: task has no parent func::FuncOp. "
            "compiled_ii must come from downstream pipeline.");
 
-    // ================================================================
-    // Kernel Extraction (post-lowering: tasks have neura.kernel ops)
-    // ================================================================
-    SmallVector<neura::KernelOp> preexisting_kernels;
-    task.walk([&](neura::KernelOp k) { preexisting_kernels.push_back(k); });
+    // Verifies exactly one neura.kernel per task (post-lowering invariant).
+    neura::KernelOp the_kernel;
+    task.walk([&](neura::KernelOp k) {
+      assert(!the_kernel && "task has more than one neura.kernel op");
+      the_kernel = k;
+    });
+    assert(the_kernel && "task has no neura.kernel op");
 
-    assert(!preexisting_kernels.empty() &&
-           "[profileTask] FATAL: task has no neura.kernel ops. "
-           "This pass must run after full taskflow-to-neura lowering.");
-
-    assert(preexisting_kernels.size() == 1 &&
-           "[profileTask] FATAL: task has more than one neura.kernel op. "
-           "Each task must contain exactly one kernel.");
-
-    // Clone the task into a temporary module so we don't mutate the real IR.
-    SmallVector<neura::KernelOp> cloned_kernels;
+    // Clones the task into a temporary module so we don't mutate the real IR.
     auto tmp_mod = ModuleOp::create(loc);
+    neura::KernelOp cloned_kernel;
     {
       OpBuilder b(tmp_mod.getBodyRegion());
       IRMapping mapping;
-      Operation* cloned_task = b.clone(*task.getOperation(), mapping);
+      Operation *cloned_task = b.clone(*task.getOperation(), mapping);
       cast<TaskflowTaskOp>(cloned_task).walk([&](neura::KernelOp k) {
-        cloned_kernels.push_back(k);
+        cloned_kernel = k;
       });
     }
-
-    // ================================================================
-    // Run Neura pipeline on each kernel to get compiled_ii and steps
-    // ================================================================
-    int best_compiled_ii = 0;
-    int best_cp_depth = 1;
-
-    // Compute tile dimensions for the target CGRA shape.
-    // Bounding box in tiles: x_tiles = cols * per_cgra_cols,
-    //                        y_tiles = rows * per_cgra_rows.
+ 
+    // Computes tile dimensions for the target CGRA shape.
     int per_cgra_cols = neura::getArchitecture().getPerCgraColumns();
     int per_cgra_rows = neura::getArchitecture().getPerCgraRows();
     int x_tiles = node->shape.cols * per_cgra_cols;
     int y_tiles = node->shape.rows * per_cgra_rows;
     std::string valid_tiles;
     if (!node->shape.is_rectangular) {
-      // Build an explicit tile list from the shape's CGRA positions.
-      // Each CGRA at position (cgra_c, cgra_r) contributes a per_cgra_cols ×
-      // per_cgra_rows block of tiles.
+      // Enumerates individual tile coordinates for non-rectangular shapes
+      // so the mapper knows exactly which tiles are valid.
       llvm::raw_string_ostream os(valid_tiles);
       for (auto &[cgra_c, cgra_r] : node->shape.cgra_positions) {
         for (int tr = 0; tr < per_cgra_rows; ++tr) {
@@ -458,63 +418,45 @@ private:
       }
     }
 
-    for (auto cloned_kernel : cloned_kernels) {
-      auto phase2_module = ModuleOp::create(loc);
-      int compiled_ii = 0;
-      int cp_depth = 1;
+    // Runs Neura pipeline on the kernel to get compiled_ii and steps.
+    auto phase2_module = ModuleOp::create(loc);
+    int compiled_ii = 0;
+    int cp_depth = 1;
 
-      if (succeeded(
-              runNeuraPipelineOnKernel(ctx, cloned_kernel, phase2_module,
-                                      compiled_ii, cp_depth,
-                                      x_tiles, y_tiles, valid_tiles,
-                                      skip_mapper))) {
-        llvm::errs() << "[profileTask] kernel in " << task.getTaskName()
-                     << ": compiled_ii=" << compiled_ii
-                     << ", cp_depth=" << cp_depth << "\n";
-      } else {
-        llvm::errs() << "[profileTask] Phase 2 failed for kernel in "
-                     << task.getTaskName() << ", extracting partial\n";
-        extractMetricsFromPartialIR(phase2_module, compiled_ii, cp_depth,
-                                    x_tiles, y_tiles);
-      }
-
-      // Single kernel per task — record its metrics directly.
-      best_compiled_ii = std::max(best_compiled_ii, compiled_ii);
-      best_cp_depth = std::max(best_cp_depth, cp_depth);
-      phase2_module.erase();
+    if (succeeded(
+            runNeuraPipelineOnKernel(ctx, cloned_kernel, phase2_module,
+                                    compiled_ii, cp_depth,
+                                    x_tiles, y_tiles, valid_tiles,
+                                    skip_mapper))) {
+      llvm::errs() << "[profileTask] kernel in " << task.getTaskName()
+                   << ": compiled_ii=" << compiled_ii
+                   << ", cp_depth=" << cp_depth << "\n";
+    } else {
+      llvm::errs() << "[profileTask] Phase 2 failed for kernel in "
+                   << task.getTaskName() << ", extracting partial\n";
+      extractMetricsFromPartialIR(phase2_module, compiled_ii, cp_depth,
+                                  x_tiles, y_tiles);
     }
+    phase2_module.erase();
 
-    assert(best_compiled_ii > 0 &&
-           "[profileTask] FATAL: compiled_ii is 0 after downstream pipeline. "
-           "All profiling paths must produce a valid compiled_ii > 0.");
-    node->ii = best_compiled_ii;
-    node->steps = std::max(best_cp_depth, 1);
+    assert(compiled_ii > 0 &&
+           "[profileTask] FATAL: compiled_ii is 0 after downstream pipeline.");
+    node->ii = compiled_ii;
+    node->steps = std::max(cp_depth, 1);
 
     llvm::errs() << "[profileTask] " << task.getTaskName()
                  << ": compiled_ii=" << node->ii
                  << ", steps=" << node->steps << "\n";
 
-    // Erase the temporary module.
+    // Erases the temporary module.
     tmp_mod.erase();
   }
 
-  // Clones a neura.kernel body into a standalone func::FuncOp inside
-  // dst_module, then runs InsertDataMov + mapper to get compiled_ii.
-  //
-  // Precondition: the kernel body is already in neura dataflow IR (all
-  // lowering passes have been applied before this pass runs).  Only
-  // InsertDataMov is needed before the mapper.
-  //
-  // Returns success if MapToAccelerator ran and produced compiled_ii.
-  //
-  // x_tiles / y_tiles: total tile dimensions of the target CGRA array.
-  //   These are passed to MapToAcceleratorPass so it maps onto the correct
-  //   multi-CGRA tile grid rather than the default 1-CGRA singleton.
-  // valid_tiles: explicit comma-separated tile list for non-rectangular shapes.
-  //   Empty string means "use the full x_tiles × y_tiles rectangle".
-  // skip_mapper: when true, skip MapToAcceleratorPass entirely and rely only
-  //   on ResMII/RecMII analytical estimates. Used for speculative balance
-  //   probes to prevent infinite mapper backtracking on larger tile arrays.
+  // Wraps a neura.kernel into a standalone func in dst_module, runs
+  // InsertDataMov + mapper, and returns compiled_ii / cp_depth.
+  // x_tiles/y_tiles: multi-CGRA tile grid dimensions.
+  // valid_tiles: explicit tile list for non-rectangular shapes (empty = full).
+  // skip_mapper: skip MapToAcceleratorPass, use ResMII/RecMII only.
   LogicalResult runNeuraPipelineOnKernel(MLIRContext *ctx,
                                          neura::KernelOp kernel,
                                          ModuleOp dst_module,
@@ -555,7 +497,7 @@ private:
     kernel_body.cloneInto(&func_region, mapping);
 
     // The cloned region now contains a copy of every block from the kernel.
-    // Walk through and replace neura.yield terminators with func.return.
+    // Walks through and replaces neura.yield terminators with func.return.
     for (Block &block : func_region) {
       if (auto yield = dyn_cast<neura::YieldOp>(block.getTerminator())) {
         builder.setInsertionPoint(yield);
@@ -568,12 +510,8 @@ private:
       }
     }
 
-    // Since this pass runs after the full neura lowering + dataflow pipeline
-    // (lower-affine, convert-scf-to-cf, convert-cf-to-llvm, assign-accelerator,
-    // lower-memref-to-neura, lower-arith-to-neura, lower-builtin-to-neura,
-    // lower-llvm-to-neura, promote-input-arg-to-const, canonicalize-*,
-    // transform-ctrl-to-data-flow), the kernel body is already in neura
-    // dataflow IR.  Only InsertDataMov is needed before the mapper.
+    // The kernel body is already in neura dataflow IR (all lowering passes
+    // completed before this pass).  Only InsertDataMov is needed before mapper.
     PassManager pm(ctx);
     pm.enableVerifier(false);
 
@@ -588,14 +526,8 @@ private:
       return failure();
     }
 
-    // Extracts ResMII/RecMII from the post-InsertDataMov Neura IR. These are
-    // the authoritative lower-bounds and the fallback metrics when the mapper
-    // is skipped. We compute them now (before MapToAccelerator modifies the IR
-    // with dfg_id attrs) so that the fallback always uses the same IR.
-    //
-    // Uses a custom architecture sized to the actual tile array
-    // (x_tiles × y_tiles) so ResMII reflects the real resource pool.
-    // Fall back to the global singleton if tile dims are not specified.
+    // Computes ResMII/RecMII as analytical lower-bound (fallback when mapper
+    // is skipped or fails).  Uses a custom arch sized to the actual tile array.
     {
       std::unique_ptr<neura::Architecture> custom_arch;
       const neura::Architecture *arch_ptr = &neura::getArchitecture();
@@ -616,7 +548,7 @@ private:
         for (auto &cycle : cycles)
           rec_mii = std::max(rec_mii, cycle.length);
         compiled_ii = std::max({compiled_ii, res_mii, rec_mii});
-        // cp_depth from ALAP.
+        // Derives cp_depth from ALAP (As-Late-As-Possible) scheduling levels.
         std::set<Operation *> critical_ops;
         for (auto &cycle : cycles)
           for (Operation *op : cycle.operations) critical_ops.insert(op);
@@ -679,7 +611,7 @@ private:
     if (all_data_movs_ok && total_mapped_ops <= kMapperOpLimit) {
       // Runs MapToAcceleratorPass in a fresh pass manager on the already-lowered
       // dst_module (pre-mapper pipeline already ran above).
-      // Pass the correct tile dimensions so the mapper uses the right array.
+      // Passes the correct tile dimensions so the mapper uses the right array.
       PassManager pm2(ctx);
       pm2.enableVerifier(false);
       if (x_tiles > 0 && y_tiles > 0) {
@@ -693,9 +625,7 @@ private:
       }
 
       if (succeeded(pm2.run(dst_module))) {
-        // Reads the true compiled_ii from mapping_info (overrides ResMII/RecMII).
-        // compiled_ii and cp_depth are already initialized from the pre-mapper
-        // ResMII/RecMII analysis above; mapper result takes precedence.
+        // Reads true compiled_ii from mapping_info; overrides analytical estimate.
         dst_module.walk([&](func::FuncOp fn) {
           if (!fn->hasAttr("accelerator")) return;
           if (auto mapping_info =
@@ -724,18 +654,12 @@ private:
     return success();
   }
 
-
-  // Extracts metrics from partially-lowered Neura IR when the full pipeline
-  // fails. Uses ResMII/RecMII analysis and critical path depth on whatever
-  // Neura ops were successfully created.
-  //
-  // x_tiles / y_tiles: if > 0, use a custom architecture sized to this tile
-  //   array so that ResMII reflects the real resource pool for multi-CGRA
-  //   shapes. Falls back to the global singleton (1-CGRA) otherwise.
+  // Extracts ResMII/RecMII from partially-lowered IR when the full pipeline
+  // fails.  Uses custom arch sized to x_tiles × y_tiles if provided.
   void extractMetricsFromPartialIR(ModuleOp tmp_module,
                                    int &out_ii, int &out_cp_depth,
                                    int x_tiles = 0, int y_tiles = 0) {
-    // Build architecture: use custom tile dimensions if provided.
+    // Builds architecture: uses custom tile dimensions if provided.
     std::unique_ptr<neura::Architecture> custom_arch;
     const neura::Architecture *arch_ptr = &neura::getArchitecture();
     if (x_tiles > 0 && y_tiles > 0) {
@@ -749,7 +673,7 @@ private:
     int rec_mii = 1;
     int cp_depth = 1;
 
-    // Try func-level analysis on partially-lowered funcs.
+    // Tries func-level analysis on partially-lowered funcs.
     tmp_module.walk([&](func::FuncOp fn) {
       if (!fn->hasAttr("accelerator"))
         return;
@@ -792,7 +716,7 @@ private:
   // The trip count of a single counter is:
   //   ceil((upper_bound - lower_bound) / step)
   //
-  // Counters form chains (root → relay → leaf). The trip count of a chain
+  // Counters form chains (root -> relay -> leaf). The trip count of a chain
   // is the product of each counter's individual trip count.
   //
   // Multiple independent counter chains execute concurrently on the CGRA,
@@ -806,8 +730,7 @@ private:
     }
 
     if (counters.empty()) {
-      // Fallback: try neura.counter ops (post-convert-taskflow-to-neura,
-      // pre-ctrl-to-dataflow).
+      // Defensive fallback: try neura.counter ops inside kernels.
       int64_t total = 1;
       task.walk([&](neura::KernelOp kernel) {
         int64_t kernel_product = 1;
@@ -832,26 +755,21 @@ private:
     // Builds counter chains from taskflow.counter ops.
     // A root counter has no parent_index. A relay/leaf counter has a
     // parent_index that is the result of another counter.
-    // Find root counters (no parent).
+    // Finds root counters (no parent).
     SmallVector<TaskflowCounterOp> roots;
     for (auto counter : counters) {
       if (!counter.getParentIndex())
         roots.push_back(counter);
     }
 
-    // For each root, follow the chain and compute the product.
-    // Build a map from counter result → child counter.
-    DenseMap<Value, TaskflowCounterOp> result_to_counter;
-    for (auto counter : counters)
-      result_to_counter[counter.getCounterIndex()] = counter;
-
+    // Builds a map from parent counter result -> child counters.
     DenseMap<Value, SmallVector<TaskflowCounterOp>> parent_to_children;
     for (auto counter : counters) {
       if (auto parent = counter.getParentIndex())
         parent_to_children[parent].push_back(counter);
     }
 
-    // Compute trip count for a single counter.
+    // Computes trip count for a single counter.
     auto counterTripCount = [](TaskflowCounterOp counter) -> int64_t {
       int64_t lb = counter.getLowerBound().getSExtValue();
       int64_t ub = counter.getUpperBound().getSExtValue();
@@ -862,10 +780,10 @@ private:
     };
 
     // DFS from each root, accumulating the product along the chain.
-    // Independent chains are concurrent → take max across chains.
+    // Independent chains are concurrent -> take max across chains.
     int64_t total = 1;
     for (auto root : roots) {
-      // Follow chain: root → children → grandchildren ...
+      // Follows chain: root -> children -> grandchildren ...
       // Chain product = product of all counters in this chain.
       int64_t chain_product = 1;
       SmallVector<TaskflowCounterOp> worklist;
@@ -919,10 +837,7 @@ public:
         break;
       }
 
-      // Finds the bottleneck: the node on the critical path with highest
-      // estimated latency. We recompute the critical path every iteration
-      // because adding CGRAs to the previous bottleneck may shift the
-      // critical path to a different node.
+      // Recomputes critical path each iteration (may shift after rebalance).
       TaskGraphNode *bottleneck = findBottleneck(graph, saturated_nodes);
       if (!bottleneck) {
         break;
@@ -1160,7 +1075,7 @@ private:
           continue;
         }
 
-        // Legality: check no intermediate task depends on a or b.
+        // Legality: checks no intermediate task depends on a or b.
         if (!canSafelyFuse(a, b, graph)) {
           continue;
         }
@@ -1194,7 +1109,7 @@ private:
 
     if (task_a->getBlock() != task_b->getBlock()) return false;
 
-    // Ensure task_a is before task_b.
+    // Ensures task_a is before task_b.
     if (!task_a->isBeforeInBlock(task_b)) {
       std::swap(task_a, task_b);
       std::swap(a, b);
@@ -1210,7 +1125,7 @@ private:
       // Is this node between task_a and task_b?
       if (task_a->isBeforeInBlock(other_op) &&
           other_op->isBeforeInBlock(task_b)) {
-        // Check if this intermediate task has any dependency on a or b.
+        // Checks if this intermediate task has any dependency on a or b.
         if (!graph.areIndependent(a, node.get()) ||
             !graph.areIndependent(b, node.get())) {
           return false;
@@ -1240,9 +1155,7 @@ private:
       return false;
     }
 
-    // Safety: fusion assumes single-block task bodies (counter-mode tasks).
-    // Multi-block tasks (non-counter mode with outer loops lowered to CF)
-    // cannot be fused with the single-block cloning strategy.
+    // Safety: fusion requires single-block task bodies.
     if (!task_a.getBody().hasOneBlock() || !task_b.getBody().hasOneBlock()) {
       llvm::errs() << "  [Fuse] Skipping: multi-block task body\n";
       return false;
@@ -1290,6 +1203,7 @@ private:
     SmallVector<Value> merged_original_read_memrefs;
     SmallVector<Value> merged_original_write_memrefs;
 
+    // Deduplicates values when merging operand lists from both tasks.
     auto addUnique = [](SmallVector<Value> &target, ValueRange source) {
       for (Value v : source) {
         if (llvm::find(target, v) == target.end()) {
@@ -1310,16 +1224,11 @@ private:
     addUnique(merged_original_write_memrefs, task_b.getOriginalWriteMemrefs());
 
     // Step 2: Builds result types.
-    // Write outputs = merged write memrefs (each becomes a result).
     SmallVector<Type> write_output_types;
     for (Value v : merged_write_memrefs) {
       write_output_types.push_back(v.getType());
     }
-    // Value outputs: union from both tasks.
     SmallVector<Type> value_output_types;
-    // For independent tasks, we collect value outputs from both.
-    // But for utilization fusion of independent tasks, value_outputs are rare.
-    // We include them for correctness.
     for (Value v : task_a.getValueOutputs()) {
       value_output_types.push_back(v.getType());
     }
@@ -1331,7 +1240,7 @@ private:
     std::string fused_name = task_a.getTaskName().str() + "_" +
                              task_b.getTaskName().str() + "_utilfused";
 
-    // Step 4: Creates the fused task op using the correct API.
+    // Step 4: Creates the fused task op.
     auto fused_task = builder.create<TaskflowTaskOp>(
         task_a.getLoc(), write_output_types, value_output_types,
         merged_read_memrefs, merged_write_memrefs, merged_value_inputs,
@@ -1341,22 +1250,17 @@ private:
     // ================================================================
     // Region-Level Fusion (single-block task bodies)
     // ================================================================
-    // Task bodies contain counter ops, one neura.kernel op, and a
-    // taskflow.yield terminator — all in a single block.
 
-    // Step 5: Clone both task regions into the fused task body.
-    // First, build block-arg mappings for each source task.
+    // Step 5: Clones both task regions into the fused task body.
+    // Maps source task's block args to fused task's block args.
     auto buildTaskArgMapping =
         [&](TaskflowTaskOp orig_task, Region &fused_region,
             IRMapping &mapping) {
       Block &src_entry = orig_task.getBody().front();
-      // Maps source task's entry block args to the fused task's entry
-      // block args based on the merged operand lists.
       unsigned src_idx = 0;
       unsigned read_count = orig_task.getReadMemrefs().size();
       unsigned write_count = orig_task.getWriteMemrefs().size();
 
-      // Map read_memrefs block args.
       for (unsigned i = 0; i < read_count; ++i) {
         Value orig_memref = orig_task.getReadMemrefs()[i];
         auto it = llvm::find(merged_read_memrefs, orig_memref);
@@ -1367,7 +1271,6 @@ private:
       }
       src_idx += read_count;
 
-      // Map write_memrefs block args.
       for (unsigned i = 0; i < write_count; ++i) {
         Value orig_memref = orig_task.getWriteMemrefs()[i];
         auto it = llvm::find(merged_write_memrefs, orig_memref);
@@ -1379,7 +1282,6 @@ private:
       }
       src_idx += write_count;
 
-      // Map value_inputs block args.
       for (unsigned i = 0; i < orig_task.getValueInputs().size(); ++i) {
         Value orig_val = orig_task.getValueInputs()[i];
         auto it = llvm::find(merged_value_inputs, orig_val);
@@ -1402,9 +1304,7 @@ private:
     for (Value v : merged_value_inputs)
       entry_block->addArgument(v.getType(), fused_task.getLoc());
 
-    // Clones ops from task_a and task_b into the fused entry block.
-    // Task bodies are single-block: they contain counter ops, one
-    // neura.kernel op, and a taskflow.yield terminator.
+    // Clones non-yield ops from task_a and task_b into fused entry block.
     IRMapping mapping_a;
     buildTaskArgMapping(task_a, fused_task.getBody(), mapping_a);
 
@@ -1429,29 +1329,18 @@ private:
       }
     }
 
-    // Finds the cloned kernels (one from each task) in the fused entry block.
+    // Identifies the two cloned kernels in the fused entry block.
     neura::KernelOp cloned_kernel_a, cloned_kernel_b;
     {
-      neura::KernelOp orig_kernel_a, orig_kernel_b;
-      task_a.walk([&](neura::KernelOp k) { orig_kernel_a = k; });
-      task_b.walk([&](neura::KernelOp k) { orig_kernel_b = k; });
-      assert(orig_kernel_a && orig_kernel_b &&
-             "[performFusion] tasks must have neura.kernel ops");
-
       SmallVector<neura::KernelOp> fused_kernels;
       fused_task.walk([&](neura::KernelOp k) { fused_kernels.push_back(k); });
       assert(fused_kernels.size() == 2 &&
              "[performFusion] expected exactly 2 cloned kernels");
-
-      // The first kernel is from task_a (cloned first), the second from task_b.
       cloned_kernel_a = fused_kernels[0];
       cloned_kernel_b = fused_kernels[1];
     }
 
     // Merges the two cloned kernels into one fused kernel.
-    // Both tasks are independent, so their DFGs are placed side-by-side.
-
-    // Builds merged kernel inputs from the cloned kernels' inputs.
     SmallVector<Value> merged_kernel_inputs;
     auto addKernelInputs = [&](neura::KernelOp kernel) {
       for (Value inp : kernel.getInputs()) {
@@ -1464,14 +1353,14 @@ private:
     addKernelInputs(cloned_kernel_a);
     addKernelInputs(cloned_kernel_b);
 
-    // Merged iter_args_init.
+    // Concatenates iter_args from both kernels (kernel_a first, then kernel_b).
     SmallVector<Value> merged_iter_args;
     for (Value v : cloned_kernel_a.getIterArgsInit())
       merged_iter_args.push_back(v);
     for (Value v : cloned_kernel_b.getIterArgsInit())
       merged_iter_args.push_back(v);
 
-    // Merged result types.
+    // Concatenates result types from both kernels.
     SmallVector<Type> merged_kernel_results;
     for (Type t : cloned_kernel_a.getResultTypes())
       merged_kernel_results.push_back(t);
@@ -1488,7 +1377,7 @@ private:
     fused_kernel->setAttr("dataflow_mode",
                           builder.getStringAttr("predicate"));
 
-    // Creates the kernel entry block.
+    // Builds kernel entry block and block-arg mappings.
     Region &fused_kernel_region = fused_kernel.getBody();
     Block *kernel_body = builder.createBlock(&fused_kernel_region);
     for (Value v : merged_kernel_inputs)
@@ -1496,7 +1385,8 @@ private:
     for (Value v : merged_iter_args)
       kernel_body->addArgument(v.getType(), task_a.getLoc());
 
-    // Builds kernel block arg mapping for each source cloned kernel.
+    // Maps each original kernel's block args to the fused kernel's block args.
+    // iter_offset tracks where this kernel's iter_args start in the merged list.
     auto buildKernelArgMapping =
         [&](neura::KernelOp kernel, unsigned iter_offset) -> IRMapping {
       IRMapping km;
@@ -1528,7 +1418,7 @@ private:
     IRMapping kernel_mapping_b = buildKernelArgMapping(
         cloned_kernel_b, cloned_kernel_a.getIterArgsInit().size());
 
-    // Clones DFG ops from both cloned kernels into the fused kernel body.
+    // Clones DFG ops from both kernels and creates the combined neura.yield.
     {
       OpBuilder kb = OpBuilder::atBlockEnd(kernel_body);
       for (auto &op : cloned_kernel_a.getBody().front().getOperations()) {
@@ -1540,7 +1430,7 @@ private:
         kb.clone(op, kernel_mapping_b);
       }
 
-      // Creates the combined neura.yield.
+      // Collects yield operands from both kernels' original yields.
       SmallVector<Value> merged_iter_args_next;
       SmallVector<Value> merged_results;
       if (auto yield_a = dyn_cast<neura::YieldOp>(
@@ -1560,6 +1450,7 @@ private:
           merged_results.push_back(kernel_mapping_b.lookupOrDefault(v));
       }
 
+      // Creates the combined neura.yield and preserves yield_type from kernel_a.
       auto fused_yield = kb.create<neura::YieldOp>(
           task_a.getLoc(), merged_iter_args_next, merged_results);
       if (auto yield_a = dyn_cast<neura::YieldOp>(
@@ -1569,8 +1460,7 @@ private:
       }
     }
 
-    // Replaces uses of the cloned kernels' results with the fused kernel's
-    // results, then erase the old cloned kernels.
+    // Replaces uses of cloned kernels with fused kernel results, then erases.
     {
       unsigned result_idx = 0;
       for (unsigned i = 0; i < cloned_kernel_a.getNumResults(); ++i) {
@@ -1585,19 +1475,16 @@ private:
       cloned_kernel_b.erase();
     }
 
-    // Now handle the taskflow.yield. The fused task body is single-block,
-    // so we create one merged yield at the end of entry_block.
-    // The SingleBlockImplicitTerminator trait will auto-insert a yield,
-    // but we need to replace it with our merged version.
+    // Builds and inserts the merged taskflow.yield.
     {
-      // Collects write args for the yield.
+      // Writes outputs pass through the entry block's write-memref args.
       SmallVector<Value> yield_writes;
       for (size_t i = 0; i < merged_write_memrefs.size(); ++i) {
         yield_writes.push_back(
             entry_block->getArgument(merged_read_memrefs.size() + i));
       }
 
-      // Value outputs from the fused kernel results.
+      // Value outputs come from the fused kernel's results.
       SmallVector<Value> yield_values;
       unsigned val_idx = 0;
       for (unsigned i = 0; i < task_a.getValueOutputs().size(); ++i)
@@ -1605,8 +1492,7 @@ private:
       for (unsigned i = 0; i < task_b.getValueOutputs().size(); ++i)
         yield_values.push_back(fused_kernel.getResult(val_idx++));
 
-      // Erases any existing yield (auto-inserted by SingleBlockImplicitTerminator)
-      // and create the merged yield.
+      // Erases auto-inserted yield and creates the merged one.
       if (!entry_block->empty()) {
         if (auto existing_yield = dyn_cast<TaskflowYieldOp>(
                 entry_block->back())) {
@@ -1618,16 +1504,12 @@ private:
                                  yield_values);
     }
 
-
-    // Step 10: Sets fused attributes for the latency model.
-    // trip_count: max of both, since independent tasks execute concurrently
-    // on the shared tile array.
+    // Step 6: Sets fused trip_count (max of both independent tasks).
     int64_t fused_trip = std::max(node_a->trip_count, node_b->trip_count);
     fused_task->setAttr("trip_count",
                         OpBuilder(fused_task).getI64IntegerAttr(fused_trip));
 
-    // Profiles the fused task to get real ii and steps.
-    // The fused kernel contains the combined DFG from both original kernels.
+    // Profiles the fused task to obtain its compiled_ii and steps.
     {
       TaskGraphNode fused_node(/*id=*/0, fused_task);
       fused_node.trip_count = fused_trip;
@@ -1639,15 +1521,15 @@ private:
     }
 
 
-    // Step 11: Replaces uses of original tasks' results.
+    // Step 7: Replaces uses of original tasks' results.
     // Value outputs are ordered: task_a's value outputs first, then task_b's.
     unsigned val_offset_a = 0;
     unsigned val_offset_b = task_a.getValueOutputs().size();
     replaceTaskResults(task_a, fused_task, merged_write_memrefs, val_offset_a);
     replaceTaskResults(task_b, fused_task, merged_write_memrefs, val_offset_b);
 
-    // Step 12: Erases original tasks.
-    // Verify no remaining uses before erasing.
+    // Step 8: Erases original tasks.
+    // Verifies no remaining uses before erasing.
     auto verifyNoUses = [](TaskflowTaskOp task, StringRef label) {
       for (Value result : task->getResults()) {
         if (!result.use_empty()) {
@@ -1684,7 +1566,7 @@ private:
   void replaceTaskResults(TaskflowTaskOp orig_task, TaskflowTaskOp fused_task,
                           const SmallVector<Value> &merged_write_memrefs,
                           unsigned value_output_offset) {
-    // Write outputs: maps by matching the original write memref to its
+    // Writes outputs: maps by matching the original write memref to its
     // position in the merged write memrefs list.
     for (unsigned i = 0; i < orig_task.getWriteOutputs().size(); ++i) {
       Value orig_result = orig_task.getWriteOutputs()[i];
@@ -1770,9 +1652,6 @@ struct ResourceAwareTaskOptimizationPass
                  << " (estimation-mode=" << estimationMode.getValue()
                  << ") ===\n";
 
-    llvm::errs() << "[RESOPT] Input IR at start of runOnOperation:\n";
-    func.dump();
-
     constexpr int kMaxOuterIterations = 10;
 
     for (int outer = 0; outer < kMaxOuterIterations; ++outer) {
@@ -1801,9 +1680,9 @@ struct ResourceAwareTaskOptimizationPass
       }
 
       // Phase 1: Utilization Fusion.
-      // Fuse independent tasks to free up CGRA budget for balance.
+      // Fuses independent tasks to free up CGRA budget for balance.
       UtilizationFuser fuser;
-      // Expose TaskDependencyGraph::profileTask to UtilizationFuser via a
+      // Exposes TaskDependencyGraph::profileTask to UtilizationFuser via a
       // lambda so fused tasks get real profiling.  In analytical mode, the
       // mapper is skipped entirely (only ResMII/RecMII estimates are used).
       auto profile_fn = [&graph, use_analytical](TaskGraphNode *node,
@@ -1815,17 +1694,14 @@ struct ResourceAwareTaskOptimizationPass
       llvm::errs() << "[ResourceAware] After fusion: total_cgras="
                    << graph.getTotalAllocatedCGRAs() << "\n";
 
-      // Rebuild graph after fusion (tasks may have been erased/created).
+      // Rebuilds graph after fusion (tasks may have been erased/created).
       if (fuse_changed) {
         graph = TaskDependencyGraph();
         graph.build(func, use_analytical);
       }
 
       // Phase 2: Latency-Aware Pipeline Balance.
-      // By default, balance probes use analytical-only profiling
-      // (skip_mapper=true) because the mapper may backtrack indefinitely on
-      // speculative larger tile arrays.  Pass --balance-skip-mapper=false to
-      // use the real mapper for accurate compiled_ii during balance probes.
+      // Balance probes use analytical-only profiling by default.
       bool balance_skip = use_analytical || balanceSkipMapper.getValue();
       auto balance_profile_fn = [&graph, balance_skip](TaskGraphNode *node,
                                          TaskflowTaskOp task) {
@@ -1834,9 +1710,7 @@ struct ResourceAwareTaskOptimizationPass
       PipelineBalancer balancer;
       bool balance_changed = balancer.balance(graph, balance_profile_fn);
 
-      // Writes cgra_count, ii, steps, and trip_count back to IR during
-      // iterations so that the next iteration's graph.build() reads them
-      // and skips expensive re-profiling for unchanged tasks.
+      // Writes back attributes so the next iteration sees them.
       if (balance_changed || fuse_changed) {
         for (auto &node : graph.nodes) {
           OpBuilder b(node->op);
