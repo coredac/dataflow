@@ -70,6 +70,7 @@ def TaskflowTaskOp : TaskflowOpBase<"task", [
   );
 
   let results = (outs
+    Variadic<AnyMemRef>:$read_outputs,
     Variadic<AnyMemRef>:$write_outputs,
     Variadic<AnyType>:$value_outputs
   );
@@ -94,6 +95,7 @@ def TaskflowYieldOp : TaskflowOpBase<"yield", [Terminator, Pure, ReturnLike, Att
   }];
 
   let arguments = (ins
+    Variadic<AnyMemRef>:$read_results,
     Variadic<AnyMemRef>:$memory_results,
     Variadic<AnyType>:$value_results);
 
@@ -102,7 +104,7 @@ def TaskflowYieldOp : TaskflowOpBase<"yield", [Terminator, Pure, ReturnLike, Att
   let builders = [
     // Default builder for empty yield.
     OpBuilder<(ins), [{
-    build($_builder, $_state, ValueRange{}, ValueRange{});
+    build($_builder, $_state, ValueRange{}, ValueRange{}, ValueRange{});
     }]>
   ];
 }

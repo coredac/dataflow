@@ -145,6 +145,10 @@ private:
 
     for (auto task_op : tasks) {
       auto &task_info = task_map[task_op.getOperation()];
+      // Map read_outputs for WAR dependency tracking.
+      for (Value ro : task_op.getReadOutputs()) {
+        write_output_to_producer[ro] = &task_info;
+      }
       for (Value wo : task_op.getWriteOutputs()) {
         write_output_to_producer[wo] = &task_info;
       }
@@ -432,8 +436,12 @@ public:
     // Step 2: Builds the result types (same as reader's outputs).
     // Writer's value_outputs are not included because canFuse rejects
     // writers with value_outputs.
+    SmallVector<Type> read_output_types;
     SmallVector<Type> write_output_types;
     SmallVector<Type> value_output_types;
+    for (Value v : reader_op.getReadOutputs()) {
+      read_output_types.push_back(v.getType());
+    }
     for (Value v : reader_op.getWriteOutputs()) {
       write_output_types.push_back(v.getType());
     }
@@ -448,9 +456,10 @@ public:
             .str();
 
     auto fused_task = builder.create<taskflow::TaskflowTaskOp>(
-        writer_op.getLoc(), write_output_types, value_output_types,
-        fused_read_memrefs, fused_write_memrefs, fused_value_inputs, fused_name,
-        fused_original_read_memrefs, fused_original_write_memrefs);
+        writer_op.getLoc(), read_output_types, write_output_types,
+        value_output_types, fused_read_memrefs, fused_write_memrefs,
+        fused_value_inputs, fused_name, fused_original_read_memrefs,
+        fused_original_write_memrefs);
 
     // Step 4: Builds fused task body by merging loop nests.
     if (!buildFusedBody(fused_task, writer_op, reader_op, intermediate,
@@ -771,12 +780,22 @@ private:
     }
 
     OpBuilder yield_builder(fused_block, fused_block->end());
+    SmallVector<Value> yield_reads;
     SmallVector<Value> yield_writes;
     SmallVector<Value> yield_values;
 
     // Finds the yield in the reader's original body for reference.
     auto reader_yield =
         cast<taskflow::TaskflowYieldOp>(reader_body.getTerminator());
+
+    // Maps reader yield's read results to fused block args.
+    for (Value v : reader_yield.getReadResults()) {
+      if (reader_mapping.contains(v)) {
+        yield_reads.push_back(reader_mapping.lookup(v));
+      } else {
+        yield_reads.push_back(v);
+      }
+    }
 
     // Maps reader yield's memory results to fused block args.
     for (Value v : reader_yield.getMemoryResults()) {
@@ -794,8 +813,8 @@ private:
       }
     }
 
-    yield_builder.create<taskflow::TaskflowYieldOp>(reader_op.getLoc(),
-                                                    yield_writes, yield_values);
+    yield_builder.create<taskflow::TaskflowYieldOp>(
+        reader_op.getLoc(), yield_reads, yield_writes, yield_values);
 
     return true;
   }
@@ -919,6 +938,12 @@ private:
                              taskflow::TaskflowTaskOp reader_op,
                              taskflow::TaskflowTaskOp fused_task,
                              Value intermediate) {
+
+    // Replaces reader's read_outputs with fused task's read_outputs.
+    for (unsigned i = 0; i < reader_op.getReadOutputs().size(); ++i) {
+      reader_op.getReadOutputs()[i].replaceAllUsesWith(
+          fused_task.getReadOutputs()[i]);
+    }
 
     // Replaces reader's write_outputs with fused task's write_outputs.
     for (unsigned i = 0; i < reader_op.getWriteOutputs().size(); ++i) {
