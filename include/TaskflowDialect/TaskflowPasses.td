@@ -86,4 +86,48 @@ def MemoryAccessStreamingFusion : Pass<"memory-access-streaming-fusion", "func::
   }];
   let constructor = "taskflow::createMemoryAccessStreamingFusionPass()";
 }
+
+def ResourceAwareTaskOptimization : Pass<"resource-aware-task-optimization", "func::FuncOp"> {
+  let summary = "Balances pipeline latency and fuses independent tasks for CGRA utilization.";
+  let description = [{
+    Two-phase optimization:
+    1. Utilization Fusion: merges independent (no-edge) tasks, selecting pairs
+       that minimize |trip_count_a - trip_count_b| for balanced utilization.
+    2. Pipeline Balance: allocates extra CGRAs to critical-path bottleneck tasks.
+       More CGRAs combine tile arrays into larger arrays for mapping, potentially
+       lowering compiled_ii.  Latency model: II * (trip_count - 1) + steps.
+    Targets a 4x4 CGRA grid (16 CGRAs total, one CGRA per cell).
+    Currently a single task may be allocated at most 4 CGRAs.
+    Supported CGRA array shapes for a task (all fit within the 4×4 grid):
+      - rect : a perfect rectangle, e.g. 1×1, 1×2, 2×1, 1×3, 3×1, 2×2, 1×4, 4×1.
+      - L    : an L-shaped block of 3 or 4 CGRAs, e.g.
+                 3 CGRAs: (0,0)(1,0)(0,1) — two in a row + one below-left.
+                 4 CGRAs: (0,0)(0,1)(0,2)(1,2) — three in a column + one offset.
+      - T    : a T-shaped block of 4 CGRAs, e.g.
+                 (0,0)(1,0)(2,0)(1,1) — three in a row + one below centre.
+    Non-rectangular shapes are represented by their bounding box plus an
+    explicit tile list that enumerates only the occupied CGRA positions.
+    Compiled_ii must come from the downstream Neura pipeline (asserts on failure).
+
+    Use --estimation-mode to control how task II/steps are estimated:
+      compiled   (default): runs the full Neura lowering + mapping pipeline
+                  for accurate compiled_ii and steps.
+      analytical : uses only ResMII/RecMII analytical estimates without
+                  running the mapper — much faster but less accurate.
+                  Useful for rapid design-space exploration.
+    Example:
+      --resource-aware-task-optimization estimation-mode=analytical
+  }];
+  let options = [
+    Option<"estimationMode", "estimation-mode", "std::string",
+           /*default=*/"\"compiled\"",
+           "Profiling estimation mode: 'compiled' (default) runs the full "
+           "Neura lowering + mapping pipeline; 'analytical' uses only "
+           "ResMII/RecMII analytical estimates (faster but less accurate).">
+  ];
+  let constructor = "taskflow::createResourceAwareTaskOptimizationPass()";
+  let dependentDialects = [
+    "mlir::affine::AffineDialect",
+    "mlir::func::FuncDialect"];
+}
 #endif // TASKFLOW_PASSES_TD

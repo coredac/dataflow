@@ -561,12 +561,15 @@ Architecture::Architecture(int multi_cgra_rows, int multi_cgra_columns,
                            const std::vector<LinkOverride> &link_overrides) {
   this->multi_cgra_rows_ = multi_cgra_rows;
   this->multi_cgra_columns_ = multi_cgra_columns;
-  // TODO: Support multi-CGRA topology in the future:
-  // https://github.com/coredac/dataflow/issues/163.
-  // this->multi_cgra_base_topology_ = multi_cgra_base_topology;
+  this->multi_cgra_base_topology_ = multi_cgra_base_topology;
   this->per_cgra_rows_ = per_cgra_rows;
   this->per_cgra_columns_ = per_cgra_columns;
+  this->per_cgra_base_topology_ = per_cgra_base_topology;
   this->max_ctrl_mem_items_ = max_ctrl_mem_items;
+  this->tile_defaults_ = tile_defaults;
+  this->tile_overrides_ = tile_overrides;
+  this->link_defaults_ = link_defaults;
+  this->link_overrides_ = link_overrides;
 
   // Initializes architecture components using helper methods.
   initializeTiles(per_cgra_rows, per_cgra_columns);
@@ -574,6 +577,20 @@ Architecture::Architecture(int multi_cgra_rows, int multi_cgra_columns,
   applyTileOverrides(tile_overrides);
   createLinks(link_defaults, per_cgra_base_topology);
   applyLinkOverrides(link_overrides);
+}
+
+std::unique_ptr<Architecture> Architecture::cloneWithNewDimensions(
+    int new_per_cgra_rows, int new_per_cgra_columns,
+    const std::vector<TileOverride> &additional_overrides) const {
+  
+  std::vector<TileOverride> merged_overrides = tile_overrides_;
+  merged_overrides.insert(merged_overrides.end(), additional_overrides.begin(), additional_overrides.end());
+
+  return std::make_unique<Architecture>(
+      multi_cgra_rows_, multi_cgra_columns_, multi_cgra_base_topology_,
+      new_per_cgra_rows, new_per_cgra_columns, max_ctrl_mem_items_,
+      per_cgra_base_topology_, tile_defaults_, merged_overrides,
+      link_defaults_, link_overrides_);
 }
 
 Tile *Architecture::getTile(int id) {
