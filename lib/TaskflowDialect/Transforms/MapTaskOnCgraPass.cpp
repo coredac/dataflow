@@ -407,24 +407,96 @@ private:
   }
 
 
-  /// Finds best placement for a task.
-  /// TODO: Currently defaults to single-CGRA placement. Multi-CGRA binding logic
-  /// (cgra_count > 1) is experimental/placeholder and should ideally be handled 
-  /// by an upstream resource binding pass.
+  // Parses a tile_shape string like "2x2" or "2x2[(0,0)(1,0)(0,1)]".
+  // Returns a list of (col, row) offsets relative to the placement origin.
+  // For rectangular shapes "NxM", generates all NxM positions.
+  // For non-rectangular shapes with explicit positions, uses the listed coords.
+  SmallVector<std::pair<int, int>> parseTileShapeOffsets(
+      StringRef tile_shape, int cgra_count) {
+    SmallVector<std::pair<int, int>> offsets;
+
+    if (tile_shape.empty() || cgra_count <= 1) {
+      offsets.push_back({0, 0});
+      return offsets;
+    }
+
+    // Checks for explicit position list: "NxM[(c0,r0)(c1,r1)...]"
+    size_t bracket_pos = tile_shape.find('[');
+    if (bracket_pos != StringRef::npos) {
+      StringRef positions_str = tile_shape.substr(bracket_pos);
+      // Parses each (c,r) pair.
+      size_t pos = 0;
+      while (pos < positions_str.size()) {
+        size_t open = positions_str.find('(', pos);
+        if (open == StringRef::npos) break;
+        size_t close = positions_str.find(')', open);
+        if (close == StringRef::npos) break;
+        StringRef pair_str = positions_str.slice(open + 1, close);
+        auto [col_str, row_str] = pair_str.split(',');
+        int col_off = 0, row_off = 0;
+        col_str.getAsInteger(10, col_off);
+        row_str.getAsInteger(10, row_off);
+        offsets.push_back({col_off, row_off});
+        pos = close + 1;
+      }
+    } else {
+      // Rectangular shape: "NxM" — parse rows × cols.
+      auto [rows_str, cols_str] = tile_shape.split('x');
+      int rows = 1, cols = 1;
+      rows_str.getAsInteger(10, rows);
+      cols_str.getAsInteger(10, cols);
+      for (int r = 0; r < rows; ++r) {
+        for (int c = 0; c < cols; ++c) {
+          offsets.push_back({c, r});
+        }
+      }
+    }
+
+    // Sanity: if parsing failed, at least return a single cell.
+    if (offsets.empty()) {
+      offsets.push_back({0, 0});
+    }
+    return offsets;
+  }
+
+  // Finds best placement for a task on the CGRA grid.
+  // For cgra_count > 1, reads the tile_shape attribute to determine the
+  // physical layout (rectangular or L/T-shape) and validates that all
+  // required positions fit within the grid boundary and are unoccupied.
   TaskPlacement findBestPlacement(TaskNode *task_node, int cgra_count,
                                   TaskMemoryGraph &graph) {
     int best_score = INT_MIN;
     TaskPlacement best_placement;
 
-    // Baseline: For cgra_count=1, finds single best position.
+    // Reads tile_shape attribute if present.
+    StringRef tile_shape;
+    if (auto attr = task_node->op->getAttrOfType<StringAttr>("tile_shape")) {
+      tile_shape = attr.getValue();
+    }
+
+    // Parses shape offsets from tile_shape string.
+    SmallVector<std::pair<int, int>> shape_offsets =
+        parseTileShapeOffsets(tile_shape, cgra_count);
+
+    // Tries every valid placement origin on the grid.
     for (int r = 0; r < grid_rows_; ++r) {
       for (int c = 0; c < grid_cols_; ++c) {
-        if (occupied_[r][c]) {
+        // Checks if ALL positions in the shape fit within bounds and are free.
+        bool valid = true;
+        TaskPlacement candidate;
+        for (auto &[col_off, row_off] : shape_offsets) {
+          int pr = r + row_off;
+          int pc = c + col_off;
+          if (pr < 0 || pr >= grid_rows_ || pc < 0 || pc >= grid_cols_ ||
+              occupied_[pr][pc]) {
+            valid = false;
+            break;
+          }
+          candidate.cgra_positions.push_back({pr, pc});
+        }
+        if (!valid) {
           continue;
         }
-
-        TaskPlacement candidate;
-        candidate.cgra_positions.push_back({r, c});
 
         int score = computeScore(task_node, candidate, graph);
         if (score > best_score) {
@@ -436,21 +508,35 @@ private:
 
     // Error handling: No available position found (grid over-subscribed).
     if (best_placement.cgra_positions.empty()) {
-      assert(false && "No available CGRA position found (grid over-subscribed).");
+      llvm::errs() << "[MapTaskOnCgra] WARNING: No valid placement for task "
+                   << task_node->op.getTaskName()
+                   << " with cgra_count=" << cgra_count
+                   << " tile_shape=" << tile_shape << "\n";
+      // Fallback: place on any single free cell.
+      for (int r = 0; r < grid_rows_ && best_placement.cgra_positions.empty(); ++r) {
+        for (int c = 0; c < grid_cols_ && best_placement.cgra_positions.empty(); ++c) {
+          if (!occupied_[r][c]) {
+            best_placement.cgra_positions.push_back({r, c});
+          }
+        }
+      }
+      if (best_placement.cgra_positions.empty()) {
+        assert(false && "No available CGRA position found (grid over-subscribed).");
+      }
     }
 
     return best_placement;
   }
 
-  /// Computes placement score based on Task-Memory Graph.
-  /// TODO: Introduce explicit 'direct_wires' attributes in the IR for
-  /// downstream hardware generators to configure fast bypass paths between
-  /// adjacent PEs with dependencies.
-  ///
-  /// Score = α·SSA_Dist + β·Mem_Dist.
-  ///
-  /// SSA_Dist: Minimize distance to placed SSA predecessors (ssa_operands).
-  /// Mem_Dist: Minimize distance to assigned SRAMs for read/write memrefs.
+  // Computes placement score based on Task-Memory Graph.
+  // For multi-CGRA placements, uses the minimum distance from any position
+  // in the placement to the target, since adjacent CGRAs can communicate
+  // via fast bypass paths.
+  //
+  // Score = α·SSA_Dist + β·Mem_Dist.
+  //
+  // SSA_Dist: Minimize distance to placed SSA predecessors (ssa_operands).
+  // Mem_Dist: Minimize distance to assigned SRAMs for read/write memrefs.
   int computeScore(TaskNode *task_node, const TaskPlacement &placement,
                    TaskMemoryGraph &graph) {
     // Weight constants (tunable).
@@ -459,40 +545,44 @@ private:
 
     int ssa_score = 0;
     int mem_score = 0;
-    
-    CGRAPosition current_pos = placement.primary();
+
+    // Helper: minimum Manhattan distance from any position in this placement
+    // to a target position.
+    auto minDistToTarget = [&](const CGRAPosition &target) -> int {
+      int min_dist = INT_MAX;
+      for (const auto &pos : placement.cgra_positions) {
+        int d = pos.manhattanDistance(target);
+        min_dist = std::min(min_dist, d);
+      }
+      return min_dist;
+    };
 
     // 1. SSA proximity (predecessors & successors).
     for (TaskNode *producer : task_node->ssa_operands) {
-        if (!producer->placement.empty()) {
-            int dist = current_pos.manhattanDistance(producer->placement[0]);
-            // Uses negative distance to penalize far-away placements.
-            ssa_score -= dist;
-        }
+      if (!producer->placement.empty()) {
+        int dist = minDistToTarget(producer->placement[0]);
+        ssa_score -= dist;
+      }
     }
     for (TaskNode *consumer : task_node->ssa_users) {
-        if (!consumer->placement.empty()) {
-            int dist = current_pos.manhattanDistance(consumer->placement[0]);
-            ssa_score -= dist;
-        }
+      if (!consumer->placement.empty()) {
+        int dist = minDistToTarget(consumer->placement[0]);
+        ssa_score -= dist;
+      }
     }
 
     // 2. Memory proximity.
-    // For read memrefs.
     for (MemoryNode *mem : task_node->read_memrefs) {
-        if (mem->assigned_sram_pos) {
-            int dist = current_pos.manhattanDistance(*mem->assigned_sram_pos);
-            mem_score -= dist;
-        }
+      if (mem->assigned_sram_pos) {
+        int dist = minDistToTarget(*mem->assigned_sram_pos);
+        mem_score -= dist;
+      }
     }
-    // For write memrefs.
-    // If we write to a memory that is already assigned (e.g. read by previous task),
-    // we want to be close to it too.
     for (MemoryNode *mem : task_node->write_memrefs) {
-         if (mem->assigned_sram_pos) {
-            int dist = current_pos.manhattanDistance(*mem->assigned_sram_pos);
-            mem_score -= dist;
-        }
+      if (mem->assigned_sram_pos) {
+        int dist = minDistToTarget(*mem->assigned_sram_pos);
+        mem_score -= dist;
+      }
     }
 
     return kAlpha * ssa_score + kBeta * mem_score;
@@ -564,8 +654,8 @@ struct MapTaskOnCgraPass
 
   void runOnOperation() override {
     func::FuncOp func = getOperation();
-    constexpr int kDefaultGridRows = 3;
-    constexpr int kDefaultGridCols = 3;
+    constexpr int kDefaultGridRows = 4;
+    constexpr int kDefaultGridCols = 4;
     TaskMapper mapper(kDefaultGridRows, kDefaultGridCols);
     mapper.place(func);
   }
@@ -578,6 +668,11 @@ namespace taskflow {
 
 std::unique_ptr<Pass> createMapTaskOnCgraPass() {
   return std::make_unique<MapTaskOnCgraPass>();
+}
+
+void runMapTaskOnCgra(func::FuncOp func, int grid_rows, int grid_cols) {
+  TaskMapper mapper(grid_rows, grid_cols);
+  mapper.place(func);
 }
 
 } // namespace taskflow

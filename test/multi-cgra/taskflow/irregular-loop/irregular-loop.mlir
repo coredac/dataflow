@@ -395,6 +395,8 @@ module attributes {} {
 // 0=Task_0_Task_1_utilfused, 1=Task_2; 2/16 CGRAs used
 
 // RESOPT:      taskflow.task @Task_0_Task_1_utilfused
-// RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 3 : i32, steps = 5 : i32, tile_shape = "1x1", trip_count = 32 : i32}
+// RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 3 : i32, steps = 5 : i32
+// RESOPT-SAME: tile_shape = "1x1", trip_count = 32 : i32}
 // RESOPT:      taskflow.task @Task_2
-// RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 2 : i32, steps = 7 : i32, tile_shape = "1x1", trip_count = 32 : i32}
+// RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 2 : i32, steps = 7 : i32
+// RESOPT-SAME: tile_shape = "1x1", trip_count = 32 : i32}

@@ -192,7 +192,8 @@ module {
 // TASKFLOW:        return
 
 // RESOPT:      taskflow.task @Task_0_Task_1_utilfused
-// RESOPT-SAME: {cgra_count = 3 : i32, compiled_ii = 1 : i32, steps = 10 : i32, tile_shape = "2x2[(0,0)(1,0)(0,1)]", trip_count = 64 : i32}
+// RESOPT-SAME: {cgra_count = 3 : i32, compiled_ii = 1 : i32, steps = 10 : i32
+// RESOPT-SAME: tile_shape = "2x2[(0,0)(1,0)(0,1)]", trip_count = 64 : i32}
 // RESOPT:      return
 
 // CGRA Tile Occupation after RESOPT (4x4 grid, col x row):

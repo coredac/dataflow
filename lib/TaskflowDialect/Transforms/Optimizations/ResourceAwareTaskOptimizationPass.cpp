@@ -1768,6 +1768,13 @@ struct ResourceAwareTaskOptimizationPass
           std::string shape_str = node->shape.irAttr();
           node->op->setAttr("tile_shape", b.getStringAttr(shape_str));
         }
+
+        // Runs MapTaskOnCgraPass to produce global placement (task_mapping_info)
+        // with multi-CGRA support. The pass reads cgra_count and tile_shape
+        // from each task and places them on the 4x4 grid, validating that
+        // shapes physically fit and don't overlap.
+        taskflow::runMapTaskOnCgra(func, kCgraGridRows, kCgraGridCols);
+
         break;
       }
     }

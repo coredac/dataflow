@@ -5,6 +5,7 @@
 
 #include "TaskflowDialect/TaskflowDialect.h"
 #include "TaskflowDialect/TaskflowOps.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassRegistry.h"
@@ -22,6 +23,11 @@ void registerTosaToAffineConversionPassPipeline();
 std::unique_ptr<mlir::Pass> createConstructHyperblockFromTaskPass();
 std::unique_ptr<mlir::Pass> createClassifyCountersPass();
 std::unique_ptr<mlir::Pass> createMapTaskOnCgraPass();
+
+// Runs the CGRA task placement logic directly on a function.
+// grid_rows/grid_cols default to 4x4 (kCgraGridRows/kCgraGridCols).
+void runMapTaskOnCgra(mlir::func::FuncOp func,
+                      int grid_rows = 4, int grid_cols = 4);
 
 //=========================================================//
 // Optimization Passes

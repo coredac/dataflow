@@ -704,17 +704,23 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 
 
 // RESOPT:      taskflow.task @Task_1_Task_0_Task_2_utilfused_utilfused
-// RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 4 : i32, steps = 3 : i32, tile_shape = "1x1", trip_count = 6400 : i32}
+// RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 4 : i32, steps = 3 : i32
+// RESOPT-SAME: tile_shape = "1x1", trip_count = 6400 : i32}
 // RESOPT:      taskflow.task @Task_3
-// RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 2 : i32, steps = 6 : i32, tile_shape = "1x1", trip_count = 2359296 : i32}
+// RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 2 : i32, steps = 6 : i32
+// RESOPT-SAME: tile_shape = "1x1", trip_count = 2359296 : i32}
 // RESOPT:      taskflow.task @Task_4_Task_5_fused_Task_7_utilfused
-// RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 2 : i32, steps = 7 : i32, tile_shape = "1x1", trip_count = 6400 : i32}
+// RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 2 : i32, steps = 7 : i32
+// RESOPT-SAME: tile_shape = "1x1", trip_count = 6400 : i32}
 // RESOPT:      taskflow.task @Task_6_Task_8_utilfused
-// RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 2 : i32, steps = 3 : i32, tile_shape = "1x1", trip_count = 4096 : i32}
+// RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 2 : i32, steps = 3 : i32
+// RESOPT-SAME: tile_shape = "1x1", trip_count = 4096 : i32}
 // RESOPT:      taskflow.task @Task_9
-// RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 2 : i32, steps = 6 : i32, tile_shape = "1x1", trip_count = 2359296 : i32}
+// RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 2 : i32, steps = 6 : i32
+// RESOPT-SAME: tile_shape = "1x1", trip_count = 2359296 : i32}
 // RESOPT:      taskflow.task @Task_10_Task_11_Task_12_fused_fused
-// RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 2 : i32, steps = 8 : i32, tile_shape = "1x1", trip_count = 4096 : i32}
+// RESOPT-SAME: {cgra_count = 1 : i32, compiled_ii = 2 : i32, steps = 8 : i32
+// RESOPT-SAME: tile_shape = "1x1", trip_count = 4096 : i32}
 // RESOPT:      return
 
 
