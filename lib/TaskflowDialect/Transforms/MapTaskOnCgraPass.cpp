@@ -22,7 +22,9 @@
 #include <algorithm>
 #include <climits>
 #include <cmath>
+#include <functional>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -453,6 +455,8 @@ private:
     }
 
     // Sanity: if parsing failed, at least return a single cell.
+    // USER COMMENT: Assert here.
+    assert(!offsets.empty() && "tile_shape parsing yielded empty offsets");
     if (offsets.empty()) {
       offsets.push_back({0, 0});
     }
@@ -513,13 +517,111 @@ private:
                    << " with cgra_count=" << cgra_count
                    << " tile_shape=" << tile_shape << "\n";
       // Fallback: place on any single free cell.
-      for (int r = 0; r < grid_rows_ && best_placement.cgra_positions.empty(); ++r) {
-        for (int c = 0; c < grid_cols_ && best_placement.cgra_positions.empty(); ++c) {
-          if (!occupied_[r][c]) {
-            best_placement.cgra_positions.push_back({r, c});
+      // USER COMMENT: The logic should be: 1.tires rectangular shape 2. If fails, try other shapes 3. If all fail, fallback to current cell -1 numbers of cells.
+      for (int k = cgra_count; k >= 1 && best_placement.cgra_positions.empty(); --k) {
+        
+        // 1. Try rectangular shapes of size k
+        SmallVector<SmallVector<std::pair<int, int>>> rect_shapes;
+        for (int r = 1; r <= k; ++r) {
+          if (k % r == 0) {
+            int c = k / r;
+            SmallVector<std::pair<int, int>> shape;
+            for (int i = 0; i < r; ++i) {
+              for (int j = 0; j < c; ++j) {
+                shape.push_back({j, i});
+              }
+            }
+            rect_shapes.push_back(shape);
           }
         }
+
+        int current_best_score = INT_MIN;
+        TaskPlacement current_best_placement;
+
+        for (const auto &shape : rect_shapes) {
+          for (int r = 0; r < grid_rows_; ++r) {
+            for (int c = 0; c < grid_cols_; ++c) {
+              bool valid = true;
+              TaskPlacement candidate;
+              for (auto &[col_off, row_off] : shape) {
+                int pr = r + row_off;
+                int pc = c + col_off;
+                if (pr < 0 || pr >= grid_rows_ || pc < 0 || pc >= grid_cols_ ||
+                    occupied_[pr][pc]) {
+                  valid = false;
+                  break;
+                }
+                candidate.cgra_positions.push_back({pr, pc});
+              }
+              if (valid) {
+                int score = computeScore(task_node, candidate, graph);
+                if (score > current_best_score) {
+                  current_best_score = score;
+                  current_best_placement = candidate;
+                }
+              }
+            }
+          }
+        }
+
+        if (!current_best_placement.cgra_positions.empty()) {
+          best_placement = current_best_placement;
+          break; // Found valid rectangular placement
+        }
+
+        // 2. Try other (non-rectangular) connected shapes of size k
+        std::set<uint64_t> visited_masks;
+        int other_best_score = INT_MIN;
+        TaskPlacement other_best_placement;
+
+        std::function<void(SmallVector<CGRAPosition>&, uint64_t)> searchShapes = 
+            [&](SmallVector<CGRAPosition>& current, uint64_t mask) {
+          if (current.size() == (size_t)k) {
+            if (visited_masks.insert(mask).second) {
+              TaskPlacement candidate;
+              candidate.cgra_positions = current;
+              int score = computeScore(task_node, candidate, graph);
+              if (score > other_best_score) {
+                other_best_score = score;
+                other_best_placement = candidate;
+              }
+            }
+            return;
+          }
+          for (size_t i = 0; i < current.size(); ++i) {
+            auto pos = current[i];
+            const int dr[] = {-1, 1, 0, 0};
+            const int dc[] = {0, 0, -1, 1};
+            for (int d = 0; d < 4; ++d) {
+              int nr = pos.row + dr[d];
+              int nc = pos.col + dc[d];
+              if (nr >= 0 && nr < grid_rows_ && nc >= 0 && nc < grid_cols_ && !occupied_[nr][nc]) {
+                uint64_t bit = 1ULL << (nr * grid_cols_ + nc);
+                if ((mask & bit) == 0) {
+                  current.push_back({nr, nc});
+                  searchShapes(current, mask | bit);
+                  current.pop_back();
+                }
+              }
+            }
+          }
+        };
+
+        for (int r = 0; r < grid_rows_; ++r) {
+          for (int c = 0; c < grid_cols_; ++c) {
+            if (!occupied_[r][c]) {
+              SmallVector<CGRAPosition> start = {{r, c}};
+              searchShapes(start, 1ULL << (r * grid_cols_ + c));
+            }
+          }
+        }
+
+        if (!other_best_placement.cgra_positions.empty()) {
+          best_placement = other_best_placement;
+          break; // Found valid non-rectangular connected placement
+        }
       }
+
       if (best_placement.cgra_positions.empty()) {
         assert(false && "No available CGRA position found (grid over-subscribed).");
       }
