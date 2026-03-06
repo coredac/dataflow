@@ -283,7 +283,7 @@ public:
     // 3. Builds memory edges.
     for (auto &consumer : nodes) {
       // RAW: producer wrote a memref that this task reads.
-      for (Value memref : consumer->op.getReadMemrefs()) {
+      for (Value memref : consumer->op.getDependencyReadIn()) {
         if (auto producer_op = memref.getDefiningOp<TaskflowTaskOp>()) {
           if (auto *producer = op_to_node[producer_op.getOperation()]) {
             addEdge(producer, consumer.get());
@@ -291,7 +291,7 @@ public:
         }
       }
       // WAW/WAR: producer wrote or read a memref that this task writes.
-      for (Value memref : consumer->op.getWriteMemrefs()) {
+      for (Value memref : consumer->op.getDependencyWriteIn()) {
         if (auto producer_op = memref.getDefiningOp<TaskflowTaskOp>()) {
           if (auto *producer = op_to_node[producer_op.getOperation()]) {
             addEdge(producer, consumer.get());
@@ -1198,11 +1198,11 @@ private:
         }
       }
     };
-    updateLatest(task_a.getReadMemrefs());
-    updateLatest(task_a.getWriteMemrefs());
+    updateLatest(task_a.getDependencyReadIn());
+    updateLatest(task_a.getDependencyWriteIn());
     updateLatest(task_a.getValueInputs());
-    updateLatest(task_b.getReadMemrefs());
-    updateLatest(task_b.getWriteMemrefs());
+    updateLatest(task_b.getDependencyReadIn());
+    updateLatest(task_b.getDependencyWriteIn());
     updateLatest(task_b.getValueInputs());
 
     // Inserts right after the latest operand definition.
@@ -1225,10 +1225,10 @@ private:
       }
     };
 
-    addUnique(merged_read_memrefs, task_a.getReadMemrefs());
-    addUnique(merged_read_memrefs, task_b.getReadMemrefs());
-    addUnique(merged_write_memrefs, task_a.getWriteMemrefs());
-    addUnique(merged_write_memrefs, task_b.getWriteMemrefs());
+    addUnique(merged_read_memrefs, task_a.getDependencyReadIn());
+    addUnique(merged_read_memrefs, task_b.getDependencyReadIn());
+    addUnique(merged_write_memrefs, task_a.getDependencyWriteIn());
+    addUnique(merged_write_memrefs, task_b.getDependencyWriteIn());
     addUnique(merged_value_inputs, task_a.getValueInputs());
     addUnique(merged_value_inputs, task_b.getValueInputs());
     addUnique(merged_original_read_memrefs, task_a.getOriginalReadMemrefs());
@@ -1274,11 +1274,11 @@ private:
                                    Region &fused_region, IRMapping &mapping) {
       Block &src_entry = orig_task.getBody().front();
       unsigned src_idx = 0;
-      unsigned read_count = orig_task.getReadMemrefs().size();
-      unsigned write_count = orig_task.getWriteMemrefs().size();
+      unsigned read_count = orig_task.getDependencyReadIn().size();
+      unsigned write_count = orig_task.getDependencyWriteIn().size();
 
       for (unsigned i = 0; i < read_count; ++i) {
-        Value orig_memref = orig_task.getReadMemrefs()[i];
+        Value orig_memref = orig_task.getDependencyReadIn()[i];
         auto it = llvm::find(merged_read_memrefs, orig_memref);
         assert(it != merged_read_memrefs.end());
         unsigned fused_idx = std::distance(merged_read_memrefs.begin(), it);
@@ -1288,7 +1288,7 @@ private:
       src_idx += read_count;
 
       for (unsigned i = 0; i < write_count; ++i) {
-        Value orig_memref = orig_task.getWriteMemrefs()[i];
+        Value orig_memref = orig_task.getDependencyWriteIn()[i];
         auto it = llvm::find(merged_write_memrefs, orig_memref);
         assert(it != merged_write_memrefs.end());
         unsigned fused_idx = merged_read_memrefs.size() +
@@ -1560,7 +1560,7 @@ private:
       for (Value result : task->getResults()) {
         if (!result.use_empty()) {
           llvm::errs() << "[performFusion] ERROR: " << label << " result #"
-                       << result.cast<OpResult>().getResultNumber()
+                       << cast<OpResult>(result).getResultNumber()
                        << " still has uses:\n";
           for (auto &use : result.getUses()) {
             llvm::errs() << "  used by: ";
@@ -1596,19 +1596,21 @@ private:
                           unsigned value_output_offset) {
     // Read outputs: maps by matching the original read memref to its
     // position in the merged read memrefs list.
-    for (unsigned i = 0; i < orig_task.getReadOutputs().size(); ++i) {
-      Value orig_result = orig_task.getReadOutputs()[i];
-      Value orig_read = orig_task.getReadMemrefs()[i];
+    for (unsigned i = 0; i < orig_task.getDependencyReadOut().size(); ++i) {
+      Value orig_result = orig_task.getDependencyReadOut()[i];
+      Value orig_read = orig_task.getDependencyReadIn()[i];
       unsigned fused_idx = findOperandIndex(merged_read_memrefs, orig_read);
-      orig_result.replaceAllUsesWith(fused_task.getReadOutputs()[fused_idx]);
+      orig_result.replaceAllUsesWith(
+          fused_task.getDependencyReadOut()[fused_idx]);
     }
     // Writes outputs: maps by matching the original write memref to its
     // position in the merged write memrefs list.
-    for (unsigned i = 0; i < orig_task.getWriteOutputs().size(); ++i) {
-      Value orig_result = orig_task.getWriteOutputs()[i];
-      Value orig_write = orig_task.getWriteMemrefs()[i];
+    for (unsigned i = 0; i < orig_task.getDependencyWriteOut().size(); ++i) {
+      Value orig_result = orig_task.getDependencyWriteOut()[i];
+      Value orig_write = orig_task.getDependencyWriteIn()[i];
       unsigned fused_idx = findOperandIndex(merged_write_memrefs, orig_write);
-      orig_result.replaceAllUsesWith(fused_task.getWriteOutputs()[fused_idx]);
+      orig_result.replaceAllUsesWith(
+          fused_task.getDependencyWriteOut()[fused_idx]);
     }
     // Value outputs: each original task's value_output[i] maps to
     // fused_task.getValueOutputs()[value_output_offset + i].

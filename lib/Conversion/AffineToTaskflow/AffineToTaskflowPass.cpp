@@ -338,7 +338,7 @@ static TaskflowTaskOp convertLoopToTask(
   // Read outputs: establishes WAR dependency chain.
   // Only update mapping for memrefs not already mapped by a prior write.
   for (auto [memref, task_read_output] :
-       llvm::zip(read_memrefs, task_op.getReadOutputs())) {
+       llvm::zip(read_memrefs, task_op.getDependencyReadOut())) {
     if (!value_mapping.count(memref)) {
       value_mapping[memref] = task_read_output;
     }
@@ -347,7 +347,7 @@ static TaskflowTaskOp convertLoopToTask(
   // Memory outputs (write): establishes RAW/WAW dependency chain.
   // Write outputs always overwrite read outputs in the mapping.
   for (auto [memref, task_output] :
-       llvm::zip(output_memrefs, task_op.getWriteOutputs())) {
+       llvm::zip(output_memrefs, task_op.getDependencyWriteOut())) {
     value_mapping[memref] = task_output;
   }
 

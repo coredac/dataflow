@@ -46,23 +46,24 @@ def TaskflowTaskOp : TaskflowOpBase<"task", [
     Example:
       // Memory inputs: %mem, Value inputs: %val
       $out_mem, %out_val = taskflow.task "Task_0"
-        read_inputs(%mem : memref<4xi32>)
+        dependency_read_in(%mem : memref<4xi32>)
+        dependency_write_in(%arg5 : memref<?xi32>)
         value_inputs(%val : i32)
-        original_read_memrefs(%arg0 : memref<?x8x6xi32>)
-        original_write_memrefs(%arg5 : memref<?xi32>) {
-      ^bb0(%a0: memref<4xi32>, %a1: i32):
+        [original_read_memrefs(%arg0 : memref<?x8x6xi32>),
+         original_write_memrefs(%arg5 : memref<?xi32>)] {
+      ^bb0(%a0: memref<4xi32>, %a1: memref<?xi32>, %a2: i32):
         affine.for %i = 0 to 4 {
           %v = affine.load %a0[%i] : memref<4xi32>
-          %sum = arith.addi %v, %a1 : i32
-          affine.store %sum, %a0[%i] : memref<4xi32>
+          %sum = arith.addi %v, %a2 : i32
+          affine.store %sum, %a1[%i] : memref<?xi32>
         }
-        taskflow.yield memory_outputs(%a0 : memref<4xi32>) value_outputs(%a1 : i32)
-      } : (memref<4xi32>, i32) -> (memref<4xi32>, i32)
+        taskflow.yield reads(%a0 : memref<4xi32>) writes(%a1 : memref<?xi32>) values(%a2 : i32)
+      } : (memref<4xi32>, memref<?xi32>, i32) -> (memref<4xi32>, memref<?xi32>, i32)
   }];
 
   let arguments = (ins
-    Variadic<AnyMemRef>:$read_memrefs,
-    Variadic<AnyMemRef>:$write_memrefs,
+    Variadic<AnyMemRef>:$dependency_read_in,
+    Variadic<AnyMemRef>:$dependency_write_in,
     Variadic<AnyType>:$value_inputs,
     StrAttr:$task_name,
     Variadic<AnyMemRef>:$original_read_memrefs,
@@ -70,8 +71,8 @@ def TaskflowTaskOp : TaskflowOpBase<"task", [
   );
 
   let results = (outs
-    Variadic<AnyMemRef>:$read_outputs,
-    Variadic<AnyMemRef>:$write_outputs,
+    Variadic<AnyMemRef>:$dependency_read_out,
+    Variadic<AnyMemRef>:$dependency_write_out,
     Variadic<AnyType>:$value_outputs
   );
 

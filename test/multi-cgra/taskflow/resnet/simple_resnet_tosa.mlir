@@ -249,7 +249,7 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // KERNEL-NEXT:     %cst_1 = arith.constant 3.40282347E+38 : f32
 // KERNEL-NEXT:     %cst_2 = arith.constant 0.000000e+00 : f32
 // KERNEL-NEXT:     %alloc = memref.alloc() {alignment = 64 : i64} : memref<1x8x8x64xf32>
-// KERNEL-NEXT:     %read_outputs, %write_outputs = taskflow.task @Task_0 read_memrefs(%arg0 : memref<1x64x8x8xf32>) write_memrefs(%alloc : memref<1x8x8x64xf32>) [original_read_memrefs(%arg0 : memref<1x64x8x8xf32>), original_write_memrefs(%alloc : memref<1x8x8x64xf32>)] : (memref<1x64x8x8xf32>, memref<1x8x8x64xf32>) -> (memref<1x64x8x8xf32>, memref<1x8x8x64xf32>) {
+// KERNEL-NEXT:     %dependency_read_out, %dependency_write_out = taskflow.task @Task_0 dependency_read_in(%arg0 : memref<1x64x8x8xf32>) dependency_write_in(%alloc : memref<1x8x8x64xf32>) [original_read_memrefs(%arg0 : memref<1x64x8x8xf32>), original_write_memrefs(%alloc : memref<1x8x8x64xf32>)] : (memref<1x64x8x8xf32>, memref<1x8x8x64xf32>) -> (memref<1x64x8x8xf32>, memref<1x8x8x64xf32>) {
 // KERNEL-NEXT:     ^bb0(%arg1: memref<1x64x8x8xf32>, %arg2: memref<1x8x8x64xf32>):
 // KERNEL-NEXT:       %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
 // KERNEL-NEXT:       %1 = taskflow.counter parent(%0 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
@@ -268,7 +268,7 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // KERNEL-NEXT:       taskflow.yield reads(%arg1 : memref<1x64x8x8xf32>) writes(%arg2 : memref<1x8x8x64xf32>)
 // KERNEL-NEXT:     }
 // KERNEL-NEXT:     %alloc_3 = memref.alloc() {alignment = 64 : i64} : memref<1x10x10x64xf32>
-// KERNEL-NEXT:     %write_outputs_4 = taskflow.task @Task_1 write_memrefs(%alloc_3 : memref<1x10x10x64xf32>) value_inputs(%cst_2 : f32) [original_write_memrefs(%alloc_3 : memref<1x10x10x64xf32>)] : (memref<1x10x10x64xf32>, f32) -> (memref<1x10x10x64xf32>) {
+// KERNEL-NEXT:     %dependency_write_out_4 = taskflow.task @Task_1 dependency_write_in(%alloc_3 : memref<1x10x10x64xf32>) value_inputs(%cst_2 : f32) [original_write_memrefs(%alloc_3 : memref<1x10x10x64xf32>)] : (memref<1x10x10x64xf32>, f32) -> (memref<1x10x10x64xf32>) {
 // KERNEL-NEXT:     ^bb0(%arg1: memref<1x10x10x64xf32>, %arg2: f32):
 // KERNEL-NEXT:       %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
 // KERNEL-NEXT:       %1 = taskflow.counter parent(%0 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 10 : index} : index
@@ -286,7 +286,7 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // KERNEL-NEXT:       taskflow.yield writes(%arg1 : memref<1x10x10x64xf32>)
 // KERNEL-NEXT:     }
 // KERNEL-NEXT:     %alloc_5 = memref.alloc() {alignment = 64 : i64} : memref<1x8x8x64xf32>
-// KERNEL-NEXT:     %write_outputs_6 = taskflow.task @Task_2 write_memrefs(%alloc_5 : memref<1x8x8x64xf32>) value_inputs(%cst_2 : f32) [original_write_memrefs(%alloc_5 : memref<1x8x8x64xf32>)] : (memref<1x8x8x64xf32>, f32) -> (memref<1x8x8x64xf32>) {
+// KERNEL-NEXT:     %dependency_write_out_6 = taskflow.task @Task_2 dependency_write_in(%alloc_5 : memref<1x8x8x64xf32>) value_inputs(%cst_2 : f32) [original_write_memrefs(%alloc_5 : memref<1x8x8x64xf32>)] : (memref<1x8x8x64xf32>, f32) -> (memref<1x8x8x64xf32>) {
 // KERNEL-NEXT:     ^bb0(%arg1: memref<1x8x8x64xf32>, %arg2: f32):
 // KERNEL-NEXT:       %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
 // KERNEL-NEXT:       %1 = taskflow.counter parent(%0 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
@@ -303,7 +303,7 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // KERNEL-NEXT:       }
 // KERNEL-NEXT:       taskflow.yield writes(%arg1 : memref<1x8x8x64xf32>)
 // KERNEL-NEXT:     }
-// KERNEL-NEXT:     %read_outputs_7:2, %write_outputs_8 = taskflow.task @Task_3 read_memrefs(%write_outputs_4, %write_outputs_6 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>) write_memrefs(%write_outputs_6 : memref<1x8x8x64xf32>) value_inputs(%cst_0 : f32) [original_read_memrefs(%alloc_3, %alloc_5 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>), original_write_memrefs(%alloc_5 : memref<1x8x8x64xf32>)] : (memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>, f32) -> (memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>) {
+// KERNEL-NEXT:     %dependency_read_out_7:2, %dependency_write_out_8 = taskflow.task @Task_3 dependency_read_in(%dependency_write_out_4, %dependency_write_out_6 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>) dependency_write_in(%dependency_write_out_6 : memref<1x8x8x64xf32>) value_inputs(%cst_0 : f32) [original_read_memrefs(%alloc_3, %alloc_5 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>), original_write_memrefs(%alloc_5 : memref<1x8x8x64xf32>)] : (memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>, f32) -> (memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>) {
 // KERNEL-NEXT:     ^bb0(%arg1: memref<1x10x10x64xf32>, %arg2: memref<1x8x8x64xf32>, %arg3: memref<1x8x8x64xf32>, %arg4: f32):
 // KERNEL-NEXT:       %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
 // KERNEL-NEXT:       %1 = taskflow.counter parent(%0 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
@@ -333,7 +333,7 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // KERNEL-NEXT:       taskflow.yield reads(%arg1, %arg3 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>) writes(%arg3 : memref<1x8x8x64xf32>)
 // KERNEL-NEXT:     }
 // KERNEL-NEXT:     %alloc_9 = memref.alloc() {alignment = 64 : i64} : memref<1x64x8x8xf32>
-// KERNEL-NEXT:     %read_outputs_10, %write_outputs_11 = taskflow.task @Task_4 read_memrefs(%write_outputs_8 : memref<1x8x8x64xf32>) write_memrefs(%alloc_9 : memref<1x64x8x8xf32>) [original_read_memrefs(%alloc_5 : memref<1x8x8x64xf32>), original_write_memrefs(%alloc_9 : memref<1x64x8x8xf32>)] : (memref<1x8x8x64xf32>, memref<1x64x8x8xf32>) -> (memref<1x8x8x64xf32>, memref<1x64x8x8xf32>) {
+// KERNEL-NEXT:     %dependency_read_out_10, %dependency_write_out_11 = taskflow.task @Task_4 dependency_read_in(%dependency_write_out_8 : memref<1x8x8x64xf32>) dependency_write_in(%alloc_9 : memref<1x64x8x8xf32>) [original_read_memrefs(%alloc_5 : memref<1x8x8x64xf32>), original_write_memrefs(%alloc_9 : memref<1x64x8x8xf32>)] : (memref<1x8x8x64xf32>, memref<1x64x8x8xf32>) -> (memref<1x8x8x64xf32>, memref<1x64x8x8xf32>) {
 // KERNEL-NEXT:     ^bb0(%arg1: memref<1x8x8x64xf32>, %arg2: memref<1x64x8x8xf32>):
 // KERNEL-NEXT:       %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
 // KERNEL-NEXT:       %1 = taskflow.counter parent(%0 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
@@ -352,7 +352,7 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // KERNEL-NEXT:       taskflow.yield reads(%arg1 : memref<1x8x8x64xf32>) writes(%arg2 : memref<1x64x8x8xf32>)
 // KERNEL-NEXT:     }
 // KERNEL-NEXT:     %alloc_12 = memref.alloc() {alignment = 64 : i64} : memref<1x64x8x8xf32>
-// KERNEL-NEXT:     %read_outputs_13, %write_outputs_14 = taskflow.task @Task_5 read_memrefs(%write_outputs_11 : memref<1x64x8x8xf32>) write_memrefs(%alloc_12 : memref<1x64x8x8xf32>) value_inputs(%cst_1, %cst_2 : f32, f32) [original_read_memrefs(%alloc_9 : memref<1x64x8x8xf32>), original_write_memrefs(%alloc_12 : memref<1x64x8x8xf32>)] : (memref<1x64x8x8xf32>, memref<1x64x8x8xf32>, f32, f32) -> (memref<1x64x8x8xf32>, memref<1x64x8x8xf32>) {
+// KERNEL-NEXT:     %dependency_read_out_13, %dependency_write_out_14 = taskflow.task @Task_5 dependency_read_in(%dependency_write_out_11 : memref<1x64x8x8xf32>) dependency_write_in(%alloc_12 : memref<1x64x8x8xf32>) value_inputs(%cst_1, %cst_2 : f32, f32) [original_read_memrefs(%alloc_9 : memref<1x64x8x8xf32>), original_write_memrefs(%alloc_12 : memref<1x64x8x8xf32>)] : (memref<1x64x8x8xf32>, memref<1x64x8x8xf32>, f32, f32) -> (memref<1x64x8x8xf32>, memref<1x64x8x8xf32>) {
 // KERNEL-NEXT:     ^bb0(%arg1: memref<1x64x8x8xf32>, %arg2: memref<1x64x8x8xf32>, %arg3: f32, %arg4: f32):
 // KERNEL-NEXT:       %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
 // KERNEL-NEXT:       %1 = taskflow.counter parent(%0 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
@@ -373,7 +373,7 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // KERNEL-NEXT:       taskflow.yield reads(%arg1 : memref<1x64x8x8xf32>) writes(%arg2 : memref<1x64x8x8xf32>)
 // KERNEL-NEXT:     }
 // KERNEL-NEXT:     %alloc_15 = memref.alloc() {alignment = 64 : i64} : memref<1x8x8x64xf32>
-// KERNEL-NEXT:     %read_outputs_16, %write_outputs_17 = taskflow.task @Task_6 read_memrefs(%write_outputs_14 : memref<1x64x8x8xf32>) write_memrefs(%alloc_15 : memref<1x8x8x64xf32>) [original_read_memrefs(%alloc_12 : memref<1x64x8x8xf32>), original_write_memrefs(%alloc_15 : memref<1x8x8x64xf32>)] : (memref<1x64x8x8xf32>, memref<1x8x8x64xf32>) -> (memref<1x64x8x8xf32>, memref<1x8x8x64xf32>) {
+// KERNEL-NEXT:     %dependency_read_out_16, %dependency_write_out_17 = taskflow.task @Task_6 dependency_read_in(%dependency_write_out_14 : memref<1x64x8x8xf32>) dependency_write_in(%alloc_15 : memref<1x8x8x64xf32>) [original_read_memrefs(%alloc_12 : memref<1x64x8x8xf32>), original_write_memrefs(%alloc_15 : memref<1x8x8x64xf32>)] : (memref<1x64x8x8xf32>, memref<1x8x8x64xf32>) -> (memref<1x64x8x8xf32>, memref<1x8x8x64xf32>) {
 // KERNEL-NEXT:     ^bb0(%arg1: memref<1x64x8x8xf32>, %arg2: memref<1x8x8x64xf32>):
 // KERNEL-NEXT:       %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
 // KERNEL-NEXT:       %1 = taskflow.counter parent(%0 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
@@ -392,7 +392,7 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // KERNEL-NEXT:       taskflow.yield reads(%arg1 : memref<1x64x8x8xf32>) writes(%arg2 : memref<1x8x8x64xf32>)
 // KERNEL-NEXT:     }
 // KERNEL-NEXT:     %alloc_18 = memref.alloc() {alignment = 64 : i64} : memref<1x10x10x64xf32>
-// KERNEL-NEXT:     %write_outputs_19 = taskflow.task @Task_7 write_memrefs(%alloc_18 : memref<1x10x10x64xf32>) value_inputs(%cst_2 : f32) [original_write_memrefs(%alloc_18 : memref<1x10x10x64xf32>)] : (memref<1x10x10x64xf32>, f32) -> (memref<1x10x10x64xf32>) {
+// KERNEL-NEXT:     %dependency_write_out_19 = taskflow.task @Task_7 dependency_write_in(%alloc_18 : memref<1x10x10x64xf32>) value_inputs(%cst_2 : f32) [original_write_memrefs(%alloc_18 : memref<1x10x10x64xf32>)] : (memref<1x10x10x64xf32>, f32) -> (memref<1x10x10x64xf32>) {
 // KERNEL-NEXT:     ^bb0(%arg1: memref<1x10x10x64xf32>, %arg2: f32):
 // KERNEL-NEXT:       %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
 // KERNEL-NEXT:       %1 = taskflow.counter parent(%0 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 10 : index} : index
@@ -410,7 +410,7 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // KERNEL-NEXT:       taskflow.yield writes(%arg1 : memref<1x10x10x64xf32>)
 // KERNEL-NEXT:     }
 // KERNEL-NEXT:     %alloc_20 = memref.alloc() {alignment = 64 : i64} : memref<1x8x8x64xf32>
-// KERNEL-NEXT:     %write_outputs_21 = taskflow.task @Task_8 write_memrefs(%alloc_20 : memref<1x8x8x64xf32>) value_inputs(%cst_2 : f32) [original_write_memrefs(%alloc_20 : memref<1x8x8x64xf32>)] : (memref<1x8x8x64xf32>, f32) -> (memref<1x8x8x64xf32>) {
+// KERNEL-NEXT:     %dependency_write_out_21 = taskflow.task @Task_8 dependency_write_in(%alloc_20 : memref<1x8x8x64xf32>) value_inputs(%cst_2 : f32) [original_write_memrefs(%alloc_20 : memref<1x8x8x64xf32>)] : (memref<1x8x8x64xf32>, f32) -> (memref<1x8x8x64xf32>) {
 // KERNEL-NEXT:     ^bb0(%arg1: memref<1x8x8x64xf32>, %arg2: f32):
 // KERNEL-NEXT:       %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
 // KERNEL-NEXT:       %1 = taskflow.counter parent(%0 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
@@ -427,7 +427,7 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // KERNEL-NEXT:       }
 // KERNEL-NEXT:       taskflow.yield writes(%arg1 : memref<1x8x8x64xf32>)
 // KERNEL-NEXT:     }
-// KERNEL-NEXT:     %read_outputs_22:2, %write_outputs_23 = taskflow.task @Task_9 read_memrefs(%write_outputs_19, %write_outputs_21 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>) write_memrefs(%write_outputs_21 : memref<1x8x8x64xf32>) value_inputs(%cst : f32) [original_read_memrefs(%alloc_18, %alloc_20 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>), original_write_memrefs(%alloc_20 : memref<1x8x8x64xf32>)] : (memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>, f32) -> (memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>) {
+// KERNEL-NEXT:     %dependency_read_out_22:2, %dependency_write_out_23 = taskflow.task @Task_9 dependency_read_in(%dependency_write_out_19, %dependency_write_out_21 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>) dependency_write_in(%dependency_write_out_21 : memref<1x8x8x64xf32>) value_inputs(%cst : f32) [original_read_memrefs(%alloc_18, %alloc_20 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>), original_write_memrefs(%alloc_20 : memref<1x8x8x64xf32>)] : (memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>, f32) -> (memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>) {
 // KERNEL-NEXT:     ^bb0(%arg1: memref<1x10x10x64xf32>, %arg2: memref<1x8x8x64xf32>, %arg3: memref<1x8x8x64xf32>, %arg4: f32):
 // KERNEL-NEXT:       %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
 // KERNEL-NEXT:       %1 = taskflow.counter parent(%0 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
@@ -457,7 +457,7 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // KERNEL-NEXT:       taskflow.yield reads(%arg1, %arg3 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>) writes(%arg3 : memref<1x8x8x64xf32>)
 // KERNEL-NEXT:     }
 // KERNEL-NEXT:     %alloc_24 = memref.alloc() {alignment = 64 : i64} : memref<1x64x8x8xf32>
-// KERNEL-NEXT:     %read_outputs_25, %write_outputs_26 = taskflow.task @Task_10 read_memrefs(%write_outputs_23 : memref<1x8x8x64xf32>) write_memrefs(%alloc_24 : memref<1x64x8x8xf32>) [original_read_memrefs(%alloc_20 : memref<1x8x8x64xf32>), original_write_memrefs(%alloc_24 : memref<1x64x8x8xf32>)] : (memref<1x8x8x64xf32>, memref<1x64x8x8xf32>) -> (memref<1x8x8x64xf32>, memref<1x64x8x8xf32>) {
+// KERNEL-NEXT:     %dependency_read_out_25, %dependency_write_out_26 = taskflow.task @Task_10 dependency_read_in(%dependency_write_out_23 : memref<1x8x8x64xf32>) dependency_write_in(%alloc_24 : memref<1x64x8x8xf32>) [original_read_memrefs(%alloc_20 : memref<1x8x8x64xf32>), original_write_memrefs(%alloc_24 : memref<1x64x8x8xf32>)] : (memref<1x8x8x64xf32>, memref<1x64x8x8xf32>) -> (memref<1x8x8x64xf32>, memref<1x64x8x8xf32>) {
 // KERNEL-NEXT:     ^bb0(%arg1: memref<1x8x8x64xf32>, %arg2: memref<1x64x8x8xf32>):
 // KERNEL-NEXT:       %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
 // KERNEL-NEXT:       %1 = taskflow.counter parent(%0 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
@@ -476,7 +476,7 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // KERNEL-NEXT:       taskflow.yield reads(%arg1 : memref<1x8x8x64xf32>) writes(%arg2 : memref<1x64x8x8xf32>)
 // KERNEL-NEXT:     }
 // KERNEL-NEXT:     %alloc_27 = memref.alloc() {alignment = 64 : i64} : memref<1x64x8x8xf32>
-// KERNEL-NEXT:     %read_outputs_28:2, %write_outputs_29 = taskflow.task @Task_11 read_memrefs(%write_outputs_26, %read_outputs : memref<1x64x8x8xf32>, memref<1x64x8x8xf32>) write_memrefs(%alloc_27 : memref<1x64x8x8xf32>) [original_read_memrefs(%alloc_24, %arg0 : memref<1x64x8x8xf32>, memref<1x64x8x8xf32>), original_write_memrefs(%alloc_27 : memref<1x64x8x8xf32>)] : (memref<1x64x8x8xf32>, memref<1x64x8x8xf32>, memref<1x64x8x8xf32>) -> (memref<1x64x8x8xf32>, memref<1x64x8x8xf32>, memref<1x64x8x8xf32>) {
+// KERNEL-NEXT:     %dependency_read_out_28:2, %dependency_write_out_29 = taskflow.task @Task_11 dependency_read_in(%dependency_write_out_26, %dependency_read_out : memref<1x64x8x8xf32>, memref<1x64x8x8xf32>) dependency_write_in(%alloc_27 : memref<1x64x8x8xf32>) [original_read_memrefs(%alloc_24, %arg0 : memref<1x64x8x8xf32>, memref<1x64x8x8xf32>), original_write_memrefs(%alloc_27 : memref<1x64x8x8xf32>)] : (memref<1x64x8x8xf32>, memref<1x64x8x8xf32>, memref<1x64x8x8xf32>) -> (memref<1x64x8x8xf32>, memref<1x64x8x8xf32>, memref<1x64x8x8xf32>) {
 // KERNEL-NEXT:     ^bb0(%arg1: memref<1x64x8x8xf32>, %arg2: memref<1x64x8x8xf32>, %arg3: memref<1x64x8x8xf32>):
 // KERNEL-NEXT:       %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
 // KERNEL-NEXT:       %1 = taskflow.counter parent(%0 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
@@ -497,7 +497,7 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // KERNEL-NEXT:       taskflow.yield reads(%arg1, %arg2 : memref<1x64x8x8xf32>, memref<1x64x8x8xf32>) writes(%arg3 : memref<1x64x8x8xf32>)
 // KERNEL-NEXT:     }
 // KERNEL-NEXT:     %alloc_30 = memref.alloc() {alignment = 64 : i64} : memref<1x64x8x8xf32>
-// KERNEL-NEXT:     %read_outputs_31, %write_outputs_32 = taskflow.task @Task_12 read_memrefs(%write_outputs_29 : memref<1x64x8x8xf32>) write_memrefs(%alloc_30 : memref<1x64x8x8xf32>) value_inputs(%cst_1, %cst_2 : f32, f32) [original_read_memrefs(%alloc_27 : memref<1x64x8x8xf32>), original_write_memrefs(%alloc_30 : memref<1x64x8x8xf32>)] : (memref<1x64x8x8xf32>, memref<1x64x8x8xf32>, f32, f32) -> (memref<1x64x8x8xf32>, memref<1x64x8x8xf32>) {
+// KERNEL-NEXT:     %dependency_read_out_31, %dependency_write_out_32 = taskflow.task @Task_12 dependency_read_in(%dependency_write_out_29 : memref<1x64x8x8xf32>) dependency_write_in(%alloc_30 : memref<1x64x8x8xf32>) value_inputs(%cst_1, %cst_2 : f32, f32) [original_read_memrefs(%alloc_27 : memref<1x64x8x8xf32>), original_write_memrefs(%alloc_30 : memref<1x64x8x8xf32>)] : (memref<1x64x8x8xf32>, memref<1x64x8x8xf32>, f32, f32) -> (memref<1x64x8x8xf32>, memref<1x64x8x8xf32>) {
 // KERNEL-NEXT:     ^bb0(%arg1: memref<1x64x8x8xf32>, %arg2: memref<1x64x8x8xf32>, %arg3: f32, %arg4: f32):
 // KERNEL-NEXT:       %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
 // KERNEL-NEXT:       %1 = taskflow.counter parent(%0 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
@@ -517,7 +517,7 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // KERNEL-NEXT:       }
 // KERNEL-NEXT:       taskflow.yield reads(%arg1 : memref<1x64x8x8xf32>) writes(%arg2 : memref<1x64x8x8xf32>)
 // KERNEL-NEXT:     }
-// KERNEL-NEXT:     return %write_outputs_32 : memref<1x64x8x8xf32>
+// KERNEL-NEXT:     return %dependency_write_out_32 : memref<1x64x8x8xf32>
 // KERNEL-NEXT:   }
 // KERNEL-NEXT: }
 
@@ -531,7 +531,7 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // STREAM-NEXT:     %cst_1 = arith.constant 3.40282347E+38 : f32
 // STREAM-NEXT:     %cst_2 = arith.constant 0.000000e+00 : f32
 // STREAM-NEXT:     %alloc = memref.alloc() {alignment = 64 : i64} : memref<1x8x8x64xf32>
-// STREAM-NEXT:     %read_outputs, %write_outputs = taskflow.task @Task_0 read_memrefs(%arg0 : memref<1x64x8x8xf32>) write_memrefs(%alloc : memref<1x8x8x64xf32>) [original_read_memrefs(%arg0 : memref<1x64x8x8xf32>), original_write_memrefs(%alloc : memref<1x8x8x64xf32>)] : (memref<1x64x8x8xf32>, memref<1x8x8x64xf32>) -> (memref<1x64x8x8xf32>, memref<1x8x8x64xf32>) {
+// STREAM-NEXT:     %dependency_read_out, %dependency_write_out = taskflow.task @Task_0 dependency_read_in(%arg0 : memref<1x64x8x8xf32>) dependency_write_in(%alloc : memref<1x8x8x64xf32>) [original_read_memrefs(%arg0 : memref<1x64x8x8xf32>), original_write_memrefs(%alloc : memref<1x8x8x64xf32>)] : (memref<1x64x8x8xf32>, memref<1x8x8x64xf32>) -> (memref<1x64x8x8xf32>, memref<1x8x8x64xf32>) {
 // STREAM-NEXT:     ^bb0(%arg1: memref<1x64x8x8xf32>, %arg2: memref<1x8x8x64xf32>):
 // STREAM-NEXT:       affine.for %arg3 = 0 to 1 {
 // STREAM-NEXT:         affine.for %arg4 = 0 to 8 {
@@ -546,7 +546,7 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // STREAM-NEXT:       taskflow.yield reads(%arg1 : memref<1x64x8x8xf32>) writes(%arg2 : memref<1x8x8x64xf32>)
 // STREAM-NEXT:     }
 // STREAM-NEXT:     %alloc_3 = memref.alloc() {alignment = 64 : i64} : memref<1x10x10x64xf32>
-// STREAM-NEXT:     %write_outputs_4 = taskflow.task @Task_1 write_memrefs(%alloc_3 : memref<1x10x10x64xf32>) value_inputs(%cst_2 : f32) [original_write_memrefs(%alloc_3 : memref<1x10x10x64xf32>)] : (memref<1x10x10x64xf32>, f32) -> (memref<1x10x10x64xf32>) {
+// STREAM-NEXT:     %dependency_write_out_4 = taskflow.task @Task_1 dependency_write_in(%alloc_3 : memref<1x10x10x64xf32>) value_inputs(%cst_2 : f32) [original_write_memrefs(%alloc_3 : memref<1x10x10x64xf32>)] : (memref<1x10x10x64xf32>, f32) -> (memref<1x10x10x64xf32>) {
 // STREAM-NEXT:     ^bb0(%arg1: memref<1x10x10x64xf32>, %arg2: f32):
 // STREAM-NEXT:       affine.for %arg3 = 0 to 1 {
 // STREAM-NEXT:         affine.for %arg4 = 0 to 10 {
@@ -560,7 +560,7 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // STREAM-NEXT:       taskflow.yield writes(%arg1 : memref<1x10x10x64xf32>)
 // STREAM-NEXT:     }
 // STREAM-NEXT:     %alloc_5 = memref.alloc() {alignment = 64 : i64} : memref<1x8x8x64xf32>
-// STREAM-NEXT:     %write_outputs_6 = taskflow.task @Task_2 write_memrefs(%alloc_5 : memref<1x8x8x64xf32>) value_inputs(%cst_2 : f32) [original_write_memrefs(%alloc_5 : memref<1x8x8x64xf32>)] : (memref<1x8x8x64xf32>, f32) -> (memref<1x8x8x64xf32>) {
+// STREAM-NEXT:     %dependency_write_out_6 = taskflow.task @Task_2 dependency_write_in(%alloc_5 : memref<1x8x8x64xf32>) value_inputs(%cst_2 : f32) [original_write_memrefs(%alloc_5 : memref<1x8x8x64xf32>)] : (memref<1x8x8x64xf32>, f32) -> (memref<1x8x8x64xf32>) {
 // STREAM-NEXT:     ^bb0(%arg1: memref<1x8x8x64xf32>, %arg2: f32):
 // STREAM-NEXT:       affine.for %arg3 = 0 to 1 {
 // STREAM-NEXT:         affine.for %arg4 = 0 to 8 {
@@ -573,7 +573,7 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // STREAM-NEXT:       }
 // STREAM-NEXT:       taskflow.yield writes(%arg1 : memref<1x8x8x64xf32>)
 // STREAM-NEXT:     }
-// STREAM-NEXT:     %read_outputs_7:2, %write_outputs_8 = taskflow.task @Task_3 read_memrefs(%write_outputs_4, %write_outputs_6 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>) write_memrefs(%write_outputs_6 : memref<1x8x8x64xf32>) value_inputs(%cst_0 : f32) [original_read_memrefs(%alloc_3, %alloc_5 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>), original_write_memrefs(%alloc_5 : memref<1x8x8x64xf32>)] : (memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>, f32) -> (memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>) {
+// STREAM-NEXT:     %dependency_read_out_7:2, %dependency_write_out_8 = taskflow.task @Task_3 dependency_read_in(%dependency_write_out_4, %dependency_write_out_6 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>) dependency_write_in(%dependency_write_out_6 : memref<1x8x8x64xf32>) value_inputs(%cst_0 : f32) [original_read_memrefs(%alloc_3, %alloc_5 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>), original_write_memrefs(%alloc_5 : memref<1x8x8x64xf32>)] : (memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>, f32) -> (memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>) {
 // STREAM-NEXT:     ^bb0(%arg1: memref<1x10x10x64xf32>, %arg2: memref<1x8x8x64xf32>, %arg3: memref<1x8x8x64xf32>, %arg4: f32):
 // STREAM-NEXT:       affine.for %arg5 = 0 to 1 {
 // STREAM-NEXT:         affine.for %arg6 = 0 to 8 {
@@ -597,7 +597,7 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // STREAM-NEXT:       taskflow.yield reads(%arg1, %arg3 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>) writes(%arg3 : memref<1x8x8x64xf32>)
 // STREAM-NEXT:     }
 // STREAM-NEXT:     %alloc_9 = memref.alloc() {alignment = 64 : i64} : memref<1x64x8x8xf32>
-// STREAM-NEXT:     %read_outputs_10, %write_outputs_11 = taskflow.task @Task_4_Task_5_fused read_memrefs(%write_outputs_8 : memref<1x8x8x64xf32>) write_memrefs(%alloc_9 : memref<1x64x8x8xf32>) value_inputs(%cst_1, %cst_2 : f32, f32) [original_read_memrefs(%alloc_5 : memref<1x8x8x64xf32>), original_write_memrefs(%alloc_9 : memref<1x64x8x8xf32>)] : (memref<1x8x8x64xf32>, memref<1x64x8x8xf32>, f32, f32) -> (memref<1x8x8x64xf32>, memref<1x64x8x8xf32>) {
+// STREAM-NEXT:     %dependency_read_out_10, %dependency_write_out_11 = taskflow.task @Task_4_Task_5_fused dependency_read_in(%dependency_write_out_8 : memref<1x8x8x64xf32>) dependency_write_in(%alloc_9 : memref<1x64x8x8xf32>) value_inputs(%cst_1, %cst_2 : f32, f32) [original_read_memrefs(%alloc_5 : memref<1x8x8x64xf32>), original_write_memrefs(%alloc_9 : memref<1x64x8x8xf32>)] : (memref<1x8x8x64xf32>, memref<1x64x8x8xf32>, f32, f32) -> (memref<1x8x8x64xf32>, memref<1x64x8x8xf32>) {
 // STREAM-NEXT:     ^bb0(%arg1: memref<1x8x8x64xf32>, %arg2: memref<1x64x8x8xf32>, %arg3: f32, %arg4: f32):
 // STREAM-NEXT:       affine.for %arg5 = 0 to 1 {
 // STREAM-NEXT:         affine.for %arg6 = 0 to 64 {
@@ -614,7 +614,7 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // STREAM-NEXT:       taskflow.yield reads(%arg1 : memref<1x8x8x64xf32>) writes(%arg2 : memref<1x64x8x8xf32>)
 // STREAM-NEXT:     }
 // STREAM-NEXT:     %alloc_12 = memref.alloc() {alignment = 64 : i64} : memref<1x8x8x64xf32>
-// STREAM-NEXT:     %read_outputs_13, %write_outputs_14 = taskflow.task @Task_6 read_memrefs(%write_outputs_11 : memref<1x64x8x8xf32>) write_memrefs(%alloc_12 : memref<1x8x8x64xf32>) [original_read_memrefs(%alloc_9 : memref<1x64x8x8xf32>), original_write_memrefs(%alloc_12 : memref<1x8x8x64xf32>)] : (memref<1x64x8x8xf32>, memref<1x8x8x64xf32>) -> (memref<1x64x8x8xf32>, memref<1x8x8x64xf32>) {
+// STREAM-NEXT:     %dependency_read_out_13, %dependency_write_out_14 = taskflow.task @Task_6 dependency_read_in(%dependency_write_out_11 : memref<1x64x8x8xf32>) dependency_write_in(%alloc_12 : memref<1x8x8x64xf32>) [original_read_memrefs(%alloc_9 : memref<1x64x8x8xf32>), original_write_memrefs(%alloc_12 : memref<1x8x8x64xf32>)] : (memref<1x64x8x8xf32>, memref<1x8x8x64xf32>) -> (memref<1x64x8x8xf32>, memref<1x8x8x64xf32>) {
 // STREAM-NEXT:     ^bb0(%arg1: memref<1x64x8x8xf32>, %arg2: memref<1x8x8x64xf32>):
 // STREAM-NEXT:       affine.for %arg3 = 0 to 1 {
 // STREAM-NEXT:         affine.for %arg4 = 0 to 8 {
@@ -629,7 +629,7 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // STREAM-NEXT:       taskflow.yield reads(%arg1 : memref<1x64x8x8xf32>) writes(%arg2 : memref<1x8x8x64xf32>)
 // STREAM-NEXT:     }
 // STREAM-NEXT:     %alloc_15 = memref.alloc() {alignment = 64 : i64} : memref<1x10x10x64xf32>
-// STREAM-NEXT:     %write_outputs_16 = taskflow.task @Task_7 write_memrefs(%alloc_15 : memref<1x10x10x64xf32>) value_inputs(%cst_2 : f32) [original_write_memrefs(%alloc_15 : memref<1x10x10x64xf32>)] : (memref<1x10x10x64xf32>, f32) -> (memref<1x10x10x64xf32>) {
+// STREAM-NEXT:     %dependency_write_out_16 = taskflow.task @Task_7 dependency_write_in(%alloc_15 : memref<1x10x10x64xf32>) value_inputs(%cst_2 : f32) [original_write_memrefs(%alloc_15 : memref<1x10x10x64xf32>)] : (memref<1x10x10x64xf32>, f32) -> (memref<1x10x10x64xf32>) {
 // STREAM-NEXT:     ^bb0(%arg1: memref<1x10x10x64xf32>, %arg2: f32):
 // STREAM-NEXT:       affine.for %arg3 = 0 to 1 {
 // STREAM-NEXT:         affine.for %arg4 = 0 to 10 {
@@ -643,7 +643,7 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // STREAM-NEXT:       taskflow.yield writes(%arg1 : memref<1x10x10x64xf32>)
 // STREAM-NEXT:     }
 // STREAM-NEXT:     %alloc_17 = memref.alloc() {alignment = 64 : i64} : memref<1x8x8x64xf32>
-// STREAM-NEXT:     %write_outputs_18 = taskflow.task @Task_8 write_memrefs(%alloc_17 : memref<1x8x8x64xf32>) value_inputs(%cst_2 : f32) [original_write_memrefs(%alloc_17 : memref<1x8x8x64xf32>)] : (memref<1x8x8x64xf32>, f32) -> (memref<1x8x8x64xf32>) {
+// STREAM-NEXT:     %dependency_write_out_18 = taskflow.task @Task_8 dependency_write_in(%alloc_17 : memref<1x8x8x64xf32>) value_inputs(%cst_2 : f32) [original_write_memrefs(%alloc_17 : memref<1x8x8x64xf32>)] : (memref<1x8x8x64xf32>, f32) -> (memref<1x8x8x64xf32>) {
 // STREAM-NEXT:     ^bb0(%arg1: memref<1x8x8x64xf32>, %arg2: f32):
 // STREAM-NEXT:       affine.for %arg3 = 0 to 1 {
 // STREAM-NEXT:         affine.for %arg4 = 0 to 8 {
@@ -656,7 +656,7 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // STREAM-NEXT:       }
 // STREAM-NEXT:       taskflow.yield writes(%arg1 : memref<1x8x8x64xf32>)
 // STREAM-NEXT:     }
-// STREAM-NEXT:     %read_outputs_19:2, %write_outputs_20 = taskflow.task @Task_9 read_memrefs(%write_outputs_16, %write_outputs_18 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>) write_memrefs(%write_outputs_18 : memref<1x8x8x64xf32>) value_inputs(%cst : f32) [original_read_memrefs(%alloc_15, %alloc_17 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>), original_write_memrefs(%alloc_17 : memref<1x8x8x64xf32>)] : (memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>, f32) -> (memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>) {
+// STREAM-NEXT:     %dependency_read_out_19:2, %dependency_write_out_20 = taskflow.task @Task_9 dependency_read_in(%dependency_write_out_16, %dependency_write_out_18 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>) dependency_write_in(%dependency_write_out_18 : memref<1x8x8x64xf32>) value_inputs(%cst : f32) [original_read_memrefs(%alloc_15, %alloc_17 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>), original_write_memrefs(%alloc_17 : memref<1x8x8x64xf32>)] : (memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>, f32) -> (memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>) {
 // STREAM-NEXT:     ^bb0(%arg1: memref<1x10x10x64xf32>, %arg2: memref<1x8x8x64xf32>, %arg3: memref<1x8x8x64xf32>, %arg4: f32):
 // STREAM-NEXT:       affine.for %arg5 = 0 to 1 {
 // STREAM-NEXT:         affine.for %arg6 = 0 to 8 {
@@ -680,7 +680,7 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // STREAM-NEXT:       taskflow.yield reads(%arg1, %arg3 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>) writes(%arg3 : memref<1x8x8x64xf32>)
 // STREAM-NEXT:     }
 // STREAM-NEXT:     %alloc_21 = memref.alloc() {alignment = 64 : i64} : memref<1x64x8x8xf32>
-// STREAM-NEXT:     %read_outputs_22:2, %write_outputs_23 = taskflow.task @Task_10_Task_11_Task_12_fused_fused read_memrefs(%write_outputs_20, %read_outputs : memref<1x8x8x64xf32>, memref<1x64x8x8xf32>) write_memrefs(%alloc_21 : memref<1x64x8x8xf32>) value_inputs(%cst_1, %cst_2 : f32, f32) [original_read_memrefs(%alloc_17, %arg0 : memref<1x8x8x64xf32>, memref<1x64x8x8xf32>), original_write_memrefs(%alloc_21 : memref<1x64x8x8xf32>)] : (memref<1x8x8x64xf32>, memref<1x64x8x8xf32>, memref<1x64x8x8xf32>, f32, f32) -> (memref<1x8x8x64xf32>, memref<1x64x8x8xf32>, memref<1x64x8x8xf32>) {
+// STREAM-NEXT:     %dependency_read_out_22:2, %dependency_write_out_23 = taskflow.task @Task_10_Task_11_Task_12_fused_fused dependency_read_in(%dependency_write_out_20, %dependency_read_out : memref<1x8x8x64xf32>, memref<1x64x8x8xf32>) dependency_write_in(%alloc_21 : memref<1x64x8x8xf32>) value_inputs(%cst_1, %cst_2 : f32, f32) [original_read_memrefs(%alloc_17, %arg0 : memref<1x8x8x64xf32>, memref<1x64x8x8xf32>), original_write_memrefs(%alloc_21 : memref<1x64x8x8xf32>)] : (memref<1x8x8x64xf32>, memref<1x64x8x8xf32>, memref<1x64x8x8xf32>, f32, f32) -> (memref<1x8x8x64xf32>, memref<1x64x8x8xf32>, memref<1x64x8x8xf32>) {
 // STREAM-NEXT:     ^bb0(%arg1: memref<1x8x8x64xf32>, %arg2: memref<1x64x8x8xf32>, %arg3: memref<1x64x8x8xf32>, %arg4: f32, %arg5: f32):
 // STREAM-NEXT:       affine.for %arg6 = 0 to 1 {
 // STREAM-NEXT:         affine.for %arg7 = 0 to 64 {
@@ -698,7 +698,7 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // STREAM-NEXT:       }
 // STREAM-NEXT:       taskflow.yield reads(%arg1, %arg2 : memref<1x8x8x64xf32>, memref<1x64x8x8xf32>) writes(%arg3 : memref<1x64x8x8xf32>)
 // STREAM-NEXT:     }
-// STREAM-NEXT:     return %write_outputs_23 : memref<1x64x8x8xf32>
+// STREAM-NEXT:     return %dependency_write_out_23 : memref<1x64x8x8xf32>
 // STREAM-NEXT:   }
 // STREAM-NEXT: }
 

@@ -181,11 +181,11 @@ module {
 
 // TASKFLOW:      module {
 // TASKFLOW-NEXT:   func.func @stereo_cost_computation
-// TASKFLOW:        %read_outputs:6, %write_outputs:2 = taskflow.task @Task_0
+// TASKFLOW:        %dependency_read_out:6, %dependency_write_out:2 = taskflow.task @Task_0
 // TASKFLOW:          affine.for %arg28 = 0 to 64 {
 // TASKFLOW:          }
 // TASKFLOW:          taskflow.yield
-// TASKFLOW:        %read_outputs_0, %write_outputs_1 = taskflow.task @Task_1
+// TASKFLOW:        %dependency_read_out_0, %dependency_write_out_1 = taskflow.task @Task_1
 // TASKFLOW:          affine.for %arg18 = 0 to 64 {
 // TASKFLOW:          }
 // TASKFLOW:          taskflow.yield
