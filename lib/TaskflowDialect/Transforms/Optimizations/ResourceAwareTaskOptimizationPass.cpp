@@ -7,8 +7,9 @@
 //    lowering compiled_ii.  Latency model: II * (trip_count - 1) + steps.
 //
 // Targets a 4x4 CGRA grid (16 CGRAs total).  Each task may use up to 4 CGRAs.
-// Supported per-task shapes: rect (1×1..4×1/1×4/2×2), L (3 or 4 CGRAs), T (4 CGRAs).
-// Compiled_ii must come from the downstream pipeline (asserts on failure).
+// Supported per-task shapes: rect (1×1..4×1/1×4/2×2), L (3 or 4 CGRAs), T (4
+// CGRAs). Compiled_ii must come from the downstream pipeline (asserts on
+// failure).
 //
 //===----------------------------------------------------------------------===//
 
@@ -36,7 +37,6 @@
 #include <algorithm>
 #include <set>
 
-
 using namespace mlir;
 using namespace mlir::taskflow;
 
@@ -50,7 +50,7 @@ constexpr int kCgraGridRows = 4;
 constexpr int kCgraGridCols = 4;
 constexpr int kTotalCGRAs = kCgraGridRows * kCgraGridCols; // 16
 constexpr int kMaxBalanceIterations = 100;
-constexpr int kMaxCgrasPerTask = 4;  // Max CGRAs allocatable to a single task.
+constexpr int kMaxCgrasPerTask = 4; // Max CGRAs allocatable to a single task.
 
 // Sentinel value: 0 means "not yet profiled". After profileTask() runs,
 // both steps and ii MUST be > 0. An assert fires if profiling fails.
@@ -69,9 +69,9 @@ constexpr int64_t kUnprofiled = 0;
 // (col, row) coordinates of the occupied CGRAs.  `rows`/`cols` give the
 // bounding box so that tile-level x_tiles/y_tiles can be computed.
 struct CgraShape {
-  int rows;  // Bounding-box CGRA rows.
-  int cols;  // Bounding-box CGRA columns.
-  bool is_rectangular;  // True if all cells in the bbox are used.
+  int rows;            // Bounding-box CGRA rows.
+  int cols;            // Bounding-box CGRA columns.
+  bool is_rectangular; // True if all cells in the bbox are used.
   // Explicit CGRA positions for non-rectangular shapes.
   // Each pair is (col, row) in CGRA coordinates.  Empty for rectangles.
   SmallVector<std::pair<int, int>> cgra_positions;
@@ -113,7 +113,8 @@ static SmallVector<CgraShape> getRectangularShapes(int cgra_count) {
   for (int r = 1; r <= kCgraGridRows; ++r) {
     for (int c = 1; c <= kCgraGridCols; ++c) {
       if (r * c == cgra_count) {
-        shapes.push_back({r, c, /*is_rectangular=*/true, /*cgra_positions=*/{}});
+        shapes.push_back(
+            {r, c, /*is_rectangular=*/true, /*cgra_positions=*/{}});
       }
     }
   }
@@ -135,34 +136,37 @@ static SmallVector<CgraShape> getNonRectangularShapes(int cgra_count) {
 
   if (cgra_count == 3) {
     // L-shape 3 CGRAs: (0,0)(1,0)(0,1) — bbox 2×2
-    shapes.push_back({2, 2, false, {{0,0},{1,0},{0,1}}});
+    shapes.push_back({2, 2, false, {{0, 0}, {1, 0}, {0, 1}}});
   }
 
   if (cgra_count == 4) {
     // T-shape: three in a row + one below centre
     //   (0,0)(1,0)(2,0)(1,1)  — bbox 2×3
-    shapes.push_back({2, 3, false, {{0,0},{1,0},{2,0},{1,1}}});
+    shapes.push_back({2, 3, false, {{0, 0}, {1, 0}, {2, 0}, {1, 1}}});
 
     // L-shape: three in a column + one offset
     //   (0,0)(0,1)(0,2)(1,2)  — bbox 3×2
-    shapes.push_back({3, 2, false, {{0,0},{0,1},{0,2},{1,2}}});
+    shapes.push_back({3, 2, false, {{0, 0}, {0, 1}, {0, 2}, {1, 2}}});
   }
 
   return shapes;
 }
 
 // Picks the best shape for display/profiling.
-// We prefer shapes with the most compact physical layout (smallest maximum distance
-// between nodes) to minimize communication latency. In cases of identical bounding
-// box area, we prefer more square-like bounds over long rectangles.
+// We prefer shapes with the most compact physical layout (smallest maximum
+// distance between nodes) to minimize communication latency. In cases of
+// identical bounding box area, we prefer more square-like bounds over long
+// rectangles.
 //
-// TODO: This function only picks a localized shape for an idealized single task mapping.
-// Global placement and conflict resolution across multiple tasks is legitimately deferred 
-// to downstream map-on-cgra pass, as speculative profiling assumes unconstrained placement.
+// TODO: This function only picks a localized shape for an idealized single task
+// mapping. Global placement and conflict resolution across multiple tasks is
+// legitimately deferred to downstream map-on-cgra pass, as speculative
+// profiling assumes unconstrained placement.
 static CgraShape pickBestShape(int cgra_count) {
-  // For cgra_count == 3, the 2x2 L-shape has a smaller maximum physical routing distance 
-  // (dist=2) compared to a 1x3 rectangle (dist=3), despite having a larger bounding box. 
-  // We explicitly prefer the more compact L-shape here for better speculative latency.
+  // For cgra_count == 3, the 2x2 L-shape has a smaller maximum physical routing
+  // distance (dist=2) compared to a 1x3 rectangle (dist=3), despite having a
+  // larger bounding box. We explicitly prefer the more compact L-shape here for
+  // better speculative latency.
   if (cgra_count == 3) {
     auto non_rect_shapes = getNonRectangularShapes(3);
     if (!non_rect_shapes.empty()) {
@@ -177,12 +181,14 @@ static CgraShape pickBestShape(int cgra_count) {
 
   if (!candidates.empty()) {
     return *std::min_element(candidates.begin(), candidates.end(),
-        [](const CgraShape &a, const CgraShape &b) {
-          int area_a = a.area();
-          int area_b = b.area();
-          if (area_a != area_b) return area_a < area_b;
-          return std::abs(a.rows - a.cols) < std::abs(b.rows - b.cols);
-        });
+                             [](const CgraShape &a, const CgraShape &b) {
+                               int area_a = a.area();
+                               int area_b = b.area();
+                               if (area_a != area_b)
+                                 return area_a < area_b;
+                               return std::abs(a.rows - a.cols) <
+                                      std::abs(b.rows - b.cols);
+                             });
   }
 
   // Fallback: smallest bounding box (should not be reached for 1..4 CGRAs).
@@ -218,9 +224,7 @@ struct TaskGraphNode {
 
   // Returns estimated task latency using the pipelined execution model:
   //   latency = II * (trip_count - 1) + steps.
-  int64_t estimatedLatency() const {
-    return ii * (trip_count - 1) + steps;
-  }
+  int64_t estimatedLatency() const { return ii * (trip_count - 1) + steps; }
 };
 
 class TaskDependencyGraph {
@@ -233,10 +237,11 @@ public:
     size_t task_id = 0;
     func.walk([&](TaskflowTaskOp task) {
       auto node = std::make_unique<TaskGraphNode>(task_id++, task);
-      
+
       // If the task already has profiling attributes (e.g., from fusion),
       // skip expensive speculative lowering and use those directly.
-      bool has_precomputed = task->hasAttr("compiled_ii") && task->hasAttr("steps");
+      bool has_precomputed =
+          task->hasAttr("compiled_ii") && task->hasAttr("steps");
       if (!has_precomputed) {
         // Speculative lowering to Neura to get real metrics.
         profileTask(node.get(), task, skip_mapper);
@@ -248,7 +253,7 @@ public:
       } else {
         node->trip_count = computeTripCount(task);
       }
-      
+
       // Overrides with explicit attributes if present.
       if (auto attr = task->getAttrOfType<IntegerAttr>("steps")) {
         node->steps = attr.getInt();
@@ -259,7 +264,7 @@ public:
       if (auto attr = task->getAttrOfType<IntegerAttr>("cgra_count")) {
         node->cgra_count = attr.getInt();
       }
-      
+
       op_to_node[task] = node.get();
       nodes.push_back(std::move(node));
     });
@@ -285,7 +290,7 @@ public:
           }
         }
       }
-      // WAW: producer wrote a memref that this task also writes.
+      // WAW/WAR: producer wrote or read a memref that this task writes.
       for (Value memref : consumer->op.getWriteMemrefs()) {
         if (auto producer_op = memref.getDefiningOp<TaskflowTaskOp>()) {
           if (auto *producer = op_to_node[producer_op.getOperation()]) {
@@ -295,12 +300,10 @@ public:
       }
     }
 
-    llvm::errs() << "TaskDependencyGraph: " << nodes.size()
-                 << " tasks\n";
+    llvm::errs() << "TaskDependencyGraph: " << nodes.size() << " tasks\n";
     for (auto &n : nodes) {
-      llvm::errs() << "  Task " << n->id << " ("
-                   << n->op.getTaskName().str() << "): trip_count="
-                   << n->trip_count << ", ii=" << n->ii
+      llvm::errs() << "  Task " << n->id << " (" << n->op.getTaskName().str()
+                   << "): trip_count=" << n->trip_count << ", ii=" << n->ii
                    << ", steps=" << n->steps
                    << ", preds=" << n->predecessors.size()
                    << ", succs=" << n->successors.size() << "\n";
@@ -311,14 +314,17 @@ public:
   // source_node to dest_node.
   bool hasDependency(TaskGraphNode *source_node,
                      TaskGraphNode *dest_node) const {
-    if (source_node == dest_node) return true;
+    if (source_node == dest_node)
+      return true;
     DenseSet<TaskGraphNode *> visited;
     SmallVector<TaskGraphNode *> worklist;
     worklist.push_back(source_node);
     while (!worklist.empty()) {
       auto *current = worklist.pop_back_val();
-      if (current == dest_node) return true;
-      if (!visited.insert(current).second) continue;
+      if (current == dest_node)
+        return true;
+      if (!visited.insert(current).second)
+        continue;
       for (auto *succ : current->successors) {
         worklist.push_back(succ);
       }
@@ -395,7 +401,7 @@ private:
         cloned_kernel = k;
       });
     }
- 
+
     // Computes tile dimensions for the target CGRA shape.
     int per_cgra_cols = neura::getArchitecture().getPerCgraColumns();
     int per_cgra_rows = neura::getArchitecture().getPerCgraRows();
@@ -409,9 +415,9 @@ private:
       for (auto &[cgra_c, cgra_r] : node->shape.cgra_positions) {
         for (int tr = 0; tr < per_cgra_rows; ++tr) {
           for (int tc = 0; tc < per_cgra_cols; ++tc) {
-            if (!os.str().empty()) os << ",";
-            os << (cgra_c * per_cgra_cols + tc)
-               << "_"
+            if (!os.str().empty())
+              os << ",";
+            os << (cgra_c * per_cgra_cols + tc) << "_"
                << (cgra_r * per_cgra_rows + tr);
           }
         }
@@ -423,19 +429,17 @@ private:
     int compiled_ii = 0;
     int cp_depth = 1;
 
-    if (succeeded(
-            runNeuraPipelineOnKernel(ctx, cloned_kernel, phase2_module,
-                                    compiled_ii, cp_depth,
-                                    x_tiles, y_tiles, valid_tiles,
-                                    skip_mapper))) {
+    if (succeeded(runNeuraPipelineOnKernel(
+            ctx, cloned_kernel, phase2_module, compiled_ii, cp_depth, x_tiles,
+            y_tiles, valid_tiles, skip_mapper))) {
       llvm::errs() << "[profileTask] kernel in " << task.getTaskName()
                    << ": compiled_ii=" << compiled_ii
                    << ", cp_depth=" << cp_depth << "\n";
     } else {
       llvm::errs() << "[profileTask] Phase 2 failed for kernel in "
                    << task.getTaskName() << ", extracting partial\n";
-      extractMetricsFromPartialIR(phase2_module, compiled_ii, cp_depth,
-                                  x_tiles, y_tiles);
+      extractMetricsFromPartialIR(phase2_module, compiled_ii, cp_depth, x_tiles,
+                                  y_tiles);
     }
     phase2_module.erase();
 
@@ -445,8 +449,8 @@ private:
     node->steps = std::max(cp_depth, 1);
 
     llvm::errs() << "[profileTask] " << task.getTaskName()
-                 << ": compiled_ii=" << node->ii
-                 << ", steps=" << node->steps << "\n";
+                 << ": compiled_ii=" << node->ii << ", steps=" << node->steps
+                 << "\n";
 
     // Erases the temporary module.
     tmp_mod.erase();
@@ -457,15 +461,10 @@ private:
   // x_tiles/y_tiles: multi-CGRA tile grid dimensions.
   // valid_tiles: explicit tile list for non-rectangular shapes (empty = full).
   // skip_mapper: skip MapToAcceleratorPass, use ResMII/RecMII only.
-  LogicalResult runNeuraPipelineOnKernel(MLIRContext *ctx,
-                                         neura::KernelOp kernel,
-                                         ModuleOp dst_module,
-                                         int &compiled_ii,
-                                         int &cp_depth,
-                                         int x_tiles = 0,
-                                         int y_tiles = 0,
-                                         const std::string &valid_tiles = "",
-                                         bool skip_mapper = false) {
+  LogicalResult runNeuraPipelineOnKernel(
+      MLIRContext *ctx, neura::KernelOp kernel, ModuleOp dst_module,
+      int &compiled_ii, int &cp_depth, int x_tiles = 0, int y_tiles = 0,
+      const std::string &valid_tiles = "", bool skip_mapper = false) {
     Location loc = kernel.getLoc();
     OpBuilder builder(ctx);
     builder.setInsertionPointToStart(dst_module.getBody());
@@ -484,12 +483,11 @@ private:
     SmallVector<Type> result_types(kernel.getResultTypes());
 
     auto func_type = builder.getFunctionType(arg_types, result_types);
-    auto wrapper_func = builder.create<func::FuncOp>(
-        loc, "__speculative_kernel__", func_type);
+    auto wrapper_func =
+        builder.create<func::FuncOp>(loc, "__speculative_kernel__", func_type);
 
     // Tags as neura accelerator — all downstream passes check this.
-    wrapper_func->setAttr("accelerator",
-                          builder.getStringAttr("neura"));
+    wrapper_func->setAttr("accelerator", builder.getStringAttr("neura"));
 
     // Clones the entire kernel region (all blocks) into the func body.
     Region &func_region = wrapper_func.getBody();
@@ -521,8 +519,8 @@ private:
     if (failed(pm.run(dst_module))) {
       // Pre-mapper pipeline failed — extract best-effort metrics from partial
       // Neura IR using ResMII/RecMII analysis with the correct multi-CGRA arch.
-      extractMetricsFromPartialIR(dst_module, compiled_ii, cp_depth,
-                                  x_tiles, y_tiles);
+      extractMetricsFromPartialIR(dst_module, compiled_ii, cp_depth, x_tiles,
+                                  y_tiles);
       return failure();
     }
 
@@ -532,16 +530,18 @@ private:
       std::unique_ptr<neura::Architecture> custom_arch;
       const neura::Architecture *arch_ptr = &neura::getArchitecture();
       if (x_tiles > 0 && y_tiles > 0) {
-        custom_arch = neura::getArchitecture().cloneWithNewDimensions(
-            y_tiles, x_tiles);
+        custom_arch =
+            neura::getArchitecture().cloneWithNewDimensions(y_tiles, x_tiles);
         arch_ptr = custom_arch.get();
       }
       const neura::Architecture &architecture = *arch_ptr;
 
       dst_module.walk([&](func::FuncOp fn) {
-        if (!fn->hasAttr("accelerator")) return;
+        if (!fn->hasAttr("accelerator"))
+          return;
         Region &region = fn.getBody();
-        if (region.empty()) return;
+        if (region.empty())
+          return;
         int res_mii = neura::calculateResMii(region, architecture);
         auto cycles = neura::collectRecurrenceCycles(region);
         int rec_mii = 1;
@@ -551,10 +551,12 @@ private:
         // Derives cp_depth from ALAP (As-Late-As-Possible) scheduling levels.
         std::set<Operation *> critical_ops;
         for (auto &cycle : cycles)
-          for (Operation *op : cycle.operations) critical_ops.insert(op);
+          for (Operation *op : cycle.operations)
+            critical_ops.insert(op);
         auto sorted_ops = neura::getTopologicallySortedOps(region);
         if (!sorted_ops.empty()) {
-          auto level_buckets = neura::getOpsInAlapLevels(sorted_ops, critical_ops);
+          auto level_buckets =
+              neura::getOpsInAlapLevels(sorted_ops, critical_ops);
           cp_depth = std::max(cp_depth, (int)level_buckets.size());
         }
         llvm::errs() << "[profileTask] analytical fallback: res_mii=" << res_mii
@@ -586,18 +588,20 @@ private:
     bool all_data_movs_ok = true;
     int total_mapped_ops = 0;
     dst_module.walk([&](func::FuncOp fn) {
-      if (!fn->hasAttr("accelerator")) return;
+      if (!fn->hasAttr("accelerator"))
+        return;
       fn.walk([&](Operation *op) {
-        if (isa<func::ReturnOp>(op)) return;
+        if (isa<func::ReturnOp>(op))
+          return;
         total_mapped_ops++;
         if (isa<neura::ReserveOp, neura::DataMovOp, neura::CtrlMovOp>(op))
           return;
         for (Value operand : op->getOperands()) {
           Operation *producer = operand.getDefiningOp();
-          if (!producer) continue;
-          if (!isa<neura::DataMovOp, neura::ReserveOp,
-                   neura::PhiStartOp, neura::GrantOnceOp,
-                   neura::GrantPredicateOp, neura::YieldOp,
+          if (!producer)
+            continue;
+          if (!isa<neura::DataMovOp, neura::ReserveOp, neura::PhiStartOp,
+                   neura::GrantOnceOp, neura::GrantPredicateOp, neura::YieldOp,
                    neura::KernelOp>(producer))
             all_data_movs_ok = false;
         }
@@ -609,8 +613,8 @@ private:
                  << " limit=" << kMapperOpLimit << "\n";
 
     if (all_data_movs_ok && total_mapped_ops <= kMapperOpLimit) {
-      // Runs MapToAcceleratorPass in a fresh pass manager on the already-lowered
-      // dst_module (pre-mapper pipeline already ran above).
+      // Runs MapToAcceleratorPass in a fresh pass manager on the
+      // already-lowered dst_module (pre-mapper pipeline already ran above).
       // Passes the correct tile dimensions so the mapper uses the right array.
       PassManager pm2(ctx);
       pm2.enableVerifier(false);
@@ -625,11 +629,13 @@ private:
       }
 
       if (succeeded(pm2.run(dst_module))) {
-        // Reads true compiled_ii from mapping_info; overrides analytical estimate.
+        // Reads true compiled_ii from mapping_info; overrides analytical
+        // estimate.
         dst_module.walk([&](func::FuncOp fn) {
-          if (!fn->hasAttr("accelerator")) return;
-          if (auto mapping_info =
-                  fn->getAttrOfType<DictionaryAttr>(neura::attr::kMappingInfo)) {
+          if (!fn->hasAttr("accelerator"))
+            return;
+          if (auto mapping_info = fn->getAttrOfType<DictionaryAttr>(
+                  neura::attr::kMappingInfo)) {
             if (auto ii_attr =
                     mapping_info.getAs<IntegerAttr>(neura::attr::kCompiledII)) {
               compiled_ii = (int)ii_attr.getInt(); // authoritative value
@@ -656,15 +662,15 @@ private:
 
   // Extracts ResMII/RecMII from partially-lowered IR when the full pipeline
   // fails.  Uses custom arch sized to x_tiles × y_tiles if provided.
-  void extractMetricsFromPartialIR(ModuleOp tmp_module,
-                                   int &out_ii, int &out_cp_depth,
-                                   int x_tiles = 0, int y_tiles = 0) {
+  void extractMetricsFromPartialIR(ModuleOp tmp_module, int &out_ii,
+                                   int &out_cp_depth, int x_tiles = 0,
+                                   int y_tiles = 0) {
     // Builds architecture: uses custom tile dimensions if provided.
     std::unique_ptr<neura::Architecture> custom_arch;
     const neura::Architecture *arch_ptr = &neura::getArchitecture();
     if (x_tiles > 0 && y_tiles > 0) {
-      custom_arch = neura::getArchitecture().cloneWithNewDimensions(
-          y_tiles, x_tiles);
+      custom_arch =
+          neura::getArchitecture().cloneWithNewDimensions(y_tiles, x_tiles);
       arch_ptr = custom_arch.get();
     }
     const neura::Architecture &architecture = *arch_ptr;
@@ -704,8 +710,7 @@ private:
     out_cp_depth = std::max(cp_depth, 1);
 
     llvm::errs() << "[profileTask] (partial) ii=" << out_ii
-                 << " (res_mii=" << res_mii
-                 << ", rec_mii=" << rec_mii
+                 << " (res_mii=" << res_mii << ", rec_mii=" << rec_mii
                  << "), steps=" << out_cp_depth << "\n";
   }
 
@@ -743,7 +748,8 @@ private:
               int64_t range = ub.getInt() - lb.getInt();
               int64_t step = st.getInt();
               int64_t tc = (range + step - 1) / step;
-              if (tc > 0) kernel_product *= tc;
+              if (tc > 0)
+                kernel_product *= tc;
             }
           }
         });
@@ -774,7 +780,8 @@ private:
       int64_t lb = counter.getLowerBound().getSExtValue();
       int64_t ub = counter.getUpperBound().getSExtValue();
       int64_t step = counter.getStep().getSExtValue();
-      if (step <= 0) return 1;
+      if (step <= 0)
+        return 1;
       int64_t range = ub - lb;
       return (range > 0) ? ((range + step - 1) / step) : 1;
     };
@@ -802,7 +809,6 @@ private:
 
     return (total > 0) ? total : 1;
   }
-
 };
 
 //===----------------------------------------------------------------------===//
@@ -847,15 +853,16 @@ public:
       int new_cgra_count = old_cgra_count + 1;
 
       // Check if incrementing cgra_count is feasible on the 4×4 grid.
-      // TODO: This currently only checks the capacity (total CGRA count). Ideally, 
-      // we should invoke a global placement pass (aka MapTaskOnCgraPass) here to 
-      // verify if the speculatively increased CGRA count and its proposed shape 
-      // actually fit on the 4x4 grid alongside other previously allocated tasks.
+      // TODO: This currently only checks the capacity (total CGRA count).
+      // Ideally, we should invoke a global placement pass (aka
+      // MapTaskOnCgraPass) here to verify if the speculatively increased CGRA
+      // count and its proposed shape actually fit on the 4x4 grid alongside
+      // other previously allocated tasks.
       //
-      // Currently, MapTaskOnCgraPass does not support multi-CGRA task placement. 
-      // Once it does, we should call it here; if global placement fails for the 
-      // "best" shape, we should backtrack and try alternative shapes before 
-      // saturating the node.
+      // Currently, MapTaskOnCgraPass does not support multi-CGRA task
+      // placement. Once it does, we should call it here; if global placement
+      // fails for the "best" shape, we should backtrack and try alternative
+      // shapes before saturating the node.
       if (!canFitOnGrid(new_cgra_count)) {
         saturated_nodes.insert(bottleneck);
         continue;
@@ -863,24 +870,27 @@ public:
 
       // Saves state for potential rollback.
       int64_t old_latency = bottleneck->estimatedLatency();
-      int64_t old_ii     = bottleneck->ii;
-      int64_t old_steps  = bottleneck->steps;
+      int64_t old_ii = bottleneck->ii;
+      int64_t old_steps = bottleneck->steps;
       CgraShape old_shape = bottleneck->shape;
 
       // Speculatively applies the new CGRA count and re-profiles.
       bottleneck->cgra_count = new_cgra_count;
       bottleneck->shape = pickBestShape(new_cgra_count);
 
-      llvm::errs()
-          << "  Balance: trying Task " << bottleneck->id << " ("
-          << bottleneck->op.getTaskName().str()
-          << ") cgra_count=" << old_cgra_count << "->" << new_cgra_count
-          << ", shape=" << bottleneck->shape.describe(new_cgra_count)
-          << ", tile_array="
-          << (bottleneck->shape.rows * neura::getArchitecture().getPerCgraRows())
-          << "x"
-          << (bottleneck->shape.cols * neura::getArchitecture().getPerCgraColumns())
-          << ", old_ii=" << old_ii << ", old_lat=" << old_latency << "\n";
+      llvm::errs() << "  Balance: trying Task " << bottleneck->id << " ("
+                   << bottleneck->op.getTaskName().str()
+                   << ") cgra_count=" << old_cgra_count << "->"
+                   << new_cgra_count
+                   << ", shape=" << bottleneck->shape.describe(new_cgra_count)
+                   << ", tile_array="
+                   << (bottleneck->shape.rows *
+                       neura::getArchitecture().getPerCgraRows())
+                   << "x"
+                   << (bottleneck->shape.cols *
+                       neura::getArchitecture().getPerCgraColumns())
+                   << ", old_ii=" << old_ii << ", old_lat=" << old_latency
+                   << "\n";
 
       profile_fn(bottleneck, bottleneck->op);
 
@@ -889,23 +899,22 @@ public:
       if (new_latency < old_latency) {
         // Accepted: the larger array produces a measurably better latency.
         changed = true;
-        llvm::errs()
-            << "  Balance: ACCEPTED Task " << bottleneck->id << " ("
-            << bottleneck->op.getTaskName().str()
-            << ") cgra_count=" << new_cgra_count
-            << ", ii=" << old_ii << "->" << bottleneck->ii
-            << ", lat=" << old_latency << "->" << new_latency
-            << ", total_cgras=" << graph.getTotalAllocatedCGRAs() << "\n";
+        llvm::errs() << "  Balance: ACCEPTED Task " << bottleneck->id << " ("
+                     << bottleneck->op.getTaskName().str()
+                     << ") cgra_count=" << new_cgra_count << ", ii=" << old_ii
+                     << "->" << bottleneck->ii << ", lat=" << old_latency
+                     << "->" << new_latency
+                     << ", total_cgras=" << graph.getTotalAllocatedCGRAs()
+                     << "\n";
       } else {
         // Rejected: no latency improvement — roll back and mark saturated.
-        llvm::errs()
-            << "  Balance: REJECTED Task " << bottleneck->id
-            << " (ii=" << bottleneck->ii << ", lat=" << new_latency
-            << " >= old_lat=" << old_latency << "). Reverting.\n";
+        llvm::errs() << "  Balance: REJECTED Task " << bottleneck->id
+                     << " (ii=" << bottleneck->ii << ", lat=" << new_latency
+                     << " >= old_lat=" << old_latency << "). Reverting.\n";
         bottleneck->cgra_count = old_cgra_count;
-        bottleneck->shape      = old_shape;
-        bottleneck->ii         = old_ii;
-        bottleneck->steps      = old_steps;
+        bottleneck->shape = old_shape;
+        bottleneck->ii = old_ii;
+        bottleneck->steps = old_steps;
         saturated_nodes.insert(bottleneck);
       }
     }
@@ -913,109 +922,112 @@ public:
     return changed;
   }
 
-  private:
-    // Computes the weighted critical path length from a given node to any sink.
-    int64_t computeCriticalPathFrom(TaskGraphNode *node,
-                                    DenseMap<TaskGraphNode *, int64_t> &cache) {
-      auto it = cache.find(node);
-      if (it != cache.end()) {
-        return it->second;
-      }
-
-      int64_t max_successor_path = 0;
-      for (auto *succ : node->successors) {
-        max_successor_path =
-            std::max(max_successor_path, computeCriticalPathFrom(succ, cache));
-      }
-
-      int64_t path = node->estimatedLatency() + max_successor_path;
-      cache[node] = path;
-      return path;
+private:
+  // Computes the weighted critical path length from a given node to any sink.
+  int64_t computeCriticalPathFrom(TaskGraphNode *node,
+                                  DenseMap<TaskGraphNode *, int64_t> &cache) {
+    auto it = cache.find(node);
+    if (it != cache.end()) {
+      return it->second;
     }
 
-    // Computes the longest path from any source to the given node
-    // (depth_from_source). Uses dynamic programming with memoization.
-    int64_t computeDepthFromSource(TaskGraphNode *node,
-                                   DenseMap<TaskGraphNode *, int64_t> &cache) {
-      auto it = cache.find(node);
-      if (it != cache.end()) {
-        return it->second;
-      }
-
-      int64_t max_predecessor_depth = 0;
-      for (auto *pred : node->predecessors) {
-        max_predecessor_depth =
-            std::max(max_predecessor_depth,
-                     computeDepthFromSource(pred, cache));
-      }
-
-      // depth_from_source(node) = max(depth_from_source(pred) for all preds)
-      //                           + node's own latency.
-      int64_t depth = max_predecessor_depth + node->estimatedLatency();
-      cache[node] = depth;
-      return depth;
+    int64_t max_successor_path = 0;
+    for (auto *succ : node->successors) {
+      max_successor_path =
+          std::max(max_successor_path, computeCriticalPathFrom(succ, cache));
     }
 
-    // Finds the bottleneck node on the critical path using full slack analysis.
-    //
-    // For each node, slack is defined as:
-    //   slack(node) = global_critical_path
-    //                 - depth_from_source(node)
-    //                 - depth_to_sink(node)
-    //                 + node->estimatedLatency()
-    //
-    // where depth_from_source includes the node's own latency, and
-    // depth_to_sink (computeCriticalPathFrom) also includes the node's own
-    // latency, so we add it back once to avoid double-counting.
-    //
-    // A node is on the critical path iff slack == 0.
-    // Among critical-path nodes, the one with highest individual latency
-    // is the bottleneck (reducing its latency most benefits the pipeline).
-    TaskGraphNode *findBottleneck(TaskDependencyGraph &graph,
-                                  const llvm::DenseSet<TaskGraphNode *> &ignored) {
-      llvm::DenseMap<TaskGraphNode *, int64_t> to_sink_cache;
-      llvm::DenseMap<TaskGraphNode *, int64_t> from_source_cache;
+    int64_t path = node->estimatedLatency() + max_successor_path;
+    cache[node] = path;
+    return path;
+  }
 
-      // Computes depth_to_sink for all nodes (via computeCriticalPathFrom).
-      int64_t global_critical_path = 0;
-      for (auto &node : graph.nodes) {
-        int64_t cp = computeCriticalPathFrom(node.get(), to_sink_cache);
-        global_critical_path = std::max(global_critical_path, cp);
-      }
-
-      // Computes depth_from_source for all nodes.
-      for (auto &node : graph.nodes) {
-        computeDepthFromSource(node.get(), from_source_cache);
-      }
-
-      // Finds the critical-path node with highest individual latency.
-      TaskGraphNode *bottleneck = nullptr;
-      int64_t max_latency = -1;
-
-      for (auto &node : graph.nodes) {
-        if (ignored.count(node.get())) continue;
-        if (node->cgra_count >= node->trip_count) continue;
-        // Per-task CGRA limit: no point trying to add more.
-        if (node->cgra_count >= kMaxCgrasPerTask) continue;
-
-        int64_t depth_from = from_source_cache[node.get()];
-        int64_t depth_to = to_sink_cache[node.get()];
-
-        // slack = global_cp - depth_from - depth_to + node_latency
-        // (because both depth_from and depth_to include node's own latency).
-        int64_t slack = global_critical_path - depth_from - depth_to
-                        + node->estimatedLatency();
-
-        if (slack != 0) continue; // Not on the critical path.
-
-        if (node->estimatedLatency() > max_latency) {
-          max_latency = node->estimatedLatency();
-          bottleneck = node.get();
-        }
-      }
-      return bottleneck;
+  // Computes the longest path from any source to the given node
+  // (depth_from_source). Uses dynamic programming with memoization.
+  int64_t computeDepthFromSource(TaskGraphNode *node,
+                                 DenseMap<TaskGraphNode *, int64_t> &cache) {
+    auto it = cache.find(node);
+    if (it != cache.end()) {
+      return it->second;
     }
 
+    int64_t max_predecessor_depth = 0;
+    for (auto *pred : node->predecessors) {
+      max_predecessor_depth =
+          std::max(max_predecessor_depth, computeDepthFromSource(pred, cache));
+    }
+
+    // depth_from_source(node) = max(depth_from_source(pred) for all preds)
+    //                           + node's own latency.
+    int64_t depth = max_predecessor_depth + node->estimatedLatency();
+    cache[node] = depth;
+    return depth;
+  }
+
+  // Finds the bottleneck node on the critical path using full slack analysis.
+  //
+  // For each node, slack is defined as:
+  //   slack(node) = global_critical_path
+  //                 - depth_from_source(node)
+  //                 - depth_to_sink(node)
+  //                 + node->estimatedLatency()
+  //
+  // where depth_from_source includes the node's own latency, and
+  // depth_to_sink (computeCriticalPathFrom) also includes the node's own
+  // latency, so we add it back once to avoid double-counting.
+  //
+  // A node is on the critical path iff slack == 0.
+  // Among critical-path nodes, the one with highest individual latency
+  // is the bottleneck (reducing its latency most benefits the pipeline).
+  TaskGraphNode *
+  findBottleneck(TaskDependencyGraph &graph,
+                 const llvm::DenseSet<TaskGraphNode *> &ignored) {
+    llvm::DenseMap<TaskGraphNode *, int64_t> to_sink_cache;
+    llvm::DenseMap<TaskGraphNode *, int64_t> from_source_cache;
+
+    // Computes depth_to_sink for all nodes (via computeCriticalPathFrom).
+    int64_t global_critical_path = 0;
+    for (auto &node : graph.nodes) {
+      int64_t cp = computeCriticalPathFrom(node.get(), to_sink_cache);
+      global_critical_path = std::max(global_critical_path, cp);
+    }
+
+    // Computes depth_from_source for all nodes.
+    for (auto &node : graph.nodes) {
+      computeDepthFromSource(node.get(), from_source_cache);
+    }
+
+    // Finds the critical-path node with highest individual latency.
+    TaskGraphNode *bottleneck = nullptr;
+    int64_t max_latency = -1;
+
+    for (auto &node : graph.nodes) {
+      if (ignored.count(node.get()))
+        continue;
+      if (node->cgra_count >= node->trip_count)
+        continue;
+      // Per-task CGRA limit: no point trying to add more.
+      if (node->cgra_count >= kMaxCgrasPerTask)
+        continue;
+
+      int64_t depth_from = from_source_cache[node.get()];
+      int64_t depth_to = to_sink_cache[node.get()];
+
+      // slack = global_cp - depth_from - depth_to + node_latency
+      // (because both depth_from and depth_to include node's own latency).
+      int64_t slack = global_critical_path - depth_from - depth_to +
+                      node->estimatedLatency();
+
+      if (slack != 0)
+        continue; // Not on the critical path.
+
+      if (node->estimatedLatency() > max_latency) {
+        max_latency = node->estimatedLatency();
+        bottleneck = node.get();
+      }
+    }
+    return bottleneck;
+  }
 };
 
 //===----------------------------------------------------------------------===//
@@ -1041,10 +1053,9 @@ public:
 
     auto [node_a, node_b] = *pair;
 
-    llvm::errs()
-        << "  Fuse: Task " << node_a->id << " ("
-        << node_a->op.getTaskName().str() << ") + Task " << node_b->id
-        << " (" << node_b->op.getTaskName().str() << ")\n";
+    llvm::errs() << "  Fuse: Task " << node_a->id << " ("
+                 << node_a->op.getTaskName().str() << ") + Task " << node_b->id
+                 << " (" << node_b->op.getTaskName().str() << ")\n";
 
     return performFusion(func, node_a, node_b, graph, profile_fn);
   }
@@ -1070,8 +1081,7 @@ private:
         }
 
         // Fusion requires single-block task bodies (counter-mode tasks).
-        if (!a->op.getBody().hasOneBlock() ||
-            !b->op.getBody().hasOneBlock()) {
+        if (!a->op.getBody().hasOneBlock() || !b->op.getBody().hasOneBlock()) {
           continue;
         }
 
@@ -1107,7 +1117,8 @@ private:
     auto *task_a = a->op.getOperation();
     auto *task_b = b->op.getOperation();
 
-    if (task_a->getBlock() != task_b->getBlock()) return false;
+    if (task_a->getBlock() != task_b->getBlock())
+      return false;
 
     // Ensures task_a is before task_b.
     if (!task_a->isBeforeInBlock(task_b)) {
@@ -1117,10 +1128,12 @@ private:
 
     // Check: no other task between a and b should have an edge from/to a or b.
     for (auto &node : graph.nodes) {
-      if (node.get() == a || node.get() == b) continue;
+      if (node.get() == a || node.get() == b)
+        continue;
 
       auto *other_op = node->op.getOperation();
-      if (other_op->getBlock() != task_a->getBlock()) continue;
+      if (other_op->getBlock() != task_a->getBlock())
+        continue;
 
       // Is this node between task_a and task_b?
       if (task_a->isBeforeInBlock(other_op) &&
@@ -1224,6 +1237,10 @@ private:
     addUnique(merged_original_write_memrefs, task_b.getOriginalWriteMemrefs());
 
     // Step 2: Builds result types.
+    SmallVector<Type> read_output_types;
+    for (Value v : merged_read_memrefs) {
+      read_output_types.push_back(v.getType());
+    }
     SmallVector<Type> write_output_types;
     for (Value v : merged_write_memrefs) {
       write_output_types.push_back(v.getType());
@@ -1242,9 +1259,9 @@ private:
 
     // Step 4: Creates the fused task op.
     auto fused_task = builder.create<TaskflowTaskOp>(
-        task_a.getLoc(), write_output_types, value_output_types,
-        merged_read_memrefs, merged_write_memrefs, merged_value_inputs,
-        fused_name, merged_original_read_memrefs,
+        task_a.getLoc(), read_output_types, write_output_types,
+        value_output_types, merged_read_memrefs, merged_write_memrefs,
+        merged_value_inputs, fused_name, merged_original_read_memrefs,
         merged_original_write_memrefs);
 
     // ================================================================
@@ -1253,9 +1270,8 @@ private:
 
     // Step 5: Clones both task regions into the fused task body.
     // Maps source task's block args to fused task's block args.
-    auto buildTaskArgMapping =
-        [&](TaskflowTaskOp orig_task, Region &fused_region,
-            IRMapping &mapping) {
+    auto buildTaskArgMapping = [&](TaskflowTaskOp orig_task,
+                                   Region &fused_region, IRMapping &mapping) {
       Block &src_entry = orig_task.getBody().front();
       unsigned src_idx = 0;
       unsigned read_count = orig_task.getReadMemrefs().size();
@@ -1315,7 +1331,8 @@ private:
     {
       OpBuilder ob = OpBuilder::atBlockEnd(entry_block);
       for (Operation &op : task_a.getBody().front()) {
-        if (isa<TaskflowYieldOp>(&op)) continue;
+        if (isa<TaskflowYieldOp>(&op))
+          continue;
         ob.clone(op, mapping_a);
       }
     }
@@ -1324,7 +1341,8 @@ private:
     {
       OpBuilder ob = OpBuilder::atBlockEnd(entry_block);
       for (Operation &op : task_b.getBody().front()) {
-        if (isa<TaskflowYieldOp>(&op)) continue;
+        if (isa<TaskflowYieldOp>(&op))
+          continue;
         ob.clone(op, mapping_b);
       }
     }
@@ -1374,8 +1392,7 @@ private:
         merged_iter_args,
         /*cgra_id=*/nullptr, /*kernel_name=*/nullptr,
         /*accelerator=*/builder.getStringAttr("neura"));
-    fused_kernel->setAttr("dataflow_mode",
-                          builder.getStringAttr("predicate"));
+    fused_kernel->setAttr("dataflow_mode", builder.getStringAttr("predicate"));
 
     // Builds kernel entry block and block-arg mappings.
     Region &fused_kernel_region = fused_kernel.getBody();
@@ -1386,9 +1403,10 @@ private:
       kernel_body->addArgument(v.getType(), task_a.getLoc());
 
     // Maps each original kernel's block args to the fused kernel's block args.
-    // iter_offset tracks where this kernel's iter_args start in the merged list.
-    auto buildKernelArgMapping =
-        [&](neura::KernelOp kernel, unsigned iter_offset) -> IRMapping {
+    // iter_offset tracks where this kernel's iter_args start in the merged
+    // list.
+    auto buildKernelArgMapping = [&](neura::KernelOp kernel,
+                                     unsigned iter_offset) -> IRMapping {
       IRMapping km;
       Block &src_entry = kernel.getBody().front();
       unsigned src_idx = 0;
@@ -1406,15 +1424,14 @@ private:
       // Maps iter_args.
       for (unsigned i = 0; i < kernel.getIterArgsInit().size(); ++i) {
         km.map(src_entry.getArgument(src_idx + i),
-               kernel_body->getArgument(
-                   merged_kernel_inputs.size() + iter_offset + i));
+               kernel_body->getArgument(merged_kernel_inputs.size() +
+                                        iter_offset + i));
       }
 
       return km;
     };
 
-    IRMapping kernel_mapping_a = buildKernelArgMapping(
-        cloned_kernel_a, 0);
+    IRMapping kernel_mapping_a = buildKernelArgMapping(cloned_kernel_a, 0);
     IRMapping kernel_mapping_b = buildKernelArgMapping(
         cloned_kernel_b, cloned_kernel_a.getIterArgsInit().size());
 
@@ -1422,11 +1439,13 @@ private:
     {
       OpBuilder kb = OpBuilder::atBlockEnd(kernel_body);
       for (auto &op : cloned_kernel_a.getBody().front().getOperations()) {
-        if (isa<neura::YieldOp>(&op)) continue;
+        if (isa<neura::YieldOp>(&op))
+          continue;
         kb.clone(op, kernel_mapping_a);
       }
       for (auto &op : cloned_kernel_b.getBody().front().getOperations()) {
-        if (isa<neura::YieldOp>(&op)) continue;
+        if (isa<neura::YieldOp>(&op))
+          continue;
         kb.clone(op, kernel_mapping_b);
       }
 
@@ -1436,21 +1455,20 @@ private:
       if (auto yield_a = dyn_cast<neura::YieldOp>(
               cloned_kernel_a.getBody().front().getTerminator())) {
         for (Value v : yield_a.getIterArgsNext())
-          merged_iter_args_next.push_back(
-              kernel_mapping_a.lookupOrDefault(v));
+          merged_iter_args_next.push_back(kernel_mapping_a.lookupOrDefault(v));
         for (Value v : yield_a.getResults())
           merged_results.push_back(kernel_mapping_a.lookupOrDefault(v));
       }
       if (auto yield_b = dyn_cast<neura::YieldOp>(
               cloned_kernel_b.getBody().front().getTerminator())) {
         for (Value v : yield_b.getIterArgsNext())
-          merged_iter_args_next.push_back(
-              kernel_mapping_b.lookupOrDefault(v));
+          merged_iter_args_next.push_back(kernel_mapping_b.lookupOrDefault(v));
         for (Value v : yield_b.getResults())
           merged_results.push_back(kernel_mapping_b.lookupOrDefault(v));
       }
 
-      // Creates the combined neura.yield and preserves yield_type from kernel_a.
+      // Creates the combined neura.yield and preserves yield_type from
+      // kernel_a.
       auto fused_yield = kb.create<neura::YieldOp>(
           task_a.getLoc(), merged_iter_args_next, merged_results);
       if (auto yield_a = dyn_cast<neura::YieldOp>(
@@ -1477,6 +1495,12 @@ private:
 
     // Builds and inserts the merged taskflow.yield.
     {
+      // Read outputs pass through the entry block's read-memref args.
+      SmallVector<Value> yield_reads;
+      for (size_t i = 0; i < merged_read_memrefs.size(); ++i) {
+        yield_reads.push_back(entry_block->getArgument(i));
+      }
+
       // Writes outputs pass through the entry block's write-memref args.
       SmallVector<Value> yield_writes;
       for (size_t i = 0; i < merged_write_memrefs.size(); ++i) {
@@ -1494,13 +1518,13 @@ private:
 
       // Erases auto-inserted yield and creates the merged one.
       if (!entry_block->empty()) {
-        if (auto existing_yield = dyn_cast<TaskflowYieldOp>(
-                entry_block->back())) {
+        if (auto existing_yield =
+                dyn_cast<TaskflowYieldOp>(entry_block->back())) {
           existing_yield.erase();
         }
       }
       OpBuilder tb = OpBuilder::atBlockEnd(entry_block);
-      tb.create<TaskflowYieldOp>(fused_task.getLoc(), yield_writes,
+      tb.create<TaskflowYieldOp>(fused_task.getLoc(), yield_reads, yield_writes,
                                  yield_values);
     }
 
@@ -1514,27 +1538,29 @@ private:
       TaskGraphNode fused_node(/*id=*/0, fused_task);
       fused_node.trip_count = fused_trip;
       profile_fn(&fused_node, fused_task);
-      fused_task->setAttr("steps",
-                          OpBuilder(fused_task).getI64IntegerAttr(fused_node.steps));
-      fused_task->setAttr("compiled_ii",
-                          OpBuilder(fused_task).getI64IntegerAttr(fused_node.ii));
+      fused_task->setAttr(
+          "steps", OpBuilder(fused_task).getI64IntegerAttr(fused_node.steps));
+      fused_task->setAttr(
+          "compiled_ii",
+          OpBuilder(fused_task).getI64IntegerAttr(fused_node.ii));
     }
-
 
     // Step 7: Replaces uses of original tasks' results.
     // Value outputs are ordered: task_a's value outputs first, then task_b's.
     unsigned val_offset_a = 0;
     unsigned val_offset_b = task_a.getValueOutputs().size();
-    replaceTaskResults(task_a, fused_task, merged_write_memrefs, val_offset_a);
-    replaceTaskResults(task_b, fused_task, merged_write_memrefs, val_offset_b);
+    replaceTaskResults(task_a, fused_task, merged_read_memrefs,
+                       merged_write_memrefs, val_offset_a);
+    replaceTaskResults(task_b, fused_task, merged_read_memrefs,
+                       merged_write_memrefs, val_offset_b);
 
     // Step 8: Erases original tasks.
     // Verifies no remaining uses before erasing.
     auto verifyNoUses = [](TaskflowTaskOp task, StringRef label) {
       for (Value result : task->getResults()) {
         if (!result.use_empty()) {
-          llvm::errs() << "[performFusion] ERROR: " << label
-                       << " result #" << result.cast<OpResult>().getResultNumber()
+          llvm::errs() << "[performFusion] ERROR: " << label << " result #"
+                       << result.cast<OpResult>().getResultNumber()
                        << " still has uses:\n";
           for (auto &use : result.getUses()) {
             llvm::errs() << "  used by: ";
@@ -1555,7 +1581,8 @@ private:
   // Finds the index of a value in a list.
   unsigned findOperandIndex(const SmallVector<Value> &list, Value v) {
     for (unsigned i = 0; i < list.size(); ++i) {
-      if (list[i] == v) return i;
+      if (list[i] == v)
+        return i;
     }
     llvm_unreachable("Value not found in operand list");
   }
@@ -1564,8 +1591,17 @@ private:
   // fused task. Handles both write outputs (memrefs) and value outputs
   // (reductions, iter_args).
   void replaceTaskResults(TaskflowTaskOp orig_task, TaskflowTaskOp fused_task,
+                          const SmallVector<Value> &merged_read_memrefs,
                           const SmallVector<Value> &merged_write_memrefs,
                           unsigned value_output_offset) {
+    // Read outputs: maps by matching the original read memref to its
+    // position in the merged read memrefs list.
+    for (unsigned i = 0; i < orig_task.getReadOutputs().size(); ++i) {
+      Value orig_result = orig_task.getReadOutputs()[i];
+      Value orig_read = orig_task.getReadMemrefs()[i];
+      unsigned fused_idx = findOperandIndex(merged_read_memrefs, orig_read);
+      orig_result.replaceAllUsesWith(fused_task.getReadOutputs()[fused_idx]);
+    }
     // Writes outputs: maps by matching the original write memref to its
     // position in the merged write memrefs list.
     for (unsigned i = 0; i < orig_task.getWriteOutputs().size(); ++i) {
@@ -1595,7 +1631,8 @@ struct ResourceAwareTaskOptimizationPass
       ResourceAwareTaskOptimizationPass)
 
   ResourceAwareTaskOptimizationPass() = default;
-  ResourceAwareTaskOptimizationPass(const ResourceAwareTaskOptimizationPass &other)
+  ResourceAwareTaskOptimizationPass(
+      const ResourceAwareTaskOptimizationPass &other)
       : PassWrapper(other) {}
 
   StringRef getArgument() const override {
@@ -1647,8 +1684,7 @@ struct ResourceAwareTaskOptimizationPass
 
     bool use_analytical = (estimationMode.getValue() == "analytical");
 
-    llvm::errs() << "=== ResourceAwareTaskOptimization on "
-                 << func.getName()
+    llvm::errs() << "=== ResourceAwareTaskOptimization on " << func.getName()
                  << " (estimation-mode=" << estimationMode.getValue()
                  << ") ===\n";
 
@@ -1670,12 +1706,12 @@ struct ResourceAwareTaskOptimizationPass
              "Number of tasks exceeds 4x4 CGRA grid capacity! "
              "Reduce task count via streaming fusion or increase grid size.");
 
-      llvm::errs() << "[ResourceAware] Iteration " << outer << ": "
-                   << num_tasks << " tasks\n";
+      llvm::errs() << "[ResourceAware] Iteration " << outer << ": " << num_tasks
+                   << " tasks\n";
       for (auto &node : graph.nodes) {
-        llvm::errs() << "  Task " << node->id << " ("
-                     << node->op.getTaskName() << "): trip_count="
-                     << node->trip_count << ", cgra_count=" << node->cgra_count
+        llvm::errs() << "  Task " << node->id << " (" << node->op.getTaskName()
+                     << "): trip_count=" << node->trip_count
+                     << ", cgra_count=" << node->cgra_count
                      << ", est_latency=" << node->estimatedLatency() << "\n";
       }
 
@@ -1686,7 +1722,7 @@ struct ResourceAwareTaskOptimizationPass
       // lambda so fused tasks get real profiling.  In analytical mode, the
       // mapper is skipped entirely (only ResMII/RecMII estimates are used).
       auto profile_fn = [&graph, use_analytical](TaskGraphNode *node,
-                                                  TaskflowTaskOp task) {
+                                                 TaskflowTaskOp task) {
         graph.profileTaskPublic(node, task, /*skip_mapper=*/use_analytical);
       };
       bool fuse_changed = fuser.fuse(func, graph, profile_fn);
@@ -1704,7 +1740,7 @@ struct ResourceAwareTaskOptimizationPass
       // Balance probes use analytical-only profiling by default.
       bool balance_skip = use_analytical || balanceSkipMapper.getValue();
       auto balance_profile_fn = [&graph, balance_skip](TaskGraphNode *node,
-                                         TaskflowTaskOp task) {
+                                                       TaskflowTaskOp task) {
         graph.profileTaskPublic(node, task, /*skip_mapper=*/balance_skip);
       };
       PipelineBalancer balancer;
@@ -1714,8 +1750,8 @@ struct ResourceAwareTaskOptimizationPass
       if (balance_changed || fuse_changed) {
         for (auto &node : graph.nodes) {
           OpBuilder b(node->op);
-          node->op->setAttr(
-              "cgra_count", b.getI32IntegerAttr(node->cgra_count));
+          node->op->setAttr("cgra_count",
+                            b.getI32IntegerAttr(node->cgra_count));
           if (node->ii != kUnprofiled) {
             node->op->setAttr("compiled_ii", b.getI32IntegerAttr(node->ii));
           }
@@ -1757,10 +1793,8 @@ struct ResourceAwareTaskOptimizationPass
           node->shape = pickBestShape(node->cgra_count);
           node->op->setAttr("cgra_count",
                             b.getI32IntegerAttr(node->cgra_count));
-          node->op->setAttr("compiled_ii",
-                            b.getI32IntegerAttr(node->ii));
-          node->op->setAttr("steps",
-                            b.getI32IntegerAttr(node->steps));
+          node->op->setAttr("compiled_ii", b.getI32IntegerAttr(node->ii));
+          node->op->setAttr("steps", b.getI32IntegerAttr(node->steps));
           node->op->setAttr("trip_count",
                             b.getI32IntegerAttr(node->trip_count));
           // Writes tile_shape attribute: simple "NxM" bounding-box string.
@@ -1772,7 +1806,8 @@ struct ResourceAwareTaskOptimizationPass
       }
     }
 
-    // Performs final validation and tile occupation summary with visual 4x4 grid.
+    // Performs final validation and tile occupation summary with visual 4x4
+    // grid.
     {
       TaskDependencyGraph final_graph;
       final_graph.build(func, use_analytical);
@@ -1794,21 +1829,23 @@ struct ResourceAwareTaskOptimizationPass
       for (auto &node : final_graph.nodes) {
         auto shape = pickBestShape(node->cgra_count);
         int tile_rows = shape.rows * neura::getArchitecture().getPerCgraRows();
-        int tile_cols = shape.cols * neura::getArchitecture().getPerCgraColumns();
+        int tile_cols =
+            shape.cols * neura::getArchitecture().getPerCgraColumns();
 
-        // Per-task grid (shape.rows x shape.cols bbox, filled up to cgra_count).
+        // Per-task grid (shape.rows x shape.cols bbox, filled up to
+        // cgra_count).
         llvm::errs() << "\n  [" << task_idx << "] " << node->op.getTaskName()
                      << "  cgra_count=" << node->cgra_count
                      << "  shape=" << shape.describe(node->cgra_count)
                      << "  tile_array=" << tile_rows << "x" << tile_cols
-                     << "  ii=" << node->ii
-                     << "  steps=" << node->steps
+                     << "  ii=" << node->ii << "  steps=" << node->steps
                      << "  trip_count=" << node->trip_count << "\n";
 
         // Draws a per-task bounding-box grid (shape.rows x shape.cols).
         int remaining = node->cgra_count;
-        llvm::errs() << "      +" ;
-        for (int c = 0; c < shape.cols; ++c) llvm::errs() << "---+";
+        llvm::errs() << "      +";
+        for (int c = 0; c < shape.cols; ++c)
+          llvm::errs() << "---+";
         llvm::errs() << "\n";
         for (int r = 0; r < shape.rows; ++r) {
           llvm::errs() << "      |";
@@ -1822,19 +1859,24 @@ struct ResourceAwareTaskOptimizationPass
           }
           llvm::errs() << "\n";
           llvm::errs() << "      +";
-          for (int c = 0; c < shape.cols; ++c) llvm::errs() << "---+";
+          for (int c = 0; c < shape.cols; ++c)
+            llvm::errs() << "---+";
           llvm::errs() << "\n";
         }
 
         // Places onto combined grid (pack sequentially).
         int placed = 0;
-        for (int r = next_row; r < kCgraGridRows && placed < node->cgra_count; ++r) {
+        for (int r = next_row; r < kCgraGridRows && placed < node->cgra_count;
+             ++r) {
           for (int c = (r == next_row ? next_col : 0);
                c < kCgraGridCols && placed < node->cgra_count; ++c) {
             combined_grid[r][c] = task_idx;
             next_row = r;
             next_col = c + 1;
-            if (next_col >= kCgraGridCols) { next_col = 0; next_row = r + 1; }
+            if (next_col >= kCgraGridCols) {
+              next_col = 0;
+              next_row = r + 1;
+            }
             ++placed;
           }
         }
@@ -1845,7 +1887,8 @@ struct ResourceAwareTaskOptimizationPass
       llvm::errs() << "\n  Combined 4x" << kCgraGridCols << " Grid"
                    << " (" << final_total << "/" << kTotalCGRAs << " used):\n";
       llvm::errs() << "  +";
-      for (int c = 0; c < kCgraGridCols; ++c) llvm::errs() << "---+";
+      for (int c = 0; c < kCgraGridCols; ++c)
+        llvm::errs() << "---+";
       llvm::errs() << "\n";
       for (int r = 0; r < kCgraGridRows; ++r) {
         llvm::errs() << "  |";
@@ -1858,7 +1901,8 @@ struct ResourceAwareTaskOptimizationPass
         }
         llvm::errs() << "\n";
         llvm::errs() << "  +";
-        for (int c = 0; c < kCgraGridCols; ++c) llvm::errs() << "---+";
+        for (int c = 0; c < kCgraGridCols; ++c)
+          llvm::errs() << "---+";
         llvm::errs() << "\n";
       }
       llvm::errs() << "  (" << (kTotalCGRAs - final_total) << " free)\n";

@@ -439,7 +439,8 @@ public:
     SmallVector<Type> read_output_types;
     SmallVector<Type> write_output_types;
     SmallVector<Type> value_output_types;
-    for (Value v : reader_op.getReadOutputs()) {
+    // read_outputs corresponds to fused_reads (passthrough for WAR tracking).
+    for (Value v : fused_read_memrefs) {
       read_output_types.push_back(v.getType());
     }
     for (Value v : reader_op.getWriteOutputs()) {
@@ -788,13 +789,11 @@ private:
     auto reader_yield =
         cast<taskflow::TaskflowYieldOp>(reader_body.getTerminator());
 
-    // Maps reader yield's read results to fused block args.
-    for (Value v : reader_yield.getReadResults()) {
-      if (reader_mapping.contains(v)) {
-        yield_reads.push_back(reader_mapping.lookup(v));
-      } else {
-        yield_reads.push_back(v);
-      }
+    // Read yield outputs: passthrough the fused block's read_memref args.
+    // These correspond to fused_reads (writer reads + reader reads -
+    // intermediate).
+    for (unsigned i = 0; i < fused_reads.size(); ++i) {
+      yield_reads.push_back(fused_block->getArgument(i));
     }
 
     // Maps reader yield's memory results to fused block args.
@@ -939,10 +938,40 @@ private:
                              taskflow::TaskflowTaskOp fused_task,
                              Value intermediate) {
 
-    // Replaces reader's read_outputs with fused task's read_outputs.
+    // Helper: finds the index of an outer memref in fused_reads.
+    auto findInFusedReads = [&](Value outer_memref) -> int {
+      for (unsigned i = 0; i < fused_task.getReadMemrefs().size(); ++i) {
+        if (fused_task.getReadMemrefs()[i] == outer_memref)
+          return i;
+      }
+      return -1;
+    };
+
+    // Replaces writer's read_outputs: map each to the fused task's
+    // corresponding read_output by finding the writer's read_memref
+    // in the fused task's read_memrefs.
+    for (unsigned i = 0; i < writer_op.getReadOutputs().size(); ++i) {
+      Value writer_read_input = writer_op.getReadMemrefs()[i];
+      int fused_idx = findInFusedReads(writer_read_input);
+      if (fused_idx >= 0) {
+        writer_op.getReadOutputs()[i].replaceAllUsesWith(
+            fused_task.getReadOutputs()[fused_idx]);
+      }
+    }
+
+    // Replaces reader's read_outputs: skip intermediate, map others.
     for (unsigned i = 0; i < reader_op.getReadOutputs().size(); ++i) {
-      reader_op.getReadOutputs()[i].replaceAllUsesWith(
-          fused_task.getReadOutputs()[i]);
+      Value orig = (i < reader_op.getOriginalReadMemrefs().size())
+                       ? reader_op.getOriginalReadMemrefs()[i]
+                       : reader_op.getReadMemrefs()[i];
+      if (orig == intermediate)
+        continue; // Intermediate read_output is dead after fusion.
+      Value reader_read_input = reader_op.getReadMemrefs()[i];
+      int fused_idx = findInFusedReads(reader_read_input);
+      if (fused_idx >= 0) {
+        reader_op.getReadOutputs()[i].replaceAllUsesWith(
+            fused_task.getReadOutputs()[fused_idx]);
+      }
     }
 
     // Replaces reader's write_outputs with fused task's write_outputs.
@@ -960,11 +989,6 @@ private:
     // Erases original tasks (reader first since writer might be used by it
     // through the intermediate, but we've already replaced all uses).
     reader_op.erase();
-
-    // Writer's outputs: The intermediate memref output is no longer used.
-    // Other outputs should have been handled, but let's verify.
-    // If the writer has other outputs besides the intermediate, those
-    // should not exist in the single-reader case.
     writer_op.erase();
 
     // Erases the intermediate memref allocation if it's now dead.

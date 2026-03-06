@@ -39,7 +39,7 @@ def TaskflowTaskOp : TaskflowOpBase<"task", [
     1. Memory dependencies: memrefs that are read or written by the task
     2. Value dependencies: SSA values from producer tasks
 
-    The `read_memrefs` and `write_memrefs` attributes record the actural
+    The `original_read_memrefs` and `original_write_memrefs` attributes record the actural
     original memrefs that this task accesses,
     enabling data placement analysis for multi-CGRA mapping.
 

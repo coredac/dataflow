@@ -208,7 +208,7 @@ module attributes {} {
 
 // TASKFLOW:      module {
 // TASKFLOW-NEXT:   func.func @_Z21pureNestedLoopExamplePA8_A6_iPA8_A5_iS4_PA7_iPA9_iPiS9_S9_S9_S9_(%arg0: memref<?x8x6xi32>, %arg1: memref<?x8x5xi32>, %arg2: memref<?x8x5xi32>, %arg3: memref<?x7xi32>, %arg4: memref<?x9xi32>, %arg5: memref<?xi32>, %arg6: memref<?xi32>, %arg7: memref<?xi32>, %arg8: memref<?xi32>, %arg9: memref<?xi32>) -> i32 attributes {llvm.linkage = #llvm.linkage<external>} {
-// TASKFLOW-NEXT:     %write_outputs = taskflow.task @Task_0 read_memrefs(%arg0 : memref<?x8x6xi32>) write_memrefs(%arg5 : memref<?xi32>) [original_read_memrefs(%arg0 : memref<?x8x6xi32>), original_write_memrefs(%arg5 : memref<?xi32>)] : (memref<?x8x6xi32>, memref<?xi32>) -> (memref<?xi32>) {
+// TASKFLOW-NEXT:     %read_outputs, %write_outputs = taskflow.task @Task_0 read_memrefs(%arg0 : memref<?x8x6xi32>) write_memrefs(%arg5 : memref<?xi32>) [original_read_memrefs(%arg0 : memref<?x8x6xi32>), original_write_memrefs(%arg5 : memref<?xi32>)] : (memref<?x8x6xi32>, memref<?xi32>) -> (memref<?x8x6xi32>, memref<?xi32>) {
 // TASKFLOW-NEXT:     ^bb0(%arg10: memref<?x8x6xi32>, %arg11: memref<?xi32>):
 // TASKFLOW-NEXT:       affine.for %arg12 = 0 to 4 {
 // TASKFLOW-NEXT:         affine.for %arg13 = 0 to 8 {
@@ -218,9 +218,9 @@ module attributes {} {
 // TASKFLOW-NEXT:           }
 // TASKFLOW-NEXT:         }
 // TASKFLOW-NEXT:       }
-// TASKFLOW-NEXT:       taskflow.yield writes(%arg11 : memref<?xi32>)
+// TASKFLOW-NEXT:       taskflow.yield reads(%arg10 : memref<?x8x6xi32>) writes(%arg11 : memref<?xi32>)
 // TASKFLOW-NEXT:     }
-// TASKFLOW-NEXT:     %write_outputs_0 = taskflow.task @Task_1 read_memrefs(%arg1, %arg2 : memref<?x8x5xi32>, memref<?x8x5xi32>) write_memrefs(%arg6 : memref<?xi32>) [original_read_memrefs(%arg1, %arg2 : memref<?x8x5xi32>, memref<?x8x5xi32>), original_write_memrefs(%arg6 : memref<?xi32>)] : (memref<?x8x5xi32>, memref<?x8x5xi32>, memref<?xi32>) -> (memref<?xi32>) {
+// TASKFLOW-NEXT:     %read_outputs_0:2, %write_outputs_1 = taskflow.task @Task_1 read_memrefs(%arg1, %arg2 : memref<?x8x5xi32>, memref<?x8x5xi32>) write_memrefs(%arg6 : memref<?xi32>) [original_read_memrefs(%arg1, %arg2 : memref<?x8x5xi32>, memref<?x8x5xi32>), original_write_memrefs(%arg6 : memref<?xi32>)] : (memref<?x8x5xi32>, memref<?x8x5xi32>, memref<?xi32>) -> (memref<?x8x5xi32>, memref<?x8x5xi32>, memref<?xi32>) {
 // TASKFLOW-NEXT:     ^bb0(%arg10: memref<?x8x5xi32>, %arg11: memref<?x8x5xi32>, %arg12: memref<?xi32>):
 // TASKFLOW-NEXT:       affine.for %arg13 = 0 to 4 {
 // TASKFLOW-NEXT:         affine.for %arg14 = 0 to 8 {
@@ -232,9 +232,9 @@ module attributes {} {
 // TASKFLOW-NEXT:           }
 // TASKFLOW-NEXT:         }
 // TASKFLOW-NEXT:       }
-// TASKFLOW-NEXT:       taskflow.yield writes(%arg12 : memref<?xi32>)
+// TASKFLOW-NEXT:       taskflow.yield reads(%arg10, %arg11 : memref<?x8x5xi32>, memref<?x8x5xi32>) writes(%arg12 : memref<?xi32>)
 // TASKFLOW-NEXT:     }
-// TASKFLOW-NEXT:     %write_outputs_1 = taskflow.task @Task_2 read_memrefs(%write_outputs, %write_outputs_0, %arg9 : memref<?xi32>, memref<?xi32>, memref<?xi32>) write_memrefs(%arg9 : memref<?xi32>) [original_read_memrefs(%arg5, %arg6, %arg9 : memref<?xi32>, memref<?xi32>, memref<?xi32>), original_write_memrefs(%arg9 : memref<?xi32>)] : (memref<?xi32>, memref<?xi32>, memref<?xi32>, memref<?xi32>) -> (memref<?xi32>) {
+// TASKFLOW-NEXT:     %read_outputs_2:3, %write_outputs_3 = taskflow.task @Task_2 read_memrefs(%write_outputs, %write_outputs_1, %arg9 : memref<?xi32>, memref<?xi32>, memref<?xi32>) write_memrefs(%arg9 : memref<?xi32>) [original_read_memrefs(%arg5, %arg6, %arg9 : memref<?xi32>, memref<?xi32>, memref<?xi32>), original_write_memrefs(%arg9 : memref<?xi32>)] : (memref<?xi32>, memref<?xi32>, memref<?xi32>, memref<?xi32>) -> (memref<?xi32>, memref<?xi32>, memref<?xi32>, memref<?xi32>) {
 // TASKFLOW-NEXT:     ^bb0(%arg10: memref<?xi32>, %arg11: memref<?xi32>, %arg12: memref<?xi32>, %arg13: memref<?xi32>):
 // TASKFLOW-NEXT:       affine.for %arg14 = 0 to 4 {
 // TASKFLOW-NEXT:         affine.for %arg15 = 0 to 8 {
@@ -248,9 +248,9 @@ module attributes {} {
 // TASKFLOW-NEXT:           }
 // TASKFLOW-NEXT:         }
 // TASKFLOW-NEXT:       }
-// TASKFLOW-NEXT:       taskflow.yield writes(%arg13 : memref<?xi32>)
+// TASKFLOW-NEXT:       taskflow.yield reads(%arg10, %arg11, %arg13 : memref<?xi32>, memref<?xi32>, memref<?xi32>) writes(%arg13 : memref<?xi32>)
 // TASKFLOW-NEXT:     }
-// TASKFLOW-NEXT:     %write_outputs_2 = taskflow.task @Task_3 read_memrefs(%arg3 : memref<?x7xi32>) write_memrefs(%arg7 : memref<?xi32>) [original_read_memrefs(%arg3 : memref<?x7xi32>), original_write_memrefs(%arg7 : memref<?xi32>)] : (memref<?x7xi32>, memref<?xi32>) -> (memref<?xi32>) {
+// TASKFLOW-NEXT:     %read_outputs_4, %write_outputs_5 = taskflow.task @Task_3 read_memrefs(%arg3 : memref<?x7xi32>) write_memrefs(%arg7 : memref<?xi32>) [original_read_memrefs(%arg3 : memref<?x7xi32>), original_write_memrefs(%arg7 : memref<?xi32>)] : (memref<?x7xi32>, memref<?xi32>) -> (memref<?x7xi32>, memref<?xi32>) {
 // TASKFLOW-NEXT:     ^bb0(%arg10: memref<?x7xi32>, %arg11: memref<?xi32>):
 // TASKFLOW-NEXT:       affine.for %arg12 = 0 to 4 {
 // TASKFLOW-NEXT:         affine.for %arg13 = 0 to 7 {
@@ -258,9 +258,9 @@ module attributes {} {
 // TASKFLOW-NEXT:           affine.store %1, %arg11[%arg13] : memref<?xi32>
 // TASKFLOW-NEXT:         }
 // TASKFLOW-NEXT:       }
-// TASKFLOW-NEXT:       taskflow.yield writes(%arg11 : memref<?xi32>)
+// TASKFLOW-NEXT:       taskflow.yield reads(%arg10 : memref<?x7xi32>) writes(%arg11 : memref<?xi32>)
 // TASKFLOW-NEXT:     }
-// TASKFLOW-NEXT:     %write_outputs_3 = taskflow.task @Task_4 read_memrefs(%arg4, %write_outputs_2 : memref<?x9xi32>, memref<?xi32>) write_memrefs(%arg8 : memref<?xi32>) [original_read_memrefs(%arg4, %arg7 : memref<?x9xi32>, memref<?xi32>), original_write_memrefs(%arg8 : memref<?xi32>)] : (memref<?x9xi32>, memref<?xi32>, memref<?xi32>) -> (memref<?xi32>) {
+// TASKFLOW-NEXT:     %read_outputs_6:2, %write_outputs_7 = taskflow.task @Task_4 read_memrefs(%arg4, %write_outputs_5 : memref<?x9xi32>, memref<?xi32>) write_memrefs(%arg8 : memref<?xi32>) [original_read_memrefs(%arg4, %arg7 : memref<?x9xi32>, memref<?xi32>), original_write_memrefs(%arg8 : memref<?xi32>)] : (memref<?x9xi32>, memref<?xi32>, memref<?xi32>) -> (memref<?x9xi32>, memref<?xi32>, memref<?xi32>) {
 // TASKFLOW-NEXT:     ^bb0(%arg10: memref<?x9xi32>, %arg11: memref<?xi32>, %arg12: memref<?xi32>):
 // TASKFLOW-NEXT:       affine.for %arg13 = 0 to 4 {
 // TASKFLOW-NEXT:         affine.for %arg14 = 0 to 9 {
@@ -270,16 +270,16 @@ module attributes {} {
 // TASKFLOW-NEXT:           affine.store %3, %arg12[%arg14] : memref<?xi32>
 // TASKFLOW-NEXT:         }
 // TASKFLOW-NEXT:       }
-// TASKFLOW-NEXT:       taskflow.yield writes(%arg12 : memref<?xi32>)
+// TASKFLOW-NEXT:       taskflow.yield reads(%arg10, %arg11 : memref<?x9xi32>, memref<?xi32>) writes(%arg12 : memref<?xi32>)
 // TASKFLOW-NEXT:     }
-// TASKFLOW-NEXT:     %0 = affine.load %write_outputs_1[0] : memref<?xi32>
+// TASKFLOW-NEXT:     %0 = affine.load %write_outputs_3[0] : memref<?xi32>
 // TASKFLOW-NEXT:     return %0 : i32
 // TASKFLOW-NEXT:   }
 // TASKFLOW-NEXT: }
 
 // STREAM:      module {
 // STREAM-NEXT:   func.func @_Z21pureNestedLoopExamplePA8_A6_iPA8_A5_iS4_PA7_iPA9_iPiS9_S9_S9_S9_(%arg0: memref<?x8x6xi32>, %arg1: memref<?x8x5xi32>, %arg2: memref<?x8x5xi32>, %arg3: memref<?x7xi32>, %arg4: memref<?x9xi32>, %arg5: memref<?xi32>, %arg6: memref<?xi32>, %arg7: memref<?xi32>, %arg8: memref<?xi32>, %arg9: memref<?xi32>) -> i32 attributes {llvm.linkage = #llvm.linkage<external>} {
-// STREAM-NEXT:     %write_outputs = taskflow.task @Task_1 read_memrefs(%arg1, %arg2 : memref<?x8x5xi32>, memref<?x8x5xi32>) write_memrefs(%arg6 : memref<?xi32>) [original_read_memrefs(%arg1, %arg2 : memref<?x8x5xi32>, memref<?x8x5xi32>), original_write_memrefs(%arg6 : memref<?xi32>)] : (memref<?x8x5xi32>, memref<?x8x5xi32>, memref<?xi32>) -> (memref<?xi32>) {
+// STREAM-NEXT:     %read_outputs:2, %write_outputs = taskflow.task @Task_1 read_memrefs(%arg1, %arg2 : memref<?x8x5xi32>, memref<?x8x5xi32>) write_memrefs(%arg6 : memref<?xi32>) [original_read_memrefs(%arg1, %arg2 : memref<?x8x5xi32>, memref<?x8x5xi32>), original_write_memrefs(%arg6 : memref<?xi32>)] : (memref<?x8x5xi32>, memref<?x8x5xi32>, memref<?xi32>) -> (memref<?x8x5xi32>, memref<?x8x5xi32>, memref<?xi32>) {
 // STREAM-NEXT:     ^bb0(%arg10: memref<?x8x5xi32>, %arg11: memref<?x8x5xi32>, %arg12: memref<?xi32>):
 // STREAM-NEXT:       affine.for %arg13 = 0 to 4 {
 // STREAM-NEXT:         affine.for %arg14 = 0 to 8 {
@@ -291,9 +291,9 @@ module attributes {} {
 // STREAM-NEXT:           }
 // STREAM-NEXT:         }
 // STREAM-NEXT:       }
-// STREAM-NEXT:       taskflow.yield writes(%arg12 : memref<?xi32>)
+// STREAM-NEXT:       taskflow.yield reads(%arg10, %arg11 : memref<?x8x5xi32>, memref<?x8x5xi32>) writes(%arg12 : memref<?xi32>)
 // STREAM-NEXT:     }
-// STREAM-NEXT:     %write_outputs_0 = taskflow.task @Task_0_Task_2_fused read_memrefs(%arg0, %write_outputs, %arg9 : memref<?x8x6xi32>, memref<?xi32>, memref<?xi32>) write_memrefs(%arg9 : memref<?xi32>) [original_read_memrefs(%arg0, %arg6, %arg9 : memref<?x8x6xi32>, memref<?xi32>, memref<?xi32>), original_write_memrefs(%arg9 : memref<?xi32>)] : (memref<?x8x6xi32>, memref<?xi32>, memref<?xi32>, memref<?xi32>) -> (memref<?xi32>) {
+// STREAM-NEXT:     %read_outputs_0:3, %write_outputs_1 = taskflow.task @Task_0_Task_2_fused read_memrefs(%arg0, %write_outputs, %arg9 : memref<?x8x6xi32>, memref<?xi32>, memref<?xi32>) write_memrefs(%arg9 : memref<?xi32>) [original_read_memrefs(%arg0, %arg6, %arg9 : memref<?x8x6xi32>, memref<?xi32>, memref<?xi32>), original_write_memrefs(%arg9 : memref<?xi32>)] : (memref<?x8x6xi32>, memref<?xi32>, memref<?xi32>, memref<?xi32>) -> (memref<?x8x6xi32>, memref<?xi32>, memref<?xi32>, memref<?xi32>) {
 // STREAM-NEXT:     ^bb0(%arg10: memref<?x8x6xi32>, %arg11: memref<?xi32>, %arg12: memref<?xi32>, %arg13: memref<?xi32>):
 // STREAM-NEXT:       affine.for %arg14 = 0 to 4 {
 // STREAM-NEXT:         affine.for %arg15 = 0 to 8 {
@@ -307,9 +307,9 @@ module attributes {} {
 // STREAM-NEXT:           }
 // STREAM-NEXT:         }
 // STREAM-NEXT:       }
-// STREAM-NEXT:       taskflow.yield writes(%arg12 : memref<?xi32>)
+// STREAM-NEXT:       taskflow.yield reads(%arg10, %arg11, %arg12 : memref<?x8x6xi32>, memref<?xi32>, memref<?xi32>) writes(%arg12 : memref<?xi32>)
 // STREAM-NEXT:     }
-// STREAM-NEXT:     %write_outputs_1 = taskflow.task @Task_3 read_memrefs(%arg3 : memref<?x7xi32>) write_memrefs(%arg7 : memref<?xi32>) [original_read_memrefs(%arg3 : memref<?x7xi32>), original_write_memrefs(%arg7 : memref<?xi32>)] : (memref<?x7xi32>, memref<?xi32>) -> (memref<?xi32>) {
+// STREAM-NEXT:     %read_outputs_2, %write_outputs_3 = taskflow.task @Task_3 read_memrefs(%arg3 : memref<?x7xi32>) write_memrefs(%arg7 : memref<?xi32>) [original_read_memrefs(%arg3 : memref<?x7xi32>), original_write_memrefs(%arg7 : memref<?xi32>)] : (memref<?x7xi32>, memref<?xi32>) -> (memref<?x7xi32>, memref<?xi32>) {
 // STREAM-NEXT:     ^bb0(%arg10: memref<?x7xi32>, %arg11: memref<?xi32>):
 // STREAM-NEXT:       affine.for %arg12 = 0 to 4 {
 // STREAM-NEXT:         affine.for %arg13 = 0 to 7 {
@@ -317,9 +317,9 @@ module attributes {} {
 // STREAM-NEXT:           affine.store %1, %arg11[%arg13] : memref<?xi32>
 // STREAM-NEXT:         }
 // STREAM-NEXT:       }
-// STREAM-NEXT:       taskflow.yield writes(%arg11 : memref<?xi32>)
+// STREAM-NEXT:       taskflow.yield reads(%arg10 : memref<?x7xi32>) writes(%arg11 : memref<?xi32>)
 // STREAM-NEXT:     }
-// STREAM-NEXT:     %write_outputs_2 = taskflow.task @Task_4 read_memrefs(%arg4, %write_outputs_1 : memref<?x9xi32>, memref<?xi32>) write_memrefs(%arg8 : memref<?xi32>) [original_read_memrefs(%arg4, %arg7 : memref<?x9xi32>, memref<?xi32>), original_write_memrefs(%arg8 : memref<?xi32>)] : (memref<?x9xi32>, memref<?xi32>, memref<?xi32>) -> (memref<?xi32>) {
+// STREAM-NEXT:     %read_outputs_4:2, %write_outputs_5 = taskflow.task @Task_4 read_memrefs(%arg4, %write_outputs_3 : memref<?x9xi32>, memref<?xi32>) write_memrefs(%arg8 : memref<?xi32>) [original_read_memrefs(%arg4, %arg7 : memref<?x9xi32>, memref<?xi32>), original_write_memrefs(%arg8 : memref<?xi32>)] : (memref<?x9xi32>, memref<?xi32>, memref<?xi32>) -> (memref<?x9xi32>, memref<?xi32>, memref<?xi32>) {
 // STREAM-NEXT:     ^bb0(%arg10: memref<?x9xi32>, %arg11: memref<?xi32>, %arg12: memref<?xi32>):
 // STREAM-NEXT:       affine.for %arg13 = 0 to 4 {
 // STREAM-NEXT:         affine.for %arg14 = 0 to 9 {
@@ -329,16 +329,16 @@ module attributes {} {
 // STREAM-NEXT:           affine.store %3, %arg12[%arg14] : memref<?xi32>
 // STREAM-NEXT:         }
 // STREAM-NEXT:       }
-// STREAM-NEXT:       taskflow.yield writes(%arg12 : memref<?xi32>)
+// STREAM-NEXT:       taskflow.yield reads(%arg10, %arg11 : memref<?x9xi32>, memref<?xi32>) writes(%arg12 : memref<?xi32>)
 // STREAM-NEXT:     }
-// STREAM-NEXT:     %0 = affine.load %write_outputs_0[0] : memref<?xi32>
+// STREAM-NEXT:     %0 = affine.load %write_outputs_1[0] : memref<?xi32>
 // STREAM-NEXT:     return %0 : i32
 // STREAM-NEXT:   }
 // STREAM-NEXT: }
 
 // KERNEL:     module {
 // KERNEL-NEXT:  func.func @_Z21pureNestedLoopExamplePA8_A6_iPA8_A5_iS4_PA7_iPA9_iPiS9_S9_S9_S9_(%arg0: memref<?x8x6xi32>, %arg1: memref<?x8x5xi32>, %arg2: memref<?x8x5xi32>, %arg3: memref<?x7xi32>, %arg4: memref<?x9xi32>, %arg5: memref<?xi32>, %arg6: memref<?xi32>, %arg7: memref<?xi32>, %arg8: memref<?xi32>, %arg9: memref<?xi32>) -> i32 attributes {llvm.linkage = #llvm.linkage<external>} {
-// KERNEL-NEXT:    %write_outputs = taskflow.task @Task_0 read_memrefs(%arg0 : memref<?x8x6xi32>) write_memrefs(%arg5 : memref<?xi32>) [original_read_memrefs(%arg0 : memref<?x8x6xi32>), original_write_memrefs(%arg5 : memref<?xi32>)] : (memref<?x8x6xi32>, memref<?xi32>) -> (memref<?xi32>) {
+// KERNEL-NEXT:    %read_outputs, %write_outputs = taskflow.task @Task_0 read_memrefs(%arg0 : memref<?x8x6xi32>) write_memrefs(%arg5 : memref<?xi32>) [original_read_memrefs(%arg0 : memref<?x8x6xi32>), original_write_memrefs(%arg5 : memref<?xi32>)] : (memref<?x8x6xi32>, memref<?xi32>) -> (memref<?x8x6xi32>, memref<?xi32>) {
 // KERNEL-NEXT:    ^bb0(%arg10: memref<?x8x6xi32>, %arg11: memref<?xi32>):
 // KERNEL-NEXT:      affine.for %arg12 = 0 to 4 {
 // KERNEL-NEXT:        affine.for %arg13 = 0 to 8 {
@@ -355,9 +355,9 @@ module attributes {} {
 // KERNEL-NEXT:          }
 // KERNEL-NEXT:        }
 // KERNEL-NEXT:      }
-// KERNEL-NEXT:      taskflow.yield writes(%arg11 : memref<?xi32>)
+// KERNEL-NEXT:      taskflow.yield reads(%arg10 : memref<?x8x6xi32>) writes(%arg11 : memref<?xi32>)
 // KERNEL-NEXT:    }
-// KERNEL-NEXT:    %write_outputs_0 = taskflow.task @Task_1 read_memrefs(%arg1, %arg2 : memref<?x8x5xi32>, memref<?x8x5xi32>) write_memrefs(%arg6 : memref<?xi32>) [original_read_memrefs(%arg1, %arg2 : memref<?x8x5xi32>, memref<?x8x5xi32>), original_write_memrefs(%arg6 : memref<?xi32>)] : (memref<?x8x5xi32>, memref<?x8x5xi32>, memref<?xi32>) -> (memref<?xi32>) {
+// KERNEL-NEXT:    %read_outputs_0:2, %write_outputs_1 = taskflow.task @Task_1 read_memrefs(%arg1, %arg2 : memref<?x8x5xi32>, memref<?x8x5xi32>) write_memrefs(%arg6 : memref<?xi32>) [original_read_memrefs(%arg1, %arg2 : memref<?x8x5xi32>, memref<?x8x5xi32>), original_write_memrefs(%arg6 : memref<?xi32>)] : (memref<?x8x5xi32>, memref<?x8x5xi32>, memref<?xi32>) -> (memref<?x8x5xi32>, memref<?x8x5xi32>, memref<?xi32>) {
 // KERNEL-NEXT:    ^bb0(%arg10: memref<?x8x5xi32>, %arg11: memref<?x8x5xi32>, %arg12: memref<?xi32>):
 // KERNEL-NEXT:      affine.for %arg13 = 0 to 4 {
 // KERNEL-NEXT:        affine.for %arg14 = 0 to 8 {
@@ -376,7 +376,7 @@ module attributes {} {
 // KERNEL-NEXT:          }
 // KERNEL-NEXT:        }
 // KERNEL-NEXT:      }
-// KERNEL-NEXT:      taskflow.yield writes(%arg12 : memref<?xi32>)
+// KERNEL-NEXT:      taskflow.yield reads(%arg10, %arg11 : memref<?x8x5xi32>, memref<?x8x5xi32>) writes(%arg12 : memref<?xi32>)
 // KERNEL-NEXT:    }
 // KERNEL-NEXT:    %write_outputs_1 = taskflow.task @Task_2 read_memrefs(%write_outputs, %write_outputs_0, %arg9 : memref<?xi32>, memref<?xi32>, memref<?xi32>) write_memrefs(%arg9 : memref<?xi32>) [original_read_memrefs(%arg5, %arg6, %arg9 : memref<?xi32>, memref<?xi32>, memref<?xi32>), original_write_memrefs(%arg9 : memref<?xi32>)] : (memref<?xi32>, memref<?xi32>, memref<?xi32>, memref<?xi32>) -> (memref<?xi32>) {
 // KERNEL-NEXT:    ^bb0(%arg10: memref<?xi32>, %arg11: memref<?xi32>, %arg12: memref<?xi32>, %arg13: memref<?xi32>):
@@ -444,7 +444,7 @@ module attributes {} {
 
 // HYPERBLOCK:     module {
 // HYPERBLOCK-NEXT:  func.func @_Z21pureNestedLoopExamplePA8_A6_iPA8_A5_iS4_PA7_iPA9_iPiS9_S9_S9_S9_(%arg0: memref<?x8x6xi32>, %arg1: memref<?x8x5xi32>, %arg2: memref<?x8x5xi32>, %arg3: memref<?x7xi32>, %arg4: memref<?x9xi32>, %arg5: memref<?xi32>, %arg6: memref<?xi32>, %arg7: memref<?xi32>, %arg8: memref<?xi32>, %arg9: memref<?xi32>) -> i32 attributes {llvm.linkage = #llvm.linkage<external>} {
-// HYPERBLOCK-NEXT:    %write_outputs = taskflow.task @Task_0 read_memrefs(%arg0 : memref<?x8x6xi32>) write_memrefs(%arg5 : memref<?xi32>) [original_read_memrefs(%arg0 : memref<?x8x6xi32>), original_write_memrefs(%arg5 : memref<?xi32>)] : (memref<?x8x6xi32>, memref<?xi32>) -> (memref<?xi32>) {
+// HYPERBLOCK-NEXT:    %read_outputs, %write_outputs = taskflow.task @Task_0 read_memrefs(%arg0 : memref<?x8x6xi32>) write_memrefs(%arg5 : memref<?xi32>) [original_read_memrefs(%arg0 : memref<?x8x6xi32>), original_write_memrefs(%arg5 : memref<?xi32>)] : (memref<?x8x6xi32>, memref<?xi32>) -> (memref<?x8x6xi32>, memref<?xi32>) {
 // HYPERBLOCK-NEXT:    ^bb0(%arg10: memref<?x8x6xi32>, %arg11: memref<?xi32>):
 // HYPERBLOCK-NEXT:      %1 = taskflow.counter attributes {lower_bound = 0 : index, step = 1 : index, upper_bound = 4 : index} : index
 // HYPERBLOCK-NEXT:      %2 = taskflow.counter parent(%1 : index) attributes {lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
@@ -455,9 +455,9 @@ module attributes {} {
 // HYPERBLOCK-NEXT:        memref.store %4, %arg11[%arg14] : memref<?xi32>
 // HYPERBLOCK-NEXT:        taskflow.hyperblock.yield
 // HYPERBLOCK-NEXT:      }) : (index, index, index) -> ()
-// HYPERBLOCK-NEXT:      taskflow.yield writes(%arg11 : memref<?xi32>)
+// HYPERBLOCK-NEXT:      taskflow.yield reads(%arg10 : memref<?x8x6xi32>) writes(%arg11 : memref<?xi32>)
 // HYPERBLOCK-NEXT:    }
-// HYPERBLOCK-NEXT:    %write_outputs_0 = taskflow.task @Task_1 read_memrefs(%arg1, %arg2 : memref<?x8x5xi32>, memref<?x8x5xi32>) write_memrefs(%arg6 : memref<?xi32>) [original_read_memrefs(%arg1, %arg2 : memref<?x8x5xi32>, memref<?x8x5xi32>), original_write_memrefs(%arg6 : memref<?xi32>)] : (memref<?x8x5xi32>, memref<?x8x5xi32>, memref<?xi32>) -> (memref<?xi32>) {
+// HYPERBLOCK-NEXT:    %read_outputs_0:2, %write_outputs_1 = taskflow.task @Task_1 read_memrefs(%arg1, %arg2 : memref<?x8x5xi32>, memref<?x8x5xi32>) write_memrefs(%arg6 : memref<?xi32>) [original_read_memrefs(%arg1, %arg2 : memref<?x8x5xi32>, memref<?x8x5xi32>), original_write_memrefs(%arg6 : memref<?xi32>)] : (memref<?x8x5xi32>, memref<?x8x5xi32>, memref<?xi32>) -> (memref<?x8x5xi32>, memref<?x8x5xi32>, memref<?xi32>) {
 // HYPERBLOCK-NEXT:    ^bb0(%arg10: memref<?x8x5xi32>, %arg11: memref<?x8x5xi32>, %arg12: memref<?xi32>):
 // HYPERBLOCK-NEXT:      %1 = taskflow.counter attributes {lower_bound = 0 : index, step = 1 : index, upper_bound = 4 : index} : index
 // HYPERBLOCK-NEXT:      %2 = taskflow.counter parent(%1 : index) attributes {lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
@@ -470,7 +470,7 @@ module attributes {} {
 // HYPERBLOCK-NEXT:        memref.store %6, %arg12[%arg15] : memref<?xi32>
 // HYPERBLOCK-NEXT:        taskflow.hyperblock.yield
 // HYPERBLOCK-NEXT:      }) : (index, index, index) -> ()
-// HYPERBLOCK-NEXT:      taskflow.yield writes(%arg12 : memref<?xi32>)
+// HYPERBLOCK-NEXT:      taskflow.yield reads(%arg10, %arg11 : memref<?x8x5xi32>, memref<?x8x5xi32>) writes(%arg12 : memref<?xi32>)
 // HYPERBLOCK-NEXT:    }
 // HYPERBLOCK-NEXT:    %write_outputs_1 = taskflow.task @Task_2 read_memrefs(%write_outputs, %write_outputs_0, %arg9 : memref<?xi32>, memref<?xi32>, memref<?xi32>) write_memrefs(%arg9 : memref<?xi32>) [original_read_memrefs(%arg5, %arg6, %arg9 : memref<?xi32>, memref<?xi32>, memref<?xi32>), original_write_memrefs(%arg9 : memref<?xi32>)] : (memref<?xi32>, memref<?xi32>, memref<?xi32>, memref<?xi32>) -> (memref<?xi32>) {
 // HYPERBLOCK-NEXT:    ^bb0(%arg10: memref<?xi32>, %arg11: memref<?xi32>, %arg12: memref<?xi32>, %arg13: memref<?xi32>):
