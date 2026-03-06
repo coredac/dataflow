@@ -92,6 +92,8 @@ def FuseTask : Pass<"fuse-task", "func::FuncOp"> {
     "mlir::memref::MemRefDialect",
     "mlir::neura::NeuraDialect",
     "mlir::taskflow::TaskflowDialect"];
+}
+
 def MemoryAccessStreamingFusion : Pass<"memory-access-streaming-fusion", "func::FuncOp"> {
   let summary = "Fuses tasks connected by memory dependencies for streaming execution";
   let description = [{
