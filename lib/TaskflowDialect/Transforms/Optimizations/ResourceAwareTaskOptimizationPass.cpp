@@ -852,10 +852,6 @@ public:
       // verify if the speculatively increased CGRA count and its proposed shape 
       // actually fit on the 4x4 grid alongside other previously allocated tasks.
       //
-      // Currently, MapTaskOnCgraPass does not support multi-CGRA task placement. 
-      // Once it does, we should call it here; if global placement fails for the 
-      // "best" shape, we should backtrack and try alternative shapes before 
-      // saturating the node.
       if (!canFitOnGrid(new_cgra_count)) {
         saturated_nodes.insert(bottleneck);
         continue;
