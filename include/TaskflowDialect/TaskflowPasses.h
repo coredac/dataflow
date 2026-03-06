@@ -22,6 +22,7 @@ void registerTosaToAffineConversionPassPipeline();
 std::unique_ptr<mlir::Pass> createConstructHyperblockFromTaskPass();
 std::unique_ptr<mlir::Pass> createClassifyCountersPass();
 std::unique_ptr<mlir::Pass> createMapTaskOnCgraPass();
+std::unique_ptr<mlir::Pass> createFuseTaskPass();
 
 //=========================================================//
 // Optimization Passes

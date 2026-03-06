@@ -4,6 +4,7 @@ add_mlir_library(MLIRTaskflowTransforms
     ConstructHyperblockFromTaskPass.cpp
     ClassifyCountersPass.cpp
     MapTaskOnCgraPass.cpp
+    FuseTaskPass.cpp
 
     DEPENDS
     MLIRTaskflowTransformsIncGen
@@ -14,8 +15,9 @@ add_mlir_library(MLIRTaskflowTransforms
     MLIRSupport
     MLIRTransforms
     MLIRTaskflow
+    MLIRNeura
+    MLIRNeuraTransforms
+    MLIRConversion
     ${dialect_libs}
     LLVMSupport
 )
-
-add_subdirectory(Optimizations)
