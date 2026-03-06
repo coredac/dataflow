@@ -10,15 +10,15 @@
 #include "TaskflowDialect/TaskflowOps.h"
 #include "TaskflowDialect/TaskflowPasses.h"
 
-#include "NeuraDialect/NeuraOps.h"
-#include "NeuraDialect/NeuraPasses.h"
+#include "Conversion/ConversionPasses.h"
 #include "NeuraDialect/Architecture/Architecture.h"
 #include "NeuraDialect/Mapping/mapping_util.h"
-#include "Conversion/ConversionPasses.h"
+#include "NeuraDialect/NeuraOps.h"
+#include "NeuraDialect/NeuraPasses.h"
 
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
-#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Conversion/Passes.h"
+#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
@@ -31,9 +31,9 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Parser/Parser.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
-#include "mlir/Parser/Parser.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
@@ -48,13 +48,32 @@ namespace {
 // Operand helpers
 //===----------------------------------------------------------------------===//
 
+// Resolves a value through a task's WAR/RAW dependency chain.
+// If v is a dependency_read_out or dependency_write_out of the task,
+// returns the corresponding input; otherwise returns v unchanged.
+static Value resolveThrough(Value v, TaskflowTaskOp task) {
+  for (unsigned i = 0; i < task.getDependencyReadOut().size(); ++i)
+    if (v == task.getDependencyReadOut()[i])
+      return task.getDependencyReadIn()[i];
+  for (unsigned i = 0; i < task.getDependencyWriteOut().size(); ++i)
+    if (v == task.getDependencyWriteOut()[i])
+      return task.getDependencyWriteIn()[i];
+  return v;
+}
+
 // Collects unique values from two ranges into a deduped vector with index map.
 static void collectUnique(ValueRange a, ValueRange b,
                           SmallVectorImpl<Value> &result,
                           llvm::SmallDenseMap<Value, unsigned> &idx_map) {
-  for (Value v : a) { idx_map[v] = result.size(); result.push_back(v); }
+  for (Value v : a) {
+    idx_map[v] = result.size();
+    result.push_back(v);
+  }
   for (Value v : b)
-    if (!idx_map.count(v)) { idx_map[v] = result.size(); result.push_back(v); }
+    if (!idx_map.count(v)) {
+      idx_map[v] = result.size();
+      result.push_back(v);
+    }
 }
 
 //===----------------------------------------------------------------------===//
@@ -62,8 +81,7 @@ static void collectUnique(ValueRange a, ValueRange b,
 //===----------------------------------------------------------------------===//
 
 // Extracts all TaskflowCounterOps from a task body in definition order.
-static SmallVector<TaskflowCounterOp>
-extractCounterChain(TaskflowTaskOp task) {
+static SmallVector<TaskflowCounterOp> extractCounterChain(TaskflowTaskOp task) {
   SmallVector<TaskflowCounterOp> chain;
   for (Operation &op : task.getBody().front())
     if (auto c = dyn_cast<TaskflowCounterOp>(&op))
@@ -74,14 +92,15 @@ extractCounterChain(TaskflowTaskOp task) {
 // Returns true if two counter chains have identical bounds and steps.
 static bool counterChainsMatch(SmallVectorImpl<TaskflowCounterOp> &a,
                                SmallVectorImpl<TaskflowCounterOp> &b) {
-  if (a.size() != b.size()) return false;
+  if (a.size() != b.size())
+    return false;
   for (unsigned i = 0; i < a.size(); ++i) {
     auto get_int = [](Operation *op, StringRef name) -> int64_t {
       return op->getAttrOfType<IntegerAttr>(name).getInt();
     };
     if (get_int(a[i], "lower_bound") != get_int(b[i], "lower_bound") ||
         get_int(a[i], "upper_bound") != get_int(b[i], "upper_bound") ||
-        get_int(a[i], "step")        != get_int(b[i], "step"))
+        get_int(a[i], "step") != get_int(b[i], "step"))
       return false;
   }
   return true;
@@ -93,7 +112,8 @@ static TaskflowHyperblockOp findHyperblock(TaskflowTaskOp task) {
   TaskflowHyperblockOp result = nullptr;
   for (Operation &op : task.getBody().front()) {
     if (auto hb = dyn_cast<TaskflowHyperblockOp>(&op)) {
-      if (result) return nullptr; // multiple hyperblocks
+      if (result)
+        return nullptr; // multiple hyperblocks
       result = hb;
     }
   }
@@ -106,7 +126,8 @@ static scf::ForOp findInnerForOp(TaskflowHyperblockOp hb) {
   scf::ForOp result = nullptr;
   for (auto &op : hb.getBody().front()) {
     if (auto f = dyn_cast<scf::ForOp>(&op)) {
-      if (result) return nullptr;
+      if (result)
+        return nullptr;
       result = f;
     }
   }
@@ -123,9 +144,9 @@ static bool scfForBoundsMatch(scf::ForOp a, scf::ForOp b) {
   };
   auto al = get_const(a.getLowerBound()), bl = get_const(b.getLowerBound());
   auto au = get_const(a.getUpperBound()), bu = get_const(b.getUpperBound());
-  auto as = get_const(a.getStep()),       bs = get_const(b.getStep());
-  return al && bl && au && bu && as && bs &&
-         *al == *bl && *au == *bu && *as == *bs;
+  auto as = get_const(a.getStep()), bs = get_const(b.getStep());
+  return al && bl && au && bu && as && bs && *al == *bl && *au == *bu &&
+         *as == *bs;
 }
 
 //===----------------------------------------------------------------------===//
@@ -134,36 +155,61 @@ static bool scfForBoundsMatch(scf::ForOp a, scf::ForOp b) {
 
 // Returns true if task1 dominates task2 in the same block.
 static bool canFuseTasks(TaskflowTaskOp t1, TaskflowTaskOp t2) {
-  return t1 && t2 && t1 != t2 &&
-         t1->getBlock() == t2->getBlock() &&
+  return t1 && t2 && t1 != t2 && t1->getBlock() == t2->getBlock() &&
          t1->isBeforeInBlock(t2);
 }
 
 // Returns true if any write output of the producer feeds the consumer.
 static bool hasProducerConsumerRelation(TaskflowTaskOp producer,
-                                       TaskflowTaskOp consumer) {
-  for (Value r : producer.getWriteOutputs()) {
-    for (Value in : consumer.getReadMemrefs())  if (r == in) return true;
-    for (Value in : consumer.getWriteMemrefs()) if (r == in) return true;
+                                        TaskflowTaskOp consumer) {
+  for (Value r : producer.getDependencyWriteOut()) {
+    for (Value in : consumer.getDependencyReadIn())
+      if (r == in)
+        return true;
+    for (Value in : consumer.getDependencyWriteIn())
+      if (r == in)
+        return true;
   }
   for (Value r : producer.getValueOutputs())
-    for (Value in : consumer.getValueInputs()) if (r == in) return true;
+    for (Value in : consumer.getValueInputs())
+      if (r == in)
+        return true;
   return false;
 }
 
 // Returns true if tasks share at least one input with no data dependency.
+// Resolves WAR chains: if t2's input is t1's dependency_read_out, traces
+// back to the original memref for comparison.
 static bool areSiblingTasks(TaskflowTaskOp t1, TaskflowTaskOp t2) {
   llvm::SmallPtrSet<Value, 8> t1_mem;
-  for (Value v : t1.getReadMemrefs())  t1_mem.insert(v);
-  for (Value v : t1.getWriteMemrefs()) t1_mem.insert(v);
+  for (Value v : t1.getDependencyReadIn())
+    t1_mem.insert(v);
+  for (Value v : t1.getDependencyWriteIn())
+    t1_mem.insert(v);
   llvm::SmallPtrSet<Value, 8> t1_val(t1.getValueInputs().begin(),
                                      t1.getValueInputs().end());
   bool share = false;
-  for (Value v : t2.getReadMemrefs())  if (t1_mem.count(v)) { share = true; break; }
+  for (Value v : t2.getDependencyReadIn()) {
+    Value resolved = resolveThrough(v, t1);
+    if (t1_mem.count(resolved)) {
+      share = true;
+      break;
+    }
+  }
   if (!share)
-    for (Value v : t2.getWriteMemrefs()) if (t1_mem.count(v)) { share = true; break; }
+    for (Value v : t2.getDependencyWriteIn()) {
+      Value resolved = resolveThrough(v, t1);
+      if (t1_mem.count(resolved)) {
+        share = true;
+        break;
+      }
+    }
   if (!share)
-    for (Value v : t2.getValueInputs())  if (t1_val.count(v)) { share = true; break; }
+    for (Value v : t2.getValueInputs())
+      if (t1_val.count(v)) {
+        share = true;
+        break;
+      }
   return share && !hasProducerConsumerRelation(t1, t2) &&
          !hasProducerConsumerRelation(t2, t1);
 }
@@ -172,25 +218,39 @@ static bool areSiblingTasks(TaskflowTaskOp t1, TaskflowTaskOp t2) {
 static bool hasInterveningUses(TaskflowTaskOp producer,
                                TaskflowTaskOp consumer) {
   llvm::SmallPtrSet<Value, 8> results;
-  for (Value v : producer.getWriteOutputs()) results.insert(v);
-  for (Value v : producer.getValueOutputs()) results.insert(v);
+  for (Value v : producer.getDependencyReadOut())
+    results.insert(v);
+  for (Value v : producer.getDependencyWriteOut())
+    results.insert(v);
+  for (Value v : producer.getValueOutputs())
+    results.insert(v);
   bool in_range = false;
   for (Operation &op : *producer->getBlock()) {
-    if (&op == producer.getOperation()) { in_range = true; continue; }
-    if (&op == consumer.getOperation()) break;
+    if (&op == producer.getOperation()) {
+      in_range = true;
+      continue;
+    }
+    if (&op == consumer.getOperation())
+      break;
     if (in_range)
       for (Value v : op.getOperands())
-        if (results.count(v)) return true;
+        if (results.count(v))
+          return true;
   }
   return false;
 }
 
 // Returns true if all outputs of the task have at most one use.
 static bool hasOnlySingleUseOutputs(TaskflowTaskOp task) {
-  for (Value r : task.getWriteOutputs())
-    if (!r.hasOneUse() && !r.use_empty()) return false;
+  for (Value r : task.getDependencyReadOut())
+    if (!r.hasOneUse() && !r.use_empty())
+      return false;
+  for (Value r : task.getDependencyWriteOut())
+    if (!r.hasOneUse() && !r.use_empty())
+      return false;
   for (Value r : task.getValueOutputs())
-    if (!r.hasOneUse() && !r.use_empty()) return false;
+    if (!r.hasOneUse() && !r.use_empty())
+      return false;
   return true;
 }
 
@@ -209,7 +269,8 @@ static void cloneTaskBodyMiscOps(Block &body, OpBuilder &builder,
 // Handles both counter-chain and scf.for-inside-hyperblock cases.
 static bool haveMatchingLoopStructure(TaskflowTaskOp t1, TaskflowTaskOp t2) {
   auto hb1 = findHyperblock(t1), hb2 = findHyperblock(t2);
-  if (!hb1 || !hb2) return false;
+  if (!hb1 || !hb2)
+    return false;
   if (hb1.getIterArgs().size() > 0 || hb2.getIterArgs().size() > 0)
     return false;
 
@@ -220,9 +281,11 @@ static bool haveMatchingLoopStructure(TaskflowTaskOp t1, TaskflowTaskOp t2) {
   // No counter chains: compares scf.for loops in hyperblock bodies.
   if (c1.empty() && c2.empty()) {
     auto f1 = findInnerForOp(hb1), f2 = findInnerForOp(hb2);
-    if (f1 && f2) return scfForBoundsMatch(f1, f2);
+    if (f1 && f2)
+      return scfForBoundsMatch(f1, f2);
     // Both have no loops: trivially compatible.
-    if (!f1 && !f2) return true;
+    if (!f1 && !f2)
+      return true;
   }
   return false;
 }
@@ -234,52 +297,71 @@ static bool haveMatchingLoopStructure(TaskflowTaskOp t1, TaskflowTaskOp t2) {
 // Fuses a producer into its consumer by merging their counter chains and
 // hyperblock bodies into a single task with direct SSA value forwarding
 // for the intermediate memref.
-static TaskflowTaskOp
-fuseProducerConsumerTasks(TaskflowTaskOp producer, TaskflowTaskOp consumer,
-                         Value intermediate_memref, OpBuilder &builder) {
+static TaskflowTaskOp fuseProducerConsumerTasks(TaskflowTaskOp producer,
+                                                TaskflowTaskOp consumer,
+                                                Value intermediate_memref,
+                                                OpBuilder &builder) {
   Location loc = consumer.getLoc();
-  auto prod_read  = producer.getReadMemrefs();
-  auto prod_write = producer.getWriteMemrefs();
-  auto prod_val   = producer.getValueInputs();
-  auto cons_read  = consumer.getReadMemrefs();
-  auto cons_write = consumer.getWriteMemrefs();
-  auto cons_val   = consumer.getValueInputs();
+  auto prod_read = producer.getDependencyReadIn();
+  auto prod_write = producer.getDependencyWriteIn();
+  auto prod_val = producer.getValueInputs();
+  auto cons_read = consumer.getDependencyReadIn();
+  auto cons_write = consumer.getDependencyWriteIn();
+  auto cons_val = consumer.getValueInputs();
 
   // Collects fused inputs, keeping intermediate in write_memrefs for
   // block arg availability but excluding it from consumer's read side.
   SmallVector<Value> fused_read, fused_write, fused_val;
-  for (Value v : prod_read)  fused_read.push_back(v);
+  for (Value v : prod_read)
+    fused_read.push_back(v);
   for (Value v : cons_read)
-    if (v != intermediate_memref) fused_read.push_back(v);
-  for (Value v : prod_write) fused_write.push_back(v);
+    if (v != intermediate_memref)
+      fused_read.push_back(resolveThrough(v, producer));
+  for (Value v : prod_write)
+    fused_write.push_back(v);
   for (Value v : cons_write)
-    if (v != intermediate_memref) fused_write.push_back(v);
-  for (Value v : prod_val) fused_val.push_back(v);
-  for (Value v : cons_val) fused_val.push_back(v);
+    if (v != intermediate_memref)
+      fused_write.push_back(resolveThrough(v, producer));
+  for (Value v : prod_val)
+    fused_val.push_back(v);
+  for (Value v : cons_val)
+    fused_val.push_back(resolveThrough(v, producer));
 
-  // Output types come from the consumer only.
-  SmallVector<Type> write_out_types(consumer.getWriteOutputs().getTypes());
+  // Read output types: passthrough of fused read inputs for WAR tracking.
+  SmallVector<Type> read_out_types;
+  for (Value v : fused_read)
+    read_out_types.push_back(v.getType());
+
+  // Write/value output types come from the consumer only.
+  SmallVector<Type> write_out_types(
+      consumer.getDependencyWriteOut().getTypes());
   SmallVector<Type> val_out_types(consumer.getValueOutputs().getTypes());
 
   SmallVector<Value> orig_reads, orig_writes;
-  for (Value v : producer.getOriginalReadMemrefs())  orig_reads.push_back(v);
-  for (Value v : consumer.getOriginalReadMemrefs())  orig_reads.push_back(v);
-  for (Value v : producer.getOriginalWriteMemrefs()) orig_writes.push_back(v);
-  for (Value v : consumer.getOriginalWriteMemrefs()) orig_writes.push_back(v);
+  for (Value v : producer.getOriginalReadMemrefs())
+    orig_reads.push_back(v);
+  for (Value v : consumer.getOriginalReadMemrefs())
+    orig_reads.push_back(v);
+  for (Value v : producer.getOriginalWriteMemrefs())
+    orig_writes.push_back(v);
+  for (Value v : consumer.getOriginalWriteMemrefs())
+    orig_writes.push_back(v);
 
   auto fused = builder.create<TaskflowTaskOp>(
-      loc, write_out_types, val_out_types,
-      fused_read, fused_write, fused_val,
-      builder.getStringAttr("fused_pc"),
-      orig_reads, orig_writes);
+      loc, read_out_types, write_out_types, val_out_types, fused_read,
+      fused_write, fused_val, builder.getStringAttr("fused_pc"), orig_reads,
+      orig_writes);
 
   Block *body = new Block();
   fused.getBody().push_back(body);
-  for (Value v : fused_read)  body->addArgument(v.getType(), loc);
-  for (Value v : fused_write) body->addArgument(v.getType(), loc);
-  for (Value v : fused_val)   body->addArgument(v.getType(), loc);
+  for (Value v : fused_read)
+    body->addArgument(v.getType(), loc);
+  for (Value v : fused_write)
+    body->addArgument(v.getType(), loc);
+  for (Value v : fused_val)
+    body->addArgument(v.getType(), loc);
 
-  unsigned fused_read_n  = fused_read.size();
+  unsigned fused_read_n = fused_read.size();
   unsigned fused_write_n = fused_write.size();
 
   // --- Maps producer block args to fused block args ---
@@ -299,8 +381,8 @@ fuseProducerConsumerTasks(TaskflowTaskOp producer, TaskflowTaskOp consumer,
   // finds which write output index it corresponds to, then gets the matching
   // write memref block arg.
   BlockArgument prod_intermediate_arg = nullptr;
-  for (unsigned i = 0; i < producer.getWriteOutputs().size(); ++i)
-    if (producer.getWriteOutputs()[i] == intermediate_memref)
+  for (unsigned i = 0; i < producer.getDependencyWriteOut().size(); ++i)
+    if (producer.getDependencyWriteOut()[i] == intermediate_memref)
       prod_intermediate_arg = prod_body.getArgument(prod_read.size() + i);
 
   OpBuilder::InsertionGuard guard(builder);
@@ -337,7 +419,8 @@ fuseProducerConsumerTasks(TaskflowTaskOp producer, TaskflowTaskOp consumer,
 
   // Clones counter chain from producer.
   auto prod_counters = extractCounterChain(producer);
-  for (auto ctr : prod_counters) builder.clone(*ctr, mapping);
+  for (auto ctr : prod_counters)
+    builder.clone(*ctr, mapping);
 
   // Clones non-counter, non-hyperblock, non-yield ops from both task bodies
   // (e.g. arith.constant for loop bounds).
@@ -354,8 +437,8 @@ fuseProducerConsumerTasks(TaskflowTaskOp producer, TaskflowTaskOp consumer,
   SmallVector<Value> triggers;
   for (Value v : prod_hb.getIndices())
     triggers.push_back(mapping.lookupOrDefault(v));
-  auto fused_hb = builder.create<TaskflowHyperblockOp>(
-      loc, TypeRange{}, triggers, ValueRange{});
+  auto fused_hb = builder.create<TaskflowHyperblockOp>(loc, TypeRange{},
+                                                       triggers, ValueRange{});
   Block *hb_body = &fused_hb.getBody().emplaceBlock();
   for (auto arg : prod_hb_body.getArguments())
     hb_body->addArgument(arg.getType(), loc);
@@ -384,17 +467,19 @@ fuseProducerConsumerTasks(TaskflowTaskOp producer, TaskflowTaskOp consumer,
 
       // Clones non-for, non-yield ops from both hyperblock bodies.
       for (Operation &op : prod_hb_body) {
-        if (isa<TaskflowHyperblockYieldOp, scf::ForOp>(&op)) continue;
+        if (isa<TaskflowHyperblockYieldOp, scf::ForOp>(&op))
+          continue;
         builder.clone(op, mapping);
       }
       for (Operation &op : cons_hb_body) {
-        if (isa<TaskflowHyperblockYieldOp, scf::ForOp>(&op)) continue;
+        if (isa<TaskflowHyperblockYieldOp, scf::ForOp>(&op))
+          continue;
         builder.clone(op, mapping);
       }
 
       // Creates merged scf.for with producer's bounds.
-      Value lb   = mapping.lookupOrDefault(prod_for.getLowerBound());
-      Value ub   = mapping.lookupOrDefault(prod_for.getUpperBound());
+      Value lb = mapping.lookupOrDefault(prod_for.getLowerBound());
+      Value ub = mapping.lookupOrDefault(prod_for.getUpperBound());
       Value step = mapping.lookupOrDefault(prod_for.getStep());
       auto merged_for = builder.create<scf::ForOp>(loc, lb, ub, step);
       mapping.map(prod_for.getInductionVar(), merged_for.getInductionVar());
@@ -407,7 +492,8 @@ fuseProducerConsumerTasks(TaskflowTaskOp producer, TaskflowTaskOp consumer,
       // the forwarded value.
       Value forwarded = nullptr;
       for (Operation &op : *prod_for.getBody()) {
-        if (isa<scf::YieldOp>(&op)) continue;
+        if (isa<scf::YieldOp>(&op))
+          continue;
         if (auto store = dyn_cast<memref::StoreOp>(&op)) {
           if (prod_intermediate_arg &&
               store.getMemRef() == prod_intermediate_arg) {
@@ -421,7 +507,8 @@ fuseProducerConsumerTasks(TaskflowTaskOp producer, TaskflowTaskOp consumer,
       // Clones consumer for-body; replaces loads from intermediate
       // with the forwarded value.
       for (Operation &op : *cons_for.getBody()) {
-        if (isa<scf::YieldOp>(&op)) continue;
+        if (isa<scf::YieldOp>(&op))
+          continue;
         if (auto load = dyn_cast<memref::LoadOp>(&op)) {
           if (cons_intermediate_arg && forwarded &&
               load.getMemRef() == cons_intermediate_arg) {
@@ -436,7 +523,8 @@ fuseProducerConsumerTasks(TaskflowTaskOp producer, TaskflowTaskOp consumer,
       // --- Counter-chain path: clones hyperblock bodies sequentially ---
       Value forwarded = nullptr;
       for (Operation &op : prod_hb_body) {
-        if (isa<TaskflowHyperblockYieldOp>(&op)) continue;
+        if (isa<TaskflowHyperblockYieldOp>(&op))
+          continue;
         if (auto store = dyn_cast<memref::StoreOp>(&op)) {
           if (prod_intermediate_arg &&
               store.getMemRef() == prod_intermediate_arg) {
@@ -447,7 +535,8 @@ fuseProducerConsumerTasks(TaskflowTaskOp producer, TaskflowTaskOp consumer,
         builder.clone(op, mapping);
       }
       for (Operation &op : cons_hb_body) {
-        if (isa<TaskflowHyperblockYieldOp>(&op)) continue;
+        if (isa<TaskflowHyperblockYieldOp>(&op))
+          continue;
         if (auto load = dyn_cast<memref::LoadOp>(&op)) {
           if (cons_intermediate_arg && forwarded &&
               load.getMemRef() == cons_intermediate_arg) {
@@ -463,13 +552,20 @@ fuseProducerConsumerTasks(TaskflowTaskOp producer, TaskflowTaskOp consumer,
   }
 
   // Creates the task yield from consumer's yield operands.
-  auto cons_yield = cast<TaskflowYieldOp>(consumer.getBody().front().getTerminator());
+  auto cons_yield =
+      cast<TaskflowYieldOp>(consumer.getBody().front().getTerminator());
+
+  // Read yield outputs: passthrough fused read block args.
+  SmallVector<Value> yield_reads;
+  for (unsigned i = 0; i < fused_read.size(); ++i)
+    yield_reads.push_back(body->getArgument(i));
+
   SmallVector<Value> yield_mem, yield_val;
   for (Value v : cons_yield.getMemoryResults())
     yield_mem.push_back(mapping.lookupOrDefault(v));
   for (Value v : cons_yield.getValueResults())
     yield_val.push_back(mapping.lookupOrDefault(v));
-  builder.create<TaskflowYieldOp>(loc, yield_mem, yield_val);
+  builder.create<TaskflowYieldOp>(loc, yield_reads, yield_mem, yield_val);
   return fused;
 }
 
@@ -483,58 +579,86 @@ static TaskflowTaskOp fuseSiblingTasks(TaskflowTaskOp t1, TaskflowTaskOp t2,
                                        OpBuilder &builder) {
   Location loc = t1.getLoc();
 
+  // Resolves t2's inputs through t1's WAR chains so that the fused task
+  // references original memrefs rather than t1's passthrough results.
+  SmallVector<Value> t2_read, t2_write, t2_val;
+  for (Value v : t2.getDependencyReadIn())
+    t2_read.push_back(resolveThrough(v, t1));
+  for (Value v : t2.getDependencyWriteIn())
+    t2_write.push_back(resolveThrough(v, t1));
+  for (Value v : t2.getValueInputs())
+    t2_val.push_back(resolveThrough(v, t1));
+
   // Deduplicates inputs across both tasks.
   SmallVector<Value> fused_read, fused_write, fused_val;
   llvm::SmallDenseMap<Value, unsigned> read_idx, write_idx, val_idx;
-  collectUnique(t1.getReadMemrefs(),  t2.getReadMemrefs(),  fused_read,  read_idx);
-  collectUnique(t1.getWriteMemrefs(), t2.getWriteMemrefs(), fused_write, write_idx);
-  collectUnique(t1.getValueInputs(),  t2.getValueInputs(),  fused_val,   val_idx);
+  collectUnique(t1.getDependencyReadIn(), t2_read, fused_read, read_idx);
+  collectUnique(t1.getDependencyWriteIn(), t2_write, fused_write, write_idx);
+  collectUnique(t1.getValueInputs(), t2_val, fused_val, val_idx);
 
-  // Combined output types.
+  // Read output types: passthrough of fused read inputs for WAR tracking.
+  SmallVector<Type> read_out_types;
+  for (Value v : fused_read)
+    read_out_types.push_back(v.getType());
+
+  // Combined write/value output types.
   SmallVector<Type> write_out_types, val_out_types;
-  write_out_types.append(t1.getWriteOutputs().getTypes().begin(),
-                         t1.getWriteOutputs().getTypes().end());
-  write_out_types.append(t2.getWriteOutputs().getTypes().begin(),
-                         t2.getWriteOutputs().getTypes().end());
+  write_out_types.append(t1.getDependencyWriteOut().getTypes().begin(),
+                         t1.getDependencyWriteOut().getTypes().end());
+  write_out_types.append(t2.getDependencyWriteOut().getTypes().begin(),
+                         t2.getDependencyWriteOut().getTypes().end());
   val_out_types.append(t1.getValueOutputs().getTypes().begin(),
                        t1.getValueOutputs().getTypes().end());
   val_out_types.append(t2.getValueOutputs().getTypes().begin(),
                        t2.getValueOutputs().getTypes().end());
 
   SmallVector<Value> orig_reads, orig_writes;
-  for (Value v : t1.getOriginalReadMemrefs())  orig_reads.push_back(v);
-  for (Value v : t2.getOriginalReadMemrefs())  orig_reads.push_back(v);
-  for (Value v : t1.getOriginalWriteMemrefs()) orig_writes.push_back(v);
-  for (Value v : t2.getOriginalWriteMemrefs()) orig_writes.push_back(v);
+  for (Value v : t1.getOriginalReadMemrefs())
+    orig_reads.push_back(v);
+  for (Value v : t2.getOriginalReadMemrefs())
+    orig_reads.push_back(v);
+  for (Value v : t1.getOriginalWriteMemrefs())
+    orig_writes.push_back(v);
+  for (Value v : t2.getOriginalWriteMemrefs())
+    orig_writes.push_back(v);
 
   auto fused = builder.create<TaskflowTaskOp>(
-      loc, write_out_types, val_out_types,
-      fused_read, fused_write, fused_val,
-      builder.getStringAttr("fused_sibling"),
+      loc, read_out_types, write_out_types, val_out_types, fused_read,
+      fused_write, fused_val, builder.getStringAttr("fused_sibling"),
       orig_reads, orig_writes);
 
   Block *body = new Block();
   fused.getBody().push_back(body);
-  for (Value v : fused_read)  body->addArgument(v.getType(), loc);
-  for (Value v : fused_write) body->addArgument(v.getType(), loc);
-  for (Value v : fused_val)   body->addArgument(v.getType(), loc);
+  for (Value v : fused_read)
+    body->addArgument(v.getType(), loc);
+  for (Value v : fused_write)
+    body->addArgument(v.getType(), loc);
+  for (Value v : fused_val)
+    body->addArgument(v.getType(), loc);
 
   unsigned rn = fused_read.size(), wn = fused_write.size();
 
   // Lambda to map a task's block args to fused block args via index maps.
-  auto mapBlockArgs = [&](TaskflowTaskOp task, IRMapping &m) {
+  // When is_t2 is true, resolves inputs through t1's WAR chains for lookup.
+  auto mapBlockArgs = [&](TaskflowTaskOp task, IRMapping &m, bool is_t2) {
     Block &tb = task.getBody().front();
-    auto r = task.getReadMemrefs();
-    auto w = task.getWriteMemrefs();
+    auto r = task.getDependencyReadIn();
+    auto w = task.getDependencyWriteIn();
     auto v = task.getValueInputs();
-    for (unsigned i = 0; i < r.size(); ++i)
-      m.map(tb.getArgument(i), body->getArgument(read_idx[r[i]]));
-    for (unsigned i = 0; i < w.size(); ++i)
+    for (unsigned i = 0; i < r.size(); ++i) {
+      Value key = is_t2 ? resolveThrough(r[i], t1) : r[i];
+      m.map(tb.getArgument(i), body->getArgument(read_idx[key]));
+    }
+    for (unsigned i = 0; i < w.size(); ++i) {
+      Value key = is_t2 ? resolveThrough(w[i], t1) : w[i];
       m.map(tb.getArgument(r.size() + i),
-            body->getArgument(rn + write_idx[w[i]]));
-    for (unsigned i = 0; i < v.size(); ++i)
+            body->getArgument(rn + write_idx[key]));
+    }
+    for (unsigned i = 0; i < v.size(); ++i) {
+      Value key = is_t2 ? resolveThrough(v[i], t1) : v[i];
       m.map(tb.getArgument(r.size() + w.size() + i),
-            body->getArgument(rn + wn + val_idx[v[i]]));
+            body->getArgument(rn + wn + val_idx[key]));
+    }
   };
 
   OpBuilder::InsertionGuard guard(builder);
@@ -542,15 +666,16 @@ static TaskflowTaskOp fuseSiblingTasks(TaskflowTaskOp t1, TaskflowTaskOp t2,
 
   // Clones counter chain from t1.
   IRMapping mapping;
-  mapBlockArgs(t1, mapping);
+  mapBlockArgs(t1, mapping, /*is_t2=*/false);
   auto counters = extractCounterChain(t1);
-  for (auto ctr : counters) builder.clone(*ctr, mapping);
+  for (auto ctr : counters)
+    builder.clone(*ctr, mapping);
 
   // Clones non-counter, non-hyperblock, non-yield ops from both task bodies.
   Block &t1_body = t1.getBody().front();
   Block &t2_body = t2.getBody().front();
   IRMapping mapping2;
-  mapBlockArgs(t2, mapping2);
+  mapBlockArgs(t2, mapping2, /*is_t2=*/true);
   cloneTaskBodyMiscOps(t1_body, builder, mapping);
   cloneTaskBodyMiscOps(t2_body, builder, mapping2);
 
@@ -563,8 +688,8 @@ static TaskflowTaskOp fuseSiblingTasks(TaskflowTaskOp t1, TaskflowTaskOp t2,
   SmallVector<Value> triggers;
   for (Value v : hb1.getIndices())
     triggers.push_back(mapping.lookupOrDefault(v));
-  auto fused_hb = builder.create<TaskflowHyperblockOp>(
-      loc, TypeRange{}, triggers, ValueRange{});
+  auto fused_hb = builder.create<TaskflowHyperblockOp>(loc, TypeRange{},
+                                                       triggers, ValueRange{});
   Block *hb_body = &fused_hb.getBody().emplaceBlock();
   for (auto arg : hb1_body.getArguments())
     hb_body->addArgument(arg.getType(), loc);
@@ -586,17 +711,19 @@ static TaskflowTaskOp fuseSiblingTasks(TaskflowTaskOp t1, TaskflowTaskOp t2,
 
       // Clones non-for, non-yield ops from both hyperblock bodies.
       for (Operation &op : hb1_body) {
-        if (isa<TaskflowHyperblockYieldOp, scf::ForOp>(&op)) continue;
+        if (isa<TaskflowHyperblockYieldOp, scf::ForOp>(&op))
+          continue;
         builder.clone(op, mapping);
       }
       for (Operation &op : hb2_body) {
-        if (isa<TaskflowHyperblockYieldOp, scf::ForOp>(&op)) continue;
+        if (isa<TaskflowHyperblockYieldOp, scf::ForOp>(&op))
+          continue;
         builder.clone(op, mapping2);
       }
 
       // Creates merged scf.for with t1's bounds.
-      Value lb   = mapping.lookupOrDefault(for1.getLowerBound());
-      Value ub   = mapping.lookupOrDefault(for1.getUpperBound());
+      Value lb = mapping.lookupOrDefault(for1.getLowerBound());
+      Value ub = mapping.lookupOrDefault(for1.getUpperBound());
       Value step = mapping.lookupOrDefault(for1.getStep());
       auto merged_for = builder.create<scf::ForOp>(loc, lb, ub, step);
       mapping.map(for1.getInductionVar(), merged_for.getInductionVar());
@@ -607,23 +734,27 @@ static TaskflowTaskOp fuseSiblingTasks(TaskflowTaskOp t1, TaskflowTaskOp t2,
 
       // Clones t1 for-body.
       for (Operation &op : *for1.getBody()) {
-        if (isa<scf::YieldOp>(&op)) continue;
+        if (isa<scf::YieldOp>(&op))
+          continue;
         builder.clone(op, mapping);
       }
       // Clones t2 for-body.
       for (Operation &op : *for2.getBody()) {
-        if (isa<scf::YieldOp>(&op)) continue;
+        if (isa<scf::YieldOp>(&op))
+          continue;
         builder.clone(op, mapping2);
       }
 
     } else {
       // --- Counter-chain path: clones hyperblock bodies sequentially ---
       for (Operation &op : hb1_body) {
-        if (isa<TaskflowHyperblockYieldOp>(&op)) continue;
+        if (isa<TaskflowHyperblockYieldOp>(&op))
+          continue;
         builder.clone(op, mapping);
       }
       for (Operation &op : hb2_body) {
-        if (isa<TaskflowHyperblockYieldOp>(&op)) continue;
+        if (isa<TaskflowHyperblockYieldOp>(&op))
+          continue;
         builder.clone(op, mapping2);
       }
     }
@@ -634,6 +765,12 @@ static TaskflowTaskOp fuseSiblingTasks(TaskflowTaskOp t1, TaskflowTaskOp t2,
   // Creates combined task yield.
   auto t1_yield = cast<TaskflowYieldOp>(t1.getBody().front().getTerminator());
   auto t2_yield = cast<TaskflowYieldOp>(t2.getBody().front().getTerminator());
+
+  // Read yield outputs: passthrough fused read block args.
+  SmallVector<Value> all_reads;
+  for (unsigned i = 0; i < fused_read.size(); ++i)
+    all_reads.push_back(body->getArgument(i));
+
   SmallVector<Value> all_mem, all_val;
   for (Value v : t1_yield.getMemoryResults())
     all_mem.push_back(mapping.lookupOrDefault(v));
@@ -643,7 +780,7 @@ static TaskflowTaskOp fuseSiblingTasks(TaskflowTaskOp t1, TaskflowTaskOp t2,
     all_mem.push_back(mapping2.lookupOrDefault(v));
   for (Value v : t2_yield.getValueResults())
     all_val.push_back(mapping2.lookupOrDefault(v));
-  builder.create<TaskflowYieldOp>(loc, all_mem, all_val);
+  builder.create<TaskflowYieldOp>(loc, all_reads, all_mem, all_val);
   return fused;
 }
 
@@ -673,8 +810,9 @@ static int calculateMaxFanoutInRegion(Region &region) {
 
 // Runs the taskflow-to-neura pipeline on a cloned module and computes
 // MII metrics on the resulting "test_fused_kernel" function.
-static FusionMetrics computeRealMetrics(
-    ModuleOp test_module, const neura::Architecture &architecture) {
+static FusionMetrics
+computeRealMetrics(ModuleOp test_module,
+                   const neura::Architecture &architecture) {
   FusionMetrics metrics;
   auto cloned = test_module.clone();
 
@@ -700,7 +838,8 @@ static FusionMetrics computeRealMetrics(
       return;
     }
     OpBuilder builder(ret);
-    auto neura_ret = builder.create<neura::ReturnOp>(ret.getLoc(), ret.getOperands());
+    auto neura_ret =
+        builder.create<neura::ReturnOp>(ret.getLoc(), ret.getOperands());
     if (ret.getNumOperands() > 0) {
       neura_ret->setAttr("return_type", builder.getStringAttr("value"));
     } else {
@@ -786,7 +925,8 @@ static ModuleOp createTestModuleForTask(TaskflowTaskOp task) {
   }
 
   auto func_type = builder.getFunctionType(input_types, output_types);
-  auto func_op = builder.create<func::FuncOp>(loc, "test_fused_kernel", func_type);
+  auto func_op =
+      builder.create<func::FuncOp>(loc, "test_fused_kernel", func_type);
   func_op->setAttr("accelerator", builder.getStringAttr("neura"));
 
   Block *entry = func_op.addEntryBlock();
@@ -812,8 +952,9 @@ static ModuleOp createTestModuleForTask(TaskflowTaskOp task) {
 }
 
 // Computes metrics for a single task by running the neura pipeline.
-static FusionMetrics computeSingleTaskMetrics(
-    TaskflowTaskOp task, const neura::Architecture &architecture) {
+static FusionMetrics
+computeSingleTaskMetrics(TaskflowTaskOp task,
+                         const neura::Architecture &architecture) {
   auto module = createTestModuleForTask(task);
   FusionMetrics metrics = computeRealMetrics(module, architecture);
   module.erase();
@@ -821,9 +962,10 @@ static FusionMetrics computeSingleTaskMetrics(
 }
 
 // Creates a test module with two tasks fused together.
-static ModuleOp createFusedTestModule(
-    TaskflowTaskOp task1, TaskflowTaskOp task2,
-    bool is_producer_consumer, Value intermediate_memref) {
+static ModuleOp createFusedTestModule(TaskflowTaskOp task1,
+                                      TaskflowTaskOp task2,
+                                      bool is_producer_consumer,
+                                      Value intermediate_memref) {
   MLIRContext *ctx = task1->getContext();
   OpBuilder builder(ctx);
   Location loc = builder.getUnknownLoc();
@@ -852,10 +994,11 @@ static ModuleOp createFusedTestModule(
 
   // Placeholder output type; the fused task's results drive the actual return.
   SmallVector<Type> output_types;
-  output_types.push_back(builder.getI64Type());                       
+  output_types.push_back(builder.getI64Type());
 
   auto func_type = builder.getFunctionType(input_types, output_types);
-  auto func_op = builder.create<func::FuncOp>(loc, "test_fused_kernel", func_type);
+  auto func_op =
+      builder.create<func::FuncOp>(loc, "test_fused_kernel", func_type);
   func_op->setAttr("accelerator", builder.getStringAttr("neura"));
 
   Block *entry = func_op.addEntryBlock();
@@ -871,7 +1014,8 @@ static ModuleOp createFusedTestModule(
   auto ct1 = cast<TaskflowTaskOp>(ct1_op);
 
   // Maps task1's results so task2's operands resolve correctly.
-  for (auto [orig, cloned] : llvm::zip(task1->getResults(), ct1->getResults())) {
+  for (auto [orig, cloned] :
+       llvm::zip(task1->getResults(), ct1->getResults())) {
     mapping.map(orig, cloned);
   }
 
@@ -907,7 +1051,8 @@ static ModuleOp createFusedTestModule(
   for (Value v : ret) {
     real_output_types.push_back(v.getType());
   }
-  func_op.setFunctionType(builder.getFunctionType(input_types, real_output_types));
+  func_op.setFunctionType(
+      builder.getFunctionType(input_types, real_output_types));
   builder.create<func::ReturnOp>(loc, ret);
 
   // Erases un-fused clones (consumer first to drop uses of producer results).
@@ -917,11 +1062,12 @@ static ModuleOp createFusedTestModule(
 }
 
 // Computes metrics for the fused version of two tasks.
-static FusionMetrics computeFusedTaskMetrics(
-    TaskflowTaskOp task1, TaskflowTaskOp task2,
-    bool is_producer_consumer, Value intermediate_memref,
-    const neura::Architecture &architecture) {
-  auto module = createFusedTestModule(task1, task2, is_producer_consumer, intermediate_memref);
+static FusionMetrics
+computeFusedTaskMetrics(TaskflowTaskOp task1, TaskflowTaskOp task2,
+                        bool is_producer_consumer, Value intermediate_memref,
+                        const neura::Architecture &architecture) {
+  auto module = createFusedTestModule(task1, task2, is_producer_consumer,
+                                      intermediate_memref);
   FusionMetrics metrics = computeRealMetrics(module, architecture);
   module.erase();
   return metrics;
@@ -932,7 +1078,8 @@ static int estimateMII(const FusionMetrics &metrics, int total_tiles) {
   const float alpha = 0.5f;
   const float beta = 0.5f;
   int mii = std::max(metrics.rec_mii, metrics.res_mii);
-  float utilization_factor = 1.0f + alpha * (metrics.num_ops / static_cast<float>(total_tiles));
+  float utilization_factor =
+      1.0f + alpha * (metrics.num_ops / static_cast<float>(total_tiles));
   float fanout_factor = 1.0f + beta * std::max(metrics.max_fanout - 4, 0);
   return static_cast<int>(std::ceil(utilization_factor * fanout_factor * mii));
 }
@@ -949,7 +1096,8 @@ static bool isFusionProfitable(TaskflowTaskOp task1, TaskflowTaskOp task2,
 
   FusionMetrics m1 = computeSingleTaskMetrics(task1, architecture);
   FusionMetrics m2 = computeSingleTaskMetrics(task2, architecture);
-  FusionMetrics fused = computeFusedTaskMetrics(task1, task2, is_producer_consumer, intermediate, architecture);
+  FusionMetrics fused = computeFusedTaskMetrics(
+      task1, task2, is_producer_consumer, intermediate, architecture);
 
   int mii_1 = estimateMII(m1, total_tiles);
   int mii_2 = estimateMII(m2, total_tiles);
@@ -961,13 +1109,20 @@ static bool isFusionProfitable(TaskflowTaskOp task1, TaskflowTaskOp task2,
   int raw_1 = std::max(m1.rec_mii, m1.res_mii);
   int raw_2 = std::max(m2.rec_mii, m2.res_mii);
   int raw_fused = std::max(fused.rec_mii, fused.res_mii);
-  int unfused_mii = is_producer_consumer ? (raw_1 + raw_2) : std::max(raw_1, raw_2);
+  int unfused_mii =
+      is_producer_consumer ? (raw_1 + raw_2) : std::max(raw_1, raw_2);
   bool profitable = raw_fused <= unfused_mii;
 
   llvm::errs() << "[fuse-task] Profitability:"
-               << " m1(rec=" << m1.rec_mii << " res=" << m1.res_mii << " ops=" << m1.num_ops << " fan=" << m1.max_fanout << " mii=" << mii_1 << ")"
-               << " m2(rec=" << m2.rec_mii << " res=" << m2.res_mii << " ops=" << m2.num_ops << " fan=" << m2.max_fanout << " mii=" << mii_2 << ")"
-               << " fused(rec=" << fused.rec_mii << " res=" << fused.res_mii << " ops=" << fused.num_ops << " fan=" << fused.max_fanout << " mii=" << mii_fused << ")"
+               << " m1(rec=" << m1.rec_mii << " res=" << m1.res_mii
+               << " ops=" << m1.num_ops << " fan=" << m1.max_fanout
+               << " mii=" << mii_1 << ")"
+               << " m2(rec=" << m2.rec_mii << " res=" << m2.res_mii
+               << " ops=" << m2.num_ops << " fan=" << m2.max_fanout
+               << " mii=" << mii_2 << ")"
+               << " fused(rec=" << fused.rec_mii << " res=" << fused.res_mii
+               << " ops=" << fused.num_ops << " fan=" << fused.max_fanout
+               << " mii=" << mii_fused << ")"
                << " -> " << (profitable ? "PROFITABLE" : "REJECTED") << "\n";
   return profitable;
 }
@@ -978,8 +1133,7 @@ static bool isFusionProfitable(TaskflowTaskOp task1, TaskflowTaskOp task2,
 
 // Fuses a producer task into its consumer when the producer's output feeds
 // directly into the consumer and the loop structures match.
-struct ProducerConsumerTaskFusion
-    : public OpRewritePattern<TaskflowTaskOp> {
+struct ProducerConsumerTaskFusion : public OpRewritePattern<TaskflowTaskOp> {
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(TaskflowTaskOp consumer,
@@ -991,8 +1145,11 @@ struct ProducerConsumerTaskFusion
     auto tryFindProducer = [&](ValueRange inputs) -> bool {
       for (Value in : inputs) {
         auto def = in.getDefiningOp<TaskflowTaskOp>();
-        if (!canFuseTasks(def, consumer) ||
-            !hasOnlySingleUseOutputs(def) ||
+        // Only write outputs represent true producer-consumer (RAW) links.
+        // Read outputs are WAR dependency chains and must be skipped.
+        if (!def || !llvm::is_contained(def.getDependencyWriteOut(), in))
+          continue;
+        if (!canFuseTasks(def, consumer) || !hasOnlySingleUseOutputs(def) ||
             hasInterveningUses(def, consumer) ||
             !haveMatchingLoopStructure(def, consumer) ||
             !isFusionProfitable(def, consumer, true, in))
@@ -1003,17 +1160,44 @@ struct ProducerConsumerTaskFusion
       }
       return false;
     };
-    if (!tryFindProducer(consumer.getReadMemrefs()) &&
-        !tryFindProducer(consumer.getWriteMemrefs()))
+    if (!tryFindProducer(consumer.getDependencyReadIn()) &&
+        !tryFindProducer(consumer.getDependencyWriteIn()))
       return failure();
 
-    auto fused = fuseProducerConsumerTasks(producer, consumer,
-                                           intermediate, rewriter);
-    for (auto [o, n] : llvm::zip(consumer.getWriteOutputs(),
-                                 fused.getWriteOutputs()))
+    auto fused =
+        fuseProducerConsumerTasks(producer, consumer, intermediate, rewriter);
+
+    // Replaces producer's dependency_read_out results.
+    for (unsigned i = 0; i < producer.getDependencyReadOut().size(); ++i) {
+      Value orig_read = producer.getDependencyReadIn()[i];
+      for (unsigned j = 0; j < fused.getDependencyReadIn().size(); ++j) {
+        if (fused.getDependencyReadIn()[j] == orig_read) {
+          producer.getDependencyReadOut()[i].replaceAllUsesWith(
+              fused.getDependencyReadOut()[j]);
+          break;
+        }
+      }
+    }
+    // Replaces consumer's dependency_read_out results.
+    for (unsigned i = 0; i < consumer.getDependencyReadOut().size(); ++i) {
+      Value orig_read = consumer.getDependencyReadIn()[i];
+      if (orig_read == intermediate)
+        continue;
+      Value resolved = resolveThrough(orig_read, producer);
+      for (unsigned j = 0; j < fused.getDependencyReadIn().size(); ++j) {
+        if (fused.getDependencyReadIn()[j] == resolved) {
+          consumer.getDependencyReadOut()[i].replaceAllUsesWith(
+              fused.getDependencyReadOut()[j]);
+          break;
+        }
+      }
+    }
+    // Replaces consumer's write and value outputs.
+    for (auto [o, n] : llvm::zip(consumer.getDependencyWriteOut(),
+                                 fused.getDependencyWriteOut()))
       o.replaceAllUsesWith(n);
-    for (auto [o, n] : llvm::zip(consumer.getValueOutputs(),
-                                 fused.getValueOutputs()))
+    for (auto [o, n] :
+         llvm::zip(consumer.getValueOutputs(), fused.getValueOutputs()))
       o.replaceAllUsesWith(n);
     rewriter.eraseOp(consumer);
     rewriter.eraseOp(producer);
@@ -1030,7 +1214,8 @@ struct SiblingTaskFusion : public OpRewritePattern<TaskflowTaskOp> {
     TaskflowTaskOp t2 = nullptr;
     for (Operation *op = t1->getNextNode(); op; op = op->getNextNode()) {
       auto next = dyn_cast<TaskflowTaskOp>(op);
-      if (!next) continue;
+      if (!next)
+        continue;
       if (areSiblingTasks(t1, next) && canFuseTasks(t1, next) &&
           haveMatchingLoopStructure(t1, next) &&
           isFusionProfitable(t1, next, false)) {
@@ -1038,18 +1223,45 @@ struct SiblingTaskFusion : public OpRewritePattern<TaskflowTaskOp> {
         break;
       }
     }
-    if (!t2) return failure();
+    if (!t2)
+      return failure();
 
     auto fused = fuseSiblingTasks(t1, t2, rewriter);
-    unsigned t1_wo = t1.getWriteOutputs().size();
+
+    // Replaces dependency_read_out for both tasks.
+    for (unsigned i = 0; i < t1.getDependencyReadOut().size(); ++i) {
+      Value orig_read = t1.getDependencyReadIn()[i];
+      for (unsigned j = 0; j < fused.getDependencyReadIn().size(); ++j) {
+        if (fused.getDependencyReadIn()[j] == orig_read) {
+          t1.getDependencyReadOut()[i].replaceAllUsesWith(
+              fused.getDependencyReadOut()[j]);
+          break;
+        }
+      }
+    }
+    for (unsigned i = 0; i < t2.getDependencyReadOut().size(); ++i) {
+      Value orig_read = t2.getDependencyReadIn()[i];
+      Value resolved = resolveThrough(orig_read, t1);
+      for (unsigned j = 0; j < fused.getDependencyReadIn().size(); ++j) {
+        if (fused.getDependencyReadIn()[j] == resolved) {
+          t2.getDependencyReadOut()[i].replaceAllUsesWith(
+              fused.getDependencyReadOut()[j]);
+          break;
+        }
+      }
+    }
+
+    // Replaces dependency_write_out and value_outputs.
+    unsigned t1_wo = t1.getDependencyWriteOut().size();
     unsigned t1_vo = t1.getValueOutputs().size();
     for (unsigned i = 0; i < t1_wo; ++i)
-      t1.getWriteOutputs()[i].replaceAllUsesWith(fused.getWriteOutputs()[i]);
+      t1.getDependencyWriteOut()[i].replaceAllUsesWith(
+          fused.getDependencyWriteOut()[i]);
     for (unsigned i = 0; i < t1_vo; ++i)
       t1.getValueOutputs()[i].replaceAllUsesWith(fused.getValueOutputs()[i]);
-    for (unsigned i = 0; i < t2.getWriteOutputs().size(); ++i)
-      t2.getWriteOutputs()[i].replaceAllUsesWith(
-          fused.getWriteOutputs()[t1_wo + i]);
+    for (unsigned i = 0; i < t2.getDependencyWriteOut().size(); ++i)
+      t2.getDependencyWriteOut()[i].replaceAllUsesWith(
+          fused.getDependencyWriteOut()[t1_wo + i]);
     for (unsigned i = 0; i < t2.getValueOutputs().size(); ++i)
       t2.getValueOutputs()[i].replaceAllUsesWith(
           fused.getValueOutputs()[t1_vo + i]);
@@ -1075,19 +1287,19 @@ struct FuseTaskPass
   }
 
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<LLVM::LLVMDialect, func::FuncDialect,
-                    arith::ArithDialect, memref::MemRefDialect,
-                    scf::SCFDialect, cf::ControlFlowDialect,
-                    math::MathDialect, affine::AffineDialect,
-                    neura::NeuraDialect, taskflow::TaskflowDialect>();
+    registry
+        .insert<LLVM::LLVMDialect, func::FuncDialect, arith::ArithDialect,
+                memref::MemRefDialect, scf::SCFDialect, cf::ControlFlowDialect,
+                math::MathDialect, affine::AffineDialect, neura::NeuraDialect,
+                taskflow::TaskflowDialect>();
   }
 
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
     patterns.add<ProducerConsumerTaskFusion>(&getContext(), /*benefit=*/10);
     patterns.add<SiblingTaskFusion>(&getContext(), /*benefit=*/5);
-    if (failed(applyPatternsGreedily(getOperation(),
-                                     FrozenRewritePatternSet(std::move(patterns)))))
+    if (failed(applyPatternsGreedily(
+            getOperation(), FrozenRewritePatternSet(std::move(patterns)))))
       signalPassFailure();
   }
 };
