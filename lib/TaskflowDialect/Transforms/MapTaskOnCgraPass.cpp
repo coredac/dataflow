@@ -36,7 +36,7 @@ namespace {
 //===----------------------------------------------------------------------===//
 // CGRA Grid Position
 //===----------------------------------------------------------------------===//
-/// Represents a position on the 2D CGRA grid.
+// Represents a position on the 2D CGRA grid.
 struct CGRAPosition {
   int row;
   int col;
@@ -49,12 +49,12 @@ struct CGRAPosition {
     return !(*this == other);
   }
 
-  /// Computes Manhattan distance to another position.
+  // Computes Manhattan distance to another position.
   int manhattanDistance(const CGRAPosition &other) const {
     return std::abs(row - other.row) + std::abs(col - other.col);
   }
 
-  /// Checks if adjacent (Manhattan distance = 1).
+  // Checks if adjacent (Manhattan distance = 1).
   bool isAdjacent(const CGRAPosition &other) const {
     return manhattanDistance(other) == 1;
   }
@@ -63,19 +63,19 @@ struct CGRAPosition {
 //===----------------------------------------------------------------------===//
 // Task Placement Info
 //===----------------------------------------------------------------------===//
-/// Stores placement info for a task: can span multiple combined CGRAs.
+// Stores placement info for a task: can span multiple combined CGRAs.
 struct TaskPlacement {
   SmallVector<CGRAPosition> cgra_positions; // CGRAs assigned to this task.
 
-  /// Returns the primary (first) position.
+  // Returns the primary (first) position.
   CGRAPosition primary() const {
     return cgra_positions.empty() ? CGRAPosition{-1, -1} : cgra_positions[0];
   }
 
-  /// Returns the number of CGRAs assigned.
+  // Returns the number of CGRAs assigned.
   size_t cgraCount() const { return cgra_positions.size(); }
 
-  /// Checks if any CGRA in this task is adjacent to any in other task.
+  // Checks if any CGRA in this task is adjacent to any in other task.
   bool hasAdjacentCGRA(const TaskPlacement &other) const {
     for (const auto &pos : cgra_positions) {
       for (const auto &other_pos : other.cgra_positions) {
@@ -94,7 +94,7 @@ struct TaskPlacement {
 
 struct MemoryNode;
 
-/// Represents a Task node in the graph.
+// Represents a Task node in the graph.
 struct TaskNode {
   size_t id;
   TaskflowTaskOp op;
@@ -112,7 +112,7 @@ struct TaskNode {
   TaskNode(size_t id, TaskflowTaskOp op) : id(id), op(op) {}
 };
 
-/// Represents a Memory node (MemRef) in the graph.
+// Represents a Memory node (MemRef) in the graph.
 struct MemoryNode {
   Value memref;
   
@@ -126,7 +126,7 @@ struct MemoryNode {
   MemoryNode(Value memref) : memref(memref) {}
 };
 
-/// The Task-Memory Dependency Graph.
+// The Task-Memory Dependency Graph.
 class TaskMemoryGraph {
 public:
   SmallVector<std::unique_ptr<TaskNode>> task_nodes;
@@ -196,7 +196,7 @@ private:
 //===----------------------------------------------------------------------===//
 // Task Mapper
 //===----------------------------------------------------------------------===//
-/// Maps a task-memory graph onto a 2D CGRA grid.
+// Maps a task-memory graph onto a 2D CGRA grid.
 
 class TaskMapper {
 public:
@@ -208,7 +208,7 @@ public:
     }
   }
 
-  /// Places all tasks and performs memory mapping.
+  // Places all tasks and performs memory mapping.
   void place(func::FuncOp func) {
     SmallVector<TaskflowTaskOp> tasks;
     func.walk([&](TaskflowTaskOp task) { tasks.push_back(task); });
@@ -268,11 +268,20 @@ public:
 
           // Finds best placement using SRAM positions from previous iter (or -1/default).
           TaskPlacement placement = findBestPlacement(task_node, cgra_count, graph);
-          
+
+          // If the requested cgra_count doesn't fit, fall back to cgra_count-1
+          // (i.e. reject the extra CGRA and keep previous allocation).
+          if (placement.cgra_positions.empty() && cgra_count > 1) {
+            int fallback = cgra_count - 1;
+            llvm::errs() << "[MapTaskOnCgra] Cannot place "
+                         << task_node->op.getTaskName()
+                         << " with cgra_count=" << cgra_count
+                         << ", falling back to " << fallback << "\n";
+            placement = findBestPlacement(task_node, fallback, graph);
+          }
+
           // Commits Placement.
           task_node->placement.push_back(placement.primary());
-          // Handles mapping one task on multi-CGRAs.
-          // TODO: Introduce explicit multi-CGRA binding logic.
           for (size_t i = 1; i < placement.cgra_positions.size(); ++i) {
              task_node->placement.push_back(placement.cgra_positions[i]);
           }
@@ -359,7 +368,7 @@ public:
   }
 
 private:
-  /// Clears task placement and occupied grid.
+  // Clears task placement and occupied grid.
   void resetTaskPlacements(TaskMemoryGraph &graph) {
     for (auto &task : graph.task_nodes) {
         task->placement.clear();
@@ -370,8 +379,8 @@ private:
     }
   }
 
-  /// Assigns all memory nodes to SRAMs based on centroid of accessing tasks.
-  /// Returns true if any SRAM assignment changed.
+  // Assigns all memory nodes to SRAMs based on centroid of accessing tasks.
+  // Returns true if any SRAM assignment changed.
   bool assignAllSRAMs(TaskMemoryGraph &graph) {
     bool changed = false;
     for (auto &mem_node : graph.memory_nodes) {
@@ -563,47 +572,26 @@ private:
 
   // Finds best placement for a task on the CGRA grid.
   //
-  // Search order (for k = cgra_count down to 1):
-  //   1. Try all rectangular shapes of size k  (1×k, 2×(k/2), …, k×1).
-  //   2. If none fits, try all connected non-rectangular shapes of size k.
-  //   3. If still nothing, decrement k and repeat.
-  // This guarantees the task gets the largest possible contiguous CGRA
-  // allocation that physically fits on the current grid.
+  // Search order:
+  //   1. Try all rectangular shapes of size cgra_count.
+  //   2. If none fits, try all connected non-rectangular shapes of size cgra_count.
+  //   3. If still nothing, return empty (caller handles fallback to cgra_count-1).
   TaskPlacement findBestPlacement(TaskNode *task_node, int cgra_count,
                                   TaskMemoryGraph &graph) {
-    TaskPlacement best_placement;
-
-    for (int k = cgra_count; k >= 1; --k) {
-      // 1. Rectangular shapes of size k.
-      for (auto &shape : getRectShapes(k)) {
-        best_placement = tryPlaceShape(task_node, shape, graph);
-        if (!best_placement.cgra_positions.empty()) {
-          if (k < cgra_count) {
-            llvm::errs() << "[MapTaskOnCgra] Fallback: placed "
-                         << task_node->op.getTaskName()
-                         << " on " << k << " CGRAs (requested "
-                         << cgra_count << ")\n";
-          }
-          return best_placement;
-        }
-      }
-
-      // 2. Non-rectangular connected shapes of size k.
-      best_placement = tryNonRectShapes(task_node, k, graph);
-      if (!best_placement.cgra_positions.empty()) {
-        if (k < cgra_count) {
-          llvm::errs() << "[MapTaskOnCgra] Fallback (non-rect): placed "
-                       << task_node->op.getTaskName()
-                       << " on " << k << " CGRAs (requested "
-                       << cgra_count << ")\n";
-        }
-        return best_placement;
-      }
+    // 1. Rectangular shapes.
+    for (auto &shape : getRectShapes(cgra_count)) {
+      TaskPlacement p = tryPlaceShape(task_node, shape, graph);
+      if (!p.cgra_positions.empty()) return p;
     }
 
-    // Should never reach here on a valid grid.
-    assert(false && "No available CGRA position found (grid over-subscribed).");
-    return best_placement;
+    // 2. Non-rectangular connected shapes.
+    if (cgra_count > 1) {
+      TaskPlacement p = tryNonRectShapes(task_node, cgra_count, graph);
+      if (!p.cgra_positions.empty()) return p;
+    }
+
+    // Nothing fits — return empty so caller can decide.
+    return {};
   }
 
   // Computes placement score based on Task-Memory Graph.
@@ -666,16 +654,16 @@ private:
     return kAlpha * ssa_score + kBeta * mem_score;
   }
 
-  /// Computes dependency depth for all tasks in the graph.
-  ///
-  /// Dependency depth = longest path from this node to any sink node in the
-  /// dependency graph (via SSA or memory edges).
-  ///
-  /// Tasks with higher dependency depth have longer chains of dependent tasks
-  /// after them. By placing these tasks first:
-  /// 1. They get priority access to good grid positions.
-  /// 2. Their dependent tasks can then be positioned adjacent to them,
-  ///    minimizing inter-task communication distance.
+  // Computes dependency depth for all tasks in the graph.
+  //
+  // Dependency depth = longest path from this node to any sink node in the
+  // dependency graph (via SSA or memory edges).
+  //
+  // Tasks with higher dependency depth have longer chains of dependent tasks
+  // after them. By placing these tasks first:
+  // 1. They get priority access to good grid positions.
+  // 2. Their dependent tasks can then be positioned adjacent to them,
+  //    minimizing inter-task communication distance.
   void computeDependencyDepth(TaskMemoryGraph &graph) {
     DenseMap<TaskNode*, int> depth_cache;
     for (auto &node : graph.task_nodes) {
@@ -683,7 +671,7 @@ private:
     }
   }
 
-  /// Recursively calculates dependency depth for a single task.
+  // Recursively calculates dependency depth for a single task.
   int calculateDepth(TaskNode *node, DenseMap<TaskNode*, int> &depth_cache) {
     if (depth_cache.count(node)) {
         return depth_cache[node];
