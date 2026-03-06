@@ -387,16 +387,16 @@ private:
       // Computes centroid of all tasks that access this memory.
       int total_row = 0, total_col = 0, count = 0;
       for (TaskNode *reader : mem_node->readers) {
-        if (!reader->placement.empty()) {
-          total_row += reader->placement[0].row;
-          total_col += reader->placement[0].col;
+        for (const auto &pos : reader->placement) {
+          total_row += pos.row;
+          total_col += pos.col;
           count++;
         }
       }
       for (TaskNode *writer : mem_node->writers) {
-        if (!writer->placement.empty()) {
-          total_row += writer->placement[0].row;
-          total_col += writer->placement[0].col;
+        for (const auto &pos : writer->placement) {
+          total_row += pos.row;
+          total_col += pos.col;
           count++;
         }
       }
@@ -612,13 +612,24 @@ private:
     int ssa_score = 0;
     int mem_score = 0;
 
+    // Helper: minimum Manhattan distance between any position in this
+    // placement and any position in another task's placement.
+    auto minDistToPlacement = [&](const SmallVector<CGRAPosition> &other) -> int {
+      int min_dist = INT_MAX;
+      for (const auto &pos : placement.cgra_positions) {
+        for (const auto &opos : other) {
+          min_dist = std::min(min_dist, pos.manhattanDistance(opos));
+        }
+      }
+      return min_dist;
+    };
+
     // Helper: minimum Manhattan distance from any position in this placement
-    // to a target position.
+    // to a single target position.
     auto minDistToTarget = [&](const CGRAPosition &target) -> int {
       int min_dist = INT_MAX;
       for (const auto &pos : placement.cgra_positions) {
-        int d = pos.manhattanDistance(target);
-        min_dist = std::min(min_dist, d);
+        min_dist = std::min(min_dist, pos.manhattanDistance(target));
       }
       return min_dist;
     };
@@ -626,13 +637,13 @@ private:
     // 1. SSA proximity (predecessors & successors).
     for (TaskNode *producer : task_node->ssa_operands) {
       if (!producer->placement.empty()) {
-        int dist = minDistToTarget(producer->placement[0]);
+        int dist = minDistToPlacement(producer->placement);
         ssa_score -= dist;
       }
     }
     for (TaskNode *consumer : task_node->ssa_users) {
       if (!consumer->placement.empty()) {
-        int dist = minDistToTarget(consumer->placement[0]);
+        int dist = minDistToPlacement(consumer->placement);
         ssa_score -= dist;
       }
     }
