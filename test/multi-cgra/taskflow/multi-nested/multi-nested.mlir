@@ -14,6 +14,38 @@
 
 // RUN: mlir-neura-opt %s --affine-loop-tree-serialization \
 // RUN: --convert-affine-to-taskflow \
+// RUN: --memory-access-streaming-fusion \
+// RUN: -o %t.stream.mlir
+// RUN: FileCheck %s --input-file=%t.stream.mlir --check-prefixes=STREAM
+
+// RUN: mlir-neura-opt %t.stream.mlir \
+// RUN: --affine-loop-tree-serialization \
+// RUN: --affine-loop-perfection \
+// RUN: --construct-hyperblock-from-task \
+// RUN: --classify-counters \
+// RUN: --convert-taskflow-to-neura \
+// RUN: --lower-affine \
+// RUN: --convert-scf-to-cf \
+// RUN: --convert-cf-to-llvm \
+// RUN: --assign-accelerator \
+// RUN: --lower-memref-to-neura \
+// RUN: --lower-arith-to-neura \
+// RUN: --lower-builtin-to-neura \
+// RUN: --lower-llvm-to-neura \
+// RUN: --promote-input-arg-to-const \
+// RUN: --fold-constant \
+// RUN: --canonicalize-return \
+// RUN: --canonicalize-live-in \
+// RUN: --leverage-predicated-value \
+// RUN: --transform-ctrl-to-data-flow \
+// RUN: --fold-constant \
+// RUN: '--resource-aware-task-optimization=balance-skip-mapper=false' \
+// RUN: --architecture-spec=%S/../../../arch_spec/architecture_with_counter.yaml \
+// RUN: -o %t.resopt.mlir
+// RUN: FileCheck %s --input-file=%t.resopt.mlir --check-prefixes=RESOPT
+
+// RUN: mlir-neura-opt %s --affine-loop-tree-serialization \
+// RUN: --convert-affine-to-taskflow \
 // RUN: --construct-hyperblock-from-task \
 // RUN: --convert-taskflow-to-neura \
 // RUN: --architecture-spec=%S/../../../arch_spec/architecture.yaml \
@@ -245,6 +277,65 @@ module attributes {} {
 // TASKFLOW-NEXT:   }
 // TASKFLOW-NEXT: }
 
+// STREAM:      module {
+// STREAM-NEXT:   func.func @_Z21pureNestedLoopExamplePA8_A6_iPA8_A5_iS4_PA7_iPA9_iPiS9_S9_S9_S9_(%arg0: memref<?x8x6xi32>, %arg1: memref<?x8x5xi32>, %arg2: memref<?x8x5xi32>, %arg3: memref<?x7xi32>, %arg4: memref<?x9xi32>, %arg5: memref<?xi32>, %arg6: memref<?xi32>, %arg7: memref<?xi32>, %arg8: memref<?xi32>, %arg9: memref<?xi32>) -> i32 attributes {llvm.linkage = #llvm.linkage<external>} {
+// STREAM-NEXT:     %write_outputs = taskflow.task @Task_1 read_memrefs(%arg1, %arg2 : memref<?x8x5xi32>, memref<?x8x5xi32>) write_memrefs(%arg6 : memref<?xi32>) [original_read_memrefs(%arg1, %arg2 : memref<?x8x5xi32>, memref<?x8x5xi32>), original_write_memrefs(%arg6 : memref<?xi32>)] : (memref<?x8x5xi32>, memref<?x8x5xi32>, memref<?xi32>) -> (memref<?xi32>) {
+// STREAM-NEXT:     ^bb0(%arg10: memref<?x8x5xi32>, %arg11: memref<?x8x5xi32>, %arg12: memref<?xi32>):
+// STREAM-NEXT:       affine.for %arg13 = 0 to 4 {
+// STREAM-NEXT:         affine.for %arg14 = 0 to 8 {
+// STREAM-NEXT:           affine.for %arg15 = 0 to 5 {
+// STREAM-NEXT:             %1 = affine.load %arg10[%arg13, %arg14, %arg15] : memref<?x8x5xi32>
+// STREAM-NEXT:             %2 = affine.load %arg11[%arg13, %arg14, %arg15] : memref<?x8x5xi32>
+// STREAM-NEXT:             %3 = arith.addi %1, %2 : i32
+// STREAM-NEXT:             affine.store %3, %arg12[%arg15] : memref<?xi32>
+// STREAM-NEXT:           }
+// STREAM-NEXT:         }
+// STREAM-NEXT:       }
+// STREAM-NEXT:       taskflow.yield writes(%arg12 : memref<?xi32>)
+// STREAM-NEXT:     }
+// STREAM-NEXT:     %write_outputs_0 = taskflow.task @Task_0_Task_2_fused read_memrefs(%arg0, %write_outputs, %arg9 : memref<?x8x6xi32>, memref<?xi32>, memref<?xi32>) write_memrefs(%arg9 : memref<?xi32>) [original_read_memrefs(%arg0, %arg6, %arg9 : memref<?x8x6xi32>, memref<?xi32>, memref<?xi32>), original_write_memrefs(%arg9 : memref<?xi32>)] : (memref<?x8x6xi32>, memref<?xi32>, memref<?xi32>, memref<?xi32>) -> (memref<?xi32>) {
+// STREAM-NEXT:     ^bb0(%arg10: memref<?x8x6xi32>, %arg11: memref<?xi32>, %arg12: memref<?xi32>, %arg13: memref<?xi32>):
+// STREAM-NEXT:       affine.for %arg14 = 0 to 4 {
+// STREAM-NEXT:         affine.for %arg15 = 0 to 8 {
+// STREAM-NEXT:           affine.for %arg16 = 0 to 6 {
+// STREAM-NEXT:             %1 = affine.load %arg10[%arg14, %arg15, %arg16] : memref<?x8x6xi32>
+// STREAM-NEXT:             %2 = affine.load %arg11[%arg16] : memref<?xi32>
+// STREAM-NEXT:             %3 = arith.addi %1, %2 : i32
+// STREAM-NEXT:             %4 = affine.load %arg12[0] : memref<?xi32>
+// STREAM-NEXT:             %5 = arith.addi %4, %3 : i32
+// STREAM-NEXT:             affine.store %5, %arg12[0] : memref<?xi32>
+// STREAM-NEXT:           }
+// STREAM-NEXT:         }
+// STREAM-NEXT:       }
+// STREAM-NEXT:       taskflow.yield writes(%arg12 : memref<?xi32>)
+// STREAM-NEXT:     }
+// STREAM-NEXT:     %write_outputs_1 = taskflow.task @Task_3 read_memrefs(%arg3 : memref<?x7xi32>) write_memrefs(%arg7 : memref<?xi32>) [original_read_memrefs(%arg3 : memref<?x7xi32>), original_write_memrefs(%arg7 : memref<?xi32>)] : (memref<?x7xi32>, memref<?xi32>) -> (memref<?xi32>) {
+// STREAM-NEXT:     ^bb0(%arg10: memref<?x7xi32>, %arg11: memref<?xi32>):
+// STREAM-NEXT:       affine.for %arg12 = 0 to 4 {
+// STREAM-NEXT:         affine.for %arg13 = 0 to 7 {
+// STREAM-NEXT:           %1 = affine.load %arg10[%arg12, %arg13] : memref<?x7xi32>
+// STREAM-NEXT:           affine.store %1, %arg11[%arg13] : memref<?xi32>
+// STREAM-NEXT:         }
+// STREAM-NEXT:       }
+// STREAM-NEXT:       taskflow.yield writes(%arg11 : memref<?xi32>)
+// STREAM-NEXT:     }
+// STREAM-NEXT:     %write_outputs_2 = taskflow.task @Task_4 read_memrefs(%arg4, %write_outputs_1 : memref<?x9xi32>, memref<?xi32>) write_memrefs(%arg8 : memref<?xi32>) [original_read_memrefs(%arg4, %arg7 : memref<?x9xi32>, memref<?xi32>), original_write_memrefs(%arg8 : memref<?xi32>)] : (memref<?x9xi32>, memref<?xi32>, memref<?xi32>) -> (memref<?xi32>) {
+// STREAM-NEXT:     ^bb0(%arg10: memref<?x9xi32>, %arg11: memref<?xi32>, %arg12: memref<?xi32>):
+// STREAM-NEXT:       affine.for %arg13 = 0 to 4 {
+// STREAM-NEXT:         affine.for %arg14 = 0 to 9 {
+// STREAM-NEXT:           %1 = affine.load %arg10[%arg13, %arg14] : memref<?x9xi32>
+// STREAM-NEXT:           %2 = affine.load %arg11[%arg14] : memref<?xi32>
+// STREAM-NEXT:           %3 = arith.addi %1, %2 : i32
+// STREAM-NEXT:           affine.store %3, %arg12[%arg14] : memref<?xi32>
+// STREAM-NEXT:         }
+// STREAM-NEXT:       }
+// STREAM-NEXT:       taskflow.yield writes(%arg12 : memref<?xi32>)
+// STREAM-NEXT:     }
+// STREAM-NEXT:     %0 = affine.load %write_outputs_0[0] : memref<?xi32>
+// STREAM-NEXT:     return %0 : i32
+// STREAM-NEXT:   }
+// STREAM-NEXT: }
+
 // KERNEL:     module {
 // KERNEL-NEXT:  func.func @_Z21pureNestedLoopExamplePA8_A6_iPA8_A5_iS4_PA7_iPA9_iPiS9_S9_S9_S9_(%arg0: memref<?x8x6xi32>, %arg1: memref<?x8x5xi32>, %arg2: memref<?x8x5xi32>, %arg3: memref<?x7xi32>, %arg4: memref<?x9xi32>, %arg5: memref<?xi32>, %arg6: memref<?xi32>, %arg7: memref<?xi32>, %arg8: memref<?xi32>, %arg9: memref<?xi32>) -> i32 attributes {llvm.linkage = #llvm.linkage<external>} {
 // KERNEL-NEXT:    %write_outputs = taskflow.task @Task_0 read_memrefs(%arg0 : memref<?x8x6xi32>) write_memrefs(%arg5 : memref<?xi32>) [original_read_memrefs(%arg0 : memref<?x8x6xi32>), original_write_memrefs(%arg5 : memref<?xi32>)] : (memref<?x8x6xi32>, memref<?xi32>) -> (memref<?xi32>) {
@@ -441,3 +532,23 @@ module attributes {} {
 // PLACEMENT-SAME: task_mapping_info = {cgra_positions = [{col = 2 : i32, row = 0 : i32}], read_sram_locations = [{col = 2 : i32, row = 0 : i32}], write_sram_locations = [{col = 2 : i32, row = 1 : i32}]}
 // PLACEMENT:      taskflow.task @Task_4
 // PLACEMENT-SAME: task_mapping_info = {cgra_positions = [{col = 1 : i32, row = 1 : i32}], read_sram_locations = [{col = 1 : i32, row = 1 : i32}, {col = 2 : i32, row = 1 : i32}], write_sram_locations = [{col = 1 : i32, row = 1 : i32}]}
+
+// RESOPT:      taskflow.task @Task_1
+// RESOPT:      cgra_count = 1 : i32, compiled_ii = 2 : i32, steps = 4 : i32, tile_shape = "1x1", trip_count = 160 : i32
+// RESOPT:      taskflow.task @Task_0_Task_2_fused_Task_3_utilfused
+// RESOPT:      cgra_count = 1 : i32, compiled_ii = 2 : i32, steps = 5 : i32, tile_shape = "1x1", trip_count = 192 : i32
+// RESOPT:      taskflow.task @Task_4
+// RESOPT:      cgra_count = 1 : i32, compiled_ii = 2 : i32, steps = 4 : i32, tile_shape = "1x1", trip_count = 36 : i32
+// RESOPT:      return
+
+// CGRA Tile Occupation after RESOPT (4x4 grid, col x row):
+// +---+---+---+---+
+// | 0 | 1 | 2 | . |   Task_1 (1x1, cgra_count=1)
+// +---+---+---+---+   Task_0_Task_2_fused_Task_3_utilfused (1x1, cgra_count=1)
+// | . | . | . | . |   Task_4 (1x1, cgra_count=1)
+// +---+---+---+---+
+// | . | . | . | . |
+// +---+---+---+---+
+// | . | . | . | . |
+// +---+---+---+---+
+// 0=Task_1, 1=Task_0_Task_2_fused_Task_3_utilfused, 2=Task_4; 3/16 CGRAs used

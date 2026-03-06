@@ -300,6 +300,74 @@ struct ArithIndexCastToNeuraCast
   }
 };
 
+struct ArithMinimumFToNeuraFCmpSel
+    : public OpRewritePattern<mlir::arith::MinimumFOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(arith::MinimumFOp op,
+                                PatternRewriter &rewriter) const override {
+    Value lhs = op.getLhs();
+    Value rhs = op.getRhs();
+    Type result_type = op.getType();
+    Location loc = op.getLoc();
+
+    // minimumf(a, b) → sel(fcmp(a, b, "olt"), a, b)
+    // "olt" = ordered less-than: true when a < b (false if either is NaN).
+    Value cmp = rewriter.create<neura::FCmpOp>(
+        loc, result_type, lhs, rhs, rewriter.getStringAttr("olt"));
+    rewriter.replaceOpWithNewOp<neura::SelOp>(op, result_type, cmp, lhs, rhs);
+    return success();
+  }
+};
+
+struct ArithMaximumFToNeuraFCmpSel
+    : public OpRewritePattern<mlir::arith::MaximumFOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(arith::MaximumFOp op,
+                                PatternRewriter &rewriter) const override {
+    Value lhs = op.getLhs();
+    Value rhs = op.getRhs();
+    Type result_type = op.getType();
+    Location loc = op.getLoc();
+
+    // maximumf(a, b) → sel(fcmp(a, b, "ogt"), a, b)
+    // "ogt" = ordered greater-than: true when a > b (false if either is NaN).
+    Value cmp = rewriter.create<neura::FCmpOp>(
+        loc, result_type, lhs, rhs, rewriter.getStringAttr("ogt"));
+    rewriter.replaceOpWithNewOp<neura::SelOp>(op, result_type, cmp, lhs, rhs);
+    return success();
+  }
+};
+
+// arith.andi(a, b) → neura.and(a, b)
+struct ArithAndIToNeuraAnd : public OpRewritePattern<mlir::arith::AndIOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(arith::AndIOp op,
+                                PatternRewriter &rewriter) const override {
+    Value lhs = op.getLhs();
+    Value rhs = op.getRhs();
+    Type result_type = op.getType();
+    rewriter.replaceOpWithNewOp<neura::AndOp>(op, result_type, lhs, rhs);
+    return success();
+  }
+};
+
+// arith.ori(a, b) → neura.or(a, b)
+struct ArithOrIToNeuraOr : public OpRewritePattern<mlir::arith::OrIOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(arith::OrIOp op,
+                                PatternRewriter &rewriter) const override {
+    Value lhs = op.getLhs();
+    Value rhs = op.getRhs();
+    Type result_type = op.getType();
+    rewriter.replaceOpWithNewOp<neura::OrOp>(op, result_type, lhs, rhs);
+    return success();
+  }
+};
+
 struct LowerArithToNeuraPass
     : public PassWrapper<LowerArithToNeuraPass, OperationPass<ModuleOp>> {
 
@@ -322,7 +390,9 @@ struct LowerArithToNeuraPass
              ArithExtUIToNeuraCast, ArithIndexCastToNeuraCast,
              ArithFDivToNeuraFDiv, ArithExtfToNeuraCast, ArithMulFToNeuraFMul,
              ArithSubIToNeuraSub, ArithSubFToNeuraFSub, ArithMulIToNeuraMul,
-             ArithDivSIToNeuraDiv, ArithRemSIToNeuraOp>(context);
+             ArithDivSIToNeuraDiv, ArithRemSIToNeuraOp,
+             ArithMinimumFToNeuraFCmpSel, ArithMaximumFToNeuraFCmpSel,
+             ArithAndIToNeuraAnd, ArithOrIToNeuraOr>(context);
     return patterns;
   }
 
