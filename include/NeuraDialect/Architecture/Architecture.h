@@ -560,6 +560,9 @@ private:
 
 // Function for getting the architecture object.
 const Architecture &getArchitecture();
+
+// Function for getting the latency specification file path.
+const std::string &getLatencySpecFile();
 } // namespace neura
 } // namespace mlir
 
