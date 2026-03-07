@@ -23,6 +23,8 @@ void registerTosaToAffineConversionPassPipeline();
 std::unique_ptr<mlir::Pass> createConstructHyperblockFromTaskPass();
 std::unique_ptr<mlir::Pass> createClassifyCountersPass();
 std::unique_ptr<mlir::Pass> createAllocateCgraToTaskPass();
+std::unique_ptr<mlir::Pass> createFuseTaskPass();
+
 
 // Runs the CGRA task placement logic directly on a function.
 // grid_rows/grid_cols default to 4x4 (kCgraGridRows/kCgraGridCols).
