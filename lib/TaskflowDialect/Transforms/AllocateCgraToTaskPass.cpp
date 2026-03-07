@@ -37,25 +37,25 @@ namespace {
 // CGRA Grid Position
 //===----------------------------------------------------------------------===//
 // Represents a position on the 2D CGRA grid.
-struct CGRAPosition {
+struct CgraPosition {
   int row;
   int col;
 
-  bool operator==(const CGRAPosition &other) const {
+  bool operator==(const CgraPosition &other) const {
     return row == other.row && col == other.col;
   }
 
-  bool operator!=(const CGRAPosition &other) const {
+  bool operator!=(const CgraPosition &other) const {
     return !(*this == other);
   }
 
   // Computes Manhattan distance to another position.
-  int manhattanDistance(const CGRAPosition &other) const {
+  int manhattanDistance(const CgraPosition &other) const {
     return std::abs(row - other.row) + std::abs(col - other.col);
   }
 
   // Checks if adjacent (Manhattan distance = 1).
-  bool isAdjacent(const CGRAPosition &other) const {
+  bool isAdjacent(const CgraPosition &other) const {
     return manhattanDistance(other) == 1;
   }
 };
@@ -65,11 +65,11 @@ struct CGRAPosition {
 //===----------------------------------------------------------------------===//
 // Stores placement info for a task: can span multiple combined CGRAs.
 struct TaskPlacement {
-  SmallVector<CGRAPosition> cgra_positions; // CGRAs assigned to this task.
+  SmallVector<CgraPosition> cgra_positions; // CGRAs assigned to this task.
 
   // Returns the primary (first) position.
-  CGRAPosition primary() const {
-    return cgra_positions.empty() ? CGRAPosition{-1, -1} : cgra_positions[0];
+  CgraPosition primary() const {
+    return cgra_positions.empty() ? CgraPosition{-1, -1} : cgra_positions[0];
   }
 
   // Returns the number of CGRAs assigned.
@@ -107,7 +107,7 @@ struct TaskNode {
   SmallVector<TaskNode *> ssa_operands;
 
   // Placement result
-  SmallVector<CGRAPosition> placement;
+  SmallVector<CgraPosition> placement;
 
   TaskNode(size_t id, TaskflowTaskOp op) : id(id), op(op) {}
 };
@@ -121,7 +121,7 @@ struct MemoryNode {
   SmallVector<TaskNode *> writers;
   
   // Mapping result.
-  std::optional<CGRAPosition> assigned_sram_pos;
+  std::optional<CgraPosition> assigned_sram_pos;
 
   MemoryNode(Value memref) : memref(memref) {}
 };
@@ -401,12 +401,12 @@ private:
         }
       }
       
-      std::optional<CGRAPosition> new_sram_pos;
+      std::optional<CgraPosition> new_sram_pos;
       if (count > 0) {
         // Rounds to the nearest integer.
         int avg_row = (total_row + count / 2) / count;
         int avg_col = (total_col + count / 2) / count;
-        new_sram_pos = CGRAPosition{avg_row, avg_col};
+        new_sram_pos = CgraPosition{avg_row, avg_col};
       }
 
       if (mem_node->assigned_sram_pos != new_sram_pos) {
@@ -525,8 +525,8 @@ private:
     int best_score = INT_MIN;
     TaskPlacement best_placement;
 
-    std::function<void(SmallVector<CGRAPosition> &, uint64_t)> search =
-        [&](SmallVector<CGRAPosition> &current, uint64_t mask) {
+    std::function<void(SmallVector<CgraPosition> &, uint64_t)> search =
+        [&](SmallVector<CgraPosition> &current, uint64_t mask) {
           if ((int)current.size() == k) {
             if (visited_masks.insert(mask).second) {
               TaskPlacement candidate;
@@ -562,7 +562,7 @@ private:
     for (int r = 0; r < grid_rows_; ++r) {
       for (int c = 0; c < grid_cols_; ++c) {
         if (!occupied_[r][c]) {
-          SmallVector<CGRAPosition> start = {{r, c}};
+          SmallVector<CgraPosition> start = {{r, c}};
           search(start, 1ULL << (r * grid_cols_ + c));
         }
       }
@@ -614,7 +614,7 @@ private:
 
     // Helper: minimum Manhattan distance between any position in this
     // placement and any position in another task's placement.
-    auto minDistToPlacement = [&](const SmallVector<CGRAPosition> &other) -> int {
+    auto minDistToPlacement = [&](const SmallVector<CgraPosition> &other) -> int {
       int min_dist = INT_MAX;
       for (const auto &pos : placement.cgra_positions) {
         for (const auto &opos : other) {
@@ -626,7 +626,7 @@ private:
 
     // Helper: minimum Manhattan distance from any position in this placement
     // to a single target position.
-    auto minDistToTarget = [&](const CGRAPosition &target) -> int {
+    auto minDistToTarget = [&](const CgraPosition &target) -> int {
       int min_dist = INT_MAX;
       for (const auto &pos : placement.cgra_positions) {
         min_dist = std::min(min_dist, pos.manhattanDistance(target));
