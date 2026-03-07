@@ -301,14 +301,14 @@ static TaskflowTaskOp convertLoopToTask(
   // Step 8: Creates the yield operation.
   //---------------------------------------------------------------
   task_builder.setInsertionPointToEnd(task_body);
-  SmallVector<Value> read_yield_operands;
-  SmallVector<Value> memory_yield_operands;
+  SmallVector<Value> yield_for_dependency_read_out;
+  SmallVector<Value> yield_for_dependency_write_out;
   SmallVector<Value> value_yield_operands;
 
   // Read yield outputs: passthrough read memref block args for WAR tracking.
   for (Value memref : read_memrefs) {
     if (input_to_block_arg.count(memref)) {
-      read_yield_operands.push_back(input_to_block_arg[memref]);
+      yield_for_dependency_read_out.push_back(input_to_block_arg[memref]);
     } else {
       assert(false && "Read memref not in inputs!");
     }
@@ -317,7 +317,7 @@ static TaskflowTaskOp convertLoopToTask(
   // Memory yield outputs: yield the written memrefs.
   for (Value memref : output_memrefs) {
     if (input_to_block_arg.count(memref)) {
-      memory_yield_operands.push_back(input_to_block_arg[memref]);
+      yield_for_dependency_write_out.push_back(input_to_block_arg[memref]);
     } else {
       assert(false && "Written memref not in inputs!");
     }
@@ -327,8 +327,8 @@ static TaskflowTaskOp convertLoopToTask(
   for (Value result : cloned_loop->getResults()) {
     value_yield_operands.push_back(result);
   }
-  task_builder.create<TaskflowYieldOp>(loc, read_yield_operands,
-                                       memory_yield_operands,
+  task_builder.create<TaskflowYieldOp>(loc, yield_for_dependency_read_out,
+                                       yield_for_dependency_write_out,
                                        value_yield_operands);
 
   //-------------------------------------------------------------------
