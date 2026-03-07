@@ -848,7 +848,7 @@ public:
 
       // Check if incrementing cgra_count is feasible on the 4×4 grid.
       // TODO: This currently only checks the capacity (total CGRA count). Ideally, 
-      // we should invoke a global placement pass (aka MapTaskOnCgraPass) here to 
+      // we should invoke a global placement pass (aka AllocateCgraToTaskPass) here to 
       // verify if the speculatively increased CGRA count and its proposed shape 
       // actually fit on the 4x4 grid alongside other previously allocated tasks.
       //
@@ -1765,11 +1765,11 @@ struct ResourceAwareTaskOptimizationPass
           node->op->setAttr("tile_shape", b.getStringAttr(shape_str));
         }
 
-        // Runs MapTaskOnCgraPass to produce global placement (task_mapping_info)
+        // Runs AllocateCgraToTaskPass to produce global placement (task_mapping_info)
         // with multi-CGRA support. The pass reads cgra_count and tile_shape
         // from each task and places them on the 4x4 grid, validating that
         // shapes physically fit and don't overlap.
-        taskflow::runMapTaskOnCgra(func, kCgraGridRows, kCgraGridCols);
+        taskflow::runAllocateCgraToTask(func, kCgraGridRows, kCgraGridCols);
 
         break;
       }

@@ -1,4 +1,4 @@
-//===- MapTaskOnCgraPass.cpp - Task to CGRA Mapping Pass ----------------===//
+//===- AllocateCgraToTaskPass.cpp - Task to CGRA Mapping Pass ----------------===//
 //
 // This pass maps Taskflow tasks onto a 2D CGRA grid array:
 // 1. Places tasks with SSA dependencies on adjacent CGRAs.
@@ -273,7 +273,7 @@ public:
           // (i.e. reject the extra CGRA and keep previous allocation).
           if (placement.cgra_positions.empty() && cgra_count > 1) {
             int fallback = cgra_count - 1;
-            llvm::errs() << "[MapTaskOnCgra] Cannot place "
+            llvm::errs() << "[AllocateCgraToTask] Cannot place "
                          << task_node->op.getTaskName()
                          << " with cgra_count=" << cgra_count
                          << ", falling back to " << fallback << "\n";
@@ -716,13 +716,13 @@ private:
 //===----------------------------------------------------------------------===//
 // Pass Definition
 //===----------------------------------------------------------------------===//
-struct MapTaskOnCgraPass
-    : public PassWrapper<MapTaskOnCgraPass, OperationPass<func::FuncOp>> {
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(MapTaskOnCgraPass)
+struct AllocateCgraToTaskPass
+    : public PassWrapper<AllocateCgraToTaskPass, OperationPass<func::FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(AllocateCgraToTaskPass)
 
-  MapTaskOnCgraPass() = default;
+  AllocateCgraToTaskPass() = default;
 
-  StringRef getArgument() const override { return "map-task-on-cgra"; }
+  StringRef getArgument() const override { return "allocate-cgra-to-task"; }
 
   StringRef getDescription() const override {
     return "Maps Taskflow tasks onto a 2D CGRA grid with adjacency "
@@ -743,11 +743,11 @@ struct MapTaskOnCgraPass
 namespace mlir {
 namespace taskflow {
 
-std::unique_ptr<Pass> createMapTaskOnCgraPass() {
-  return std::make_unique<MapTaskOnCgraPass>();
+std::unique_ptr<Pass> createAllocateCgraToTaskPass() {
+  return std::make_unique<AllocateCgraToTaskPass>();
 }
 
-void runMapTaskOnCgra(func::FuncOp func, int grid_rows, int grid_cols) {
+void runAllocateCgraToTask(func::FuncOp func, int grid_rows, int grid_cols) {
   TaskMapper mapper(grid_rows, grid_cols);
   mapper.place(func);
 }

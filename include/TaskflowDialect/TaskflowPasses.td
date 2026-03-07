@@ -61,7 +61,7 @@ def ClassifyCounters : Pass<"classify-counters", "ModuleOp">{
   let constructor = "taskflow::createClassifyCountersPass()";
 }
 
-def MapTaskOnCgra : Pass<"map-task-on-cgra", "func::FuncOp"> {
+def AllocateCgraToTask : Pass<"allocate-cgra-to-task", "func::FuncOp"> {
   let summary = "Maps Taskflow tasks onto a 2D CGRA grid array";
   let description = [{
     This pass maps Taskflow tasks onto a 2D CGRA grid array.
@@ -70,7 +70,7 @@ def MapTaskOnCgra : Pass<"map-task-on-cgra", "func::FuncOp"> {
 
     Uses a default 3x3 CGRA grid.
   }];
-  let constructor = "taskflow::createMapTaskOnCgraPass()";
+  let constructor = "taskflow::createAllocateCgraToTaskPass()";
 }
 
 def MemoryAccessStreamingFusion : Pass<"memory-access-streaming-fusion", "func::FuncOp"> {

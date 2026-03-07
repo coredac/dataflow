@@ -29,7 +29,7 @@
 // RUN: mlir-neura-opt %s --affine-loop-tree-serialization \
 // RUN: --convert-affine-to-taskflow \
 // RUN: --construct-hyperblock-from-task \
-// RUN: --map-task-on-cgra \
+// RUN: --allocate-cgra-to-task \
 // RUN: -o %t.placement.mlir
 // RUN: FileCheck %s --input-file=%t.placement.mlir --check-prefixes=PLACEMENT
 
