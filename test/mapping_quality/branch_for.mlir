@@ -188,31 +188,31 @@ func.func @loop_test() -> f32 {
 // MOV-NEXT:   }
 
 // MAPPING:      module {
-// MAPPING-NEXT:   func.func @loop_test() -> f32 attributes {accelerator = "neura", dataflow_mode = "predicate", mapping_info = {compiled_ii = 4 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 4 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {
+// MAPPING-NEXT:   func.func @loop_test() -> f32 attributes {accelerator = "neura", dataflow_mode = "predicate", mapping_info = {compiled_ii = 4 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 4 : i32, res_mii = 1 : i32, x_tiles = 6 : i32, y_tiles = 6 : i32}} {
 
 
 // YAML:      array_config:
-// YAML-NEXT:   columns: 4
-// YAML-NEXT:   rows: 4
+// YAML-NEXT:   columns: 6
+// YAML-NEXT:   rows: 6
 // YAML-NEXT:   cores:
-// YAML-NEXT:     - column: 0
+// YAML-NEXT:     - column: 3
 // YAML-NEXT:       row: 1
-// YAML-NEXT:       core_id: "4"
+// YAML-NEXT:       core_id: "9"
 // YAML-NEXT:       entries:
 // YAML-NEXT:         - entry_id: "entry0"
 // YAML-NEXT:           instructions:
-// YAML-NEXT:             - timestep: 2
+// YAML-NEXT:             - timestep: 5
 // YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "GRANT_ONCE"
+// YAML-NEXT:                 - opcode: "DATA_MOV"
 // YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "#3.000000"
+// YAML-NEXT:                     - operand: "LOCAL"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                     - operand: "$288"
 // YAML-NEXT:                       color: "RED"
 
 
-// ASM:      PE(0,1):
+// ASM:      PE(3,1):
 // ASM-NEXT: {
-// ASM-NEXT:   GRANT_ONCE, [#3.000000] -> [EAST, RED]
-// ASM-NEXT: } (t=2)
+// ASM-NEXT:   DATA_MOV, [LOCAL, RED] -> [$288]
+// ASM-NEXT: } (t=5)

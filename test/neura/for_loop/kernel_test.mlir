@@ -19,7 +19,8 @@
 // RUN:   --transform-ctrl-to-data-flow \
 // RUN:   --fold-constant \
 // RUN:   --fuse-pattern \
-// RUN:  | FileCheck %s --check-prefix=CHECK-FUSED
+// RUN:   -o %t-fused.mlir
+// RUN:  FileCheck %s --input-file=%t-fused.mlir --check-prefix=CHECK-FUSED
 
 // RUN: mlir-neura-opt %t-kernel.mlir\
 // RUN:   --assign-accelerator \
@@ -30,7 +31,8 @@
 // RUN:   --fold-constant \
 // RUN:   --fuse-pattern \
 // RUN:   --insert-data-mov \
-// RUN:  | FileCheck %s --check-prefix=CHECK-MOV
+// RUN:   -o %t-mov.mlir
+// RUN:  FileCheck %s --input-file=%t-mov.mlir --check-prefix=CHECK-MOV
 
 // CHECK:       func.func
 // CHECK:       accelerator = "neura"
@@ -87,7 +89,7 @@
 // CHECK-FUSED-NEXT:     %24 = "neura.load"(%23) : (!neura.data<!llvm.ptr, i1>) -> !neura.data<f32, i1>
 // CHECK-FUSED-NEXT:     %25 = "neura.gep"(%16, %22) : (!neura.data<!llvm.ptr, i1>, !neura.data<i64, i1>) -> !neura.data<!llvm.ptr, i1>
 // CHECK-FUSED-NEXT:     %26 = "neura.load"(%25) : (!neura.data<!llvm.ptr, i1>) -> !neura.data<f32, i1>
-// CHECK-FUSED-NEXT:     %27 = "neura.fmul_fadd"(%24, %26, %20) : (!neura.data<f32, i1>, !neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// CHECK-FUSED-NEXT:     %27 = "neura.fmul_fadd"(%24, %20, %26) : (!neura.data<f32, i1>, !neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
 // CHECK-FUSED-NEXT:     "neura.store"(%27, %14) : (!neura.data<f32, i1>, !neura.data<!llvm.ptr, i1>) -> ()
 // CHECK-FUSED-NEXT:     %28 = "neura.add"(%22, %12) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
 // CHECK-FUSED-NEXT:     %29 = "neura.icmp"(%28, %10) <{cmpType = "eq"}> : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i1, i1>
@@ -154,8 +156,8 @@
 // CHECK-MOV-NEXT:     %40 = "neura.data_mov"(%39) : (!neura.data<!llvm.ptr, i1>) -> !neura.data<!llvm.ptr, i1>
 // CHECK-MOV-NEXT:     %41 = "neura.load"(%40) : (!neura.data<!llvm.ptr, i1>) -> !neura.data<f32, i1>
 // CHECK-MOV-NEXT:     %42 = "neura.data_mov"(%36) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
-// CHECK-MOV-NEXT:     %43 = "neura.data_mov"(%41) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
-// CHECK-MOV-NEXT:     %44 = "neura.data_mov"(%28) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
+// CHECK-MOV-NEXT:     %43 = "neura.data_mov"(%28) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
+// CHECK-MOV-NEXT:     %44 = "neura.data_mov"(%41) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
 // CHECK-MOV-NEXT:     %45 = "neura.fmul_fadd"(%42, %43, %44) : (!neura.data<f32, i1>, !neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
 // CHECK-MOV-NEXT:     %46 = "neura.data_mov"(%45) : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
 // CHECK-MOV-NEXT:     %47 = "neura.data_mov"(%19) : (!neura.data<!llvm.ptr, i1>) -> !neura.data<!llvm.ptr, i1>
