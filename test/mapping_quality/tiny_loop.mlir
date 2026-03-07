@@ -25,7 +25,8 @@
 // RUN: --fold-constant \
 // RUN: --insert-data-mov \
 // RUN: --map-to-accelerator="mapping-strategy=heuristic mapping-mode=spatial-only backtrack-config=customized=4,3" \
-// RUN: | FileCheck %s -check-prefix=SPATIAL
+// RUN: -o %t-spatial-mapped.mlir
+// RUN: FileCheck %s --input-file=%t-spatial-mapped.mlir --check-prefix=SPATIAL
 
 // RUN: mlir-neura-opt %t-llvm.mlir \
 // RUN: --assign-accelerator \
@@ -43,7 +44,8 @@
 // RUN: --fold-constant \
 // RUN: --insert-data-mov \
 // RUN: --map-to-accelerator="mapping-strategy=heuristic mapping-mode=spatial-temporal backtrack-config=customized=4,4" \
-// RUN: | FileCheck %s -check-prefix=SPATIAL-TEMPORAL
+// RUN: -o %t-spatial-temporal-mapped.mlir
+// RUN: FileCheck %s --input-file=%t-spatial-temporal-mapped.mlir --check-prefix=SPATIAL-TEMPORAL
 
 module {
   func.func @simple_add_loop() -> i64 {
@@ -77,6 +79,6 @@ module {
 // CHECK-NEXT: "neura.return"(%15) : (i64) -> ()
 // CHECK-NEXT: }
 
-// SPATIAL:          func.func @simple_add_loop() -> i64 attributes {accelerator = "neura", dataflow_mode = "predicate", mapping_info = {compiled_ii = 4 : i32, mapping_mode = "spatial-only", mapping_strategy = "heuristic", rec_mii = 3 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {
+// SPATIAL:          func.func @simple_add_loop() -> i64 attributes {accelerator = "neura", dataflow_mode = "predicate", mapping_info = {compiled_ii = 4 : i32, mapping_mode = "spatial-only", mapping_strategy = "heuristic", rec_mii = 3 : i32, res_mii = 1 : i32, x_tiles = 6 : i32, y_tiles = 6 : i32}} {
 
-// SPATIAL-TEMPORAL:        func.func @simple_add_loop() -> i64 attributes {accelerator = "neura", dataflow_mode = "predicate", mapping_info = {compiled_ii = 3 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 3 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {
+// SPATIAL-TEMPORAL:        func.func @simple_add_loop() -> i64 attributes {accelerator = "neura", dataflow_mode = "predicate", mapping_info = {compiled_ii = 3 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 3 : i32, res_mii = 1 : i32, x_tiles = 6 : i32, y_tiles = 6 : i32}} {

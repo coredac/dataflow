@@ -1,0 +1,11 @@
+.cache/
+build/
+benchmark/
+.vscode/
+test/lit.cfg
+test/**/Output
+test/**/*.dot
+test/**/*.yaml
+test/**/*.asm
+test/.lit_test_times.txt
+PLDI-Test/
