@@ -25,7 +25,7 @@
 // RUN: --fuse-loop-control \
 // RUN: --fold-constant \
 // RUN: --insert-data-mov \
-// RUN: --map-to-accelerator="mapping-strategy=heuristic mapping-mode=spatial-only backtrack-config=customized=4,3" \
+// RUN: --map-operation-on-tile="mapping-strategy=heuristic mapping-mode=spatial-only backtrack-config=customized=4,3" \
 // RUN: --architecture-spec=../arch_spec/architecture.yaml \
 // RUN: | FileCheck %s -check-prefix=SPATIAL
 
@@ -45,7 +45,7 @@
 // RUN: --fuse-loop-control \
 // RUN: --fold-constant \
 // RUN: --insert-data-mov \
-// RUN: --map-to-accelerator="mapping-strategy=heuristic mapping-mode=spatial-temporal backtrack-config=customized=4,4" \
+// RUN: --map-operation-on-tile="mapping-strategy=heuristic mapping-mode=spatial-temporal backtrack-config=customized=4,4" \
 // RUN: --architecture-spec=../arch_spec/architecture.yaml \
 // RUN: | FileCheck %s -check-prefix=SPATIAL-TEMPORAL
 

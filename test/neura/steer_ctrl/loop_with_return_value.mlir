@@ -30,7 +30,7 @@
 // RUN: --transform-to-steer-control \
 // RUN: --remove-predicated-type \
 // RUN: --insert-data-mov 
-// RU: --map-to-accelerator="mapping-strategy=heuristic mapping-mode=spatial-only backtrack-config=customized" 
+// RU: --map-operation-on-tile="mapping-strategy=heuristic mapping-mode=spatial-only backtrack-config=customized" 
 // RU: | FileCheck %s -check-prefix=MAPPING
 
 module {

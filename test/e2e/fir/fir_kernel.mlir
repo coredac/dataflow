@@ -16,7 +16,7 @@
 // RUN:   --transform-ctrl-to-data-flow \
 // RUN:   --fold-constant \
 // RUN:   --insert-data-mov \
-// RUN:   --map-to-accelerator="mapping-strategy=heuristic" \
+// RUN:   --map-operation-on-tile="mapping-strategy=heuristic" \
 // RUN:   --architecture-spec=%S/../../arch_spec/architecture.yaml \
 // RUN:   --generate-code -o %t-mapping.mlir
 // RUN: cp %t.dir/tmp-generated-instructions.yaml %t-generated-instructions.yaml

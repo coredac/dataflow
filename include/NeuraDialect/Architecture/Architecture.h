@@ -505,7 +505,7 @@ public:
   // specific tiles are valid:
   //   std::vector<TileOverride> overrides;
   //   // First mark all tiles as non-existent, then mark valid ones existent.
-  //   // (see MapToAcceleratorPass for the full valid_tiles parsing logic)
+  //   // (see MapOperationOnTilePass for the full valid_tiles parsing logic)
   //   auto arch_T = getArchitecture().cloneWithNewDimensions(8, 12, overrides);
   std::unique_ptr<Architecture> cloneWithNewDimensions(
       int new_per_cgra_rows, int new_per_cgra_columns,

@@ -344,7 +344,7 @@ public:
   // Public wrapper for profileTask: used by UtilizationFuser to re-profile
   // fused tasks with the real downstream Neura pipeline.
   // When skip_mapper=true, only ResMII/RecMII analytical estimates are used
-  // (no MapToAcceleratorPass). This is safe for speculative balance checks
+  // (no MapOperationOnTilePass). This is safe for speculative balance checks
   // where the mapper may backtrack indefinitely on larger tile arrays.
   void profileTaskPublic(TaskGraphNode *node, TaskflowTaskOp task,
                          bool skip_mapper = false) {
@@ -363,7 +363,7 @@ private:
   }
 
   // Profiles a single TaskflowTaskOp: clones the task, wraps the kernel in a
-  // standalone func, and runs InsertDataMov + MapToAcceleratorPass to obtain
+  // standalone func, and runs InsertDataMov + MapOperationOnTilePass to obtain
   // ii.  skip_mapper: use only ResMII/RecMII analytical estimates.
   void profileTask(TaskGraphNode *node, TaskflowTaskOp task,
                    bool skip_mapper = false) {
@@ -456,7 +456,7 @@ private:
   // InsertDataMov + mapper, and returns compiled_ii / cp_depth.
   // x_tiles/y_tiles: multi-CGRA tile grid dimensions.
   // valid_tiles: explicit tile list for non-rectangular shapes (empty = full).
-  // skip_mapper: skip MapToAcceleratorPass, use ResMII/RecMII only.
+  // skip_mapper: skip MapOperationOnTilePass, use ResMII/RecMII only.
   LogicalResult runNeuraPipelineOnKernel(MLIRContext *ctx,
                                          neura::KernelOp kernel,
                                          ModuleOp dst_module,
@@ -563,7 +563,7 @@ private:
       });
     }
 
-    // Optionally run MapToAcceleratorPass to get the true compiled_ii.
+    // Optionally run MapOperationOnTilePass to get the true compiled_ii.
     //
     // Guards:
     //   1. skip_mapper=true: caller explicitly requests analytical-only (e.g.
@@ -609,19 +609,19 @@ private:
                  << " limit=" << kMapperOpLimit << "\n";
 
     if (all_data_movs_ok && total_mapped_ops <= kMapperOpLimit) {
-      // Runs MapToAcceleratorPass in a fresh pass manager on the already-lowered
+      // Runs MapOperationOnTilePass in a fresh pass manager on the already-lowered
       // dst_module (pre-mapper pipeline already ran above).
       // Passes the correct tile dimensions so the mapper uses the right array.
       PassManager pm2(ctx);
       pm2.enableVerifier(false);
       if (x_tiles > 0 && y_tiles > 0) {
-        neura::MapToAcceleratorOptions map_options;
+        neura::MapOperationOnTileOptions map_options;
         map_options.x_tiles = x_tiles;
         map_options.y_tiles = y_tiles;
         map_options.valid_tiles = valid_tiles;
-        pm2.addPass(neura::createMapToAcceleratorPass(map_options));
+        pm2.addPass(neura::createMapOperationOnTilePass(map_options));
       } else {
-        pm2.addPass(neura::createMapToAcceleratorPass());
+        pm2.addPass(neura::createMapOperationOnTilePass());
       }
 
       if (succeeded(pm2.run(dst_module))) {
@@ -641,7 +641,7 @@ private:
         return success();
       }
       // Mapper failed for all II values — keep ResMII/RecMII from above.
-      llvm::errs() << "[profileTask] WARNING: MapToAcceleratorPass failed, "
+      llvm::errs() << "[profileTask] WARNING: MapOperationOnTilePass failed, "
                    << "keeping analytical fallback compiled_ii=" << compiled_ii
                    << "\n";
     } else {
@@ -1612,7 +1612,7 @@ struct ResourceAwareTaskOptimizationPass
 
   // Estimation mode for profiling task II / steps.
   //   "compiled" (default): runs the full Neura lowering + mapping pipeline
-  //       to obtain accurate compiled_ii and steps from MapToAcceleratorPass.
+  //       to obtain accurate compiled_ii and steps from MapOperationOnTilePass.
   //   "analytical": uses only ResMII / RecMII analytical estimates without
   //       running the mapper.  Much faster but less accurate — useful for
   //       rapid design-space exploration or when the mapper is unavailable.
