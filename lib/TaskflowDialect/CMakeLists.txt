@@ -14,4 +14,3 @@ add_mlir_dialect_library(MLIRTaskflow
 )
 
 add_subdirectory(Transforms)
-add_subdirectory(Transforms/Optimizations)

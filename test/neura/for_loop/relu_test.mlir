@@ -30,7 +30,7 @@
 // RUN:   --transform-ctrl-to-data-flow \
 // RUN:   --fold-constant \
 // RUN:   --insert-data-mov \
-// RUN:   --map-to-accelerator="mapping-strategy=heuristic backtrack-config=customized" \
+// RUN:   --map-operation-on-tile="mapping-strategy=heuristic backtrack-config=customized" \
 // RUN:   | FileCheck %s --check-prefix=MAPPING
 
 // CHECK:      func.func @_Z6kernelPiS_

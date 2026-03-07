@@ -1,4 +1,4 @@
-//===- MapTaskOnCgraPass.cpp - Task to CGRA Mapping Pass ----------------===//
+//===- AllocateCgraToTaskPass.cpp - Task to CGRA Mapping Pass ----------------===//
 //
 // This pass maps Taskflow tasks onto a 2D CGRA grid array:
 // 1. Places tasks with SSA dependencies on adjacent CGRAs.
@@ -22,7 +22,9 @@
 #include <algorithm>
 #include <climits>
 #include <cmath>
+#include <functional>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -34,26 +36,26 @@ namespace {
 //===----------------------------------------------------------------------===//
 // CGRA Grid Position
 //===----------------------------------------------------------------------===//
-/// Represents a position on the 2D CGRA grid.
-struct CGRAPosition {
+// Represents a position on the 2D CGRA grid.
+struct CgraPosition {
   int row;
   int col;
 
-  bool operator==(const CGRAPosition &other) const {
+  bool operator==(const CgraPosition &other) const {
     return row == other.row && col == other.col;
   }
 
-  bool operator!=(const CGRAPosition &other) const {
+  bool operator!=(const CgraPosition &other) const {
     return !(*this == other);
   }
 
-  /// Computes Manhattan distance to another position.
-  int manhattanDistance(const CGRAPosition &other) const {
+  // Computes Manhattan distance to another position.
+  int manhattanDistance(const CgraPosition &other) const {
     return std::abs(row - other.row) + std::abs(col - other.col);
   }
 
-  /// Checks if adjacent (Manhattan distance = 1).
-  bool isAdjacent(const CGRAPosition &other) const {
+  // Checks if adjacent (Manhattan distance = 1).
+  bool isAdjacent(const CgraPosition &other) const {
     return manhattanDistance(other) == 1;
   }
 };
@@ -61,19 +63,19 @@ struct CGRAPosition {
 //===----------------------------------------------------------------------===//
 // Task Placement Info
 //===----------------------------------------------------------------------===//
-/// Stores placement info for a task: can span multiple combined CGRAs.
+// Stores placement info for a task: can span multiple combined CGRAs.
 struct TaskPlacement {
-  SmallVector<CGRAPosition> cgra_positions; // CGRAs assigned to this task.
+  SmallVector<CgraPosition> cgra_positions; // CGRAs assigned to this task.
 
-  /// Returns the primary (first) position.
-  CGRAPosition primary() const {
-    return cgra_positions.empty() ? CGRAPosition{-1, -1} : cgra_positions[0];
+  // Returns the primary (first) position.
+  CgraPosition primary() const {
+    return cgra_positions.empty() ? CgraPosition{-1, -1} : cgra_positions[0];
   }
 
-  /// Returns the number of CGRAs assigned.
+  // Returns the number of CGRAs assigned.
   size_t cgraCount() const { return cgra_positions.size(); }
 
-  /// Checks if any CGRA in this task is adjacent to any in other task.
+  // Checks if any CGRA in this task is adjacent to any in other task.
   bool hasAdjacentCGRA(const TaskPlacement &other) const {
     for (const auto &pos : cgra_positions) {
       for (const auto &other_pos : other.cgra_positions) {
@@ -92,7 +94,7 @@ struct TaskPlacement {
 
 struct MemoryNode;
 
-/// Represents a Task node in the graph.
+// Represents a Task node in the graph.
 struct TaskNode {
   size_t id;
   TaskflowTaskOp op;
@@ -105,12 +107,12 @@ struct TaskNode {
   SmallVector<TaskNode *> ssa_operands;
 
   // Placement result
-  SmallVector<CGRAPosition> placement;
+  SmallVector<CgraPosition> placement;
 
   TaskNode(size_t id, TaskflowTaskOp op) : id(id), op(op) {}
 };
 
-/// Represents a Memory node (MemRef) in the graph.
+// Represents a Memory node (MemRef) in the graph.
 struct MemoryNode {
   Value memref;
   
@@ -119,12 +121,12 @@ struct MemoryNode {
   SmallVector<TaskNode *> writers;
   
   // Mapping result.
-  std::optional<CGRAPosition> assigned_sram_pos;
+  std::optional<CgraPosition> assigned_sram_pos;
 
   MemoryNode(Value memref) : memref(memref) {}
 };
 
-/// The Task-Memory Dependency Graph.
+// The Task-Memory Dependency Graph.
 class TaskMemoryGraph {
 public:
   SmallVector<std::unique_ptr<TaskNode>> task_nodes;
@@ -194,7 +196,7 @@ private:
 //===----------------------------------------------------------------------===//
 // Task Mapper
 //===----------------------------------------------------------------------===//
-/// Maps a task-memory graph onto a 2D CGRA grid.
+// Maps a task-memory graph onto a 2D CGRA grid.
 
 class TaskMapper {
 public:
@@ -206,7 +208,7 @@ public:
     }
   }
 
-  /// Places all tasks and performs memory mapping.
+  // Places all tasks and performs memory mapping.
   void place(func::FuncOp func) {
     SmallVector<TaskflowTaskOp> tasks;
     func.walk([&](TaskflowTaskOp task) { tasks.push_back(task); });
@@ -266,11 +268,20 @@ public:
 
           // Finds best placement using SRAM positions from previous iter (or -1/default).
           TaskPlacement placement = findBestPlacement(task_node, cgra_count, graph);
-          
+
+          // If the requested cgra_count doesn't fit, fall back to cgra_count-1
+          // (i.e. reject the extra CGRA and keep previous allocation).
+          if (placement.cgra_positions.empty() && cgra_count > 1) {
+            int fallback = cgra_count - 1;
+            llvm::errs() << "[AllocateCgraToTask] Cannot place "
+                         << task_node->op.getTaskName()
+                         << " with cgra_count=" << cgra_count
+                         << ", falling back to " << fallback << "\n";
+            placement = findBestPlacement(task_node, fallback, graph);
+          }
+
           // Commits Placement.
           task_node->placement.push_back(placement.primary());
-          // Handles mapping one task on multi-CGRAs.
-          // TODO: Introduce explicit multi-CGRA binding logic.
           for (size_t i = 1; i < placement.cgra_positions.size(); ++i) {
              task_node->placement.push_back(placement.cgra_positions[i]);
           }
@@ -357,7 +368,7 @@ public:
   }
 
 private:
-  /// Clears task placement and occupied grid.
+  // Clears task placement and occupied grid.
   void resetTaskPlacements(TaskMemoryGraph &graph) {
     for (auto &task : graph.task_nodes) {
         task->placement.clear();
@@ -368,34 +379,34 @@ private:
     }
   }
 
-  /// Assigns all memory nodes to SRAMs based on centroid of accessing tasks.
-  /// Returns true if any SRAM assignment changed.
+  // Assigns all memory nodes to SRAMs based on centroid of accessing tasks.
+  // Returns true if any SRAM assignment changed.
   bool assignAllSRAMs(TaskMemoryGraph &graph) {
     bool changed = false;
     for (auto &mem_node : graph.memory_nodes) {
       // Computes centroid of all tasks that access this memory.
       int total_row = 0, total_col = 0, count = 0;
       for (TaskNode *reader : mem_node->readers) {
-        if (!reader->placement.empty()) {
-          total_row += reader->placement[0].row;
-          total_col += reader->placement[0].col;
+        for (const auto &pos : reader->placement) {
+          total_row += pos.row;
+          total_col += pos.col;
           count++;
         }
       }
       for (TaskNode *writer : mem_node->writers) {
-        if (!writer->placement.empty()) {
-          total_row += writer->placement[0].row;
-          total_col += writer->placement[0].col;
+        for (const auto &pos : writer->placement) {
+          total_row += pos.row;
+          total_col += pos.col;
           count++;
         }
       }
       
-      std::optional<CGRAPosition> new_sram_pos;
+      std::optional<CgraPosition> new_sram_pos;
       if (count > 0) {
         // Rounds to the nearest integer.
         int avg_row = (total_row + count / 2) / count;
         int avg_col = (total_col + count / 2) / count;
-        new_sram_pos = CGRAPosition{avg_row, avg_col};
+        new_sram_pos = CgraPosition{avg_row, avg_col};
       }
 
       if (mem_node->assigned_sram_pos != new_sram_pos) {
@@ -407,25 +418,79 @@ private:
   }
 
 
-  /// Finds best placement for a task.
-  /// TODO: Currently defaults to single-CGRA placement. Multi-CGRA binding logic
-  /// (cgra_count > 1) is experimental/placeholder and should ideally be handled 
-  /// by an upstream resource binding pass.
-  TaskPlacement findBestPlacement(TaskNode *task_node, int cgra_count,
-                                  TaskMemoryGraph &graph) {
+  // Parses a tile_shape string like "2x2" or "2x2[(0,0)(1,0)(0,1)]".
+  // Returns a list of (col, row) offsets relative to the placement origin.
+  // For rectangular shapes "NxM", generates all NxM positions.
+  // For non-rectangular shapes with explicit positions, uses the listed coords.
+  SmallVector<std::pair<int, int>> parseTileShapeOffsets(
+      StringRef tile_shape, int cgra_count) {
+    SmallVector<std::pair<int, int>> offsets;
+
+    if (tile_shape.empty() || cgra_count <= 1) {
+      offsets.push_back({0, 0});
+      return offsets;
+    }
+
+    // Checks for explicit position list: "NxM[(c0,r0)(c1,r1)...]"
+    size_t bracket_pos = tile_shape.find('[');
+    if (bracket_pos != StringRef::npos) {
+      StringRef positions_str = tile_shape.substr(bracket_pos);
+      // Parses each (c,r) pair.
+      size_t pos = 0;
+      while (pos < positions_str.size()) {
+        size_t open = positions_str.find('(', pos);
+        if (open == StringRef::npos) break;
+        size_t close = positions_str.find(')', open);
+        if (close == StringRef::npos) break;
+        StringRef pair_str = positions_str.slice(open + 1, close);
+        auto [col_str, row_str] = pair_str.split(',');
+        int col_off = 0, row_off = 0;
+        col_str.getAsInteger(10, col_off);
+        row_str.getAsInteger(10, row_off);
+        offsets.push_back({col_off, row_off});
+        pos = close + 1;
+      }
+    } else {
+      // Rectangular shape: "NxM" — parse rows × cols.
+      auto [rows_str, cols_str] = tile_shape.split('x');
+      int rows = 1, cols = 1;
+      rows_str.getAsInteger(10, rows);
+      cols_str.getAsInteger(10, cols);
+      for (int r = 0; r < rows; ++r) {
+        for (int c = 0; c < cols; ++c) {
+          offsets.push_back({c, r});
+        }
+      }
+    }
+
+    // Sanity: if parsing failed, assert.
+    assert(!offsets.empty() && "tile_shape parsing yielded empty offsets");
+    return offsets;
+  }
+
+  // Tries placing a shape (given as col/row offsets) at every grid origin.
+  // Returns the best-scoring valid placement, or empty if none fits.
+  TaskPlacement tryPlaceShape(
+      TaskNode *task_node,
+      const SmallVector<std::pair<int, int>> &shape_offsets,
+      TaskMemoryGraph &graph) {
     int best_score = INT_MIN;
     TaskPlacement best_placement;
-
-    // Baseline: For cgra_count=1, finds single best position.
     for (int r = 0; r < grid_rows_; ++r) {
       for (int c = 0; c < grid_cols_; ++c) {
-        if (occupied_[r][c]) {
-          continue;
-        }
-
+        bool valid = true;
         TaskPlacement candidate;
-        candidate.cgra_positions.push_back({r, c});
-
+        for (auto &[col_off, row_off] : shape_offsets) {
+          int pr = r + row_off;
+          int pc = c + col_off;
+          if (pr < 0 || pr >= grid_rows_ || pc < 0 || pc >= grid_cols_ ||
+              occupied_[pr][pc]) {
+            valid = false;
+            break;
+          }
+          candidate.cgra_positions.push_back({pr, pc});
+        }
+        if (!valid) continue;
         int score = computeScore(task_node, candidate, graph);
         if (score > best_score) {
           best_score = score;
@@ -433,24 +498,111 @@ private:
         }
       }
     }
-
-    // Error handling: No available position found (grid over-subscribed).
-    if (best_placement.cgra_positions.empty()) {
-      assert(false && "No available CGRA position found (grid over-subscribed).");
-    }
-
     return best_placement;
   }
 
-  /// Computes placement score based on Task-Memory Graph.
-  /// TODO: Introduce explicit 'direct_wires' attributes in the IR for
-  /// downstream hardware generators to configure fast bypass paths between
-  /// adjacent PEs with dependencies.
-  ///
-  /// Score = α·SSA_Dist + β·Mem_Dist.
-  ///
-  /// SSA_Dist: Minimize distance to placed SSA predecessors (ssa_operands).
-  /// Mem_Dist: Minimize distance to assigned SRAMs for read/write memrefs.
+  // Generates all rectangular shapes (as col/row offset lists) of size k.
+  // E.g. k=4 → 1×4, 2×2, 4×1.
+  SmallVector<SmallVector<std::pair<int, int>>> getRectShapes(int k) {
+    SmallVector<SmallVector<std::pair<int, int>>> shapes;
+    for (int rows = 1; rows <= k; ++rows) {
+      if (k % rows != 0) continue;
+      int cols = k / rows;
+      SmallVector<std::pair<int, int>> offsets;
+      for (int r = 0; r < rows; ++r)
+        for (int c = 0; c < cols; ++c)
+          offsets.push_back({c, r}); // {col_off, row_off}
+      shapes.push_back(offsets);
+    }
+    return shapes;
+  }
+
+  // Searches all connected non-rectangular shapes of size k on the grid
+  // and returns the best-scoring valid placement, or empty if none found.
+  TaskPlacement tryNonRectShapes(TaskNode *task_node, int k,
+                                 TaskMemoryGraph &graph) {
+    std::set<uint64_t> visited_masks;
+    int best_score = INT_MIN;
+    TaskPlacement best_placement;
+
+    std::function<void(SmallVector<CgraPosition> &, uint64_t)> search =
+        [&](SmallVector<CgraPosition> &current, uint64_t mask) {
+          if ((int)current.size() == k) {
+            if (visited_masks.insert(mask).second) {
+              TaskPlacement candidate;
+              candidate.cgra_positions = current;
+              int score = computeScore(task_node, candidate, graph);
+              if (score > best_score) {
+                best_score = score;
+                best_placement = candidate;
+              }
+            }
+            return;
+          }
+          constexpr int dr[] = {-1, 1, 0, 0};
+          constexpr int dc[] = {0, 0, -1, 1};
+          for (size_t i = 0; i < current.size(); ++i) {
+            auto pos = current[i];
+            for (int d = 0; d < 4; ++d) {
+              int nr = pos.row + dr[d];
+              int nc = pos.col + dc[d];
+              if (nr >= 0 && nr < grid_rows_ && nc >= 0 && nc < grid_cols_ &&
+                  !occupied_[nr][nc]) {
+                uint64_t bit = 1ULL << (nr * grid_cols_ + nc);
+                if ((mask & bit) == 0) {
+                  current.push_back({nr, nc});
+                  search(current, mask | bit);
+                  current.pop_back();
+                }
+              }
+            }
+          }
+        };
+
+    for (int r = 0; r < grid_rows_; ++r) {
+      for (int c = 0; c < grid_cols_; ++c) {
+        if (!occupied_[r][c]) {
+          SmallVector<CgraPosition> start = {{r, c}};
+          search(start, 1ULL << (r * grid_cols_ + c));
+        }
+      }
+    }
+    return best_placement;
+  }
+
+  // Finds best placement for a task on the CGRA grid.
+  //
+  // Search order:
+  //   1. Try all rectangular shapes of size cgra_count.
+  //   2. If none fits, try all connected non-rectangular shapes of size cgra_count.
+  //   3. If still nothing, return empty (caller handles fallback to cgra_count-1).
+  TaskPlacement findBestPlacement(TaskNode *task_node, int cgra_count,
+                                  TaskMemoryGraph &graph) {
+    // 1. Rectangular shapes.
+    for (auto &shape : getRectShapes(cgra_count)) {
+      TaskPlacement p = tryPlaceShape(task_node, shape, graph);
+      if (!p.cgra_positions.empty()) return p;
+    }
+
+    // 2. Non-rectangular connected shapes.
+    if (cgra_count > 1) {
+      TaskPlacement p = tryNonRectShapes(task_node, cgra_count, graph);
+      if (!p.cgra_positions.empty()) return p;
+    }
+
+    // Nothing fits — return empty so caller can decide.
+    return {};
+  }
+
+  // Computes placement score based on Task-Memory Graph.
+  // For multi-CGRA placements, uses the minimum distance from any position
+  // in the placement to the target, since adjacent CGRAs can communicate
+  // via fast bypass paths.
+  //
+  // Score = α·SSA_Dist + β·Mem_Dist.
+  //
+  // SSA_Dist: Minimize distance to placed SSA predecessors (ssa_operands).
+  // Mem_Dist: Minimize distance to assigned SRAMs for read/write memrefs.
   int computeScore(TaskNode *task_node, const TaskPlacement &placement,
                    TaskMemoryGraph &graph) {
     // Weight constants (tunable).
@@ -459,55 +611,70 @@ private:
 
     int ssa_score = 0;
     int mem_score = 0;
-    
-    CGRAPosition current_pos = placement.primary();
+
+    // Helper: minimum Manhattan distance between any position in this
+    // placement and any position in another task's placement.
+    auto minDistToPlacement = [&](const SmallVector<CgraPosition> &other) -> int {
+      int min_dist = INT_MAX;
+      for (const auto &pos : placement.cgra_positions) {
+        for (const auto &opos : other) {
+          min_dist = std::min(min_dist, pos.manhattanDistance(opos));
+        }
+      }
+      return min_dist;
+    };
+
+    // Helper: minimum Manhattan distance from any position in this placement
+    // to a single target position.
+    auto minDistToTarget = [&](const CgraPosition &target) -> int {
+      int min_dist = INT_MAX;
+      for (const auto &pos : placement.cgra_positions) {
+        min_dist = std::min(min_dist, pos.manhattanDistance(target));
+      }
+      return min_dist;
+    };
 
     // 1. SSA proximity (predecessors & successors).
     for (TaskNode *producer : task_node->ssa_operands) {
-        if (!producer->placement.empty()) {
-            int dist = current_pos.manhattanDistance(producer->placement[0]);
-            // Uses negative distance to penalize far-away placements.
-            ssa_score -= dist;
-        }
+      if (!producer->placement.empty()) {
+        int dist = minDistToPlacement(producer->placement);
+        ssa_score -= dist;
+      }
     }
     for (TaskNode *consumer : task_node->ssa_users) {
-        if (!consumer->placement.empty()) {
-            int dist = current_pos.manhattanDistance(consumer->placement[0]);
-            ssa_score -= dist;
-        }
+      if (!consumer->placement.empty()) {
+        int dist = minDistToPlacement(consumer->placement);
+        ssa_score -= dist;
+      }
     }
 
     // 2. Memory proximity.
-    // For read memrefs.
     for (MemoryNode *mem : task_node->read_memrefs) {
-        if (mem->assigned_sram_pos) {
-            int dist = current_pos.manhattanDistance(*mem->assigned_sram_pos);
-            mem_score -= dist;
-        }
+      if (mem->assigned_sram_pos) {
+        int dist = minDistToTarget(*mem->assigned_sram_pos);
+        mem_score -= dist;
+      }
     }
-    // For write memrefs.
-    // If we write to a memory that is already assigned (e.g. read by previous task),
-    // we want to be close to it too.
     for (MemoryNode *mem : task_node->write_memrefs) {
-         if (mem->assigned_sram_pos) {
-            int dist = current_pos.manhattanDistance(*mem->assigned_sram_pos);
-            mem_score -= dist;
-        }
+      if (mem->assigned_sram_pos) {
+        int dist = minDistToTarget(*mem->assigned_sram_pos);
+        mem_score -= dist;
+      }
     }
 
     return kAlpha * ssa_score + kBeta * mem_score;
   }
 
-  /// Computes dependency depth for all tasks in the graph.
-  ///
-  /// Dependency depth = longest path from this node to any sink node in the
-  /// dependency graph (via SSA or memory edges).
-  ///
-  /// Tasks with higher dependency depth have longer chains of dependent tasks
-  /// after them. By placing these tasks first:
-  /// 1. They get priority access to good grid positions.
-  /// 2. Their dependent tasks can then be positioned adjacent to them,
-  ///    minimizing inter-task communication distance.
+  // Computes dependency depth for all tasks in the graph.
+  //
+  // Dependency depth = longest path from this node to any sink node in the
+  // dependency graph (via SSA or memory edges).
+  //
+  // Tasks with higher dependency depth have longer chains of dependent tasks
+  // after them. By placing these tasks first:
+  // 1. They get priority access to good grid positions.
+  // 2. Their dependent tasks can then be positioned adjacent to them,
+  //    minimizing inter-task communication distance.
   void computeDependencyDepth(TaskMemoryGraph &graph) {
     DenseMap<TaskNode*, int> depth_cache;
     for (auto &node : graph.task_nodes) {
@@ -515,7 +682,7 @@ private:
     }
   }
 
-  /// Recursively calculates dependency depth for a single task.
+  // Recursively calculates dependency depth for a single task.
   int calculateDepth(TaskNode *node, DenseMap<TaskNode*, int> &depth_cache) {
     if (depth_cache.count(node)) {
         return depth_cache[node];
@@ -549,13 +716,13 @@ private:
 //===----------------------------------------------------------------------===//
 // Pass Definition
 //===----------------------------------------------------------------------===//
-struct MapTaskOnCgraPass
-    : public PassWrapper<MapTaskOnCgraPass, OperationPass<func::FuncOp>> {
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(MapTaskOnCgraPass)
+struct AllocateCgraToTaskPass
+    : public PassWrapper<AllocateCgraToTaskPass, OperationPass<func::FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(AllocateCgraToTaskPass)
 
-  MapTaskOnCgraPass() = default;
+  AllocateCgraToTaskPass() = default;
 
-  StringRef getArgument() const override { return "map-task-on-cgra"; }
+  StringRef getArgument() const override { return "allocate-cgra-to-task"; }
 
   StringRef getDescription() const override {
     return "Maps Taskflow tasks onto a 2D CGRA grid with adjacency "
@@ -564,8 +731,8 @@ struct MapTaskOnCgraPass
 
   void runOnOperation() override {
     func::FuncOp func = getOperation();
-    constexpr int kDefaultGridRows = 3;
-    constexpr int kDefaultGridCols = 3;
+    constexpr int kDefaultGridRows = 4;
+    constexpr int kDefaultGridCols = 4;
     TaskMapper mapper(kDefaultGridRows, kDefaultGridCols);
     mapper.place(func);
   }
@@ -576,8 +743,13 @@ struct MapTaskOnCgraPass
 namespace mlir {
 namespace taskflow {
 
-std::unique_ptr<Pass> createMapTaskOnCgraPass() {
-  return std::make_unique<MapTaskOnCgraPass>();
+std::unique_ptr<Pass> createAllocateCgraToTaskPass() {
+  return std::make_unique<AllocateCgraToTaskPass>();
+}
+
+void runAllocateCgraToTask(func::FuncOp func, int grid_rows, int grid_cols) {
+  TaskMapper mapper(grid_rows, grid_cols);
+  mapper.place(func);
 }
 
 } // namespace taskflow

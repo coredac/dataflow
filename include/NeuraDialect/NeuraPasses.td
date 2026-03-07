@@ -50,7 +50,7 @@ def LeveragePredicatedValue : Pass<"leverage-predicated-value", "ModuleOp"> {
   let constructor = "neura::createLeveragePredicatedValuePass()";
 }
 
-def MapToAccelerator : Pass<"map-to-accelerator", "ModuleOp"> {
+def MapOperationOnTile : Pass<"map-operation-on-tile", "ModuleOp"> {
   let summary = "Map Neura operations onto a given accelerator";
   let description = [{
     This pass performs mapping from Neura operations to accelerator.
@@ -65,11 +65,11 @@ def MapToAccelerator : Pass<"map-to-accelerator", "ModuleOp"> {
 
     Examples:
       Single CGRA (default):
-        --map-to-accelerator
+        --map-operation-on-tile
       1×3 rectangular (3 CGRAs in a row):
-        --map-to-accelerator x-tiles=12 y-tiles=4
+        --map-operation-on-tile x-tiles=12 y-tiles=4
       T-shape (4 CGRAs: top row of 3 + centre below):
-        --map-to-accelerator x-tiles=12 y-tiles=8 \
+        --map-operation-on-tile x-tiles=12 y-tiles=8 \
             valid-tiles="0_0,1_0,2_0,3_0,4_0,5_0,6_0,7_0,8_0,9_0,10_0,11_0,\
                          4_1,5_1,6_1,7_1,4_4,5_4,6_4,7_4,4_5,5_5,6_5,7_5"
   }];
@@ -89,7 +89,7 @@ def MapToAccelerator : Pass<"map-to-accelerator", "ModuleOp"> {
            "x-tiles x y-tiles rectangle are valid. "
            "Example: 0_0,1_0,0_1 selects three tiles forming an L-shape.">
   ];
-  let constructor = "neura::createMapToAcceleratorPass()";
+  let constructor = "neura::createMapOperationOnTilePass()";
 }
 
 def GenerateCode : Pass<"generate-code", "ModuleOp"> {

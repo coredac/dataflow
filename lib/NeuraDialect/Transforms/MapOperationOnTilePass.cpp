@@ -32,11 +32,11 @@ using namespace mlir::neura::yamlkeys;
 #include "NeuraDialect/NeuraPasses.h.inc"
 
 namespace {
-struct MapToAcceleratorPass
-    : public PassWrapper<MapToAcceleratorPass, OperationPass<ModuleOp>> {
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(MapToAcceleratorPass)
+struct MapOperationOnTilePass
+    : public PassWrapper<MapOperationOnTilePass, OperationPass<ModuleOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(MapOperationOnTilePass)
 
-  StringRef getArgument() const override { return "map-to-accelerator"; }
+  StringRef getArgument() const override { return "map-operation-on-tile"; }
   StringRef getDescription() const override {
     return "Maps IR to the target accelerator.";
   }
@@ -45,14 +45,14 @@ struct MapToAcceleratorPass
     registry.insert<mlir::neura::NeuraDialect>();
   }
 
-  MapToAcceleratorPass() = default;
-  MapToAcceleratorPass(const MapToAcceleratorOptions &options) : MapToAcceleratorPass() {
+  MapOperationOnTilePass() = default;
+  MapOperationOnTilePass(const MapOperationOnTileOptions &options) : MapOperationOnTilePass() {
     this->x_tiles = options.x_tiles;
     this->y_tiles = options.y_tiles;
     this->valid_tiles = options.valid_tiles;
   }
-  MapToAcceleratorPass(const MapToAcceleratorPass &pass)
-      : PassWrapper<MapToAcceleratorPass, OperationPass<ModuleOp>>(pass) {}
+  MapOperationOnTilePass(const MapOperationOnTilePass &pass)
+      : PassWrapper<MapOperationOnTilePass, OperationPass<ModuleOp>>(pass) {}
   Option<std::string> mappingStrategy{
       *this, "mapping-strategy",
       llvm::cl::desc("Mapping strategy to use for mapping operations to the "
@@ -104,10 +104,10 @@ struct MapToAcceleratorPass
     }
     if (mapping_mode_str == attr::val::kSpatialOnly ||
         mapping_mode_str == attr::val::kSpatialTemporal) {
-      llvm::errs() << "[MapToAcceleratorPass] Using Mapping Mode: "
+      llvm::errs() << "[MapOperationOnTilePass] Using Mapping Mode: "
                    << mapping_mode_str << "\n";
     } else {
-      llvm::errs() << "[MapToAcceleratorPass] Unsupported mapping mode: "
+      llvm::errs() << "[MapOperationOnTilePass] Unsupported mapping mode: "
                    << mapping_mode_str << "\n";
       return false;
     }
@@ -144,29 +144,29 @@ struct MapToAcceleratorPass
             mapping_strategy =
                 std::make_unique<HeuristicMapping>(max_loc, max_depth);
             llvm::errs()
-                << "[MapToAcceleratorPass] Use custom backtrack parameters: "
+                << "[MapOperationOnTilePass] Use custom backtrack parameters: "
                 << "max_location_to_try=" << max_loc
                 << ", max_backtrack_depth=" << max_depth << "\n";
           } else {
-            llvm::errs() << "[MapToAcceleratorPass] Illegal customized "
+            llvm::errs() << "[MapOperationOnTilePass] Illegal customized "
                             "parameters format: "
                          << backtrack_str << "\n";
             return false;
           }
         } else {
-          llvm::errs() << "[MapToAcceleratorPass] Illegal customized "
+          llvm::errs() << "[MapOperationOnTilePass] Illegal customized "
                           "parameters format: "
                        << backtrack_str << "\n";
           return false;
         }
       } else {
-        llvm::errs() << "[MapToAcceleratorPass] Unsupported backtrack config: "
+        llvm::errs() << "[MapOperationOnTilePass] Unsupported backtrack config: "
                      << backtrack_str << "\n";
         return false;
       }
       resolved_mapping_strategy = mapping_strategy_str.str();
     } else {
-      llvm::errs() << "[MapToAcceleratorPass] Unsupported mapping strategy: "
+      llvm::errs() << "[MapOperationOnTilePass] Unsupported mapping strategy: "
                    << mapping_strategy_str << "\n";
       return false;
     }
@@ -184,12 +184,12 @@ struct MapToAcceleratorPass
     for (Operation *op : sorted_ops) {
       op->setAttr(attr::kDfgId,
                   IntegerAttr::get(IntegerType::get(ctx, 32), next_id));
-      llvm::errs() << "[MapToAcceleratorPass] Assigned dfg_id=" << next_id
+      llvm::errs() << "[MapOperationOnTilePass] Assigned dfg_id=" << next_id
                    << " to " << *op << "\n";
       next_id++;
     }
 
-    llvm::errs() << "[MapToAcceleratorPass] Assigned " << next_id
+    llvm::errs() << "[MapOperationOnTilePass] Assigned " << next_id
                  << " dfg_id(s) in total\n";
   }
 
@@ -231,7 +231,7 @@ struct MapToAcceleratorPass
     }
 
     if (longest) {
-      llvm::outs() << "[MapToAcceleratorPass] Longest recurrence cycle (length "
+      llvm::outs() << "[MapOperationOnTilePass] Longest recurrence cycle (length "
                    << longest->length << "):\n";
       for (Operation *op : longest->operations) {
         op->print(llvm::outs()), llvm::outs() << "\n";
@@ -241,7 +241,7 @@ struct MapToAcceleratorPass
       rec_mii = 1; // No recurrence cycles found, set MII to 1.
     }
 
-    llvm::errs() << "[MapToAcceleratorPass] Calculated Recurrence MII: "
+    llvm::errs() << "[MapOperationOnTilePass] Calculated Recurrence MII: "
                  << rec_mii << "\n";
 
     int res_mii = calculateResMii(region, architecture);
@@ -265,7 +265,7 @@ struct MapToAcceleratorPass
       if (parent_op &&
           parent_op->getName().getStringRef().contains(attr::val::kOpFused)) {
         // Skips operations inside a fused_op region.
-        llvm::outs() << "[MapToAcceleratorPass] Skipping op inside fused_op: "
+        llvm::outs() << "[MapOperationOnTilePass] Skipping op inside fused_op: "
                      << *op << "\n";
         skipped_count++;
         continue;
@@ -275,19 +275,19 @@ struct MapToAcceleratorPass
     topologically_sorted_ops = std::move(filtered_ops);
 
     if (skipped_count > 0) {
-      llvm::errs() << "[MapToAcceleratorPass] Filtered out " << skipped_count
+      llvm::errs() << "[MapOperationOnTilePass] Filtered out " << skipped_count
                    << " operations inside fused_op regions\n";
     }
 
     for (Operation *op : topologically_sorted_ops) {
-      llvm::outs() << "[MapToAcceleratorPass] Topologically sorted op: " << *op
+      llvm::outs() << "[MapOperationOnTilePass] Topologically sorted op: " << *op
                    << "\n";
     }
     std::vector<std::vector<Operation *>> level_buckets =
         getOpsInAlapLevels(topologically_sorted_ops, critical_ops);
     for (int level = 0; level < static_cast<int>(level_buckets.size());
          ++level) {
-      llvm::outs() << "[MapToAcceleratorPass] ALAP Bucket Level " << level
+      llvm::outs() << "[MapOperationOnTilePass] ALAP Bucket Level " << level
                    << ": " << level_buckets[level].size() << " ops\n";
       for (Operation *op : level_buckets[level]) {
         llvm::outs() << "  " << *op << "\n";
@@ -296,12 +296,12 @@ struct MapToAcceleratorPass
     std::vector<std::pair<Operation *, int>> sorted_ops_with_alap_levels =
         flatten_level_buckets(level_buckets, critical_ops);
     for (const auto &[op, level] : sorted_ops_with_alap_levels) {
-      llvm::outs() << "[MapToAcceleratorPass] ALAP sorted op: " << *op
+      llvm::outs() << "[MapOperationOnTilePass] ALAP sorted op: " << *op
                    << " (ALAP level: " << level << ")\n";
     }
     // assert(false);
     for (int ii = possible_min_ii; ii <= max_ii; ++ii) {
-      llvm::errs() << "[MapToAcceleratorPass] Start mapping with target II of "
+      llvm::errs() << "[MapOperationOnTilePass] Start mapping with target II of "
                    << ii << "\n";
       // Creates a mapping state for the current II.
       MappingState mapping_state(architecture, ii, is_spatial_only);
@@ -349,18 +349,18 @@ struct MapToAcceleratorPass
         op->setAttr(attr::kMappingInfo, mapping_info);
         return true;
       }
-      llvm::errs() << "[MapToAcceleratorPass] Mapping failed for target II of "
+      llvm::errs() << "[MapOperationOnTilePass] Mapping failed for target II of "
                    << ii << "\n";
       mapping_state.dumpOpToLocs();
     }
     llvm::errs()
-        << "[MapToAcceleratorPass] Mapping failed for all target II values.\n";
+        << "[MapOperationOnTilePass] Mapping failed for all target II values.\n";
     return false;
   }
 
   void runOnOperation() override {
     ModuleOp module = getOperation();
-    llvm::errs() << "[MapToAcceleratorPass] Starting mapping pass...\n";
+    llvm::errs() << "[MapOperationOnTilePass] Starting mapping pass...\n";
     std::unique_ptr<Mapping> mapping_strategy;
     std::string resolved_mapping_mode;
     std::string resolved_mapping_strategy;
@@ -414,7 +414,7 @@ struct MapToAcceleratorPass
       custom_arch = global_arch.cloneWithNewDimensions(
         y_tiles.getValue(), x_tiles.getValue(), additional_overrides);
       target_arch = custom_arch.get();
-      llvm::errs() << "[MapToAcceleratorPass] Overriding architecture dimensions to "
+      llvm::errs() << "[MapOperationOnTilePass] Overriding architecture dimensions to "
                    << y_tiles.getValue() << "x" << x_tiles.getValue() << " tiles.\n";
     }
 
@@ -432,7 +432,7 @@ struct MapToAcceleratorPass
       if (!mapRegion(kernel_op, kernel_region, architecture,
                      mapping_strategy.get(), is_spatial_only,
                      resolved_mapping_mode, resolved_mapping_strategy)) {
-        llvm::errs() << "[MapToAcceleratorPass] Mapping failed for kernel.\n";
+        llvm::errs() << "[MapOperationOnTilePass] Mapping failed for kernel.\n";
         signalPassFailure();
       }
     });
@@ -450,7 +450,7 @@ struct MapToAcceleratorPass
       if (!mapRegion(func_op, func_region, architecture, mapping_strategy.get(),
                      is_spatial_only, resolved_mapping_mode,
                      resolved_mapping_strategy)) {
-        llvm::errs() << "[MapToAcceleratorPass] Failed to map function.\n";
+        llvm::errs() << "[MapOperationOnTilePass] Failed to map function.\n";
         signalPassFailure();
       }
     });
@@ -461,9 +461,9 @@ struct MapToAcceleratorPass
 
 namespace mlir::neura {
 
-std::unique_ptr<Pass> createMapToAcceleratorPass(
-    const MapToAcceleratorOptions &options) {
-  return std::make_unique<MapToAcceleratorPass>(options);
+std::unique_ptr<Pass> createMapOperationOnTilePass(
+    const MapOperationOnTileOptions &options) {
+  return std::make_unique<MapOperationOnTilePass>(options);
 }
 
 } // namespace mlir::neura
