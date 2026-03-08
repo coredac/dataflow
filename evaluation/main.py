@@ -27,7 +27,7 @@ from typing import Optional
 
 # Allow   from util.figures import ...   regardless of cwd
 sys.path.insert(0, str(Path(__file__).parent))
-from util.figures import generate_speedup_figure
+from util.figures import generate_speedup_figure, generate_ppa_figure, generate_ipc_figure
 
 # ════════════════════════════════════════════════════════════════════════════
 #  SECTION 1 – TOOL PATHS  (adjust if locations differ)
@@ -45,6 +45,87 @@ FIGS_DIR      = Path("/home/lucas/Project/dataflow/evaluation/figs")
 CPU_TRANSITION_CYCLES = 20
 # Cycles lost on Marionette controller-based context switch
 MARIONETTE_TRANSITION_CYCLES = 5
+
+# ── Total instruction counts per (benchmark, architecture) ────────────────
+# IPC = BENCH_ARCH_INSTRUCTIONS[(bench, arch)] / total_cycles
+# These are manually collected from the mapped MLIR files, counting the number of instructions and computing total instructions during runtime.
+BENCH_ARCH_INSTRUCTIONS: dict[tuple, Optional[int]] = {
+    # ── conv ────────────────────────────────────────────────────────
+    ("conv", "Marionette"): 114573312,
+    ("conv", "ICED"):       305528832,
+    ("conv", "RipTide"):    196411392,
+    ("conv", "NEURA-SO"):   190955520,
+    ("conv", "NEURA-ST"):   190955520,
+    # ── relu ────────────────────────────────────────────────────────
+    ("relu", "Marionette"): 10752,
+    ("relu", "ICED"):       11776,
+    ("relu", "RipTide"):    9216,
+    ("relu", "NEURA-SO"):   15360,
+    ("relu", "NEURA-ST"):   15360,
+    # ── spmv ────────────────────────────────────────────────────────
+    ("spmv", "Marionette"): 79040,
+    ("spmv", "ICED"):       271700,
+    ("spmv", "RipTide"):    167960,
+    ("spmv", "NEURA-SO"):   167960,
+    ("spmv", "NEURA-ST"):   207480,
+    # ── gemm ────────────────────────────────────────────────────────
+    ("gemm", "Marionette"): 4718592,
+    ("gemm", "ICED"):       13893632,
+    ("gemm", "RipTide"):    8650752,
+    ("gemm", "NEURA-SO"):   9175040,
+    ("gemm", "NEURA-ST"):   9699328,
+    # ── bicg ────────────────────────────────────────────────────────
+    ("bicg", "Marionette"): 87790500,
+    ("bicg", "ICED"):       211470000,
+    ("bicg", "RipTide"):    199500000,
+    ("bicg", "NEURA-SO"):   191520000,
+    ("bicg", "NEURA-ST"):   159600000,
+    # ── mvt ─────────────────────────────────────────────────────────
+    ("mvt", "Marionette"):  80000000,
+    ("mvt", "ICED"):        208000000,
+    ("mvt", "RipTide"):     136000000,
+    ("mvt", "NEURA-SO"):    140000000,
+    ("mvt", "NEURA-ST"):    144000000,
+    # ── jacobi ──────────────────────────────────────────────────────
+    ("jacobi", "Marionette"): 28000000,
+    ("jacobi", "ICED"):       86000000,
+    ("jacobi", "RipTide"):    56000000,
+    ("jacobi", "NEURA-SO"):   48000000,
+    ("jacobi", "NEURA-ST"):   48000000,
+    # ── fft ─────────────────────────────────────────────────────────
+    ("fft", "Marionette"):  3456,
+    ("fft", "ICED"):        7296,
+    ("fft", "RipTide"):     3584,
+    ("fft", "NEURA-SO"):    3456,
+    ("fft", "NEURA-ST"):    5376,
+    # ── merge-sort ──────────────────────────────────────────────────
+    ("merge-sort", "Marionette"): 23552,
+    ("merge-sort", "ICED"):       25600,
+    ("merge-sort", "RipTide"):    13312,
+    ("merge-sort", "NEURA-SO"):   23552,
+    ("merge-sort", "NEURA-ST"):   45056,
+    # ── bfs ─────────────────────────────────────────────────────────
+    ("bfs", "Marionette"):  6144,
+    ("bfs", "ICED"):        6656,
+    ("bfs", "RipTide"):     5120,
+    ("bfs", "NEURA-SO"):    6144,
+    ("bfs", "NEURA-ST"):    15360,
+    # ── floyd ───────────────────────────────────────────────────────
+    ("floyd", "Marionette"): 12000000000,
+    ("floyd", "ICED"):       12000000000,
+    ("floyd", "RipTide"):    12000000000,
+    ("floyd", "NEURA-SO"):   12000000000,
+    ("floyd", "NEURA-ST"):   39000000000
+}
+
+# CGRA area in mm²  (used for normalised Perf/Area computation)
+ARCH_AREA_MM2: dict[str, float] = {
+    "Marionette": 2.68353,
+    "ICED":       0.882533225,
+    "RipTide":    0.679615265,
+    "NEURA-SO":   0.668016,
+    "NEURA-ST":   0.922508964,
+}
 
 # ════════════════════════════════════════════════════════════════════════════
 #  SECTION 2 – ARCHITECTURE CONFIGURATIONS
@@ -591,9 +672,6 @@ def run_benchmark(
 
 
 def main():
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    FIGS_DIR.mkdir(parents=True, exist_ok=True)
-
     with tempfile.TemporaryDirectory(prefix="neura_ae_") as tmp:
         work_root = Path(tmp)
 
@@ -650,6 +728,8 @@ def main():
         print()
 
         # ── write raw latency CSV ─────────────────────────────────────
+        RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+        FIGS_DIR.mkdir(parents=True, exist_ok=True)
         latency_csv = RESULTS_DIR / "latency_cycles.csv"
         with latency_csv.open("w", newline="") as f:
             writer = csv.writer(f)
@@ -685,7 +765,123 @@ def main():
         # ── generate speedup figure ───────────────────────────────────────
         generate_speedup_figure(
             speedup_data, geomeans, BENCHMARKS, ARCHS,
-            save_path=FIGS_DIR / "speedup_comparison.pdf",
+            save_path=FIGS_DIR / "fig13.pdf",
+        )
+
+        # ── compute normalised Perf/Area ──────────────────────────────────
+        # PPA_normalised_arch = (lat_mario / area_mario) / (lat_arch / area_arch)
+        #                     = speedup * (area_mario / area_arch)
+        area_mario = ARCH_AREA_MM2["Marionette"]
+        ppa_data: dict[str, list[Optional[float]]] = {arch: [] for arch in ARCHS}
+        for i, bench in enumerate(BENCHMARKS):
+            lat_mario = latencies["Marionette"].get(bench)
+            for arch in ARCHS:
+                lat = latencies[arch].get(bench)
+                sp  = speedup_data[arch][i]
+                if sp is not None and arch in ARCH_AREA_MM2:
+                    ppa = sp * (area_mario / ARCH_AREA_MM2[arch])
+                else:
+                    ppa = None
+                ppa_data[arch].append(ppa)
+
+        geomeans_ppa: dict[str, Optional[float]] = {}
+        print(f"\n{'═'*60}")
+        print("Normalised Perf/Area (relative to Marionette)")
+        print(f"{'Bench':<14s}", end="")
+        for arch in ARCHS:
+            print(f"  {arch:<12s}", end="")
+        print()
+        for i, bench in enumerate(BENCHMARKS):
+            print(f"{bench:<14s}", end="")
+            for arch in ARCHS:
+                v = ppa_data[arch][i]
+                print(f"  {f'{v:.3f}' if v is not None else 'N/A':<12s}", end="")
+            print()
+        print(f"{'Geomean':<14s}", end="")
+        for arch in ARCHS:
+            vals = [v for v in ppa_data[arch] if v is not None]
+            gm = functools.reduce(lambda a, b: a * b, vals, 1) ** (1 / len(vals)) if vals else None
+            geomeans_ppa[arch] = gm
+            print(f"  {f'{gm:.3f}' if gm is not None else 'N/A':<12s}", end="")
+        print()
+
+        # ── write Perf/Area CSV ───────────────────────────────────────────
+        ppa_csv = RESULTS_DIR / "perf_per_area.csv"
+        with ppa_csv.open("w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["benchmark"] + ARCHS)
+            for i, bench in enumerate(BENCHMARKS):
+                row = [bench] + [
+                    f"{ppa_data[arch][i]:.4f}" if ppa_data[arch][i] is not None else "N/A"
+                    for arch in ARCHS
+                ]
+                writer.writerow(row)
+            writer.writerow(["Geomean"] + [
+                f"{geomeans_ppa[arch]:.4f}" if geomeans_ppa[arch] is not None else "N/A"
+                for arch in ARCHS
+            ])
+        print(f"Perf/Area data written to {ppa_csv}")
+
+        # ── generate Perf/Area figure ─────────────────────────────────────
+        generate_ppa_figure(
+            ppa_data, geomeans_ppa, BENCHMARKS, ARCHS,
+            save_path=FIGS_DIR / "fig15.pdf",
+        )
+
+        # ── compute IPC ───────────────────────────────────────────────────
+        # IPC = total_instructions / total_cycles
+        ipc_data: dict[str, list[Optional[float]]] = {arch: [] for arch in ARCHS}
+        for bench in BENCHMARKS:
+            for arch in ARCHS:
+                n_instr = BENCH_ARCH_INSTRUCTIONS.get((bench, arch))
+                cycles  = latencies[arch].get(bench)
+                if n_instr is not None and cycles:
+                    ipc_data[arch].append(n_instr / cycles)
+                else:
+                    ipc_data[arch].append(None)
+
+        geomeans_ipc: dict[str, Optional[float]] = {}
+        print(f"\n{'═'*60}")
+        print("IPC (instructions per cycle)")
+        print(f"{'Bench':<14s}", end="")
+        for arch in ARCHS:
+            print(f"  {arch:<12s}", end="")
+        print()
+        for i, bench in enumerate(BENCHMARKS):
+            print(f"{bench:<14s}", end="")
+            for arch in ARCHS:
+                v = ipc_data[arch][i]
+                print(f"  {f'{v:.3f}' if v is not None else 'N/A':<12s}", end="")
+            print()
+        print(f"{'Geomean':<14s}", end="")
+        for arch in ARCHS:
+            vals = [v for v in ipc_data[arch] if v is not None]
+            gm = functools.reduce(lambda a, b: a * b, vals, 1) ** (1 / len(vals)) if vals else None
+            geomeans_ipc[arch] = gm
+            print(f"  {f'{gm:.3f}' if gm is not None else 'N/A':<12s}", end="")
+        print()
+
+        # ── write IPC CSV ─────────────────────────────────────────────────
+        ipc_csv = RESULTS_DIR / "ipc.csv"
+        with ipc_csv.open("w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["benchmark"] + ARCHS)
+            for i, bench in enumerate(BENCHMARKS):
+                row = [bench] + [
+                    f"{ipc_data[arch][i]:.4f}" if ipc_data[arch][i] is not None else "N/A"
+                    for arch in ARCHS
+                ]
+                writer.writerow(row)
+            writer.writerow(["Geomean"] + [
+                f"{geomeans_ipc[arch]:.4f}" if geomeans_ipc[arch] is not None else "N/A"
+                for arch in ARCHS
+            ])
+        print(f"IPC data written to {ipc_csv}")
+
+        # ── generate IPC figure ───────────────────────────────────────────
+        generate_ipc_figure(
+            ipc_data, geomeans_ipc, BENCHMARKS, ARCHS,
+            save_path=FIGS_DIR / "fig14.pdf",
         )
 
 
