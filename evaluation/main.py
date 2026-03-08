@@ -221,7 +221,7 @@ BENCH_ARCH_SEGS: dict[tuple, list] = {
     ("relu", "NEURA-ST"):   [_SM("relu.cpp", [], 512)],
     ("relu", "NEURA-SO"):   [_SM("relu.cpp", [], 512)],
     ("relu", "ICED"):       [_CL("relu.cpp", [512], fast_switch=False)],
-    ("relu", "RipTide"):    [_SM("relu.cpp", [], 512)],
+    ("relu", "RipTide"):    [_CL("relu.cpp", [512], fast_switch=False)],
     ("relu", "Marionette"): [_CL("relu.cpp", [512])],
 
     # ── spmv ──────────────────────────────────────────────────────────────
@@ -275,28 +275,28 @@ BENCH_ARCH_SEGS: dict[tuple, list] = {
     ("fft", "NEURA-ST"):   [_SM("fft.cpp", [], 128)],
     ("fft", "NEURA-SO"):   [_SM("fft.cpp", [], 128)],
     ("fft", "ICED"):       [_SM("fft.cpp", [], 128)],
-    ("fft", "RipTide"):    [_SM("fft.cpp", [], 128)],
+    ("fft", "RipTide"):    [_CL("fft.cpp", [128], fast_switch=False)],
     ("fft", "Marionette"): [_CL("fft.cpp", [128])],
 
     # ── merge-sort ────────────────────────────────────────────────────────
     ("merge-sort", "NEURA-ST"):   [_SM("merge-sort.cpp", [], 1024)],
     ("merge-sort", "NEURA-SO"):   [_SM("merge-sort.cpp", [], 1024)],
     ("merge-sort", "ICED"):       [_CL("merge-sort.cpp", [1024], fast_switch=False)],
-    ("merge-sort", "RipTide"):    [_SM("merge-sort.cpp", [], 1024)],
+    ("merge-sort", "RipTide"):    [_CL("merge-sort.cpp", [1024], fast_switch=False)],
     ("merge-sort", "Marionette"): [_CL("merge-sort.cpp", [1024])],
 
     # ── bfs ───────────────────────────────────────────────────────────────
     ("bfs", "NEURA-ST"):   [_SM("bfs.cpp", [], 256)],
     ("bfs", "NEURA-SO"):   [_SM("bfs.cpp", [], 256)],
     ("bfs", "ICED"):       [_CL("bfs.cpp", [256], fast_switch=False)],
-    ("bfs", "RipTide"):    [_SM("bfs.cpp", [], 256)],
+    ("bfs", "RipTide"):    [_CL("bfs.cpp", [256], fast_switch=False)],
     ("bfs", "Marionette"): [_CL("bfs.cpp", [256])],
 
     # ── floyd ─────────────────────────────────────────────────────────────
     ("floyd", "NEURA-ST"):   [_SM("floyd.cpp", [1000, 1000], 1000)],
     ("floyd", "NEURA-SO"):   [_SM("floyd.cpp", [1000, 1000], 1000)],
     ("floyd", "ICED"):       [_CL("floyd.cpp", [1000, 1000, 1000], fast_switch=False)],
-    ("floyd", "RipTide"):    [_SM("floyd.cpp", [1000, 1000], 1000)],
+    ("floyd", "RipTide"):    [_CL("floyd.cpp", [1000, 1000, 1000], fast_switch=False)],
     ("floyd", "Marionette"): [_CL("floyd.cpp", [1000, 1000, 1000])],
 }
 
@@ -536,7 +536,7 @@ def bench_latency(
 # ]
 BENCHMARKS = ["bfs", "bicg", "conv", "fft", "floyd", "gemm", "jacobi", "merge-sort", "relu", "spmv", "mvt"]
 # ARCHS = ["Marionette", "ICED", "RipTide", "NEURA-SO", "NEURA-ST"]
-ARCHS = ["ICED"]
+ARCHS = ["RipTide"]
 
 
 def run_benchmark(
