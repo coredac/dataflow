@@ -27,7 +27,7 @@ from typing import Optional
 #  SECTION 1 – TOOL PATHS  (adjust if locations differ)
 # ════════════════════════════════════════════════════════════════════════════
 
-CGEIST    = "/home/lucas/Project/dataflow/thirdparty/cgeist"
+CGEIST    = "/home/lucas/Project/dataflow/thirdparty/polygeist/cgeist"
 MLIR_OPT  = "mlir-opt"
 NEURA_OPT = "/home/lucas/Project/dataflow/build/tools/mlir-neura-opt/mlir-neura-opt"
 
@@ -220,7 +220,7 @@ BENCH_ARCH_SEGS: dict[tuple, list] = {
     #  NEURA-ST/SO/RipTide pipeline the loop; ICED cannot → sequential model.
     ("relu", "NEURA-ST"):   [_SM("relu.cpp", [], 512)],
     ("relu", "NEURA-SO"):   [_SM("relu.cpp", [], 512)],
-    ("relu", "ICED"):       [_CL("relu.cpp", [], fast_switch=False)],
+    ("relu", "ICED"):       [_CL("relu.cpp", [512], fast_switch=False)],
     ("relu", "RipTide"):    [_SM("relu.cpp", [], 512)],
     ("relu", "Marionette"): [_CL("relu.cpp", [512])],
 
@@ -281,21 +281,21 @@ BENCH_ARCH_SEGS: dict[tuple, list] = {
     # ── merge-sort ────────────────────────────────────────────────────────
     ("merge-sort", "NEURA-ST"):   [_SM("merge-sort.cpp", [], 1024)],
     ("merge-sort", "NEURA-SO"):   [_SM("merge-sort.cpp", [], 1024)],
-    ("merge-sort", "ICED"):       [_SM("merge-sort.cpp", [], 1024)],
+    ("merge-sort", "ICED"):       [_CL("merge-sort.cpp", [1024], fast_switch=False)],
     ("merge-sort", "RipTide"):    [_SM("merge-sort.cpp", [], 1024)],
     ("merge-sort", "Marionette"): [_CL("merge-sort.cpp", [1024])],
 
     # ── bfs ───────────────────────────────────────────────────────────────
     ("bfs", "NEURA-ST"):   [_SM("bfs.cpp", [], 256)],
     ("bfs", "NEURA-SO"):   [_SM("bfs.cpp", [], 256)],
-    ("bfs", "ICED"):       [_CL("bfs.cpp", [], fast_switch=False)],
+    ("bfs", "ICED"):       [_CL("bfs.cpp", [256], fast_switch=False)],
     ("bfs", "RipTide"):    [_SM("bfs.cpp", [], 256)],
     ("bfs", "Marionette"): [_CL("bfs.cpp", [256])],
 
     # ── floyd ─────────────────────────────────────────────────────────────
     ("floyd", "NEURA-ST"):   [_SM("floyd.cpp", [1000, 1000], 1000)],
     ("floyd", "NEURA-SO"):   [_SM("floyd.cpp", [1000, 1000], 1000)],
-    ("floyd", "ICED"):       [_CL("floyd.cpp", [1000, 1000], fast_switch=False)],
+    ("floyd", "ICED"):       [_CL("floyd.cpp", [1000, 1000, 1000], fast_switch=False)],
     ("floyd", "RipTide"):    [_SM("floyd.cpp", [1000, 1000], 1000)],
     ("floyd", "Marionette"): [_CL("floyd.cpp", [1000, 1000, 1000])],
 }
@@ -479,7 +479,7 @@ def segment_latency(
         outer = functools.reduce(lambda a, b: a * b, seg.cpu_trips, 1) if seg.cpu_trips else 1
         if seg.fast_switch:
             # Modulo-scheduled pipeline: fill cost amortised over cgra_trips iterations
-            return outer * ((seg.cgra_trips - 1) * ii + steps + cpu_transition)
+            return outer * ((seg.cgra_trips - 1) * ii + cpu_transition)
         else:
             # Sequential: every iteration runs to completion before the next
             return outer * seg.cgra_trips * (steps + cpu_transition)
