@@ -233,6 +233,12 @@ static TaskflowTaskOp convertLoopToTask(
   //-------------------------------------------------------------------
   // Step 5: Prepares output types.
   //-------------------------------------------------------------------
+  // Read output types: passthrough read memrefs for WAR dependency tracking.
+  SmallVector<Type> read_output_types;
+  for (Value memref : read_memrefs) {
+    read_output_types.push_back(memref.getType());
+  }
+
   SmallVector<Type> memory_output_types;
   for (Value memref : output_memrefs) {
     memory_output_types.push_back(memref.getType());
@@ -248,7 +254,8 @@ static TaskflowTaskOp convertLoopToTask(
   //-------------------------------------------------------------------
   TaskflowTaskOp task_op = builder.create<TaskflowTaskOp>(
       loc,
-      /*memory_outputs=*/memory_output_types,
+      /*read_outputs=*/read_output_types,
+      /*write_outputs=*/memory_output_types,
       /*value_outputs=*/value_output_types,
       /*read_inputs=*/read_inputs,
       /*write_inputs=*/write_inputs,
@@ -294,13 +301,23 @@ static TaskflowTaskOp convertLoopToTask(
   // Step 8: Creates the yield operation.
   //---------------------------------------------------------------
   task_builder.setInsertionPointToEnd(task_body);
-  SmallVector<Value> memory_yield_operands;
+  SmallVector<Value> yield_for_dependency_read_out;
+  SmallVector<Value> yield_for_dependency_write_out;
   SmallVector<Value> value_yield_operands;
+
+  // Read yield outputs: passthrough read memref block args for WAR tracking.
+  for (Value memref : read_memrefs) {
+    if (input_to_block_arg.count(memref)) {
+      yield_for_dependency_read_out.push_back(input_to_block_arg[memref]);
+    } else {
+      assert(false && "Read memref not in inputs!");
+    }
+  }
 
   // Memory yield outputs: yield the written memrefs.
   for (Value memref : output_memrefs) {
     if (input_to_block_arg.count(memref)) {
-      memory_yield_operands.push_back(input_to_block_arg[memref]);
+      yield_for_dependency_write_out.push_back(input_to_block_arg[memref]);
     } else {
       assert(false && "Written memref not in inputs!");
     }
@@ -310,16 +327,27 @@ static TaskflowTaskOp convertLoopToTask(
   for (Value result : cloned_loop->getResults()) {
     value_yield_operands.push_back(result);
   }
-  task_builder.create<TaskflowYieldOp>(loc, memory_yield_operands,
+  task_builder.create<TaskflowYieldOp>(loc, yield_for_dependency_read_out,
+                                       yield_for_dependency_write_out,
                                        value_yield_operands);
 
   //-------------------------------------------------------------------
   // Step 9 : Updates value mapping with task outputs for subsequent tasks
   // conversion.
   //-------------------------------------------------------------------
-  // Memory outputs.
+  // Read outputs: establishes WAR dependency chain.
+  // Only update mapping for memrefs not already mapped by a prior write.
+  for (auto [memref, task_read_output] :
+       llvm::zip(read_memrefs, task_op.getDependencyReadOut())) {
+    if (!value_mapping.count(memref)) {
+      value_mapping[memref] = task_read_output;
+    }
+  }
+
+  // Memory outputs (write): establishes RAW/WAW dependency chain.
+  // Write outputs always overwrite read outputs in the mapping.
   for (auto [memref, task_output] :
-       llvm::zip(output_memrefs, task_op.getWriteOutputs())) {
+       llvm::zip(output_memrefs, task_op.getDependencyWriteOut())) {
     value_mapping[memref] = task_output;
   }
 

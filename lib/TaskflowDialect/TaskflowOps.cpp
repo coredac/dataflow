@@ -19,20 +19,20 @@ ParseResult TaskflowTaskOp::parse(OpAsmParser &parser, OperationState &result) {
     result.addAttribute("task_name", task_name);
   }
 
-  // Parses read_memrefs: read_memrefs(%arg0, %arg1 : memref<?xi32>,
+  // Parses dependency_read_in: dependency_read_in(%arg0, %arg1 : memref<?xi32>,
   // memref<?xi32>).
   SmallVector<OpAsmParser::UnresolvedOperand> read_operands;
   SmallVector<Type> read_types;
-  if (succeeded(parser.parseOptionalKeyword("read_memrefs"))) {
+  if (succeeded(parser.parseOptionalKeyword("dependency_read_in"))) {
     if (parser.parseLParen() || parser.parseOperandList(read_operands) ||
         parser.parseColonTypeList(read_types) || parser.parseRParen())
       return failure();
   }
 
-  // Parses write_memrefs: write_memrefs(%arg5 : memref<?xi32>).
+  // Parses dependency_write_in: dependency_write_in(%arg5 : memref<?xi32>).
   SmallVector<OpAsmParser::UnresolvedOperand> write_operands;
   SmallVector<Type> write_types;
-  if (succeeded(parser.parseOptionalKeyword("write_memrefs"))) {
+  if (succeeded(parser.parseOptionalKeyword("dependency_write_in"))) {
     if (parser.parseLParen() || parser.parseOperandList(write_operands) ||
         parser.parseColonTypeList(write_types) || parser.parseRParen())
       return failure();
@@ -132,6 +132,9 @@ ParseResult TaskflowTaskOp::parse(OpAsmParser &parser, OperationState &result) {
            static_cast<int32_t>(original_write_operands.size())}));
 
   // Adds result segment sizes.
+  // dependency_read_out count matches dependency_read_in count (WAR dependency
+  // tracking).
+  size_t num_read_outputs = read_operands.size();
   size_t num_write_outputs = 0;
   size_t num_value_outputs = 0;
   for (Type t : func_type.getResults()) {
@@ -140,9 +143,13 @@ ParseResult TaskflowTaskOp::parse(OpAsmParser &parser, OperationState &result) {
     else
       num_value_outputs++;
   }
+  // Total memref results include both dependency_read_out and
+  // dependency_write_out.
+  num_write_outputs = num_write_outputs - num_read_outputs;
   result.addAttribute("resultSegmentSizes",
                       parser.getBuilder().getDenseI32ArrayAttr(
-                          {static_cast<int32_t>(num_write_outputs),
+                          {static_cast<int32_t>(num_read_outputs),
+                           static_cast<int32_t>(num_write_outputs),
                            static_cast<int32_t>(num_value_outputs)}));
 
   return success();
@@ -152,21 +159,21 @@ void TaskflowTaskOp::print(OpAsmPrinter &printer) {
   // Prints task name.
   printer << " @" << getTaskName();
 
-  // Prints read_memrefs.
-  if (!getReadMemrefs().empty()) {
-    printer << " read_memrefs(";
-    llvm::interleaveComma(getReadMemrefs(), printer);
+  // Prints dependency_read_in.
+  if (!getDependencyReadIn().empty()) {
+    printer << " dependency_read_in(";
+    llvm::interleaveComma(getDependencyReadIn(), printer);
     printer << " : ";
-    llvm::interleaveComma(getReadMemrefs().getTypes(), printer);
+    llvm::interleaveComma(getDependencyReadIn().getTypes(), printer);
     printer << ")";
   }
 
-  // Prints write_memrefs.
-  if (!getWriteMemrefs().empty()) {
-    printer << " write_memrefs(";
-    llvm::interleaveComma(getWriteMemrefs(), printer);
+  // Prints dependency_write_in.
+  if (!getDependencyWriteIn().empty()) {
+    printer << " dependency_write_in(";
+    llvm::interleaveComma(getDependencyWriteIn(), printer);
     printer << " : ";
-    llvm::interleaveComma(getWriteMemrefs().getTypes(), printer);
+    llvm::interleaveComma(getDependencyWriteIn().getTypes(), printer);
     printer << ")";
   }
 
@@ -213,14 +220,17 @@ void TaskflowTaskOp::print(OpAsmPrinter &printer) {
 
   // Prints function type.
   printer << " : (";
-  llvm::interleaveComma(llvm::concat<const Type>(getReadMemrefs().getTypes(),
-                                                 getWriteMemrefs().getTypes(),
-                                                 getValueInputs().getTypes()),
-                        printer);
+  llvm::interleaveComma(
+      llvm::concat<const Type>(getDependencyReadIn().getTypes(),
+                               getDependencyWriteIn().getTypes(),
+                               getValueInputs().getTypes()),
+      printer);
   printer << ") -> (";
-  llvm::interleaveComma(llvm::concat<const Type>(getWriteOutputs().getTypes(),
-                                                 getValueOutputs().getTypes()),
-                        printer);
+  llvm::interleaveComma(
+      llvm::concat<const Type>(getDependencyReadOut().getTypes(),
+                               getDependencyWriteOut().getTypes(),
+                               getValueOutputs().getTypes()),
+      printer);
   printer << ")";
 
   // Prints region.
@@ -234,10 +244,19 @@ void TaskflowTaskOp::print(OpAsmPrinter &printer) {
 
 ParseResult TaskflowYieldOp::parse(OpAsmParser &parser,
                                    OperationState &result) {
+  SmallVector<OpAsmParser::UnresolvedOperand> read_operands;
+  SmallVector<Type> read_types;
   SmallVector<OpAsmParser::UnresolvedOperand> write_operands;
   SmallVector<Type> write_types;
   SmallVector<OpAsmParser::UnresolvedOperand> value_operands;
   SmallVector<Type> value_types;
+
+  // Parses reads (WAR dependency passthrough).
+  if (succeeded(parser.parseOptionalKeyword("reads"))) {
+    if (parser.parseLParen() || parser.parseOperandList(read_operands) ||
+        parser.parseColonTypeList(read_types) || parser.parseRParen())
+      return failure();
+  }
 
   // Parses writes.
   if (succeeded(parser.parseOptionalKeyword("writes"))) {
@@ -253,7 +272,9 @@ ParseResult TaskflowYieldOp::parse(OpAsmParser &parser,
       return failure();
   }
 
-  if (parser.resolveOperands(write_operands, write_types,
+  if (parser.resolveOperands(read_operands, read_types,
+                             parser.getCurrentLocation(), result.operands) ||
+      parser.resolveOperands(write_operands, write_types,
                              parser.getCurrentLocation(), result.operands) ||
       parser.resolveOperands(value_operands, value_types,
                              parser.getCurrentLocation(), result.operands))
@@ -261,13 +282,22 @@ ParseResult TaskflowYieldOp::parse(OpAsmParser &parser,
 
   result.addAttribute("operandSegmentSizes",
                       parser.getBuilder().getDenseI32ArrayAttr(
-                          {static_cast<int32_t>(write_operands.size()),
+                          {static_cast<int32_t>(read_operands.size()),
+                           static_cast<int32_t>(write_operands.size()),
                            static_cast<int32_t>(value_operands.size())}));
 
   return success();
 }
 
 void TaskflowYieldOp::print(OpAsmPrinter &printer) {
+  if (!getReadResults().empty()) {
+    printer << " reads(";
+    llvm::interleaveComma(getReadResults(), printer);
+    printer << " : ";
+    llvm::interleaveComma(getReadResults().getTypes(), printer);
+    printer << ")";
+  }
+
   if (!getMemoryResults().empty()) {
     printer << " writes(";
     llvm::interleaveComma(getMemoryResults(), printer);
