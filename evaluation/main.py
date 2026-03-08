@@ -15,13 +15,19 @@ Run:  python3 evaluation/main.py
 """
 
 from __future__ import annotations
+import csv
 import functools
 import re
 import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
+
+# Allow   from util.figures import ...   regardless of cwd
+sys.path.insert(0, str(Path(__file__).parent))
+from util.figures import generate_speedup_figure
 
 # ════════════════════════════════════════════════════════════════════════════
 #  SECTION 1 – TOOL PATHS  (adjust if locations differ)
@@ -32,7 +38,8 @@ MLIR_OPT  = "mlir-opt"
 NEURA_OPT = "/home/lucas/Project/dataflow/build/tools/mlir-neura-opt/mlir-neura-opt"
 
 PLDI_TEST_DIR = Path("/home/lucas/Project/dataflow/PLDI-Test")
-OUTPUT_DIR    = Path("/home/lucas/Project/dataflow/evaluation/output")
+RESULTS_DIR   = Path("/home/lucas/Project/dataflow/evaluation/results")
+FIGS_DIR      = Path("/home/lucas/Project/dataflow/evaluation/figs")
 
 # Cycles lost on each CPU ↔ CGRA context switch
 CPU_TRANSITION_CYCLES = 20
@@ -584,7 +591,8 @@ def run_benchmark(
 
 
 def main():
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    FIGS_DIR.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory(prefix="neura_ae_") as tmp:
         work_root = Path(tmp)
@@ -641,96 +649,44 @@ def main():
             print(f"  {tag:<12s}", end="")
         print()
 
-        # ── call the speedup figure generator ────────────────────────────
-        _generate_speedup_figure(speedup_data, geomeans, BENCHMARKS, ARCHS)
+        # ── write raw latency CSV ─────────────────────────────────────
+        latency_csv = RESULTS_DIR / "latency_cycles.csv"
+        with latency_csv.open("w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["benchmark"] + ARCHS)
+            for bench in BENCHMARKS:
+                row = [bench] + [
+                    f"{latencies[arch].get(bench):.0f}"
+                    if latencies[arch].get(bench) is not None else "N/A"
+                    for arch in ARCHS
+                ]
+                writer.writerow(row)
+        print(f"\nLatency data written to {latency_csv}")
 
+        # ── write speedup CSV ─────────────────────────────────────────────
+        speedup_csv = RESULTS_DIR / "speedup.csv"
+        with speedup_csv.open("w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["benchmark"] + ARCHS)
+            for i, bench in enumerate(BENCHMARKS):
+                row = [bench] + [
+                    f"{speedup_data[arch][i]:.4f}"
+                    if speedup_data[arch][i] is not None else "N/A"
+                    for arch in ARCHS
+                ]
+                writer.writerow(row)
+            gmean_row = ["Geomean"] + [
+                f"{geomeans[arch]:.4f}" if geomeans[arch] is not None else "N/A"
+                for arch in ARCHS
+            ]
+            writer.writerow(gmean_row)
+        print(f"Speedup data written to {speedup_csv}")
 
-# ════════════════════════════════════════════════════════════════════════════
-#  SECTION 8 – FIGURE GENERATION
-#  Adapted from speedup_eval.py (the existing plotting style).
-# ════════════════════════════════════════════════════════════════════════════
-
-def _generate_speedup_figure(
-    speedup_data: dict[str, list],
-    geomeans: dict[str, Optional[float]],
-    benchmarks: list[str],
-    archs: list[str],
-    save_path: Path = OUTPUT_DIR / "speedup_comparison.pdf",
-):
-    try:
-        import matplotlib.pyplot as plt
-        import numpy as np
-    except ImportError:
-        print("[WARN] matplotlib not available; skipping figure generation.")
-        return
-
-    plt.rcParams.update({"font.size": 14})
-
-    # Build data dict in speedup_eval.py format
-    bench_labels = benchmarks + ["Geomean"]
-    data: dict[str, list] = {}
-    for arch in archs:
-        vals = list(speedup_data[arch])          # per benchmark
-        gm   = geomeans[arch]
-        vals.append(gm if gm is not None else 0.0)
-        # Replace None with 0 for plotting
-        data[arch] = [v if v is not None else 0.0 for v in vals]
-
-    avg_labels = {
-        arch: f"{geomeans[arch]:.2f}x" if geomeans[arch] else "N/A"
-        for arch in archs
-    }
-
-    fig, ax = plt.subplots(figsize=(13, 2.4))
-
-    num_archs   = len(archs)
-    bar_width   = (1 - 0.3) / num_archs
-    index       = np.arange(len(bench_labels))
-    colors      = ["#A9A9A9", "#72bcd5", "#386795", "#fee6b4", "#e86252"]
-
-    for i, arch in enumerate(archs):
-        pos = index + (i - num_archs / 2 + 0.5) * bar_width
-        ax.bar(pos, data[arch], bar_width,
-               color=colors[i % len(colors)], label=arch, edgecolor="black")
-
-    # Annotate geomean bars
-    last_idx = len(bench_labels) - 1
-    for i, arch in enumerate(archs):
-        val = data[arch][last_idx]
-        pos = last_idx + (i - num_archs / 2 + 0.5) * bar_width
-        ax.text(pos, val + 0.05, avg_labels[arch],
-                rotation=90, ha="center", va="bottom",
-                fontsize=11, fontweight="bold")
-
-    ax.set_ylabel("Normalised\nSpeedup", fontsize=14)
-    ax.set_ylim(0, max(max(v) for v in data.values()) * 1.3 or 4)
-    ax.set_xlim(-0.5, len(bench_labels) - 0.5)
-
-    dividers = [i - 0.5 for i in range(len(bench_labels) + 1)]
-    ax.set_xticks(dividers)
-    ax.set_xticklabels([])
-    ax.tick_params(axis="x", direction="inout", length=6)
-
-    for i, b in enumerate(bench_labels):
-        w = "bold" if b == "Geomean" else "normal"
-        ax.text(i, -0.2, b, ha="center", va="top", fontsize=13, fontweight=w)
-
-    for y in [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5]:
-        ax.axhline(y, color="lightgray", linestyle=(0, (5, 5)),
-                   linewidth=1, alpha=0.7, zorder=0)
-    for x in dividers:
-        ax.axvline(x, color="lightgray", linewidth=0.8, alpha=0.8, zorder=0)
-
-    ax.spines["top"].set_linestyle('--')
-
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, 1.35),
-              ncol=num_archs, handleheight=0.7, handlelength=0.7,
-              columnspacing=4, handletextpad=0.3, frameon=False)
-
-    plt.tight_layout()
-    plt.savefig(str(save_path), bbox_inches="tight")
-    print(f"\nFigure saved to {save_path}")
-    plt.show()
+        # ── generate speedup figure ───────────────────────────────────────
+        generate_speedup_figure(
+            speedup_data, geomeans, BENCHMARKS, ARCHS,
+            save_path=FIGS_DIR / "speedup_comparison.pdf",
+        )
 
 
 # ════════════════════════════════════════════════════════════════════════════
