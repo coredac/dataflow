@@ -214,7 +214,7 @@ BENCH_ARCH_SEGS: dict[tuple, list] = {
     ("conv", "NEURA-SO"):   [_SM("conv.cpp",  [28416], 192)],
     ("conv", "ICED"):       [_SM("conv.cpp",  [28416], 192)],
     ("conv", "RipTide"):    [_SM("conv.cpp",  [28416], 192)],
-    ("conv", "Marionette"): [_CL("conv.cpp", [28416, 192])],
+    ("conv", "Marionette"): [_CL("conv.cpp", [28416, 192], fast_switch=True)],
 
     # ── relu ──────────────────────────────────────────────────────────────
     #  NEURA-ST/SO/RipTide pipeline the loop; ICED cannot → sequential model.
@@ -222,21 +222,21 @@ BENCH_ARCH_SEGS: dict[tuple, list] = {
     ("relu", "NEURA-SO"):   [_SM("relu.cpp", [], 512)],
     ("relu", "ICED"):       [_CL("relu.cpp", [512], fast_switch=False)],
     ("relu", "RipTide"):    [_CL("relu.cpp", [512], fast_switch=False)],
-    ("relu", "Marionette"): [_CL("relu.cpp", [512])],
+    ("relu", "Marionette"): [_CL("relu.cpp", [512], fast_switch=True)],
 
     # ── spmv ──────────────────────────────────────────────────────────────
     ("spmv", "NEURA-ST"):   [_SM("spmv.cpp", [494], 10)],
     ("spmv", "NEURA-SO"):   [_SM("spmv.cpp", [494], 10)],
     ("spmv", "ICED"):       [_SM("spmv.cpp", [494], 10)],
     ("spmv", "RipTide"):    [_SM("spmv.cpp", [494], 10)],
-    ("spmv", "Marionette"): [_CL("spmv.cpp", [494, 10])],
+    ("spmv", "Marionette"): [_CL("spmv.cpp", [494, 10], fast_switch=True)],
 
     # ── gemm ──────────────────────────────────────────────────────────────
     ("gemm", "NEURA-ST"):   [_SM("gemm.cpp", [4096], 64)],
     ("gemm", "NEURA-SO"):   [_SM("gemm.cpp", [4096], 64)],
     ("gemm", "ICED"):       [_SM("gemm.cpp", [4096], 64)],
     ("gemm", "RipTide"):    [_SM("gemm.cpp", [4096], 64)],
-    ("gemm", "Marionette"): [_CL("gemm.cpp", [4096, 64])],
+    ("gemm", "Marionette"): [_CL("gemm.cpp", [4096, 64], fast_switch=True)],
 
     # ── bicg ──────────────────────────────────────────────────────────────
     ("bicg", "NEURA-ST"):   [_SM("bicg.cpp", [2100], 1900)],
@@ -255,7 +255,7 @@ BENCH_ARCH_SEGS: dict[tuple, list] = {
     ("mvt", "NEURA-SO"):   [_SM("mvt.cpp", [2000], 2000)],
     ("mvt", "ICED"):       [_SM("mvt.cpp", [2000], 2000)],
     ("mvt", "RipTide"):    [_SM("mvt.cpp", [2000], 2000)],
-    ("mvt", "Marionette"): [_CL("mvt.cpp", [2000, 2000])],
+    ("mvt", "Marionette"): [_CL("mvt.cpp", [2000, 2000], fast_switch=True)],
 
     # ── jacobi ────────────────────────────────────────────────────────────
     ("jacobi", "NEURA-ST"):   [_SM("jacobi_kernel1.cpp", [500], 2000),
@@ -267,37 +267,37 @@ BENCH_ARCH_SEGS: dict[tuple, list] = {
     ("jacobi", "RipTide"):    [_SM("jacobi_kernel1.cpp", [500], 2000),
                                 _SM("jacobi_kernel2.cpp", [500], 2000)],
     ("jacobi", "Marionette"): [
-        _CL("jacobi_kernel1.cpp", [500, 2000]),
-        _CL("jacobi_kernel2.cpp", [500, 2000]),
+        _CL("jacobi_kernel1.cpp", [500, 2000], fast_switch=True),
+        _CL("jacobi_kernel2.cpp", [500, 2000], fast_switch=True),
     ],
 
     # ── fft ───────────────────────────────────────────────────────────────
     ("fft", "NEURA-ST"):   [_SM("fft.cpp", [], 128)],
-    ("fft", "NEURA-SO"):   [_SM("fft.cpp", [], 128)],
+    ("fft", "NEURA-SO"):   [_CL("fft.cpp", [128], fast_switch=False)],
     ("fft", "ICED"):       [_SM("fft.cpp", [], 128)],
     ("fft", "RipTide"):    [_CL("fft.cpp", [128], fast_switch=False)],
-    ("fft", "Marionette"): [_CL("fft.cpp", [128])],
+    ("fft", "Marionette"): [_CL("fft.cpp", [128], fast_switch=True)],
 
     # ── merge-sort ────────────────────────────────────────────────────────
     ("merge-sort", "NEURA-ST"):   [_SM("merge-sort.cpp", [], 1024)],
-    ("merge-sort", "NEURA-SO"):   [_SM("merge-sort.cpp", [], 1024)],
+    ("merge-sort", "NEURA-SO"):   [_CL("merge-sort.cpp", [1024], fast_switch=False)],
     ("merge-sort", "ICED"):       [_CL("merge-sort.cpp", [1024], fast_switch=False)],
     ("merge-sort", "RipTide"):    [_CL("merge-sort.cpp", [1024], fast_switch=False)],
-    ("merge-sort", "Marionette"): [_CL("merge-sort.cpp", [1024])],
+    ("merge-sort", "Marionette"): [_CL("merge-sort.cpp", [1024], fast_switch=True)],
 
     # ── bfs ───────────────────────────────────────────────────────────────
     ("bfs", "NEURA-ST"):   [_SM("bfs.cpp", [], 256)],
-    ("bfs", "NEURA-SO"):   [_SM("bfs.cpp", [], 256)],
+    ("bfs", "NEURA-SO"):   [_CL("bfs.cpp", [256], fast_switch=False)],
     ("bfs", "ICED"):       [_CL("bfs.cpp", [256], fast_switch=False)],
     ("bfs", "RipTide"):    [_CL("bfs.cpp", [256], fast_switch=False)],
-    ("bfs", "Marionette"): [_CL("bfs.cpp", [256])],
+    ("bfs", "Marionette"): [_CL("bfs.cpp", [256], fast_switch=True)],
 
     # ── floyd ─────────────────────────────────────────────────────────────
     ("floyd", "NEURA-ST"):   [_SM("floyd.cpp", [1000, 1000], 1000)],
-    ("floyd", "NEURA-SO"):   [_SM("floyd.cpp", [1000, 1000], 1000)],
+    ("floyd", "NEURA-SO"):   [_CL("floyd.cpp", [1000, 1000, 1000], fast_switch=False)],
     ("floyd", "ICED"):       [_CL("floyd.cpp", [1000, 1000, 1000], fast_switch=False)],
     ("floyd", "RipTide"):    [_CL("floyd.cpp", [1000, 1000, 1000], fast_switch=False)],
-    ("floyd", "Marionette"): [_CL("floyd.cpp", [1000, 1000, 1000])],
+    ("floyd", "Marionette"): [_CL("floyd.cpp", [1000, 1000, 1000], fast_switch=True)],
 }
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -479,7 +479,10 @@ def segment_latency(
         outer = functools.reduce(lambda a, b: a * b, seg.cpu_trips, 1) if seg.cpu_trips else 1
         if seg.fast_switch:
             # Modulo-scheduled pipeline: fill cost amortised over cgra_trips iterations
-            return outer * ((seg.cgra_trips - 1) * ii + cpu_transition)
+            if outer == 1:
+                return outer * ((seg.cgra_trips - 1) * ii)
+            else:
+                return outer * ((seg.cgra_trips - 1) * ii + cpu_transition)
         else:
             # Sequential: every iteration runs to completion before the next
             return outer * seg.cgra_trips * (steps + cpu_transition)
@@ -530,13 +533,13 @@ def bench_latency(
 #  SECTION 7 – MAIN ORCHESTRATION
 # ════════════════════════════════════════════════════════════════════════════
 
-# BENCHMARKS = [
-#     "conv", "relu", "spmv", "gemm", "bicg", "mvt",
-#     "jacobi", "fft", "merge-sort", "bfs", "floyd",
-# ]
-BENCHMARKS = ["bfs", "bicg", "conv", "fft", "floyd", "gemm", "jacobi", "merge-sort", "relu", "spmv", "mvt"]
-# ARCHS = ["Marionette", "ICED", "RipTide", "NEURA-SO", "NEURA-ST"]
-ARCHS = ["RipTide"]
+BENCHMARKS = [
+    "conv", "relu", "spmv", "gemm", "bicg", "mvt",
+    "jacobi", "fft", "merge-sort", "bfs", "floyd",
+]
+# BENCHMARKS = ["bfs", "bicg", "conv", "fft", "floyd", "gemm", "jacobi", "merge-sort", "relu", "spmv", "mvt"]
+ARCHS = ["Marionette", "ICED", "RipTide", "NEURA-SO", "NEURA-ST"]
+# ARCHS = ["NEURA-ST"]
 
 
 def run_benchmark(
