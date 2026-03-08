@@ -436,6 +436,28 @@ identifyDirectDominatingLiveIns(Region &region, DominanceInfo &dom_info,
         continue;
       }
 
+      // If the using block is a loop header (has a back-edge from itself or
+      // other blocks), we must NOT treat any live-in as a direct dominating
+      // live-in. In the dataflow model, loop headers operate at the inner
+      // loop rate, so live-in values from outer blocks must be promoted to
+      // block arguments to get proper rate-matched PHI_START operations
+      // during the ctrl-to-data-flow transformation.
+      // See: https://github.com/coredac/dataflow/issues/270
+      bool using_block_is_loop_header = false;
+      for (Block *pred : block.getPredecessors()) {
+        if (dom_info.dominates(&block, pred)) {
+          using_block_is_loop_header = true;
+          break;
+        }
+      }
+
+      if (using_block_is_loop_header) {
+        // Skips direct dominating live-in optimization for loop headers.
+        // The value must be promoted to a block argument so that the
+        // transform-ctrl-to-data-flow pass creates an inner-rate PHI_START.
+        continue;
+      }
+
       // Pattern 1: Single-Source-Single-Sink with one conditional branch.
       if (isSingleSourceSingleSinkPattern(defining_block, &block, dom_info,
                                           post_dom_info)) {
