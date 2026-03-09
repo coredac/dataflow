@@ -130,7 +130,7 @@ module attributes {} {
 // KERNEL:      module {
 // KERNEL-NEXT:   func.func @_Z6kernelPiS_S_(%arg0: memref<?xi32>, %arg1: memref<?xi32>, %arg2: memref<?xi32>) -> i32 attributes {llvm.linkage = #llvm.linkage<external>} {
 // KERNEL-NEXT:     %c0_i32 = arith.constant 0 : i32
-// KERNEL-NEXT:     %value_outputs = taskflow.task @Task_0 read_memrefs(%arg0, %arg2 : memref<?xi32>, memref<?xi32>) value_inputs(%c0_i32 : i32) [original_read_memrefs(%arg0, %arg2 : memref<?xi32>, memref<?xi32>)] : (memref<?xi32>, memref<?xi32>, i32) -> (i32) {
+// KERNEL-NEXT:     %dependency_read_out:2, %value_outputs = taskflow.task @Task_0 dependency_read_in(%arg0, %arg2 : memref<?xi32>, memref<?xi32>) value_inputs(%c0_i32 : i32) [original_read_memrefs(%arg0, %arg2 : memref<?xi32>, memref<?xi32>)] : (memref<?xi32>, memref<?xi32>, i32) -> (memref<?xi32>, memref<?xi32>, i32) {
 // KERNEL-NEXT:     ^bb0(%arg3: memref<?xi32>, %arg4: memref<?xi32>, %arg5: i32):
 // KERNEL-NEXT:       %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 32 : index} : index
 // KERNEL-NEXT:       %1 = neura.kernel inputs(%arg3, %arg4 : memref<?xi32>, memref<?xi32>) iter_args_init(%arg5 : i32) {
@@ -142,7 +142,7 @@ module attributes {} {
 // KERNEL-NEXT:         %6 = arith.addi %arg8, %5 : i32
 // KERNEL-NEXT:         neura.yield iter_args_next(%6 : i32) results(%6 : i32)
 // KERNEL-NEXT:       } : i32
-// KERNEL-NEXT:       taskflow.yield values(%1 : i32)
+// KERNEL-NEXT:       taskflow.yield reads(%arg3, %arg4 : memref<?xi32>, memref<?xi32>) values(%1 : i32)
 // KERNEL-NEXT:     }
 // KERNEL-NEXT:     return %value_outputs : i32
 // KERNEL-NEXT:   }
