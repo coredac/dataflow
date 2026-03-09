@@ -27,7 +27,7 @@ from typing import Optional
 
 # Allow   from util.figures import ...   regardless of cwd
 sys.path.insert(0, str(Path(__file__).parent))
-from util.figures import generate_speedup_figure, generate_ppa_figure, generate_ipc_figure
+from util.figures import generate_speedup_figure, generate_ppa_figure, generate_ipc_figure, generate_energy_figure
 
 # ════════════════════════════════════════════════════════════════════════════
 #  SECTION 1 – TOOL PATHS  (adjust if locations differ)
@@ -117,6 +117,14 @@ BENCH_ARCH_INSTRUCTIONS: dict[tuple, Optional[int]] = {
     ("floyd", "NEURA-SO"):   12000000000,
     ("floyd", "NEURA-ST"):   39000000000
 }
+
+# Power per tile in mW (used for total energy computation)
+# Only RipTide and NEURA-SO are compared in the energy figure.
+ARCH_POWER_MW: dict[str, float] = {
+    "RipTide":  9.311,
+    "NEURA-SO": 9.262,
+}
+ENERGY_ARCHS = ["RipTide", "NEURA-SO"]
 
 # CGRA area in mm²  (used for normalised Perf/Area computation)
 ARCH_AREA_MM2: dict[str, float] = {
@@ -883,7 +891,63 @@ def main():
             ipc_data, geomeans_ipc, BENCHMARKS, ARCHS,
             save_path=FIGS_DIR / "fig14.pdf",
         )
+        # ── compute normalised total energy ───────────────────────────────
+        # energy[arch][bench] = ARCH_POWER_MW[arch] * BENCH_ARCH_INSTRUCTIONS[(bench, arch)]
+        # normalised to RipTide = 1.0
+        energy_data: dict[str, list[Optional[float]]] = {arch: [] for arch in ENERGY_ARCHS}
+        for bench in BENCHMARKS:
+            riptide_instr = BENCH_ARCH_INSTRUCTIONS.get((bench, "RipTide"))
+            riptide_energy = ARCH_POWER_MW["RipTide"] * riptide_instr if riptide_instr else None
+            for arch in ENERGY_ARCHS:
+                n_instr = BENCH_ARCH_INSTRUCTIONS.get((bench, arch))
+                if n_instr is not None and riptide_energy:
+                    energy_data[arch].append((ARCH_POWER_MW[arch] * n_instr) / riptide_energy)
+                else:
+                    energy_data[arch].append(None)
 
+        geomeans_energy: dict[str, Optional[float]] = {}
+        print(f"\n{'═'*60}")
+        print("Normalised total energy (relative to RipTide)")
+        print(f"{'Bench':<14s}", end="")
+        for arch in ENERGY_ARCHS:
+            print(f"  {arch:<12s}", end="")
+        print()
+        for i, bench in enumerate(BENCHMARKS):
+            print(f"{bench:<14s}", end="")
+            for arch in ENERGY_ARCHS:
+                v = energy_data[arch][i]
+                print(f"  {f'{v:.3f}' if v is not None else 'N/A':<12s}", end="")
+            print()
+        print(f"{'Geomean':<14s}", end="")
+        for arch in ENERGY_ARCHS:
+            vals = [v for v in energy_data[arch] if v is not None]
+            gm = functools.reduce(lambda a, b: a * b, vals, 1) ** (1 / len(vals)) if vals else None
+            geomeans_energy[arch] = gm
+            print(f"  {f'{gm:.3f}' if gm is not None else 'N/A':<12s}", end="")
+        print()
+
+        # ── write energy CSV ──────────────────────────────────────────────
+        energy_csv = RESULTS_DIR / "energy.csv"
+        with energy_csv.open("w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["benchmark"] + ENERGY_ARCHS)
+            for i, bench in enumerate(BENCHMARKS):
+                row = [bench] + [
+                    f"{energy_data[arch][i]:.4f}" if energy_data[arch][i] is not None else "N/A"
+                    for arch in ENERGY_ARCHS
+                ]
+                writer.writerow(row)
+            writer.writerow(["Geomean"] + [
+                f"{geomeans_energy[arch]:.4f}" if geomeans_energy[arch] is not None else "N/A"
+                for arch in ENERGY_ARCHS
+            ])
+        print(f"Energy data written to {energy_csv}")
+
+        # ── generate energy figure ────────────────────────────────────────
+        generate_energy_figure(
+            energy_data, geomeans_energy, BENCHMARKS, ENERGY_ARCHS,
+            save_path=FIGS_DIR / "fig16.pdf",
+        )
 
 # ════════════════════════════════════════════════════════════════════════════
 
