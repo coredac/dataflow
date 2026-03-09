@@ -278,6 +278,22 @@ def Neura_ZExtOp : Op<NeuraDialect, "zext"> {
   let assemblyFormat = "$value attr-dict `:` type($value) `->` type($result)";
 }
 
+// Defines a truncation operation.
+def Neura_TruncOp : Op<NeuraDialect, "trunc"> {
+  let summary = "Integer truncation operation";
+  let description = [{
+    Truncates a value from a larger integer type to a smaller integer type.
+    Similar to llvm.trunc, but works with predicated values.
+
+    Example:
+      %truncated = neura.trunc %value : i64 -> i32
+  }];
+
+  let arguments = (ins AnyType:$value);
+  let results = (outs AnyType:$result);
+  let assemblyFormat = "$value attr-dict `:` type($value) `->` type($result)";
+}
+
 // Defines a logical shift left operation.
 def Neura_ShlOp : Op<NeuraDialect, "shl"> {
   let summary = "Logical shift left operation";

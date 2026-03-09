@@ -393,6 +393,19 @@ struct LlvmZExtToNeuraZExt : public OpRewritePattern<LLVM::ZExtOp> {
   }
 };
 
+struct LlvmTruncToNeuraTrunc : public OpRewritePattern<LLVM::TruncOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::TruncOp op,
+                                PatternRewriter &rewriter) const override {
+    Value input = op.getArg();
+    Type resultType = op.getType();
+
+    rewriter.replaceOpWithNewOp<neura::TruncOp>(op, resultType, input);
+    return success();
+  }
+};
+
 struct LlvmMulToNeuraMul : public OpRewritePattern<LLVM::MulOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -606,6 +619,7 @@ struct LowerLlvmToNeuraPass
     patterns.add<LlvmAllocaToNeuraAlloca>(&getContext());
     patterns.add<LlvmSExtToNeuraSExt>(&getContext());
     patterns.add<LlvmZExtToNeuraZExt>(&getContext());
+    patterns.add<LlvmTruncToNeuraTrunc>(&getContext());
     patterns.add<LlvmMulToNeuraMul>(&getContext());
     patterns.add<LlvmFuncToNeuraFunc>(&getContext());
     patterns.add<LlvmCallToFuncCall>(&getContext());
