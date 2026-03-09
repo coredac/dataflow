@@ -522,18 +522,26 @@ def generate_optimization_figure(
 
     # ── two-row legend ───────────────────────────────────────────────────
     from matplotlib.patches import Patch
-    row1_names = ["w/o Optimization", "Data Type Alignment", "Constant Folding"]
-    row2_names = ["Computational Pattern Fusion", "Loop Streaming"]
-    colors_map  = dict(zip(_OPT_VARIANT_NAMES, _OPT_COLORS))
+    colors_map = dict(zip(_OPT_VARIANT_NAMES, _OPT_COLORS))
+    # Each entry: (display label, key into colors_map)
+    row1_entries = [
+        ("w/o Optimization",  "w/o Optimization"),
+        ("Data Type Alignment", "Data Type Alignment"),
+        ("Constant Folding",  "Data Type Alignment + Constant Folding"),
+    ]
+    row2_entries = [
+        ("Computational Pattern Fusion", "Computational Pattern Fusion"),
+        ("Loop Streaming",               "HW-Agnostic + Loop Streaming"),
+    ]
 
-    h1 = [Patch(facecolor=colors_map[n], edgecolor="black", linewidth=0.5) for n in row1_names]
-    h2 = [Patch(facecolor=colors_map[n], edgecolor="black", linewidth=0.5) for n in row2_names]
+    h1 = [Patch(facecolor=colors_map[k], edgecolor="black", linewidth=0.5) for _, k in row1_entries]
+    h2 = [Patch(facecolor=colors_map[k], edgecolor="black", linewidth=0.5) for _, k in row2_entries]
 
-    leg2 = ax.legend(h2, row2_names, loc="upper center",
+    leg2 = ax.legend(h2, [lbl for lbl, _ in row2_entries], loc="upper center",
                      bbox_to_anchor=(0.5, 1.17), ncol=2, fontsize=12,
                      handleheight=0.7, handlelength=0.7,
                      columnspacing=2.5, handletextpad=0.3, frameon=False)
-    ax.legend(h1, row1_names, loc="upper center",
+    ax.legend(h1, [lbl for lbl, _ in row1_entries], loc="upper center",
               bbox_to_anchor=(0.5, 1.28), ncol=3, fontsize=12,
               handleheight=0.7, handlelength=0.7,
               columnspacing=2.5, handletextpad=0.3, frameon=False)

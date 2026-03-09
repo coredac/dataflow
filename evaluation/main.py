@@ -850,217 +850,218 @@ def run_benchmark(
 
 
 def main():
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    FIGS_DIR.mkdir(parents=True, exist_ok=True)
+
     with tempfile.TemporaryDirectory(prefix="neura_ae_") as tmp:
         work_root = Path(tmp)
 
-        # ── compile everything and collect latencies ──────────────────────
-        # latencies[arch_name][bench] = cycles  (or None on failure)
-        latencies: dict[str, dict[str, Optional[float]]] = {
-            arch: {} for arch in ARCHS
-        }
+        # # ── compile everything and collect latencies ──────────────────────
+        # # latencies[arch_name][bench] = cycles  (or None on failure)
+        # latencies: dict[str, dict[str, Optional[float]]] = {
+        #     arch: {} for arch in ARCHS
+        # }
 
-        for bench in BENCHMARKS:
-            print(f"\n{'─'*60}")
-            print(f"Benchmark: {bench}")
-            for arch in ARCHS:
-                lat = run_benchmark(bench, arch, work_root, verbose=True)
-                latencies[arch][bench] = lat
-                status = f"{lat:.0f} cycles" if lat is not None else "FAILED"
-                print(f"  {arch:<12s}  {status}")
+        # for bench in BENCHMARKS:
+        #     print(f"\n{'─'*60}")
+        #     print(f"Benchmark: {bench}")
+        #     for arch in ARCHS:
+        #         lat = run_benchmark(bench, arch, work_root, verbose=True)
+        #         latencies[arch][bench] = lat
+        #         status = f"{lat:.0f} cycles" if lat is not None else "FAILED"
+        #         print(f"  {arch:<12s}  {status}")
 
-        # ── normalise to Marionette = 1.0 ────────────────────────────────
-        print(f"\n{'═'*60}")
-        print("Normalised speedup (relative to Marionette)")
-        print(f"{'Bench':<14s}", end="")
-        for arch in ARCHS:
-            print(f"  {arch:<12s}", end="")
-        print()
+        # # ── normalise to Marionette = 1.0 ────────────────────────────────
+        # print(f"\n{'═'*60}")
+        # print("Normalised speedup (relative to Marionette)")
+        # print(f"{'Bench':<14s}", end="")
+        # for arch in ARCHS:
+        #     print(f"  {arch:<12s}", end="")
+        # print()
 
-        speedup_data: dict[str, list[Optional[float]]] = {
-            arch: [] for arch in ARCHS
-        }
+        # speedup_data: dict[str, list[Optional[float]]] = {
+        #     arch: [] for arch in ARCHS
+        # }
 
-        for bench in BENCHMARKS:
-            base = latencies["Marionette"].get(bench)
-            print(f"{bench:<14s}", end="")
-            for arch in ARCHS:
-                lat = latencies[arch].get(bench)
-                if base and lat:
-                    sp = base / lat
-                else:
-                    sp = None
-                speedup_data[arch].append(sp)
-                tag = f"{sp:.3f}" if sp is not None else "N/A"
-                print(f"  {tag:<12s}", end="")
-            print()
+        # for bench in BENCHMARKS:
+        #     base = latencies["Marionette"].get(bench)
+        #     print(f"{bench:<14s}", end="")
+        #     for arch in ARCHS:
+        #         lat = latencies[arch].get(bench)
+        #         if base and lat:
+        #             sp = base / lat
+        #         else:
+        #             sp = None
+        #         speedup_data[arch].append(sp)
+        #         tag = f"{sp:.3f}" if sp is not None else "N/A"
+        #         print(f"  {tag:<12s}", end="")
+        #     print()
 
-        # ── geometric mean speedup ────────────────────────────────────────
-        print(f"{'Geomean':<14s}", end="")
-        geomeans: dict[str, Optional[float]] = {}
-        for arch in ARCHS:
-            vals = [v for v in speedup_data[arch] if v is not None]
-            gmean = functools.reduce(lambda a, b: a * b, vals, 1) ** (1 / len(vals)) if vals else None
-            geomeans[arch] = gmean
-            tag = f"{gmean:.3f}" if gmean is not None else "N/A"
-            print(f"  {tag:<12s}", end="")
-        print()
+        # # ── geometric mean speedup ────────────────────────────────────────
+        # print(f"{'Geomean':<14s}", end="")
+        # geomeans: dict[str, Optional[float]] = {}
+        # for arch in ARCHS:
+        #     vals = [v for v in speedup_data[arch] if v is not None]
+        #     gmean = functools.reduce(lambda a, b: a * b, vals, 1) ** (1 / len(vals)) if vals else None
+        #     geomeans[arch] = gmean
+        #     tag = f"{gmean:.3f}" if gmean is not None else "N/A"
+        #     print(f"  {tag:<12s}", end="")
+        # print()
 
-        # ── write raw latency CSV ─────────────────────────────────────
-        RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-        FIGS_DIR.mkdir(parents=True, exist_ok=True)
-        latency_csv = RESULTS_DIR / "latency_cycles.csv"
-        with latency_csv.open("w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(["benchmark"] + ARCHS)
-            for bench in BENCHMARKS:
-                row = [bench] + [
-                    f"{latencies[arch].get(bench):.0f}"
-                    if latencies[arch].get(bench) is not None else "N/A"
-                    for arch in ARCHS
-                ]
-                writer.writerow(row)
-        print(f"\nLatency data written to {latency_csv}")
+        # # ── write raw latency CSV ─────────────────────────────────────
+        # latency_csv = RESULTS_DIR / "latency_cycles.csv"
+        # with latency_csv.open("w", newline="") as f:
+        #     writer = csv.writer(f)
+        #     writer.writerow(["benchmark"] + ARCHS)
+        #     for bench in BENCHMARKS:
+        #         row = [bench] + [
+        #             f"{latencies[arch].get(bench):.0f}"
+        #             if latencies[arch].get(bench) is not None else "N/A"
+        #             for arch in ARCHS
+        #         ]
+        #         writer.writerow(row)
+        # print(f"\nLatency data written to {latency_csv}")
 
-        # ── write speedup CSV ─────────────────────────────────────────────
-        speedup_csv = RESULTS_DIR / "speedup.csv"
-        with speedup_csv.open("w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(["benchmark"] + ARCHS)
-            for i, bench in enumerate(BENCHMARKS):
-                row = [bench] + [
-                    f"{speedup_data[arch][i]:.4f}"
-                    if speedup_data[arch][i] is not None else "N/A"
-                    for arch in ARCHS
-                ]
-                writer.writerow(row)
-            gmean_row = ["Geomean"] + [
-                f"{geomeans[arch]:.4f}" if geomeans[arch] is not None else "N/A"
-                for arch in ARCHS
-            ]
-            writer.writerow(gmean_row)
-        print(f"Speedup data written to {speedup_csv}")
+        # # ── write speedup CSV ─────────────────────────────────────────────
+        # speedup_csv = RESULTS_DIR / "speedup.csv"
+        # with speedup_csv.open("w", newline="") as f:
+        #     writer = csv.writer(f)
+        #     writer.writerow(["benchmark"] + ARCHS)
+        #     for i, bench in enumerate(BENCHMARKS):
+        #         row = [bench] + [
+        #             f"{speedup_data[arch][i]:.4f}"
+        #             if speedup_data[arch][i] is not None else "N/A"
+        #             for arch in ARCHS
+        #         ]
+        #         writer.writerow(row)
+        #     gmean_row = ["Geomean"] + [
+        #         f"{geomeans[arch]:.4f}" if geomeans[arch] is not None else "N/A"
+        #         for arch in ARCHS
+        #     ]
+        #     writer.writerow(gmean_row)
+        # print(f"Speedup data written to {speedup_csv}")
 
-        # ── generate speedup figure ───────────────────────────────────────
-        generate_speedup_figure(
-            speedup_data, geomeans, BENCHMARKS, ARCHS,
-            save_path=FIGS_DIR / "fig13.pdf",
-        )
+        # # ── generate speedup figure ───────────────────────────────────────
+        # generate_speedup_figure(
+        #     speedup_data, geomeans, BENCHMARKS, ARCHS,
+        #     save_path=FIGS_DIR / "fig13.pdf",
+        # )
 
-        # ── compute normalised Perf/Area ──────────────────────────────────
-        # PPA_normalised_arch = (lat_mario / area_mario) / (lat_arch / area_arch)
-        #                     = speedup * (area_mario / area_arch)
-        area_mario = ARCH_AREA_MM2["Marionette"]
-        ppa_data: dict[str, list[Optional[float]]] = {arch: [] for arch in ARCHS}
-        for i, bench in enumerate(BENCHMARKS):
-            lat_mario = latencies["Marionette"].get(bench)
-            for arch in ARCHS:
-                lat = latencies[arch].get(bench)
-                sp  = speedup_data[arch][i]
-                if sp is not None and arch in ARCH_AREA_MM2:
-                    ppa = sp * (area_mario / ARCH_AREA_MM2[arch])
-                else:
-                    ppa = None
-                ppa_data[arch].append(ppa)
+        # # ── compute normalised Perf/Area ──────────────────────────────────
+        # # PPA_normalised_arch = (lat_mario / area_mario) / (lat_arch / area_arch)
+        # #                     = speedup * (area_mario / area_arch)
+        # area_mario = ARCH_AREA_MM2["Marionette"]
+        # ppa_data: dict[str, list[Optional[float]]] = {arch: [] for arch in ARCHS}
+        # for i, bench in enumerate(BENCHMARKS):
+        #     lat_mario = latencies["Marionette"].get(bench)
+        #     for arch in ARCHS:
+        #         lat = latencies[arch].get(bench)
+        #         sp  = speedup_data[arch][i]
+        #         if sp is not None and arch in ARCH_AREA_MM2:
+        #             ppa = sp * (area_mario / ARCH_AREA_MM2[arch])
+        #         else:
+        #             ppa = None
+        #         ppa_data[arch].append(ppa)
 
-        geomeans_ppa: dict[str, Optional[float]] = {}
-        print(f"\n{'═'*60}")
-        print("Normalised Perf/Area (relative to Marionette)")
-        print(f"{'Bench':<14s}", end="")
-        for arch in ARCHS:
-            print(f"  {arch:<12s}", end="")
-        print()
-        for i, bench in enumerate(BENCHMARKS):
-            print(f"{bench:<14s}", end="")
-            for arch in ARCHS:
-                v = ppa_data[arch][i]
-                print(f"  {f'{v:.3f}' if v is not None else 'N/A':<12s}", end="")
-            print()
-        print(f"{'Geomean':<14s}", end="")
-        for arch in ARCHS:
-            vals = [v for v in ppa_data[arch] if v is not None]
-            gm = functools.reduce(lambda a, b: a * b, vals, 1) ** (1 / len(vals)) if vals else None
-            geomeans_ppa[arch] = gm
-            print(f"  {f'{gm:.3f}' if gm is not None else 'N/A':<12s}", end="")
-        print()
+        # geomeans_ppa: dict[str, Optional[float]] = {}
+        # print(f"\n{'═'*60}")
+        # print("Normalised Perf/Area (relative to Marionette)")
+        # print(f"{'Bench':<14s}", end="")
+        # for arch in ARCHS:
+        #     print(f"  {arch:<12s}", end="")
+        # print()
+        # for i, bench in enumerate(BENCHMARKS):
+        #     print(f"{bench:<14s}", end="")
+        #     for arch in ARCHS:
+        #         v = ppa_data[arch][i]
+        #         print(f"  {f'{v:.3f}' if v is not None else 'N/A':<12s}", end="")
+        #     print()
+        # print(f"{'Geomean':<14s}", end="")
+        # for arch in ARCHS:
+        #     vals = [v for v in ppa_data[arch] if v is not None]
+        #     gm = functools.reduce(lambda a, b: a * b, vals, 1) ** (1 / len(vals)) if vals else None
+        #     geomeans_ppa[arch] = gm
+        #     print(f"  {f'{gm:.3f}' if gm is not None else 'N/A':<12s}", end="")
+        # print()
 
-        # ── write Perf/Area CSV ───────────────────────────────────────────
-        ppa_csv = RESULTS_DIR / "perf_per_area.csv"
-        with ppa_csv.open("w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(["benchmark"] + ARCHS)
-            for i, bench in enumerate(BENCHMARKS):
-                row = [bench] + [
-                    f"{ppa_data[arch][i]:.4f}" if ppa_data[arch][i] is not None else "N/A"
-                    for arch in ARCHS
-                ]
-                writer.writerow(row)
-            writer.writerow(["Geomean"] + [
-                f"{geomeans_ppa[arch]:.4f}" if geomeans_ppa[arch] is not None else "N/A"
-                for arch in ARCHS
-            ])
-        print(f"Perf/Area data written to {ppa_csv}")
+        # # ── write Perf/Area CSV ───────────────────────────────────────────
+        # ppa_csv = RESULTS_DIR / "perf_per_area.csv"
+        # with ppa_csv.open("w", newline="") as f:
+        #     writer = csv.writer(f)
+        #     writer.writerow(["benchmark"] + ARCHS)
+        #     for i, bench in enumerate(BENCHMARKS):
+        #         row = [bench] + [
+        #             f"{ppa_data[arch][i]:.4f}" if ppa_data[arch][i] is not None else "N/A"
+        #             for arch in ARCHS
+        #         ]
+        #         writer.writerow(row)
+        #     writer.writerow(["Geomean"] + [
+        #         f"{geomeans_ppa[arch]:.4f}" if geomeans_ppa[arch] is not None else "N/A"
+        #         for arch in ARCHS
+        #     ])
+        # print(f"Perf/Area data written to {ppa_csv}")
 
-        # ── generate Perf/Area figure ─────────────────────────────────────
-        generate_ppa_figure(
-            ppa_data, geomeans_ppa, BENCHMARKS, ARCHS,
-            save_path=FIGS_DIR / "fig15.pdf",
-        )
+        # # ── generate Perf/Area figure ─────────────────────────────────────
+        # generate_ppa_figure(
+        #     ppa_data, geomeans_ppa, BENCHMARKS, ARCHS,
+        #     save_path=FIGS_DIR / "fig15.pdf",
+        # )
 
-        # ── compute IPC ───────────────────────────────────────────────────
-        # IPC = total_instructions / total_cycles
-        ipc_data: dict[str, list[Optional[float]]] = {arch: [] for arch in ARCHS}
-        for bench in BENCHMARKS:
-            for arch in ARCHS:
-                n_instr = BENCH_ARCH_INSTRUCTIONS.get((bench, arch))
-                cycles  = latencies[arch].get(bench)
-                if n_instr is not None and cycles:
-                    ipc_data[arch].append(n_instr / cycles)
-                else:
-                    ipc_data[arch].append(None)
+        # # ── compute IPC ───────────────────────────────────────────────────
+        # # IPC = total_instructions / total_cycles
+        # ipc_data: dict[str, list[Optional[float]]] = {arch: [] for arch in ARCHS}
+        # for bench in BENCHMARKS:
+        #     for arch in ARCHS:
+        #         n_instr = BENCH_ARCH_INSTRUCTIONS.get((bench, arch))
+        #         cycles  = latencies[arch].get(bench)
+        #         if n_instr is not None and cycles:
+        #             ipc_data[arch].append(n_instr / cycles)
+        #         else:
+        #             ipc_data[arch].append(None)
 
-        geomeans_ipc: dict[str, Optional[float]] = {}
-        print(f"\n{'═'*60}")
-        print("IPC (instructions per cycle)")
-        print(f"{'Bench':<14s}", end="")
-        for arch in ARCHS:
-            print(f"  {arch:<12s}", end="")
-        print()
-        for i, bench in enumerate(BENCHMARKS):
-            print(f"{bench:<14s}", end="")
-            for arch in ARCHS:
-                v = ipc_data[arch][i]
-                print(f"  {f'{v:.3f}' if v is not None else 'N/A':<12s}", end="")
-            print()
-        print(f"{'Geomean':<14s}", end="")
-        for arch in ARCHS:
-            vals = [v for v in ipc_data[arch] if v is not None]
-            gm = functools.reduce(lambda a, b: a * b, vals, 1) ** (1 / len(vals)) if vals else None
-            geomeans_ipc[arch] = gm
-            print(f"  {f'{gm:.3f}' if gm is not None else 'N/A':<12s}", end="")
-        print()
+        # geomeans_ipc: dict[str, Optional[float]] = {}
+        # print(f"\n{'═'*60}")
+        # print("IPC (instructions per cycle)")
+        # print(f"{'Bench':<14s}", end="")
+        # for arch in ARCHS:
+        #     print(f"  {arch:<12s}", end="")
+        # print()
+        # for i, bench in enumerate(BENCHMARKS):
+        #     print(f"{bench:<14s}", end="")
+        #     for arch in ARCHS:
+        #         v = ipc_data[arch][i]
+        #         print(f"  {f'{v:.3f}' if v is not None else 'N/A':<12s}", end="")
+        #     print()
+        # print(f"{'Geomean':<14s}", end="")
+        # for arch in ARCHS:
+        #     vals = [v for v in ipc_data[arch] if v is not None]
+        #     gm = functools.reduce(lambda a, b: a * b, vals, 1) ** (1 / len(vals)) if vals else None
+        #     geomeans_ipc[arch] = gm
+        #     print(f"  {f'{gm:.3f}' if gm is not None else 'N/A':<12s}", end="")
+        # print()
 
-        # ── write IPC CSV ─────────────────────────────────────────────────
-        ipc_csv = RESULTS_DIR / "ipc.csv"
-        with ipc_csv.open("w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(["benchmark"] + ARCHS)
-            for i, bench in enumerate(BENCHMARKS):
-                row = [bench] + [
-                    f"{ipc_data[arch][i]:.4f}" if ipc_data[arch][i] is not None else "N/A"
-                    for arch in ARCHS
-                ]
-                writer.writerow(row)
-            writer.writerow(["Geomean"] + [
-                f"{geomeans_ipc[arch]:.4f}" if geomeans_ipc[arch] is not None else "N/A"
-                for arch in ARCHS
-            ])
-        print(f"IPC data written to {ipc_csv}")
+        # # ── write IPC CSV ─────────────────────────────────────────────────
+        # ipc_csv = RESULTS_DIR / "ipc.csv"
+        # with ipc_csv.open("w", newline="") as f:
+        #     writer = csv.writer(f)
+        #     writer.writerow(["benchmark"] + ARCHS)
+        #     for i, bench in enumerate(BENCHMARKS):
+        #         row = [bench] + [
+        #             f"{ipc_data[arch][i]:.4f}" if ipc_data[arch][i] is not None else "N/A"
+        #             for arch in ARCHS
+        #         ]
+        #         writer.writerow(row)
+        #     writer.writerow(["Geomean"] + [
+        #         f"{geomeans_ipc[arch]:.4f}" if geomeans_ipc[arch] is not None else "N/A"
+        #         for arch in ARCHS
+        #     ])
+        # print(f"IPC data written to {ipc_csv}")
 
-        # ── generate IPC figure ───────────────────────────────────────────
-        generate_ipc_figure(
-            ipc_data, geomeans_ipc, BENCHMARKS, ARCHS,
-            save_path=FIGS_DIR / "fig14.pdf",
-        )
+        # # ── generate IPC figure ───────────────────────────────────────────
+        # generate_ipc_figure(
+        #     ipc_data, geomeans_ipc, BENCHMARKS, ARCHS,
+        #     save_path=FIGS_DIR / "fig14.pdf",
+        # )
         # ── compute normalised total energy ───────────────────────────────
         # energy[arch][bench] = ARCH_POWER_MW[arch] * BENCH_ARCH_INSTRUCTIONS[(bench, arch)]
         # normalised to RipTide = 1.0
