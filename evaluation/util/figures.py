@@ -5,7 +5,7 @@ Figure generation utilities for Neura PLDI 2026 artifact evaluation.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import Dict, List, Optional
 
 
 def generate_speedup_figure(
@@ -401,6 +401,145 @@ def generate_energy_figure(
               columnspacing=4, handletextpad=0.3, frameon=False)
 
     plt.tight_layout(pad=0.8)
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(str(save_path), bbox_inches="tight")
+    print(f"Figure saved to {save_path}")
+    plt.close(fig)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Ordered variant names (must match keys in speedup_data passed by main.py)
+_OPT_VARIANT_NAMES = [
+    "w/o Optimization",
+    "Computational Pattern Fusion",
+    "Data Type Alignment",
+    "Data Type Alignment + Constant Folding",
+    "HW-Agnostic + Loop Streaming",
+]
+
+# Stack colours, one per variant (same order as above)
+_OPT_COLORS = ["#A9A9A9", "#a9d18e", "#409cd8", "#fed06e", "#e86252"]
+
+
+def generate_optimization_figure(
+    speedup_data: Dict[str, List[Optional[float]]],
+    benchmarks: List[str],
+    save_path: Path,
+) -> None:
+    """
+    Stacked bar chart showing the cumulative speedup contribution of each
+    optimisation pass level relative to 'w/o Optimization' (= 1.0 baseline).
+
+    speedup_data : dict mapping each variant name in _OPT_VARIANT_NAMES →
+                   list of per-benchmark speedup values (last entry = geomean).
+                   None values are treated as 0.
+    benchmarks   : ordered benchmark names (without "Geomean"; added internally).
+    save_path    : destination PDF/PNG path.
+
+    The stacked layers show MARGINAL gains, i.e. how much each additional
+    optimisation contributed beyond the previous level.
+    """
+    try:
+        import matplotlib.pyplot as plt
+        import numpy as np
+    except ImportError:
+        print("[WARN] matplotlib not available; skipping optimisation figure.")
+        return
+
+    plt.rcParams.update({"font.size": 14})
+
+    bench_labels = list(benchmarks) + ["Geomean"]
+    n = len(bench_labels)
+
+    # ── resolve None → 0 ─────────────────────────────────────────────────
+    total: Dict[str, List[float]] = {
+        v: [x if x is not None else 0.0 for x in speedup_data[v]]
+        for v in _OPT_VARIANT_NAMES
+    }
+
+    # ── compute marginal contributions ───────────────────────────────────
+    # marginal[0] = total["w/o Opt"]  (always 1.0)
+    # marginal[k] = total[k] - total[k-1]
+    marginal: List[List[float]] = []
+    for idx, vname in enumerate(_OPT_VARIANT_NAMES):
+        if idx == 0:
+            marginal.append(list(total[vname]))
+        else:
+            prev = total[_OPT_VARIANT_NAMES[idx - 1]]
+            cur  = total[vname]
+            marginal.append([max(0.0, c - p) for c, p in zip(cur, prev)])
+
+    # ── draw stacked bars ─────────────────────────────────────────────────
+    fig, ax = plt.subplots(figsize=(7, 4))
+    bar_width = 0.5
+    index = np.arange(n)
+    bottoms = np.zeros(n)
+
+    for layer_data, color, vname in zip(marginal, _OPT_COLORS, _OPT_VARIANT_NAMES):
+        ax.bar(index, layer_data, bar_width, bottom=bottoms,
+               color=color, label=vname, edgecolor="black", linewidth=0.5)
+        bottoms += np.array(layer_data)
+
+    # ── annotate total speedup on each bar ───────────────────────────────
+    top_vals = total["HW-Agnostic + Loop Streaming"]
+    for i, val in enumerate(top_vals):
+        if val > 0:
+            ax.text(i, val + 0.05, f"{val:.2f}×",
+                    ha="center", va="bottom",
+                    fontsize=12, fontweight="bold", color="black")
+
+    # ── axes ─────────────────────────────────────────────────────────────
+    ax.set_ylabel("Normalized Speedup", fontsize=14)
+
+    all_tops = [v for v in top_vals if v > 0]
+    y_max = max(max(all_tops) * 1.2, 5.0) if all_tops else 5.0
+    y_top = int(y_max) + 1
+    ax.set_ylim(0, y_top)
+    ax.set_xlim(-0.5, n - 0.5)
+
+    y_ticks = list(range(0, y_top + 1))
+    ax.set_yticks(y_ticks)
+    ax.set_yticklabels([str(y) for y in y_ticks], fontsize=14)
+    ax.tick_params(axis="y", direction="inout", length=6)
+
+    dividers = [i - 0.5 for i in range(n + 1)]
+    ax.set_xticks(dividers)
+    ax.set_xticklabels([])
+    ax.tick_params(axis="x", direction="inout", length=6, width=0)
+
+    for i, b in enumerate(bench_labels):
+        w = "bold" if b == "Geomean" else "normal"
+        ax.text(i + 0.2, -0.1, b, ha="right", va="top",
+                fontsize=14, rotation=22, fontweight=w)
+
+    for y in y_ticks[1:]:
+        ax.axhline(y, color="lightgray", linestyle=(0, (5, 5)),
+                   linewidth=1, alpha=0.7, zorder=0)
+    for x in dividers:
+        ax.axvline(x, color="lightgray", linewidth=0.8, alpha=0.8, zorder=0)
+
+    ax.spines["top"].set_linestyle("--")
+
+    # ── two-row legend ───────────────────────────────────────────────────
+    from matplotlib.patches import Patch
+    row1_names = ["w/o Optimization", "Data Type Alignment", "Constant Folding"]
+    row2_names = ["Computational Pattern Fusion", "Loop Streaming"]
+    colors_map  = dict(zip(_OPT_VARIANT_NAMES, _OPT_COLORS))
+
+    h1 = [Patch(facecolor=colors_map[n], edgecolor="black", linewidth=0.5) for n in row1_names]
+    h2 = [Patch(facecolor=colors_map[n], edgecolor="black", linewidth=0.5) for n in row2_names]
+
+    leg2 = ax.legend(h2, row2_names, loc="upper center",
+                     bbox_to_anchor=(0.5, 1.17), ncol=2, fontsize=12,
+                     handleheight=0.7, handlelength=0.7,
+                     columnspacing=2.5, handletextpad=0.3, frameon=False)
+    ax.legend(h1, row1_names, loc="upper center",
+              bbox_to_anchor=(0.5, 1.28), ncol=3, fontsize=12,
+              handleheight=0.7, handlelength=0.7,
+              columnspacing=2.5, handletextpad=0.3, frameon=False)
+    ax.add_artist(leg2)
+
+    plt.tight_layout()
     save_path.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(str(save_path), bbox_inches="tight")
     print(f"Figure saved to {save_path}")

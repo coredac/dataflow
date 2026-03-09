@@ -27,7 +27,8 @@ from typing import Optional
 
 # Allow   from util.figures import ...   regardless of cwd
 sys.path.insert(0, str(Path(__file__).parent))
-from util.figures import generate_speedup_figure, generate_ppa_figure, generate_ipc_figure, generate_energy_figure
+from util.figures import (generate_speedup_figure, generate_ppa_figure, generate_ipc_figure,
+                          generate_energy_figure, generate_optimization_figure)
 
 # ════════════════════════════════════════════════════════════════════════════
 #  SECTION 1 – TOOL PATHS  (adjust if locations differ)
@@ -497,6 +498,175 @@ def compile_segment(
 
 
 # ════════════════════════════════════════════════════════════════════════════
+#  SECTION 4b – OPTIMISATION VARIANT CONFIGS  (for opt-comparison figure)
+#
+#  Each OptVariant describes one pass-level configuration, all mapped on
+#  NEURA-ST.  The pipeline mirrors compile_segment but with:
+#    • an optional extra `--finalize-memref-to-llvm` step after Step 3
+#      (used for the "w/o Optimization" baseline to preserve raw memref ops)
+#    • variant-specific dataflow passes (Step 5)
+#    • an optional streaming pass applied after Step 5 ("--fuse-loop-control")
+# ════════════════════════════════════════════════════════════════════════════
+
+@dataclass
+class OptVariant:
+    name: str
+    use_finalize_memref: bool        = False   # add --finalize-memref-to-llvm after step 3
+    dataflow_passes: list            = field(default_factory=list)
+    extra_pre_map_passes: list       = field(default_factory=list)  # e.g. --fuse-loop-control
+
+
+OPT_VARIANTS: list[OptVariant] = [
+    OptVariant(
+        name="w/o Optimization",
+        use_finalize_memref=True,
+        dataflow_passes=[
+            "--canonicalize-live-in",
+            "--leverage-predicated-value",
+            "--transform-ctrl-to-data-flow",
+        ],
+    ),
+    OptVariant(
+        name="Computational Pattern Fusion",
+        use_finalize_memref=False,
+        dataflow_passes=[
+            "--canonicalize-live-in",
+            "--leverage-predicated-value",
+            "--transform-ctrl-to-data-flow",
+        ],
+    ),
+    OptVariant(
+        name="Data Type Alignment",
+        use_finalize_memref=False,
+        dataflow_passes=[
+            "--canonicalize-cast",
+            "--canonicalize-live-in",
+            "--leverage-predicated-value",
+            "--transform-ctrl-to-data-flow",
+        ],
+    ),
+    OptVariant(
+        name="Data Type Alignment + Constant Folding",
+        use_finalize_memref=False,
+        dataflow_passes=[
+            "--canonicalize-cast", "--fold-constant",
+            "--canonicalize-live-in",
+            "--leverage-predicated-value",
+            "--transform-ctrl-to-data-flow",
+            "--fold-constant",
+        ],
+    ),
+    OptVariant(
+        name="HW-Agnostic + Loop Streaming",
+        use_finalize_memref=False,
+        dataflow_passes=[
+            "--canonicalize-cast", "--fold-constant",
+            "--canonicalize-live-in",
+            "--leverage-predicated-value",
+            "--transform-ctrl-to-data-flow",
+            "--fold-constant",
+        ],
+        extra_pre_map_passes=["--fuse-loop-control"],
+    ),
+]
+
+
+def compile_opt_segment(
+    seg: SegConfig,
+    arch_cfg: ArchConfig,   # always ARCH_CONFIGS["NEURA-ST"]
+    arch_dir: Path,
+    work_dir: Path,
+    variant: OptVariant,
+) -> Path:
+    """
+    Compile one segment for the optimisation-comparison experiment.
+
+    Pipeline
+    ────────
+      1. cgeist  cpp → scf MLIR
+      2. strip module attributes
+      3. mlir-opt  scf → llvm dialect
+     [3b. mlir-opt --finalize-memref-to-llvm  (only when variant.use_finalize_memref)]
+      4. neura-opt  llvm → neura dialect
+      5. neura-opt  neura → dataflow IR   (variant.dataflow_passes)
+     [5.5 neura-opt  dataflow → stream IR  (variant.extra_pre_map_passes, if any)]
+      6. neura-opt  dataflow/stream → mapped IR  (NEURA-ST mapping)
+    """
+    cpp_path  = arch_dir / seg.cpp_file
+    base_name = cpp_path.stem
+
+    scf_raw    = work_dir / f"{base_name}_scf_raw.mlir"
+    scf_clean  = work_dir / f"{base_name}_scf.mlir"
+    llvm_mlir  = work_dir / f"{base_name}_llvm.mlir"
+    final_llvm = work_dir / f"{base_name}_final_llvm.mlir"
+    neura      = work_dir / f"{base_name}_neura.mlir"
+    dataflow   = work_dir / f"{base_name}_dataflow.mlir"
+    stream     = work_dir / f"{base_name}_stream.mlir"
+    mapped     = work_dir / f"{base_name}{arch_cfg.mapped_suffix}"
+
+    label = f"opt/{variant.name}/{base_name}"
+
+    # Step 1 – C++ → scf MLIR
+    _run([CGEIST, str(cpp_path), "-S", "-O3", "-o", str(scf_raw)],
+         f"cgeist:{label}")
+
+    # Step 2 – strip module attributes
+    scf_clean.write_text(strip_module_attributes(scf_raw.read_text()))
+
+    # Step 3 – scf MLIR → llvm dialect
+    _run([MLIR_OPT,
+          "--lower-affine", "--convert-scf-to-cf", "--convert-cf-to-llvm",
+          "--convert-arith-to-llvm", "--convert-index-to-llvm",
+          "--reconcile-unrealized-casts",
+          str(scf_clean), "-o", str(llvm_mlir)],
+         f"mlir-opt:{label}")
+
+    # Step 3b (optional) – finalize memref
+    if variant.use_finalize_memref:
+        _run([MLIR_OPT, "--finalize-memref-to-llvm",
+              str(llvm_mlir), "-o", str(final_llvm)],
+             f"finalize-memref:{label}")
+        neura_input = final_llvm
+    else:
+        neura_input = llvm_mlir
+
+    # Step 4 – llvm → neura dialect
+    _run([NEURA_OPT,
+          "--assign-accelerator",
+          "--lower-arith-to-neura", "--lower-memref-to-neura",
+          "--lower-builtin-to-neura", "--lower-llvm-to-neura",
+          str(neura_input), "-o", str(neura)],
+         f"neura-lower:{label}")
+
+    # Step 5 – neura → dataflow IR  (variant-specific passes)
+    _run([NEURA_OPT, *variant.dataflow_passes, str(neura), "-o", str(dataflow)],
+         f"dataflow:{label}")
+
+    # Step 5.5 (optional) – e.g. --fuse-loop-control
+    if variant.extra_pre_map_passes:
+        _run([NEURA_OPT, *variant.extra_pre_map_passes,
+              str(dataflow), "-o", str(stream)],
+             f"stream:{label}")
+        pre_map = stream
+    else:
+        pre_map = dataflow
+
+    # Step 6 – map to NEURA-ST
+    mapping_flag = (
+        f"--map-to-accelerator="
+        f"mapping-strategy=heuristic "
+        f"mapping-mode={arch_cfg.mapping_mode} "
+        f"backtrack-config=customized "
+        f"sort-strategy=mixed"
+    )
+    _run([NEURA_OPT, "--insert-data-mov", mapping_flag,
+          str(pre_map), "-o", str(mapped)],
+         f"map:{label}")
+
+    return mapped
+
+
+# ════════════════════════════════════════════════════════════════════════════
 #  SECTION 5 – II AND STEPS EXTRACTION
 # ════════════════════════════════════════════════════════════════════════════
 
@@ -948,6 +1118,89 @@ def main():
             energy_data, geomeans_energy, BENCHMARKS, ENERGY_ARCHS,
             save_path=FIGS_DIR / "fig16.pdf",
         )
+
+        # ── optimisation comparison (NEURA-ST, 5 pass configurations) ─────
+        # Run all 5 OptVariant pipelines for every benchmark on NEURA-ST.
+        # Speedup is normalised so 'w/o Optimization' = 1.0.
+        neura_st_cfg = ARCH_CONFIGS["NEURA-ST"]
+        opt_latencies: dict[str, dict[str, Optional[float]]] = {
+            v.name: {} for v in OPT_VARIANTS
+        }
+
+        print(f"\n{'═'*60}")
+        print("Optimisation comparison (NEURA-ST)")
+        for bench in BENCHMARKS:
+            print(f"  Benchmark: {bench}")
+            key = (bench, "NEURA-ST")
+            if key not in BENCH_ARCH_SEGS:
+                print(f"    [SKIP] no NEURA-ST config for {bench}")
+                for v in OPT_VARIANTS:
+                    opt_latencies[v.name][bench] = None
+                continue
+            segs = BENCH_ARCH_SEGS[key]
+            for variant in OPT_VARIANTS:
+                variant_work = work_root / "opt" / bench / variant.name.replace(" ", "_")
+                variant_work.mkdir(parents=True, exist_ok=True)
+                try:
+                    seg_results = []
+                    for seg in segs:
+                        mapped = compile_opt_segment(
+                            seg, neura_st_cfg,
+                            PLDI_TEST_DIR / bench / neura_st_cfg.folder,
+                            variant_work, variant,
+                        )
+                        ii, steps = extract_ii_steps(mapped)
+                        seg_results.append((seg, ii, steps))
+                    lat = bench_latency(seg_results)
+                    opt_latencies[variant.name][bench] = lat
+                    print(f"    {variant.name:<42s}  {lat:.0f} cycles")
+                except Exception as e:
+                    print(f"    [ERROR] {variant.name}: {e}")
+                    opt_latencies[variant.name][bench] = None
+
+        # ── compute speedup relative to 'w/o Optimization' ────────────────
+        opt_speedup: dict[str, list[Optional[float]]] = {v.name: [] for v in OPT_VARIANTS}
+        for bench in BENCHMARKS:
+            base_lat = opt_latencies["w/o Optimization"].get(bench)
+            for variant in OPT_VARIANTS:
+                lat = opt_latencies[variant.name].get(bench)
+                if base_lat and lat:
+                    opt_speedup[variant.name].append(base_lat / lat)
+                else:
+                    opt_speedup[variant.name].append(None)
+
+        # Append geomean as last entry (figures.py uses bench_labels + ["Geomean"])
+        print(f"\nOptimisation geomeans (relative to w/o Optimization):")
+        for variant in OPT_VARIANTS:
+            vals = [v for v in opt_speedup[variant.name] if v is not None]
+            gm = functools.reduce(lambda a, b: a * b, vals, 1) ** (1 / len(vals)) if vals else None
+            opt_speedup[variant.name].append(gm if gm is not None else 0.0)
+            print(f"  {variant.name:<42s}  {f'{gm:.3f}' if gm else 'N/A'}")
+
+        # ── write optimisation CSV ────────────────────────────────────────
+        opt_csv = RESULTS_DIR / "optimization.csv"
+        with opt_csv.open("w", newline="") as f:
+            writer = csv.writer(f)
+            vnames = [v.name for v in OPT_VARIANTS]
+            writer.writerow(["benchmark"] + vnames)
+            for i, bench in enumerate(BENCHMARKS):
+                row = [bench] + [
+                    f"{opt_speedup[vn][i]:.4f}" if opt_speedup[vn][i] is not None else "N/A"
+                    for vn in vnames
+                ]
+                writer.writerow(row)
+            writer.writerow(["Geomean"] + [
+                f"{opt_speedup[vn][-1]:.4f}" if opt_speedup[vn][-1] else "N/A"
+                for vn in vnames
+            ])
+        print(f"Optimisation data written to {opt_csv}")
+
+        # ── generate optimisation figure ──────────────────────────────────
+        generate_optimization_figure(
+            opt_speedup, BENCHMARKS,
+            save_path=FIGS_DIR / "fig17.pdf",
+        )
+
 
 # ════════════════════════════════════════════════════════════════════════════
 
