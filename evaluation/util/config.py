@@ -17,7 +17,7 @@ MLIR_OPT  = "mlir-opt"
 NEURA_OPT = "/home/lucas/Project/dataflow/build/tools/mlir-neura-opt/mlir-neura-opt"
 NEURA_OPT_4_4 = "/home/lucas/Project/dataflow/build/tools/mlir-neura-opt/mlir-neura-opt-4x4"
 
-PLDI_TEST_DIR = Path("/home/lucas/Project/dataflow/PLDI-Test")
+BENCHMARKS_DIR = Path("/home/lucas/Project/dataflow/evaluation/benchmarks")
 RESULTS_DIR   = Path("/home/lucas/Project/dataflow/evaluation/results")
 FIGS_DIR      = Path("/home/lucas/Project/dataflow/evaluation/figs")
 
@@ -117,7 +117,7 @@ ARCH_CONFIGS: dict[str, ArchConfig] = {
         mapping_mode="spatial-only", mapped_suffix="_so_map.mlir",
     ),
     "ICED": ArchConfig(
-        name="ICED", folder="OpenCGRA",
+        name="ICED", folder="ICED",
         dataflow_passes=["--canonicalize-cast",
                          "--canonicalize-live-in", "--leverage-predicated-value",
                          "--transform-ctrl-to-data-flow"],

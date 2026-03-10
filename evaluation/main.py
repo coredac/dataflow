@@ -28,7 +28,7 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).parent))
 
 from util.config import (
-    PLDI_TEST_DIR, RESULTS_DIR, FIGS_DIR,
+    BENCHMARKS_DIR, RESULTS_DIR, FIGS_DIR,
     NEURA_OPT, NEURA_OPT_4_4,
     ARCH_AREA_MM2, ARCH_POWER_MW, ENERGY_ARCHS,
     BENCH_ARCH_INSTRUCTIONS,
@@ -81,7 +81,7 @@ def run_benchmark(bench, arch_name, work_root, verbose=False):
         return None
 
     arch_cfg = ARCH_CONFIGS[arch_name]
-    arch_dir = PLDI_TEST_DIR / bench / arch_cfg.folder
+    arch_dir = BENCHMARKS_DIR / bench / arch_cfg.folder
     work_dir = work_root / bench / arch_name
     work_dir.mkdir(parents=True, exist_ok=True)
 
@@ -108,7 +108,7 @@ def run_benchmark_scalability(bench, arch_cfg, neura_opt_binary, work_dir, verbo
     if key not in BENCH_ARCH_SEGS:
         return None
 
-    arch_dir = PLDI_TEST_DIR / bench / arch_cfg.folder
+    arch_dir = BENCHMARKS_DIR / bench / arch_cfg.folder
     work_dir.mkdir(parents=True, exist_ok=True)
 
     results = []
@@ -290,7 +290,7 @@ def evaluate_optimization(work_root):
                 for seg in segs:
                     mapped = compile_opt_segment(
                         seg, neura_st_cfg,
-                        PLDI_TEST_DIR / bench / neura_st_cfg.folder,
+                        BENCHMARKS_DIR / bench / neura_st_cfg.folder,
                         variant_work, variant,
                     )
                     ii, steps = extract_ii_steps(mapped)
