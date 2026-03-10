@@ -436,6 +436,25 @@ identifyDirectDominatingLiveIns(Region &region, DominanceInfo &dom_info,
         continue;
       }
 
+      // If the using block is a loop header (has a back-edge), we must NOT treat
+      // any live-in as a direct dominating live-in. This is because:
+      // 1. Live-ins from outer scopes have rate mismatch and need PHI_START
+      // 2. Live-ins from inner blocks are loop-carried dependencies that need PHI
+      bool using_block_is_loop_header = false;
+      for (Block *pred : block.getPredecessors()) {
+        if (dom_info.dominates(&block, pred)) {
+          using_block_is_loop_header = true;
+          break;
+        }
+      }
+
+      if (using_block_is_loop_header) {
+        // Skips direct dominating live-in optimization for loop headers.
+        // The value must be promoted to a block argument so that the
+        // transform-ctrl-to-data-flow pass creates an inner-rate PHI_START.
+        continue;
+      }
+
       // Pattern 1: Single-Source-Single-Sink with one conditional branch.
       if (isSingleSourceSingleSinkPattern(defining_block, &block, dom_info,
                                           post_dom_info)) {

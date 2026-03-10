@@ -521,6 +521,8 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // KERNEL-NEXT:   }
 // KERNEL-NEXT: }
 
+
+
 // STREAM:      module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // STREAM-NEXT:   memref.global "private" constant @__constant_64xf32 : memref<64xf32> = dense<0.000000e+00> {alignment = 64 : i64}
 // STREAM-NEXT:   memref.global "private" constant @__constant_64x3x3x64xf32_0 : memref<64x3x3x64xf32> = dense<-0.0151730878> {alignment = 64 : i64}
