@@ -158,49 +158,233 @@ static SmallVector<CgraShape> getNonRectangularShapes(int cgra_count) {
 // identical bounding box area, we prefer more square-like bounds over long
 // rectangles.
 //
-// TODO: This function only picks a localized shape for an idealized single task
-// mapping. Global placement and conflict resolution across multiple tasks is
-// legitimately deferred to downstream map-on-cgra pass, as speculative
-// profiling assumes unconstrained placement.
+// This function picks a localized shape for speculative per-task  
+// profiling (assumes unconstrained placement).  Global placement conflict
+// resolution across multiple tasks is handled by canAllTasksFitOnGrid()
+// during the balance phase and by the downstream AllocateCgraToTaskPass.
 static CgraShape pickBestShape(int cgra_count) {
-  // For cgra_count == 3, the 2x2 L-shape has a smaller maximum physical routing
-  // distance (dist=2) compared to a 1x3 rectangle (dist=3), despite having a
-  // larger bounding box. We explicitly prefer the more compact L-shape here for
-  // better speculative latency.
-  if (cgra_count == 3) {
-    auto non_rect_shapes = getNonRectangularShapes(3);
-    if (!non_rect_shapes.empty()) {
-      return non_rect_shapes.front();
-    }
-  }
 
   SmallVector<CgraShape> candidates = getRectangularShapes(cgra_count);
   for (const auto &s : getNonRectangularShapes(cgra_count)) {
     candidates.push_back(s);
   }
 
-  if (!candidates.empty()) {
-    return *std::min_element(candidates.begin(), candidates.end(),
-                             [](const CgraShape &a, const CgraShape &b) {
-                               int area_a = a.area();
-                               int area_b = b.area();
-                               if (area_a != area_b)
-                                 return area_a < area_b;
-                               return std::abs(a.rows - a.cols) <
-                                      std::abs(b.rows - b.cols);
-                             });
-  }
+  // Selects the shape with smallest bounding-box area first;
+  // among equal areas, prefers the most square-like shape.
+  assert(!candidates.empty() &&
+         "No valid shapes for cgra_count in [1..kMaxCgrasPerTask]");
+  return *std::min_element(candidates.begin(), candidates.end(),
+                           [](const CgraShape &a, const CgraShape &b) {
+                             int area_a = a.area();
+                             int area_b = b.area();
+                             if (area_a != area_b){
+                               return area_a < area_b;
+                             }
+                             return std::abs(a.rows - a.cols) <
+                                    std::abs(b.rows - b.cols);
+                           });
+}
 
-  // Fallback: smallest bounding box (should not be reached for 1..4 CGRAs).
-  CgraShape best = {kCgraGridRows, kCgraGridCols, false, {}};
-  for (int r = 1; r <= kCgraGridRows; ++r) {
-    for (int c = 1; c <= kCgraGridCols; ++c) {
-      if (r * c >= cgra_count && r * c < best.area()) {
-        best = {r, c, false, {}};
+//===----------------------------------------------------------------------===//
+// Global Placement Feasibility Check
+//===----------------------------------------------------------------------===//
+
+// Generates all placement-candidate shapes for `cgra_count` CGRAs, including
+// rotations.  Rectangular shapes include both orientations (rows×cols and
+// cols×rows, deduplicated for squares).  Non-rectangular shapes include all
+// four 90° rotations.
+//
+// Ordering (tried first to last):
+//   1. Rectangular shapes, sorted by squareness (e.g. 2×2 before 1×4),
+//      with smaller bounding-box area as tiebreaker.
+//   2. Non-rectangular shapes (L, T, etc.) in all unique rotations.
+static SmallVector<CgraShape> getAllPlacementShapes(int cgra_count) {
+  SmallVector<CgraShape> shapes;
+
+  // 1. Rectangular shapes with both orientations, deduplicated.
+  {
+    llvm::DenseSet<int64_t> seen_keys; // encodes (rows<<16)|cols
+    for (int row_dim = 1; row_dim <= kCgraGridRows; ++row_dim) {
+      for (int col_dim = 1; col_dim <= kCgraGridCols; ++col_dim) {
+        if (row_dim * col_dim == cgra_count) {
+          int64_t key = ((int64_t)row_dim << 16) | col_dim;
+          if (seen_keys.insert(key).second) {
+            shapes.push_back({row_dim, col_dim, true, {}});
+            // Adds the rotated orientation if different (e.g. 1×4 -> 4×1).
+            if (row_dim != col_dim) {
+              int64_t rotated_key = ((int64_t)col_dim << 16) | row_dim;
+              if (seen_keys.insert(rotated_key).second)
+                shapes.push_back({col_dim, row_dim, true, {}});
+            }
+          }
+        }
       }
     }
+    // Sorts rectangles: prefer more square-like (smaller |rows-cols|), then
+    // smaller bounding-box area as tiebreaker.
+    llvm::sort(shapes, [](const CgraShape &lhs, const CgraShape &rhs) {
+      int squareness_lhs = std::abs(lhs.rows - lhs.cols);
+      int squareness_rhs = std::abs(rhs.rows - rhs.cols);
+      if (squareness_lhs != squareness_rhs)
+        return squareness_lhs < squareness_rhs;
+      return lhs.area() < rhs.area();
+    });
   }
-  return best;
+
+  // 2. Non-rectangular shapes with all four 90° rotations.
+  auto base_non_rect = getNonRectangularShapes(cgra_count);
+  for (const auto &base : base_non_rect) {
+    // Generates 4 rotations of the cgra_positions list.
+    // Rotation by 90° CW: (col, row) -> (row, -col).
+    // Each rotation is normalised so that offsets start from (0, 0).
+    SmallVector<SmallVector<std::pair<int, int>>, 4> rotation_variants;
+    rotation_variants.push_back(
+        SmallVector<std::pair<int, int>>(base.cgra_positions));
+
+    // Rotates 3 more times (90°, 180°, 270°).
+    auto prev_positions = base.cgra_positions;
+    for (int rotation_idx = 0; rotation_idx < 3; ++rotation_idx) {
+      SmallVector<std::pair<int, int>> rotated_positions;
+      for (auto &[col_off, row_off] : prev_positions)
+        rotated_positions.push_back(
+            {row_off, -col_off}); // 90° CW in (col, row) space
+
+      // Normalises to non-negative offsets starting from (0, 0).
+      int min_col = INT_MAX, min_row = INT_MAX;
+      for (auto &[col_off, row_off] : rotated_positions) {
+        min_col = std::min(min_col, col_off);
+        min_row = std::min(min_row, row_off);
+      }
+      for (auto &[col_off, row_off] : rotated_positions) {
+        col_off -= min_col;
+        row_off -= min_row;
+      }
+      rotation_variants.push_back(rotated_positions);
+      prev_positions = rotated_positions;
+    }
+
+    // Deduplicates rotations that produce the same position set.
+    llvm::DenseSet<int64_t> seen_hashes;
+    for (auto &positions : rotation_variants) {
+      // Sorts positions for canonical comparison.
+      auto sorted_positions = positions;
+      llvm::sort(sorted_positions,
+                 [](const std::pair<int, int> &lhs,
+                    const std::pair<int, int> &rhs) { return lhs < rhs; });
+      // Simple hash of sorted positions.
+      int64_t hash = 0;
+      for (auto &[col_off, row_off] : sorted_positions)
+        hash = hash * 131 + col_off * 17 + row_off;
+      if (!seen_hashes.insert(hash).second)
+        continue;
+
+      // Computes bounding box for this rotation.
+      int max_col = 0, max_row = 0;
+      for (auto &[col_off, row_off] : positions) {
+        max_col = std::max(max_col, col_off);
+        max_row = std::max(max_row, row_off);
+      }
+      shapes.push_back(
+          {max_row + 1, max_col + 1, false, std::move(positions)});
+    }
+  }
+
+  return shapes;
+}
+
+// Simulates greedy placement of all tasks' shapes on the kCgraGridRows ×
+// kCgraGridCols grid to verify that they physically fit without overlap.
+//
+// For each task, all valid shapes (including rotations) are tried.  Rectangular
+// shapes prefer square-like orientations (e.g. 2×2 over 1×4).  Non-rectangular
+// shapes are tried in all four 90° rotations.
+//
+// `task_cgra_counts` contains the cgra_count for every task in the graph
+// (including the speculatively modified one).
+//
+// Returns true if all tasks can be placed without overlap.
+static bool canAllTasksFitOnGrid(ArrayRef<int> task_cgra_counts) {
+  // Quick capacity check: total CGRAs must not exceed grid size.
+  int total_cgras = 0;
+  for (int count : task_cgra_counts)
+    total_cgras += count;
+  if (total_cgras > kTotalCGRAs)
+    return false;
+
+  // Simulates placement on a grid.
+  bool occupied[kCgraGridRows][kCgraGridCols] = {};
+
+  // Sorts tasks by descending cgra_count for better packing (largest-first
+  // decreasing, a standard bin-packing heuristic).  Each task may have a
+  // different cgra_count because the balance phase only increments one
+  // bottleneck at a time; this array reflects the heterogeneous allocation
+  // across all tasks in the current trial configuration.
+  SmallVector<int> sorted_counts(task_cgra_counts.begin(),
+                                 task_cgra_counts.end());
+  llvm::sort(sorted_counts, [](int lhs, int rhs) { return lhs > rhs; });
+
+  for (int cgra_count : sorted_counts) {
+    SmallVector<CgraShape> candidates = getAllPlacementShapes(cgra_count);
+    bool placed = false;
+
+    for (const auto &shape : candidates) {
+      if (placed)
+        break;
+
+      if (shape.is_rectangular) {
+        // Rectangular: tries every origin where the rows×cols bbox fits.
+        for (int origin_row = 0;
+             origin_row <= kCgraGridRows - shape.rows && !placed;
+             ++origin_row) {
+          for (int origin_col = 0;
+               origin_col <= kCgraGridCols - shape.cols && !placed;
+               ++origin_col) {
+            bool fits = true;
+            for (int delta_row = 0; delta_row < shape.rows && fits;
+                 ++delta_row)
+              for (int delta_col = 0; delta_col < shape.cols && fits;
+                   ++delta_col)
+                if (occupied[origin_row + delta_row][origin_col + delta_col])
+                  fits = false;
+            if (fits) {
+              for (int delta_row = 0; delta_row < shape.rows; ++delta_row)
+                for (int delta_col = 0; delta_col < shape.cols; ++delta_col)
+                  occupied[origin_row + delta_row][origin_col + delta_col] =
+                      true;
+              placed = true;
+            }
+          }
+        }
+      } else {
+        // Non-rectangular: cgra_positions stores (col, row) offsets.
+        for (int origin_row = 0; origin_row < kCgraGridRows && !placed;
+             ++origin_row) {
+          for (int origin_col = 0; origin_col < kCgraGridCols && !placed;
+               ++origin_col) {
+            bool fits = true;
+            for (auto &[col_off, row_off] : shape.cgra_positions) {
+              int abs_row = origin_row + row_off;
+              int abs_col = origin_col + col_off;
+              if (abs_row < 0 || abs_row >= kCgraGridRows || abs_col < 0 ||
+                  abs_col >= kCgraGridCols || occupied[abs_row][abs_col]) {
+                fits = false;
+                break;
+              }
+            }
+            if (fits) {
+              for (auto &[col_off, row_off] : shape.cgra_positions)
+                occupied[origin_row + row_off][origin_col + col_off] = true;
+              placed = true;
+            }
+          }
+        }
+      }
+    }
+
+    if (!placed)
+      return false;
+  }
+  return true;
 }
 
 //===----------------------------------------------------------------------===//
@@ -857,15 +1041,32 @@ public:
       int old_cgra_count = bottleneck->cgra_count;
       int new_cgra_count = old_cgra_count + 1;
 
-      // Check if incrementing cgra_count is feasible on the 4×4 grid.
-      // TODO: This currently only checks the capacity (total CGRA count). Ideally, 
-      // we should invoke a global placement pass (aka AllocateCgraToTaskPass) here to 
-      // verify if the speculatively increased CGRA count and its proposed shape 
-      // actually fit on the 4x4 grid alongside other previously allocated tasks.
-      //
+      // Check 1: Per-task CGRA limit.
       if (!canFitOnGrid(new_cgra_count)) {
         saturated_nodes.insert(bottleneck);
         continue;
+      }
+
+      // Check 2: Global placement feasibility — simulates placing all tasks'
+      // shapes (with the speculatively increased cgra_count for the bottleneck)
+      // on the physical kCgraGridRows × kCgraGridCols grid to verify they
+      // fit without overlap.
+      {
+        SmallVector<int> trial_counts;
+        for (auto &node : graph.nodes) {
+          if (node.get() == bottleneck)
+            trial_counts.push_back(new_cgra_count);
+          else
+            trial_counts.push_back(node->cgra_count);
+        }
+        if (!canAllTasksFitOnGrid(trial_counts)) {
+          llvm::errs() << "  Balance: global placement infeasible for Task "
+                       << bottleneck->id << " ("
+                       << bottleneck->op.getTaskName().str()
+                       << ") with cgra_count=" << new_cgra_count << "\n";
+          saturated_nodes.insert(bottleneck);
+          continue;
+        }
       }
 
       // Saves state for potential rollback.
@@ -1782,14 +1983,8 @@ struct ResourceAwareTaskOptimizationPass
         // intermediate iterations; ii, steps, and trip_count live only in the
         // graph node and must be persisted here.
         //
-        // Note: no re-profiling is done here.  When balance-skip-mapper=true
-        // (the default), the balance phase uses analytical estimates; those
-        // are the values written to the final IR.  When
-        // balance-skip-mapper=false, the balance phase already ran the real
-        // mapper for each speculative probe, so the graph already contains
-        // accurate compiled_ii / steps values.  Either way, the converged
-        // graph state is authoritative and written directly to IR.
-
+        // Phase A: Write speculative attributes so AllocateCgraToTask can
+        // read cgra_count and tile_shape from the IR.
         for (auto &node : graph.nodes) {
           OpBuilder b(node->op);
           node->shape = pickBestShape(node->cgra_count);
@@ -1799,17 +1994,108 @@ struct ResourceAwareTaskOptimizationPass
           node->op->setAttr("steps", b.getI32IntegerAttr(node->steps));
           node->op->setAttr("trip_count",
                             b.getI32IntegerAttr(node->trip_count));
-          // Writes tile_shape attribute: simple "NxM" bounding-box string.
-          // The detailed occupancy diagram is printed in the summary below.
           std::string shape_str = node->shape.irAttr();
           node->op->setAttr("tile_shape", b.getStringAttr(shape_str));
         }
 
-        // Runs AllocateCgraToTaskPass to produce global placement (task_mapping_info)
-        // with multi-CGRA support. The pass reads cgra_count and tile_shape
-        // from each task and places them on the 4x4 grid, validating that
-        // shapes physically fit and don't overlap.
+        // Phase B: Run global placement.  AllocateCgraToTask reads
+        // cgra_count / tile_shape from the IR and produces
+        // task_mapping_info with the actual cgra_positions on the 4×4 grid.
         taskflow::runAllocateCgraToTask(func, kCgraGridRows, kCgraGridCols);
+
+        // Phase C: Post-placement reconciliation.
+        // Reads back the actual placed shape from task_mapping_info
+        // and re-profiles tasks whose placed shape
+        // differs from the speculative pickBestShape.  
+        for (auto &node : graph.nodes) {
+          auto mapping_attr =
+              node->op->getAttrOfType<DictionaryAttr>("task_mapping_info");
+          if (!mapping_attr)
+            continue;
+          auto positions_attr =
+              mapping_attr.getAs<ArrayAttr>("cgra_positions");
+          if (!positions_attr || positions_attr.empty())
+            continue;
+
+          // Extracts (col, row) pairs from the placement result.
+          SmallVector<std::pair<int, int>> placed_positions;
+          for (Attribute pos_attr : positions_attr) {
+            auto coord = cast<DictionaryAttr>(pos_attr);
+            int row = cast<IntegerAttr>(coord.get("row")).getInt();
+            int col = cast<IntegerAttr>(coord.get("col")).getInt();
+            placed_positions.emplace_back(col, row);
+          }
+
+          int actual_cgra_count = static_cast<int>(placed_positions.size());
+
+          // Computes bounding box of the actual placement.
+          int min_row = INT_MAX, max_row = INT_MIN;
+          int min_col = INT_MAX, max_col = INT_MIN;
+          for (auto &[col, row] : placed_positions) {
+            min_row = std::min(min_row, row);
+            max_row = std::max(max_row, row);
+            min_col = std::min(min_col, col);
+            max_col = std::max(max_col, col);
+          }
+          int bbox_rows = max_row - min_row + 1;
+          int bbox_cols = max_col - min_col + 1;
+          bool is_rect = (bbox_rows * bbox_cols == actual_cgra_count);
+
+          // Builds the actual CgraShape.
+          CgraShape actual_shape;
+          actual_shape.rows = bbox_rows;
+          actual_shape.cols = bbox_cols;
+          actual_shape.is_rectangular = is_rect;
+          if (!is_rect) {
+            // Normalizes positions to (0,0) origin for the shape.
+            for (auto &[col, row] : placed_positions)
+              actual_shape.cgra_positions.emplace_back(col - min_col,
+                                                       row - min_row);
+          }
+
+          // Checks whether the placed shape differs from the speculative
+          // shape used during balance profiling.
+          bool shape_changed =
+              (actual_cgra_count != node->cgra_count) ||
+              (actual_shape.rows != node->shape.rows) ||
+              (actual_shape.cols != node->shape.cols) ||
+              (actual_shape.is_rectangular != node->shape.is_rectangular);
+
+          if (shape_changed) {
+            llvm::errs()
+                << "[ResourceAware] Post-placement shape mismatch for "
+                << node->op.getTaskName()
+                << ": speculative=" << node->shape.describe(node->cgra_count)
+                << ", actual=" << actual_shape.describe(actual_cgra_count)
+                << " — re-profiling\n";
+
+            // Updates the node to reflect the actual placement.
+            node->cgra_count = actual_cgra_count;
+            node->shape = actual_shape;
+
+            // Re-profiles with the actual shape.
+            graph.profileTaskPublic(node.get(), node->op,
+                                    /*skip_mapper=*/use_analytical);
+
+            // Writes updated attributes back to IR.
+            OpBuilder b(node->op);
+            node->op->setAttr("cgra_count",
+                              b.getI32IntegerAttr(node->cgra_count));
+            node->op->setAttr("compiled_ii",
+                              b.getI32IntegerAttr(node->ii));
+            node->op->setAttr("steps",
+                              b.getI32IntegerAttr(node->steps));
+            std::string actual_shape_str = node->shape.irAttr();
+            node->op->setAttr("tile_shape",
+                              b.getStringAttr(actual_shape_str));
+
+            llvm::errs()
+                << "[ResourceAware] Post-placement re-profiled "
+                << node->op.getTaskName()
+                << ": compiled_ii=" << node->ii
+                << ", steps=" << node->steps << "\n";
+          }
+        }
 
         break;
       }
@@ -1828,15 +2114,55 @@ struct ResourceAwareTaskOptimizationPass
       std::vector<std::vector<int>> combined_grid(
           kCgraGridRows, std::vector<int>(kCgraGridCols, -1));
 
-      // Packs tasks onto the grid left-to-right, top-to-bottom.
-      int next_col = 0, next_row = 0;
+      // Packs tasks onto the grid using actual placement results.
+      int next_col = 0, next_row = 0; // Fallback for tasks without placement.
       int task_idx = 0;
 
       llvm::errs() << "\n=== Tile Occupation Summary (4x" << kCgraGridCols
                    << " CGRA Grid) ===\n";
 
       for (auto &node : final_graph.nodes) {
-        auto shape = pickBestShape(node->cgra_count);
+        // Reads the actual placed shape from task_mapping_info instead of
+        // re-computing with pickBestShape, so the summary is consistent
+        // with the real placement result.
+        CgraShape shape = pickBestShape(node->cgra_count); // fallback
+        SmallVector<std::pair<int, int>> actual_grid_positions;
+
+        if (auto mapping_attr =
+                node->op->getAttrOfType<DictionaryAttr>("task_mapping_info")) {
+          if (auto positions_attr =
+                  mapping_attr.getAs<ArrayAttr>("cgra_positions")) {
+            if (!positions_attr.empty()) {
+              actual_grid_positions.clear();
+              int min_row = INT_MAX, max_row = INT_MIN;
+              int min_col = INT_MAX, max_col = INT_MIN;
+              for (Attribute pos_attr : positions_attr) {
+                auto coord = cast<DictionaryAttr>(pos_attr);
+                int row = cast<IntegerAttr>(coord.get("row")).getInt();
+                int col = cast<IntegerAttr>(coord.get("col")).getInt();
+                actual_grid_positions.emplace_back(col, row);
+                min_row = std::min(min_row, row);
+                max_row = std::max(max_row, row);
+                min_col = std::min(min_col, col);
+                max_col = std::max(max_col, col);
+              }
+              int bbox_rows = max_row - min_row + 1;
+              int bbox_cols = max_col - min_col + 1;
+              int placed_count =
+                  static_cast<int>(actual_grid_positions.size());
+              bool is_rect = (bbox_rows * bbox_cols == placed_count);
+              shape.rows = bbox_rows;
+              shape.cols = bbox_cols;
+              shape.is_rectangular = is_rect;
+              shape.cgra_positions.clear();
+              if (!is_rect) {
+                for (auto &[c, r] : actual_grid_positions)
+                  shape.cgra_positions.emplace_back(c - min_col, r - min_row);
+              }
+            }
+          }
+        }
+
         int tile_rows = shape.rows * neura::getArchitecture().getPerCgraRows();
         int tile_cols =
             shape.cols * neura::getArchitecture().getPerCgraColumns();
@@ -1873,20 +2199,29 @@ struct ResourceAwareTaskOptimizationPass
           llvm::errs() << "\n";
         }
 
-        // Places onto combined grid (pack sequentially).
-        int placed = 0;
-        for (int r = next_row; r < kCgraGridRows && placed < node->cgra_count;
-             ++r) {
-          for (int c = (r == next_row ? next_col : 0);
-               c < kCgraGridCols && placed < node->cgra_count; ++c) {
-            combined_grid[r][c] = task_idx;
-            next_row = r;
-            next_col = c + 1;
-            if (next_col >= kCgraGridCols) {
-              next_col = 0;
-              next_row = r + 1;
+        // Places onto combined grid using actual placement positions when
+        // available, falling back to sequential packing.
+        if (!actual_grid_positions.empty()) {
+          for (auto &[col, row] : actual_grid_positions) {
+            if (row >= 0 && row < kCgraGridRows && col >= 0 &&
+                col < kCgraGridCols)
+              combined_grid[row][col] = task_idx;
+          }
+        } else {
+          int placed = 0;
+          for (int r = next_row;
+               r < kCgraGridRows && placed < node->cgra_count; ++r) {
+            for (int c = (r == next_row ? next_col : 0);
+                 c < kCgraGridCols && placed < node->cgra_count; ++c) {
+              combined_grid[r][c] = task_idx;
+              next_row = r;
+              next_col = c + 1;
+              if (next_col >= kCgraGridCols) {
+                next_col = 0;
+                next_row = r + 1;
+              }
+              ++placed;
             }
-            ++placed;
           }
         }
         ++task_idx;
