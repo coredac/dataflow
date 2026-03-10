@@ -552,3 +552,137 @@ def generate_optimization_figure(
     plt.savefig(str(save_path), bbox_inches="tight")
     print(f"Figure saved to {save_path}")
     plt.close(fig)
+
+
+def generate_scalability_figure(
+    speedup_data: Dict[str, List[float]],
+    improvement_rate: List[float],
+    benchmarks: List[str],
+    save_path: Path,
+) -> None:
+    """
+    Grouped bar chart comparing 4×4 and 6×6 NEURA-ST normalised speedup,
+    with an improvement-rate line plotted on a twin right Y-axis.
+
+    speedup_data    : dict mapping each config name → list of speedup values
+                      of length len(benchmarks)+1 (last entry = geomean).
+                      The 4×4 config is expected to be all 1.0 (baseline).
+    improvement_rate: list of (6×6 speedup − 4×4 speedup) × 100 values,
+                      length len(benchmarks)+1 (last entry = geomean).
+    benchmarks      : ordered benchmark names (without "Geomean").
+    save_path       : destination PDF/PNG path.
+    """
+    try:
+        import matplotlib.pyplot as plt
+        import numpy as np
+        from matplotlib.ticker import FuncFormatter
+    except ImportError:
+        print("[WARN] matplotlib not available; skipping scalability figure.")
+        return
+
+    plt.rcParams.update({"font.size": 14})
+
+    bench_labels = list(benchmarks) + ["Geomean"]
+    config_names = list(speedup_data.keys())
+
+    # Replace None with 0 for plotting
+    data: Dict[str, List[float]] = {
+        cfg: [v if v is not None else 0.0 for v in speedup_data[cfg]]
+        for cfg in config_names
+    }
+
+    last_idx = len(bench_labels) - 1
+    avg_speedups = {cfg: f"{data[cfg][last_idx]:.2f}x" for cfg in config_names}
+
+    fig, ax1 = plt.subplots(figsize=(7, 3))
+    line_color = "#c50313"
+
+    num_configs = len(config_names)
+    group_spacing = 0.5
+    bar_width = (1 - group_spacing) / num_configs
+    index = np.arange(len(bench_labels))
+
+    colors = ["#72bcd5", "#ffd06e"]
+    bars = []
+    for i, cfg in enumerate(config_names):
+        position = index + (i - num_configs / 2 + 0.5) * bar_width
+        bar = ax1.bar(position, data[cfg], bar_width,
+                      color=colors[i % len(colors)], label=cfg, edgecolor="black")
+        bars.append(bar)
+
+    ax1.set_ylabel("Normalized Speedup", fontsize=14)
+
+    # X-axis: inout ticks at divider positions, benchmark labels placed below
+    divider_positions_x = [i - 0.5 for i in range(len(bench_labels) + 1)]
+    ax1.set_xticks(divider_positions_x)
+    ax1.set_xticklabels([])
+    ax1.tick_params(axis="x", which="major", direction="inout", length=6, width=1)
+
+    for i, benchmark in enumerate(bench_labels):
+        weight = "bold" if benchmark == "Geomean" else "normal"
+        ax1.text(i + 0.15, -0.02, benchmark, ha="right", va="top",
+                 fontsize=14, rotation=20, fontweight=weight)
+
+    # Y-axis left: fixed range 0-2 with labelled ticks at 0, 1, 2
+    ax1.set_yticks([0, 0.5, 1, 1.5, 2])
+    ax1.set_yticklabels(["0", "", "1", "", "2"], fontsize=14)
+    ax1.tick_params(axis="y", which="major", direction="inout", length=6, width=1)
+    ax1.set_ylim(0, 2)
+    ax1.set_xlim(-0.5, len(bench_labels) - 0.5)
+
+    # Top spine as dashed line
+    ax1.spines["top"].set_visible(True)
+    ax1.spines["top"].set_linestyle((0, (5, 5)))
+    ax1.spines["top"].set_linewidth(1)
+
+    # Horizontal grid lines
+    for y in [0.5, 1, 1.5]:
+        ax1.axhline(y, color="lightgray", linestyle=(0, (5, 5)),
+                    linewidth=1, alpha=0.7, zorder=0)
+    # Vertical dividers
+    for x in divider_positions_x:
+        ax1.axvline(x, color="lightgray", linewidth=0.8, alpha=0.8, zorder=0)
+
+    # Twin right Y-axis for improvement rate
+    ax2 = ax1.twinx()
+    ax2.set_ylabel("Improvement Rate (%)", fontsize=14, color=line_color)
+    ax2.spines["top"].set_visible(False)
+    ax2.spines["right"].set_color(line_color)
+
+    line = ax2.plot(index + 0.05, improvement_rate, marker="v",
+                    color=line_color, linewidth=2,
+                    markeredgecolor="black", markeredgewidth=0.75, markersize=8,
+                    label="Improvement Rate")
+
+    ax2.set_ylim(0, 100)
+    ax2.set_yticks([0, 25, 50, 75, 100])
+    ax2.set_yticklabels(["0", "25", "50", "75", "100"], fontsize=14)
+    ax2.tick_params(axis="y", which="major", direction="inout", length=6, width=1,
+                    right=True, left=False, color=line_color, labelcolor=line_color)
+
+    def _pct_fmt(x, pos):
+        return f"{int(x)}" if x == int(x) else f"{x:.1f}"
+    ax2.yaxis.set_major_formatter(FuncFormatter(_pct_fmt))
+
+    # Annotate geomean bar tops
+    for i, cfg in enumerate(config_names):
+        avg_val = data[cfg][last_idx]
+        pos = last_idx + (i - num_configs / 2 + 0.5) * bar_width
+        ax1.text(pos, avg_val + 0.03, avg_speedups[cfg],
+                 rotation=90, ha="center", va="bottom",
+                 fontsize=12, fontweight="bold", color="black")
+
+    # Combined legend: bars + improvement rate line
+    all_handles = bars + line
+    all_labels = [h.get_label() for h in bars] + [line[0].get_label()]
+    legend = ax1.legend(all_handles, all_labels,
+                        loc="upper center", bbox_to_anchor=(0.5, 1.3),
+                        ncol=3, handleheight=0.7, handlelength=0.7,
+                        columnspacing=1.0, handletextpad=0.3, frameon=False)
+    legend.get_texts()[-1].set_color(line_color)
+
+    plt.tight_layout()
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(str(save_path), bbox_inches="tight")
+    print(f"Figure saved to {save_path}")
+    plt.close(fig)
