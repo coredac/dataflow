@@ -3,13 +3,16 @@
 Artifact Evaluation – Neura PLDI 2026
 =====================================
 End-to-end pipeline:
-  C++ source  →  (per-arch compilation)  →  Mapped MLIR
-                         ↓
-               Extract compiled_II + steps
-                         ↓
-            Latency model per architecture
-                         ↓
-          Speedup normalised to Marionette → plot
+  C++ source -> compile (per-arch) -> mapped MLIR -> extract II+steps
+             -> latency model -> normalised metrics -> figures
+
+Figures produced:
+  fig13  Speedup (normalised to Marionette)
+  fig14  IPC (instructions per cycle)
+  fig15  Performance per Area
+  fig16  Total Energy (RipTide vs NEURA-SO)
+  fig17  Optimisation pass comparison
+  fig18  Scalability (4x4 vs 6x6 NEURA-ST)
 
 Run:  python3 evaluation/main.py
 """
@@ -17,956 +20,80 @@ Run:  python3 evaluation/main.py
 from __future__ import annotations
 import csv
 import functools
-import re
-import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-# Allow   from util.figures import ...   regardless of cwd
 sys.path.insert(0, str(Path(__file__).parent))
-from util.figures import (generate_speedup_figure, generate_ppa_figure, generate_ipc_figure,
-                          generate_energy_figure, generate_optimization_figure,
-                          generate_scalability_figure)
 
-# ════════════════════════════════════════════════════════════════════════════
-#  SECTION 1 – TOOL PATHS  (adjust if locations differ)
-# ════════════════════════════════════════════════════════════════════════════
+from util.config import (
+    PLDI_TEST_DIR, RESULTS_DIR, FIGS_DIR,
+    NEURA_OPT, NEURA_OPT_4_4,
+    ARCH_AREA_MM2, ARCH_POWER_MW, ENERGY_ARCHS,
+    BENCH_ARCH_INSTRUCTIONS,
+    ARCH_CONFIGS, BENCH_ARCH_SEGS, OPT_VARIANTS,
+    BENCHMARKS, ARCHS, SCALABILITY_BENCHMARKS,
+)
+from util.compiler import compile_segment, compile_opt_segment, extract_ii_steps
+from util.latency import bench_latency
+from util.visualizer import (
+    generate_speedup_figure, generate_ppa_figure, generate_ipc_figure,
+    generate_energy_figure, generate_optimization_figure, generate_scalability_figure,
+)
 
-CGEIST    = "/home/lucas/Project/dataflow/thirdparty/polygeist/cgeist"
-MLIR_OPT  = "mlir-opt"
-NEURA_OPT = "/home/lucas/Project/dataflow/build/tools/mlir-neura-opt/mlir-neura-opt"
-NEURA_OPT_4_4 = "/home/lucas/Project/dataflow/build/tools/mlir-neura-opt/mlir-neura-opt-4x4"
 
-PLDI_TEST_DIR = Path("/home/lucas/Project/dataflow/PLDI-Test")
-RESULTS_DIR   = Path("/home/lucas/Project/dataflow/evaluation/results")
-FIGS_DIR      = Path("/home/lucas/Project/dataflow/evaluation/figs")
+# ── Helpers ──────────────────────────────────────────────────────────────
 
-# Cycles lost on each CPU ↔ CGRA context switch
-CPU_TRANSITION_CYCLES = 20
-# Cycles lost on Marionette controller-based context switch
-MARIONETTE_TRANSITION_CYCLES = 5
+def _geomean(values: list[float]) -> Optional[float]:
+    if not values:
+        return None
+    return functools.reduce(lambda a, b: a * b, values, 1) ** (1 / len(values))
 
-# ── Total instruction counts per (benchmark, architecture) ────────────────
-# IPC = BENCH_ARCH_INSTRUCTIONS[(bench, arch)] / total_cycles
-# These are manually collected from the mapped MLIR files, counting the number of instructions and computing total instructions during runtime.
-BENCH_ARCH_INSTRUCTIONS: dict[tuple, Optional[int]] = {
-    # ── conv ────────────────────────────────────────────────────────
-    ("conv", "Marionette"): 114573312,
-    ("conv", "ICED"):       305528832,
-    ("conv", "RipTide"):    196411392,
-    ("conv", "NEURA-SO"):   190955520,
-    ("conv", "NEURA-ST"):   190955520,
-    # ── relu ────────────────────────────────────────────────────────
-    ("relu", "Marionette"): 10752,
-    ("relu", "ICED"):       11776,
-    ("relu", "RipTide"):    9216,
-    ("relu", "NEURA-SO"):   15360,
-    ("relu", "NEURA-ST"):   15360,
-    # ── spmv ────────────────────────────────────────────────────────
-    ("spmv", "Marionette"): 79040,
-    ("spmv", "ICED"):       271700,
-    ("spmv", "RipTide"):    167960,
-    ("spmv", "NEURA-SO"):   167960,
-    ("spmv", "NEURA-ST"):   207480,
-    # ── gemm ────────────────────────────────────────────────────────
-    ("gemm", "Marionette"): 4718592,
-    ("gemm", "ICED"):       13893632,
-    ("gemm", "RipTide"):    8650752,
-    ("gemm", "NEURA-SO"):   9175040,
-    ("gemm", "NEURA-ST"):   9699328,
-    # ── bicg ────────────────────────────────────────────────────────
-    ("bicg", "Marionette"): 87790500,
-    ("bicg", "ICED"):       211470000,
-    ("bicg", "RipTide"):    199500000,
-    ("bicg", "NEURA-SO"):   191520000,
-    ("bicg", "NEURA-ST"):   159600000,
-    # ── mvt ─────────────────────────────────────────────────────────
-    ("mvt", "Marionette"):  80000000,
-    ("mvt", "ICED"):        208000000,
-    ("mvt", "RipTide"):     136000000,
-    ("mvt", "NEURA-SO"):    140000000,
-    ("mvt", "NEURA-ST"):    144000000,
-    # ── jacobi ──────────────────────────────────────────────────────
-    ("jacobi", "Marionette"): 28000000,
-    ("jacobi", "ICED"):       86000000,
-    ("jacobi", "RipTide"):    56000000,
-    ("jacobi", "NEURA-SO"):   48000000,
-    ("jacobi", "NEURA-ST"):   48000000,
-    # ── fft ─────────────────────────────────────────────────────────
-    ("fft", "Marionette"):  3456,
-    ("fft", "ICED"):        7296,
-    ("fft", "RipTide"):     3584,
-    ("fft", "NEURA-SO"):    3456,
-    ("fft", "NEURA-ST"):    5376,
-    # ── merge-sort ──────────────────────────────────────────────────
-    ("merge-sort", "Marionette"): 23552,
-    ("merge-sort", "ICED"):       25600,
-    ("merge-sort", "RipTide"):    13312,
-    ("merge-sort", "NEURA-SO"):   23552,
-    ("merge-sort", "NEURA-ST"):   45056,
-    # ── bfs ─────────────────────────────────────────────────────────
-    ("bfs", "Marionette"):  6144,
-    ("bfs", "ICED"):        6656,
-    ("bfs", "RipTide"):     5120,
-    ("bfs", "NEURA-SO"):    6144,
-    ("bfs", "NEURA-ST"):    15360,
-    # ── floyd ───────────────────────────────────────────────────────
-    ("floyd", "Marionette"): 12000000000,
-    ("floyd", "ICED"):       12000000000,
-    ("floyd", "RipTide"):    12000000000,
-    ("floyd", "NEURA-SO"):   12000000000,
-    ("floyd", "NEURA-ST"):   39000000000
-}
 
-# Power per tile in mW (used for total energy computation)
-# Only RipTide and NEURA-SO are compared in the energy figure.
-ARCH_POWER_MW: dict[str, float] = {
-    "RipTide":  9.311,
-    "NEURA-SO": 9.262,
-}
-ENERGY_ARCHS = ["RipTide", "NEURA-SO"]
+def _print_table(header: list[str], rows: list[list], col_width: int = 14):
+    print("".join(f"{h:<{col_width}s}" for h in header))
+    for row in rows:
+        print("".join(f"{str(v):<{col_width}s}" for v in row))
 
-# CGRA area in mm²  (used for normalised Perf/Area computation)
-ARCH_AREA_MM2: dict[str, float] = {
-    "Marionette": 2.68353,
-    "ICED":       0.882533225,
-    "RipTide":    0.679615265,
-    "NEURA-SO":   0.668016,
-    "NEURA-ST":   0.922508964,
-}
 
-# ════════════════════════════════════════════════════════════════════════════
-#  SECTION 2 – ARCHITECTURE CONFIGURATIONS
-#
-#  Each ArchConfig bundles together:
-#   • the folder name inside PLDI-Test/<bench>/
-#   • the neura-opt pass sequence that produces the dataflow IR
-#   • the mapping mode and the expected suffix of the resulting mapped file
-#   • is_body_only: Marionette maps the innermost body (both loops CPU-driven)
-# ════════════════════════════════════════════════════════════════════════════
+def _write_csv(path: Path, header: list[str], rows: list[list]):
+    with path.open("w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(header)
+        for row in rows:
+            writer.writerow(row)
+    print(f"Data written to {path}")
 
-@dataclass
-class ArchConfig:
-    name: str
-    folder: str              # e.g. "NEURA-ST", "OpenCGRA", "Marionette"
-    dataflow_passes: list    # passed directly to neura-opt after neura lowering
-    mapping_mode: str        # "spatial-temporal" | "spatial-only"
-    mapped_suffix: str       # suffix of the final mapped MLIR file
-    is_body_only: bool = False
 
+def _fmt(v, fmt=".3f"):
+    return f"{v:{fmt}}" if v is not None else "N/A"
 
-ARCH_CONFIGS: dict[str, ArchConfig] = {
 
-    "NEURA-ST": ArchConfig(
-        name="NEURA-ST", folder="NEURA-ST",
-        dataflow_passes=[
-            "--canonicalize-cast", "--fold-constant",
-            "--canonicalize-live-in", "--leverage-predicated-value",
-            "--transform-ctrl-to-data-flow", "--fold-constant",
-        ],
-        mapping_mode="spatial-temporal",
-        mapped_suffix="_st_map.mlir",
-    ),
+# ── Benchmark runners ────────────────────────────────────────────────────
 
-    "NEURA-SO": ArchConfig(
-        name="NEURA-SO", folder="NEURA-SO",
-        dataflow_passes=[
-            "--canonicalize-cast", "--fold-constant",
-            "--canonicalize-live-in", "--leverage-predicated-value",
-            "--transform-ctrl-to-data-flow", "--fold-constant",
-        ],
-        mapping_mode="spatial-only",
-        mapped_suffix="_so_map.mlir",
-    ),
-
-    # ICED baseline
-    "ICED": ArchConfig(
-        name="ICED", folder="OpenCGRA",
-        dataflow_passes=[
-            "--canonicalize-cast",
-            "--canonicalize-live-in", "--leverage-predicated-value",
-            "--transform-ctrl-to-data-flow",
-        ],
-        mapping_mode="spatial-temporal",
-        mapped_suffix="_st_map.mlir",
-    ),
-
-    # Marionette: spatial-only, maps the innermost BODY (CPU drives every loop)
-    "Marionette": ArchConfig(
-        name="Marionette", folder="Marionette",
-        dataflow_passes=[
-            "--canonicalize-cast","--fold-constant",
-            "--canonicalize-live-in", "--leverage-predicated-value",
-            "--transform-ctrl-to-data-flow", "--fold-constant",
-        ],
-        mapping_mode="spatial-only",
-        mapped_suffix="_so_map.mlir",
-        is_body_only=True,
-    ),
-
-    # RipTide: spatial-only, steering-based dataflow
-    "RipTide": ArchConfig(
-        name="RipTide", folder="RipTide",
-        dataflow_passes=[
-            "--canonicalize-cast",
-            "--canonicalize-live-in", "--leverage-predicated-value",
-            "--transform-ctrl-to-data-flow",
-            "--transform-to-steer-control", "--remove-predicated-type",
-        ],
-        mapping_mode="spatial-only",
-        mapped_suffix="_steer_map.mlir",
-    ),
-}
-
-# ════════════════════════════════════════════════════════════════════════════
-#  SECTION 3 – BENCHMARK EXECUTION CONFIGURATIONS
-#
-#  SegConfig describes ONE compiled segment (one .cpp → one mapped MLIR).
-#
-#  Two execution models
-#  ─────────────────────────────────────────────────────────────────────────
-#  body_only = False  (NEURA-ST / NEURA-SO / ICED / RipTide)
-#    • CGRA pipelines `cgra_trips` inner iterations.
-#    • CPU drives all enclosing loops  (trip counts in `cpu_trips`).
-#    • Latency = prod(cpu_trips) × [(cgra_trips − 1) × II + steps
-#                                    + CPU_TRANSITION_CYCLES]
-#
-#  body_only = True   (Marionette)
-#    • CGRA executes a single body invocation (no loop inside the function).
-#    • CPU drives ALL loops; `cpu_trips` lists every level top→bottom.
-#    • Latency = prod(cpu_trips) × [steps + CPU_TRANSITION_CYCLES]
-#
-#  Multi-kernel benchmarks (jacobi, bicg-SO, bicg-RipTide) are stored as a
-#  list of SegConfigs.  Latencies are combined in two ways:
-#
-#  • Independent segments (group=-1): summed independently.
-#  • Grouped segments (group≥0): share the same outer CPU loop.  Their
-#    per-outer-iteration costs are summed first, then multiplied by the
-#    shared outer trip counts.  This avoids double-counting the outer t.
-#    Example bicg Marionette, t=5:
-#      cost = 2100 × [(steps_outer+t)·1 + (steps_inner+t)·1900]
-#           = ((5+5)·1900 + 5 + 1) × 2100
-# ════════════════════════════════════════════════════════════════════════════
-
-@dataclass
-class SegConfig:
-    cpp_file: str        # relative to PLDI_TEST_DIR/<bench>/<arch_folder>/
-    body_only: bool      # False → CGRA owns inner loop; True → Marionette body
-    cpu_trips: list      # CPU-driven loop trip counts for THIS segment (outermost → innermost)
-    cgra_trips: int = 1  # inner loop trip count handled by CGRA (ignored when body_only)
-    # ── shared-outer-loop grouping (Marionette only) ──────────────────────
-    # Segments with the same group id share an outer CPU loop.  Their costs
-    # are combined as: prod(group_outer_trips) × Σ cost_per_outer_iter(seg).
-    group: int = -1                                         # -1 = independent
-    group_outer_trips: list = field(default_factory=list)  # shared outer trips
-    fast_switch: bool = True  # Whether the arch supports fast CPU↔CGRA context switch.
-                              # body_only=True:  True  → t=5  (hardware-managed switch, e.g. Marionette)
-                              #                  False → t=20 (standard CPU context switch)
-                              # body_only=False: True  → modulo-scheduled pipeline
-                              #                           latency = prod(outer)×[(inner−1)×II+steps+t]
-                              #                  False → sequential invocations
-                              #                           latency = prod(outer)×inner×(steps+t)
-
-
-# ── helper ────────────────────────────────────────────────────────────────
-def _SM(cpp, outer, inner):
-    """Shorthand for a self-managed control scheme"""
-    return SegConfig(cpp, body_only=False, cpu_trips=outer, cgra_trips=inner)
-
-def _CL(cpp, all_trips, fast_switch=True):
-    """Shorthand for a controller-based scheme
-
-    The CPU owns every loop level; the CGRA is invoked once per innermost
-    body.  All loop levels (outermost → innermost) are listed in all_trips.
-
-        fast_switch=True  (default, e.g. Marionette) → t = 5
-        fast_switch=False (standard CPU switch)       → t = 20
-
-    cost = _marionette_cost(all_trips, steps, t)
-    """
-    return SegConfig(cpp, body_only=True, cpu_trips=list(all_trips),
-                     fast_switch=fast_switch)
-
-def _MG(cpp, inner_trips, group_id, outer_trips):
-    """Marionette segment whose outer loop is shared with sibling segments.
-
-    inner_trips : trip counts owned by this segment alone.
-                  Use [1] for a single-call body (e.g. an outer init).
-    group_id    : integer key linking all co-grouped segments (scope = one
-                  benchmark × arch entry).
-    outer_trips : shared enclosing loop trip counts (same for all siblings).
-
-    Combined cost = prod(outer_trips) × Σ _marionette_cost(inner_trips, steps, t)
-    """
-    return SegConfig(cpp, body_only=True, cpu_trips=list(inner_trips),
-                     group=group_id, group_outer_trips=list(outer_trips))
-
-
-# BENCH_ARCH_SEGS[(bench_name, arch_name)] → list[SegConfig]
-BENCH_ARCH_SEGS: dict[tuple, list] = {
-
-    # ── conv ─────────────────────────────────────────────────────────────
-    ("conv", "NEURA-ST"):   [_SM("conv.cpp",  [28416], 192)],
-    ("conv", "NEURA-SO"):   [_SM("conv.cpp",  [28416], 192)],
-    ("conv", "ICED"):       [_SM("conv.cpp",  [28416], 192)],
-    ("conv", "RipTide"):    [_SM("conv.cpp",  [28416], 192)],
-    ("conv", "Marionette"): [_CL("conv.cpp", [28416, 192], fast_switch=True)],
-
-    # ── relu ──────────────────────────────────────────────────────────────
-    #  NEURA-ST/SO/RipTide pipeline the loop; ICED cannot → sequential model.
-    ("relu", "NEURA-ST"):   [_SM("relu.cpp", [], 512)],
-    ("relu", "NEURA-SO"):   [_SM("relu.cpp", [], 512)],
-    ("relu", "ICED"):       [_CL("relu.cpp", [512], fast_switch=False)],
-    ("relu", "RipTide"):    [_CL("relu.cpp", [512], fast_switch=False)],
-    ("relu", "Marionette"): [_CL("relu.cpp", [512], fast_switch=True)],
-
-    # ── spmv ──────────────────────────────────────────────────────────────
-    ("spmv", "NEURA-ST"):   [_SM("spmv.cpp", [494], 10)],
-    ("spmv", "NEURA-SO"):   [_SM("spmv.cpp", [494], 10)],
-    ("spmv", "ICED"):       [_SM("spmv.cpp", [494], 10)],
-    ("spmv", "RipTide"):    [_SM("spmv.cpp", [494], 10)],
-    ("spmv", "Marionette"): [_CL("spmv.cpp", [494, 10], fast_switch=True)],
-
-    # ── gemm ──────────────────────────────────────────────────────────────
-    ("gemm", "NEURA-ST"):   [_SM("gemm.cpp", [4096], 64)],
-    ("gemm", "NEURA-SO"):   [_SM("gemm.cpp", [4096], 64)],
-    ("gemm", "ICED"):       [_SM("gemm.cpp", [4096], 64)],
-    ("gemm", "RipTide"):    [_SM("gemm.cpp", [4096], 64)],
-    ("gemm", "Marionette"): [_CL("gemm.cpp", [4096, 64], fast_switch=True)],
-
-    # ── bicg ──────────────────────────────────────────────────────────────
-    ("bicg", "NEURA-ST"):   [_SM("bicg.cpp", [2100], 1900)],
-    ("bicg", "ICED"):       [_SM("bicg.cpp", [2100], 1900)],
-    ("bicg", "NEURA-SO"):   [_SM("bicg_kernel1.cpp", [2100], 1900),
-                              _SM("bicg_kernel2.cpp", [2100], 1900)],
-    ("bicg", "RipTide"):    [_SM("bicg_kernel1.cpp", [2100], 1900),
-                              _SM("bicg_kernel2.cpp", [2100], 1900)],
-    ("bicg", "Marionette"): [
-        _MG("bicg_outer.cpp", [1],    group_id=0, outer_trips=[2100]),
-        _MG("bicg.cpp",       [1900], group_id=0, outer_trips=[2100]),
-    ],
-
-    # ── mvt ───────────────────────────────────────────────────────────────
-    ("mvt", "NEURA-ST"):   [_SM("mvt.cpp", [2000], 2000)],
-    ("mvt", "NEURA-SO"):   [_SM("mvt.cpp", [2000], 2000)],
-    ("mvt", "ICED"):       [_SM("mvt.cpp", [2000], 2000)],
-    ("mvt", "RipTide"):    [_SM("mvt.cpp", [2000], 2000)],
-    ("mvt", "Marionette"): [_CL("mvt.cpp", [2000, 2000], fast_switch=True)],
-
-    # ── jacobi ────────────────────────────────────────────────────────────
-    ("jacobi", "NEURA-ST"):   [_SM("jacobi_kernel1.cpp", [500], 2000),
-                                _SM("jacobi_kernel2.cpp", [500], 2000)],
-    ("jacobi", "NEURA-SO"):   [_SM("jacobi_kernel1.cpp", [500], 2000),
-                                _SM("jacobi_kernel2.cpp", [500], 2000)],
-    ("jacobi", "ICED"):       [_SM("jacobi_kernel1.cpp", [500], 2000),
-                                _SM("jacobi_kernel2.cpp", [500], 2000)],
-    ("jacobi", "RipTide"):    [_SM("jacobi_kernel1.cpp", [500], 2000),
-                                _SM("jacobi_kernel2.cpp", [500], 2000)],
-    ("jacobi", "Marionette"): [
-        _CL("jacobi_kernel1.cpp", [500, 2000], fast_switch=True),
-        _CL("jacobi_kernel2.cpp", [500, 2000], fast_switch=True),
-    ],
-
-    # ── fft ───────────────────────────────────────────────────────────────
-    ("fft", "NEURA-ST"):   [_SM("fft.cpp", [], 128)],
-    ("fft", "NEURA-SO"):   [_CL("fft.cpp", [128], fast_switch=False)],
-    ("fft", "ICED"):       [_SM("fft.cpp", [], 128)],
-    ("fft", "RipTide"):    [_CL("fft.cpp", [128], fast_switch=False)],
-    ("fft", "Marionette"): [_CL("fft.cpp", [128], fast_switch=True)],
-
-    # ── merge-sort ────────────────────────────────────────────────────────
-    ("merge-sort", "NEURA-ST"):   [_SM("merge-sort.cpp", [], 1024)],
-    ("merge-sort", "NEURA-SO"):   [_CL("merge-sort.cpp", [1024], fast_switch=False)],
-    ("merge-sort", "ICED"):       [_CL("merge-sort.cpp", [1024], fast_switch=False)],
-    ("merge-sort", "RipTide"):    [_CL("merge-sort.cpp", [1024], fast_switch=False)],
-    ("merge-sort", "Marionette"): [_CL("merge-sort.cpp", [1024], fast_switch=True)],
-
-    # ── bfs ───────────────────────────────────────────────────────────────
-    ("bfs", "NEURA-ST"):   [_SM("bfs.cpp", [], 256)],
-    ("bfs", "NEURA-SO"):   [_CL("bfs.cpp", [256], fast_switch=False)],
-    ("bfs", "ICED"):       [_CL("bfs.cpp", [256], fast_switch=False)],
-    ("bfs", "RipTide"):    [_CL("bfs.cpp", [256], fast_switch=False)],
-    ("bfs", "Marionette"): [_CL("bfs.cpp", [256], fast_switch=True)],
-
-    # ── floyd ─────────────────────────────────────────────────────────────
-    ("floyd", "NEURA-ST"):   [_SM("floyd.cpp", [1000, 1000], 1000)],
-    ("floyd", "NEURA-SO"):   [_CL("floyd.cpp", [1000, 1000, 1000], fast_switch=False)],
-    ("floyd", "ICED"):       [_CL("floyd.cpp", [1000, 1000, 1000], fast_switch=False)],
-    ("floyd", "RipTide"):    [_CL("floyd.cpp", [1000, 1000, 1000], fast_switch=False)],
-    ("floyd", "Marionette"): [_CL("floyd.cpp", [1000, 1000, 1000], fast_switch=True)],
-}
-
-# ════════════════════════════════════════════════════════════════════════════
-#  SECTION 4 – COMPILATION PIPELINE
-# ════════════════════════════════════════════════════════════════════════════
-
-def _run(cmd: list, label: str = "") -> str:
-    """Run a shell command, raise on failure, return stdout."""
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        tag = f"[{label}] " if label else ""
-        raise RuntimeError(
-            f"{tag}Command failed:\n  {' '.join(cmd)}\nstderr:\n{result.stderr}"
-        )
-    return result.stdout
-
-
-def strip_module_attributes(mlir_text: str) -> str:
-    """
-    cgeist emits:  module attributes { ... } {
-    Subsequent passes require plain:  module {
-    This strips all module-level attributes in one regex pass.
-    Handles the typical single-line attribute block produced by cgeist.
-    """
-    return re.sub(
-        r'(?m)^(\s*module)\s+attributes\s*\{[^\n]*\}\s*(\{)',
-        r'\1 \2',
-        mlir_text,
-    )
-
-
-def compile_segment(
-    seg: SegConfig,
-    arch_cfg: ArchConfig,
-    arch_dir: Path,
-    work_dir: Path,
-) -> Path:
-    """
-    Run the full compilation pipeline for one SegConfig and return the path
-    to the resulting mapped MLIR file.
-
-    Pipeline
-    ────────
-      1. cgeist  cpp → scf MLIR
-      2. (strip module attributes)
-      3. mlir-opt  scf → llvm dialect
-      4. neura-opt  llvm → neura dialect
-      5. neura-opt  neura → dataflow IR   (arch-specific passes)
-      6. neura-opt  dataflow → mapped IR  (insert-data-mov + map-to-accelerator)
-    """
-    cpp_path  = arch_dir / seg.cpp_file
-    base_name = cpp_path.stem          # e.g. "gemm", "bicg_kernel1"
-
-    scf_raw   = work_dir / f"{base_name}_scf_raw.mlir"
-    scf_clean = work_dir / f"{base_name}_scf.mlir"
-    llvm_mlir = work_dir / f"{base_name}_llvm.mlir"
-    neura     = work_dir / f"{base_name}_neura.mlir"
-    dataflow  = work_dir / f"{base_name}_dataflow.mlir"
-    mapped    = work_dir / f"{base_name}{arch_cfg.mapped_suffix}"
-
-    # Step 1 – C++ → scf MLIR
-    _run([CGEIST, str(cpp_path), "-S", "-O3", "-o", str(scf_raw)],
-         f"cgeist:{base_name}")
-
-    # Step 2 – strip module attributes
-    scf_clean.write_text(strip_module_attributes(scf_raw.read_text()))
-
-    # Step 3 – scf MLIR → llvm dialect
-    _run([MLIR_OPT,
-          "--lower-affine", "--convert-scf-to-cf", "--convert-cf-to-llvm",
-          "--convert-arith-to-llvm", "--convert-index-to-llvm",
-          "--reconcile-unrealized-casts",
-          str(scf_clean), "-o", str(llvm_mlir)],
-         f"mlir-opt:{base_name}")
-
-    # Step 4 – llvm dialect → neura dialect
-    _run([NEURA_OPT,
-          "--assign-accelerator",
-          "--lower-arith-to-neura", "--lower-memref-to-neura",
-          "--lower-builtin-to-neura", "--lower-llvm-to-neura",
-          str(llvm_mlir), "-o", str(neura)],
-         f"neura-lower:{base_name}")
-
-    # Step 5 – neura → dataflow IR  (arch-specific pass sequence)
-    _run([NEURA_OPT, *arch_cfg.dataflow_passes, str(neura), "-o", str(dataflow)],
-         f"dataflow:{base_name}")
-
-    # Step 6 – dataflow → mapped IR
-    mapping_flag = (
-        f"--map-to-accelerator="
-        f"mapping-strategy=heuristic "
-        f"mapping-mode={arch_cfg.mapping_mode} "
-        f"backtrack-config=customized "
-        f"sort-strategy=mixed"
-    )
-    _run([NEURA_OPT, "--insert-data-mov", mapping_flag,
-          str(dataflow), "-o", str(mapped)],
-         f"map:{base_name}")
-
-    return mapped
-
-
-def compile_segment_with_binary(
-    seg: SegConfig,
-    arch_cfg: ArchConfig,
-    arch_dir: Path,
-    work_dir: Path,
-    neura_opt_binary: str,
-) -> Path:
-    """
-    Identical to compile_segment but uses a caller-supplied neura-opt binary.
-    Used for the scalability comparison (4×4 vs 6×6 NEURA-ST).
-    """
-    cpp_path  = arch_dir / seg.cpp_file
-    base_name = cpp_path.stem
-
-    scf_raw   = work_dir / f"{base_name}_scf_raw.mlir"
-    scf_clean = work_dir / f"{base_name}_scf.mlir"
-    llvm_mlir = work_dir / f"{base_name}_llvm.mlir"
-    neura     = work_dir / f"{base_name}_neura.mlir"
-    dataflow  = work_dir / f"{base_name}_dataflow.mlir"
-    mapped    = work_dir / f"{base_name}{arch_cfg.mapped_suffix}"
-
-    # Step 1 – C++ → scf MLIR
-    _run([CGEIST, str(cpp_path), "-S", "-O3", "-o", str(scf_raw)],
-         f"cgeist:{base_name}")
-
-    # Step 2 – strip module attributes
-    scf_clean.write_text(strip_module_attributes(scf_raw.read_text()))
-
-    # Step 3 – scf MLIR → llvm dialect
-    _run([MLIR_OPT,
-          "--lower-affine", "--convert-scf-to-cf", "--convert-cf-to-llvm",
-          "--convert-arith-to-llvm", "--convert-index-to-llvm",
-          "--reconcile-unrealized-casts",
-          str(scf_clean), "-o", str(llvm_mlir)],
-         f"mlir-opt:{base_name}")
-
-    # Step 4 – llvm dialect → neura dialect
-    _run([neura_opt_binary,
-          "--assign-accelerator",
-          "--lower-arith-to-neura", "--lower-memref-to-neura",
-          "--lower-builtin-to-neura", "--lower-llvm-to-neura",
-          str(llvm_mlir), "-o", str(neura)],
-         f"neura-lower:{base_name}")
-
-    # Step 5 – neura → dataflow IR  (arch-specific pass sequence)
-    _run([neura_opt_binary, *arch_cfg.dataflow_passes, str(neura), "-o", str(dataflow)],
-         f"dataflow:{base_name}")
-
-    # Step 6 – dataflow → mapped IR
-    mapping_flag = (
-        f"--map-to-accelerator="
-        f"mapping-strategy=heuristic "
-        f"mapping-mode={arch_cfg.mapping_mode} "
-        f"backtrack-config=customized "
-        f"sort-strategy=mixed"
-    )
-    _run([neura_opt_binary, "--insert-data-mov", mapping_flag,
-          str(dataflow), "-o", str(mapped)],
-         f"map:{base_name}")
-
-    return mapped
-
-
-# ════════════════════════════════════════════════════════════════════════════
-#  SECTION 4b – OPTIMISATION VARIANT CONFIGS  (for opt-comparison figure)
-#
-#  Each OptVariant describes one pass-level configuration, all mapped on
-#  NEURA-ST.  The pipeline mirrors compile_segment but with:
-#    • an optional extra `--finalize-memref-to-llvm` step after Step 3
-#      (used for the "w/o Optimization" baseline to preserve raw memref ops)
-#    • variant-specific dataflow passes (Step 5)
-#    • an optional streaming pass applied after Step 5 ("--fuse-loop-control")
-# ════════════════════════════════════════════════════════════════════════════
-
-@dataclass
-class OptVariant:
-    name: str
-    use_finalize_memref: bool        = False   # add --finalize-memref-to-llvm after step 3
-    dataflow_passes: list            = field(default_factory=list)
-    extra_pre_map_passes: list       = field(default_factory=list)  # e.g. --fuse-loop-control
-
-
-OPT_VARIANTS: list[OptVariant] = [
-    OptVariant(
-        name="w/o Optimization",
-        use_finalize_memref=True,
-        dataflow_passes=[
-            "--canonicalize-live-in",
-            "--leverage-predicated-value",
-            "--transform-ctrl-to-data-flow",
-        ],
-    ),
-    OptVariant(
-        name="Computational Pattern Fusion",
-        use_finalize_memref=False,
-        dataflow_passes=[
-            "--canonicalize-live-in",
-            "--leverage-predicated-value",
-            "--transform-ctrl-to-data-flow",
-        ],
-    ),
-    OptVariant(
-        name="Data Type Alignment",
-        use_finalize_memref=False,
-        dataflow_passes=[
-            "--canonicalize-cast",
-            "--canonicalize-live-in",
-            "--leverage-predicated-value",
-            "--transform-ctrl-to-data-flow",
-        ],
-    ),
-    OptVariant(
-        name="Data Type Alignment + Constant Folding",
-        use_finalize_memref=False,
-        dataflow_passes=[
-            "--canonicalize-cast", "--fold-constant",
-            "--canonicalize-live-in",
-            "--leverage-predicated-value",
-            "--transform-ctrl-to-data-flow",
-            "--fold-constant",
-        ],
-    ),
-    OptVariant(
-        name="HW-Agnostic + Loop Streaming",
-        use_finalize_memref=False,
-        dataflow_passes=[
-            "--canonicalize-cast", "--fold-constant",
-            "--canonicalize-live-in",
-            "--leverage-predicated-value",
-            "--transform-ctrl-to-data-flow",
-            "--fold-constant",
-        ],
-        extra_pre_map_passes=["--fuse-loop-control"],
-    ),
-]
-
-
-def compile_opt_segment(
-    seg: SegConfig,
-    arch_cfg: ArchConfig,   # always ARCH_CONFIGS["NEURA-ST"]
-    arch_dir: Path,
-    work_dir: Path,
-    variant: OptVariant,
-) -> Path:
-    """
-    Compile one segment for the optimisation-comparison experiment.
-
-    Pipeline
-    ────────
-      1. cgeist  cpp → scf MLIR
-      2. strip module attributes
-      3. mlir-opt  scf → llvm dialect
-     [3b. mlir-opt --finalize-memref-to-llvm  (only when variant.use_finalize_memref)]
-      4. neura-opt  llvm → neura dialect
-      5. neura-opt  neura → dataflow IR   (variant.dataflow_passes)
-     [5.5 neura-opt  dataflow → stream IR  (variant.extra_pre_map_passes, if any)]
-      6. neura-opt  dataflow/stream → mapped IR  (NEURA-ST mapping)
-    """
-    cpp_path  = arch_dir / seg.cpp_file
-    base_name = cpp_path.stem
-
-    scf_raw    = work_dir / f"{base_name}_scf_raw.mlir"
-    scf_clean  = work_dir / f"{base_name}_scf.mlir"
-    llvm_mlir  = work_dir / f"{base_name}_llvm.mlir"
-    final_llvm = work_dir / f"{base_name}_final_llvm.mlir"
-    neura      = work_dir / f"{base_name}_neura.mlir"
-    dataflow   = work_dir / f"{base_name}_dataflow.mlir"
-    stream     = work_dir / f"{base_name}_stream.mlir"
-    mapped     = work_dir / f"{base_name}{arch_cfg.mapped_suffix}"
-
-    label = f"opt/{variant.name}/{base_name}"
-
-    # Step 1 – C++ → scf MLIR
-    _run([CGEIST, str(cpp_path), "-S", "-O3", "-o", str(scf_raw)],
-         f"cgeist:{label}")
-
-    # Step 2 – strip module attributes
-    scf_clean.write_text(strip_module_attributes(scf_raw.read_text()))
-
-    # Step 3 – scf MLIR → llvm dialect
-    _run([MLIR_OPT,
-          "--lower-affine", "--convert-scf-to-cf", "--convert-cf-to-llvm",
-          "--convert-arith-to-llvm", "--convert-index-to-llvm",
-          "--reconcile-unrealized-casts",
-          str(scf_clean), "-o", str(llvm_mlir)],
-         f"mlir-opt:{label}")
-
-    # Step 3b (optional) – finalize memref
-    if variant.use_finalize_memref:
-        _run([MLIR_OPT, "--finalize-memref-to-llvm",
-              str(llvm_mlir), "-o", str(final_llvm)],
-             f"finalize-memref:{label}")
-        neura_input = final_llvm
-    else:
-        neura_input = llvm_mlir
-
-    # Step 4 – llvm → neura dialect
-    _run([NEURA_OPT,
-          "--assign-accelerator",
-          "--lower-arith-to-neura", "--lower-memref-to-neura",
-          "--lower-builtin-to-neura", "--lower-llvm-to-neura",
-          str(neura_input), "-o", str(neura)],
-         f"neura-lower:{label}")
-
-    # Step 5 – neura → dataflow IR  (variant-specific passes)
-    _run([NEURA_OPT, *variant.dataflow_passes, str(neura), "-o", str(dataflow)],
-         f"dataflow:{label}")
-
-    # Step 5.5 (optional) – e.g. --fuse-loop-control
-    if variant.extra_pre_map_passes:
-        _run([NEURA_OPT, *variant.extra_pre_map_passes,
-              str(dataflow), "-o", str(stream)],
-             f"stream:{label}")
-        pre_map = stream
-    else:
-        pre_map = dataflow
-
-    # Step 6 – map to NEURA-ST
-    mapping_flag = (
-        f"--map-to-accelerator="
-        f"mapping-strategy=heuristic "
-        f"mapping-mode={arch_cfg.mapping_mode} "
-        f"backtrack-config=customized "
-        f"sort-strategy=mixed"
-    )
-    _run([NEURA_OPT, "--insert-data-mov", mapping_flag,
-          str(pre_map), "-o", str(mapped)],
-         f"map:{label}")
-
-    return mapped
-
-
-# ════════════════════════════════════════════════════════════════════════════
-#  SECTION 5 – II AND STEPS EXTRACTION
-# ════════════════════════════════════════════════════════════════════════════
-
-def extract_ii_steps(mapped_mlir: Path) -> tuple[int, int]:
-    """
-    Parse the mapped MLIR file and return (compiled_ii, steps).
-
-    compiled_ii  – read from  mapping_info = {compiled_ii = N : i32, ...}
-    steps        – max(time_step) across all mapping_locs entries.
-                   Represents the pipeline depth / circuit latency in cycles.
-    """
-    text = mapped_mlir.read_text()
-
-    # compiled_ii
-    m = re.search(r'compiled_ii\s*=\s*(\d+)\s*:', text)
-    if m is None:
-        raise ValueError(f"compiled_ii not found in {mapped_mlir}")
-    ii = int(m.group(1))
-
-    # steps = max time_step across all mapping_locs entries
-    time_steps = [int(v) for v in re.findall(r'time_step\s*=\s*(\d+)', text)]
-    if not time_steps:
-        raise ValueError(f"No time_step values found in {mapped_mlir}")
-    steps = max(time_steps)
-
-    return ii, steps
-
-
-# ════════════════════════════════════════════════════════════════════════════
-#  SECTION 6 – LATENCY MODEL
-# ════════════════════════════════════════════════════════════════════════════
-
-def _marionette_cost(trips: list, steps: int, t: int) -> float:
-    """
-    Recursive latency for Marionette-style execution.
-
-    Marionette maps only the innermost loop body onto the CGRA; the CPU
-    drives every loop level.  Each CGRA invocation costs (steps + t).
-    Each CPU loop level wraps the inner cost and adds one extra transition
-    for the loop-control overhead itself:
-
-        cost([N, ...rest]) = N * (cost([...rest]) + t)
-        cost([])           = steps          ← single body invocation
-
-    Example  steps=10, t=5, trips=[28416, 192]:
-        cost([192])        = 192 * (10 + 5)       = 2880
-        cost([28416, 192]) = 28416 * (2880 + 5)   = 81,993,600
-        which equals ((10+5)*192 + 5) * 28416  ✓
-    """
-    if not trips:
-        return steps
-    return trips[0] * (_marionette_cost(trips[1:], steps, t) + t)
-
-
-def segment_latency(
-    seg: SegConfig,
-    ii: int,
-    steps: int,
-    cpu_transition: int = CPU_TRANSITION_CYCLES,
-) -> float:
-    """
-    Compute cycles for one SegConfig given its compiled II and steps.
-
-    Non-Marionette (body_only=False):
-        CGRA pipelines cgra_trips inner iterations.
-        cycles = prod(cpu_trips) × [(cgra_trips − 1) × II + steps + cpu_transition]
-
-    Marionette (body_only=True):
-        CGRA maps innermost body; CPU drives all loops recursively.
-        cycles = _marionette_cost(cpu_trips, steps, MARIONETTE_TRANSITION_CYCLES)
-    """
-    if seg.body_only:
-        t = MARIONETTE_TRANSITION_CYCLES if seg.fast_switch else cpu_transition
-        return _marionette_cost(seg.cpu_trips, steps, t)
-    else:
-        outer = functools.reduce(lambda a, b: a * b, seg.cpu_trips, 1) if seg.cpu_trips else 1
-        if seg.fast_switch:
-            # Modulo-scheduled pipeline: fill cost amortised over cgra_trips iterations
-            if outer == 1:
-                return outer * ((seg.cgra_trips - 1) * ii)
-            else:
-                return outer * ((seg.cgra_trips - 1) * ii + cpu_transition)
-        else:
-            # Sequential: every iteration runs to completion before the next
-            return outer * seg.cgra_trips * (steps + cpu_transition)
-
-
-def bench_latency(
-    segs_with_results: list[tuple[SegConfig, int, int]],
-    cpu_transition: int = CPU_TRANSITION_CYCLES,
-) -> float:
-    """
-    Compute total latency for one benchmark.
-
-    Independent segments (group=-1) are evaluated via segment_latency() and summed.
-
-    Grouped segments (group≥0) share an outer CPU loop; their per-outer-iteration
-    costs are summed first and then multiplied by the shared outer trip counts:
-
-        total += prod(group_outer_trips) × Σ _marionette_cost(seg.cpu_trips, steps, t)
-
-    This avoids double-counting the outer-loop transition t that would occur if
-    each segment were evaluated independently with the full trip list.
-    """
-    t = MARIONETTE_TRANSITION_CYCLES
-    total = 0.0
-    groups: dict[int, list] = {}
-
-    for item in segs_with_results:
-        seg = item[0]
-        if seg.group >= 0:
-            groups.setdefault(seg.group, []).append(item)
-        else:
-            seg2, ii2, steps2 = item
-            total += segment_latency(seg2, ii2, steps2, cpu_transition)
-
-    for group_items in groups.values():
-        outer_trips = group_items[0][0].group_outer_trips
-        prod_outer = functools.reduce(lambda a, b: a * b, outer_trips, 1)
-        per_outer = sum(
-            _marionette_cost(seg.cpu_trips, steps, t)
-            for seg, ii, steps in group_items
-        )
-        total += prod_outer * per_outer
-
-    return total
-
-
-def segment_latency_with_steps(
-    seg: SegConfig,
-    ii: int,
-    steps: int,
-    cpu_transition: int = CPU_TRANSITION_CYCLES,
-) -> float:
-    """
-    Latency model that always includes the pipeline fill (steps) term.
-    Used for the scalability comparison experiment.
-
-    body_only=False, fast_switch=True:
-        cycles = prod(cpu_trips) × [(cgra_trips - 1) × II + steps + cpu_transition]
-    body_only=False, fast_switch=False:
-        cycles = prod(cpu_trips) × cgra_trips × (steps + cpu_transition)
-    body_only=True:
-        cycles = _marionette_cost(cpu_trips, steps, t)
-    """
-    if seg.body_only:
-        t = MARIONETTE_TRANSITION_CYCLES if seg.fast_switch else cpu_transition
-        return _marionette_cost(seg.cpu_trips, steps, t)
-    else:
-        outer = functools.reduce(lambda a, b: a * b, seg.cpu_trips, 1) if seg.cpu_trips else 1
-        if seg.fast_switch:
-            return outer * ((seg.cgra_trips - 1) * ii + steps + cpu_transition)
-        else:
-            return outer * seg.cgra_trips * (steps + cpu_transition)
-
-
-def bench_latency_with_steps(
-    segs_with_results: list,
-    cpu_transition: int = CPU_TRANSITION_CYCLES,
-) -> float:
-    """
-    Same as bench_latency but uses segment_latency_with_steps, so the
-    pipeline fill (steps) is included in every segment's cost.
-    """
-    t = MARIONETTE_TRANSITION_CYCLES
-    total = 0.0
-    groups: dict = {}
-
-    for item in segs_with_results:
-        seg = item[0]
-        if seg.group >= 0:
-            groups.setdefault(seg.group, []).append(item)
-        else:
-            seg2, ii2, steps2 = item
-            total += segment_latency_with_steps(seg2, ii2, steps2, cpu_transition)
-
-    for group_items in groups.values():
-        outer_trips = group_items[0][0].group_outer_trips
-        prod_outer = functools.reduce(lambda a, b: a * b, outer_trips, 1)
-        per_outer = sum(
-            _marionette_cost(seg.cpu_trips, steps, t)
-            for seg, ii, steps in group_items
-        )
-        total += prod_outer * per_outer
-
-    return total
-
-
-# ════════════════════════════════════════════════════════════════════════════
-#  SECTION 7 – MAIN ORCHESTRATION
-# ════════════════════════════════════════════════════════════════════════════
-
-BENCHMARKS = [
-    "conv", "relu", "spmv", "gemm", "bicg", "mvt",
-    "jacobi", "fft", "merge-sort", "bfs", "floyd",
-]
-ARCHS = ["Marionette", "ICED", "RipTide", "NEURA-SO", "NEURA-ST"]
-
-# Subset of benchmarks used for the scalability comparison experiment
-SCALABILITY_BENCHMARKS = ["bicg", "mvt", "jacobi", "fft", "merge-sort", "bfs", "floyd"]
-
-
-def run_benchmark(
-    bench: str,
-    arch_name: str,
-    work_root: Path,
-    verbose: bool = False,
-) -> Optional[float]:
-    """
-    Compile every segment for (bench, arch_name), extract II+steps,
-    compute and return total latency in cycles.
-    Returns None if the config is not defined or compilation fails.
-    """
+def run_benchmark(bench, arch_name, work_root, verbose=False):
+    """Compile + extract II+steps + compute latency for (bench, arch)."""
     key = (bench, arch_name)
     if key not in BENCH_ARCH_SEGS:
-        print(f"  [SKIP] no config for ({bench}, {arch_name})")
+        if verbose:
+            print(f"  [SKIP] no config for ({bench}, {arch_name})")
         return None
 
-    arch_cfg  = ARCH_CONFIGS[arch_name]
-    arch_dir  = PLDI_TEST_DIR / bench / arch_cfg.folder
-    work_dir  = work_root / bench / arch_name
+    arch_cfg = ARCH_CONFIGS[arch_name]
+    arch_dir = PLDI_TEST_DIR / bench / arch_cfg.folder
+    work_dir = work_root / bench / arch_name
     work_dir.mkdir(parents=True, exist_ok=True)
 
-    segs = BENCH_ARCH_SEGS[key]
     results = []
-
-    for seg in segs:
-        base = Path(seg.cpp_file).stem
+    for seg in BENCH_ARCH_SEGS[key]:
         if verbose:
             print(f"  Compiling  {bench}/{arch_name}/{seg.cpp_file} ...")
         try:
             mapped = compile_segment(seg, arch_cfg, arch_dir, work_dir)
             ii, steps = extract_ii_steps(mapped)
             if verbose:
-                print(f"    → II={ii}  steps={steps}")
+                print(f"    -> II={ii}  steps={steps}")
             results.append((seg, ii, steps))
         except Exception as e:
             print(f"  [ERROR] {bench}/{arch_name}/{seg.cpp_file}: {e}")
@@ -975,46 +102,295 @@ def run_benchmark(
     return bench_latency(results)
 
 
-def run_benchmark_scalability(
-    bench: str,
-    arch_cfg: ArchConfig,
-    neura_opt_binary: str,
-    work_dir: Path,
-    verbose: bool = False,
-) -> Optional[float]:
-    """
-    Compile all NEURA-ST segments for one benchmark using the given binary,
-    extract II+steps, and return total latency computed with
-    bench_latency_with_steps (steps included).
-    """
+def run_benchmark_scalability(bench, arch_cfg, neura_opt_binary, work_dir, verbose=False):
+    """Compile NEURA-ST segments using given binary, return latency (with steps)."""
     key = (bench, "NEURA-ST")
     if key not in BENCH_ARCH_SEGS:
-        print(f"  [SKIP] no NEURA-ST config for {bench}")
         return None
 
     arch_dir = PLDI_TEST_DIR / bench / arch_cfg.folder
     work_dir.mkdir(parents=True, exist_ok=True)
 
-    segs = BENCH_ARCH_SEGS[key]
     results = []
-
-    for seg in segs:
+    for seg in BENCH_ARCH_SEGS[key]:
         if verbose:
             print(f"  Compiling  {bench}/{seg.cpp_file} ...")
         try:
-            mapped = compile_segment_with_binary(
-                seg, arch_cfg, arch_dir, work_dir, neura_opt_binary
-            )
+            mapped = compile_segment(seg, arch_cfg, arch_dir, work_dir,
+                                     neura_opt_binary=neura_opt_binary)
             ii, steps = extract_ii_steps(mapped)
             if verbose:
-                print(f"    → II={ii}  steps={steps}")
+                print(f"    -> II={ii}  steps={steps}")
             results.append((seg, ii, steps))
         except Exception as e:
             print(f"  [ERROR] {bench}/{seg.cpp_file}: {e}")
             return None
 
-    return bench_latency_with_steps(results)
+    return bench_latency(results, include_steps=True)
 
+
+# ── Evaluation steps (called from main) ─────────────────────────────────
+
+def evaluate_latencies(work_root):
+    """Step 1: Compile all benchmarks x archs, return latencies dict."""
+    latencies = {arch: {} for arch in ARCHS}
+    for bench in BENCHMARKS:
+        print(f"\n{'─'*60}\nBenchmark: {bench}")
+        for arch in ARCHS:
+            lat = run_benchmark(bench, arch, work_root, verbose=True)
+            latencies[arch][bench] = lat
+            status = f"{lat:.0f} cycles" if lat is not None else "FAILED"
+            print(f"  {arch:<12s}  {status}")
+    return latencies
+
+
+def evaluate_speedup(latencies):
+    """Step 2: Normalised speedup relative to Marionette -> CSV + figure."""
+    speedup_data = {arch: [] for arch in ARCHS}
+    for bench in BENCHMARKS:
+        base = latencies["Marionette"].get(bench)
+        for arch in ARCHS:
+            lat = latencies[arch].get(bench)
+            speedup_data[arch].append(base / lat if base and lat else None)
+
+    geomeans = {a: _geomean([v for v in speedup_data[a] if v]) for a in ARCHS}
+
+    # Print + CSV
+    rows = []
+    for i, bench in enumerate(BENCHMARKS):
+        rows.append([bench] + [_fmt(speedup_data[a][i]) for a in ARCHS])
+    rows.append(["Geomean"] + [_fmt(geomeans[a]) for a in ARCHS])
+    print(f"\n{'═'*60}\nNormalised speedup (relative to Marionette)")
+    _print_table(["Bench"] + ARCHS, rows)
+    _write_csv(RESULTS_DIR / "speedup.csv", ["benchmark"] + ARCHS,
+               [[r[0]] + [_fmt(speedup_data[a][i], ".4f") if i < len(BENCHMARKS)
+                          else _fmt(geomeans[a], ".4f")
+                          for a in ARCHS]
+                for i, r in enumerate(rows)])
+
+    # Also write raw latency CSV
+    lat_rows = [[bench] + [_fmt(latencies[a].get(bench), ".0f") for a in ARCHS]
+                for bench in BENCHMARKS]
+    _write_csv(RESULTS_DIR / "latency_cycles.csv", ["benchmark"] + ARCHS, lat_rows)
+
+    generate_speedup_figure(speedup_data, geomeans, BENCHMARKS, ARCHS,
+                            save_path=FIGS_DIR / "fig13.pdf")
+    return speedup_data, geomeans
+
+
+def evaluate_ppa(latencies, speedup_data):
+    """Step 3: Normalised Performance per Area -> CSV + figure."""
+    area_mario = ARCH_AREA_MM2["Marionette"]
+    ppa_data = {arch: [] for arch in ARCHS}
+
+    for i, bench in enumerate(BENCHMARKS):
+        for arch in ARCHS:
+            sp = speedup_data[arch][i]
+            if sp is not None and arch in ARCH_AREA_MM2:
+                ppa_data[arch].append(sp * (area_mario / ARCH_AREA_MM2[arch]))
+            else:
+                ppa_data[arch].append(None)
+
+    geomeans = {a: _geomean([v for v in ppa_data[a] if v]) for a in ARCHS}
+
+    rows = []
+    for i, bench in enumerate(BENCHMARKS):
+        rows.append([bench] + [_fmt(ppa_data[a][i]) for a in ARCHS])
+    rows.append(["Geomean"] + [_fmt(geomeans[a]) for a in ARCHS])
+    print(f"\n{'═'*60}\nNormalised Perf/Area (relative to Marionette)")
+    _print_table(["Bench"] + ARCHS, rows)
+    _write_csv(RESULTS_DIR / "perf_per_area.csv", ["benchmark"] + ARCHS,
+               [[r[0]] + [_fmt(ppa_data[a][i], ".4f") if i < len(BENCHMARKS)
+                          else _fmt(geomeans[a], ".4f")
+                          for a in ARCHS]
+                for i, r in enumerate(rows)])
+
+    generate_ppa_figure(ppa_data, geomeans, BENCHMARKS, ARCHS,
+                        save_path=FIGS_DIR / "fig15.pdf")
+
+
+def evaluate_ipc(latencies):
+    """Step 4: Instructions per Cycle -> CSV + figure."""
+    ipc_data = {arch: [] for arch in ARCHS}
+    for bench in BENCHMARKS:
+        for arch in ARCHS:
+            n_instr = BENCH_ARCH_INSTRUCTIONS.get((bench, arch))
+            cycles = latencies[arch].get(bench)
+            ipc_data[arch].append(n_instr / cycles if n_instr and cycles else None)
+
+    geomeans = {a: _geomean([v for v in ipc_data[a] if v]) for a in ARCHS}
+
+    rows = []
+    for i, bench in enumerate(BENCHMARKS):
+        rows.append([bench] + [_fmt(ipc_data[a][i]) for a in ARCHS])
+    rows.append(["Geomean"] + [_fmt(geomeans[a]) for a in ARCHS])
+    print(f"\n{'═'*60}\nIPC (instructions per cycle)")
+    _print_table(["Bench"] + ARCHS, rows)
+    _write_csv(RESULTS_DIR / "ipc.csv", ["benchmark"] + ARCHS,
+               [[r[0]] + [_fmt(ipc_data[a][i], ".4f") if i < len(BENCHMARKS)
+                          else _fmt(geomeans[a], ".4f")
+                          for a in ARCHS]
+                for i, r in enumerate(rows)])
+
+    generate_ipc_figure(ipc_data, geomeans, BENCHMARKS, ARCHS,
+                        save_path=FIGS_DIR / "fig14.pdf")
+
+
+def evaluate_energy():
+    """Step 5: Normalised total energy (RipTide baseline) -> CSV + figure."""
+    energy_data = {arch: [] for arch in ENERGY_ARCHS}
+    for bench in BENCHMARKS:
+        rip_instr = BENCH_ARCH_INSTRUCTIONS.get((bench, "RipTide"))
+        rip_energy = ARCH_POWER_MW["RipTide"] * rip_instr if rip_instr else None
+        for arch in ENERGY_ARCHS:
+            n_instr = BENCH_ARCH_INSTRUCTIONS.get((bench, arch))
+            if n_instr and rip_energy:
+                energy_data[arch].append((ARCH_POWER_MW[arch] * n_instr) / rip_energy)
+            else:
+                energy_data[arch].append(None)
+
+    geomeans = {a: _geomean([v for v in energy_data[a] if v]) for a in ENERGY_ARCHS}
+
+    rows = []
+    for i, bench in enumerate(BENCHMARKS):
+        rows.append([bench] + [_fmt(energy_data[a][i]) for a in ENERGY_ARCHS])
+    rows.append(["Geomean"] + [_fmt(geomeans[a]) for a in ENERGY_ARCHS])
+    print(f"\n{'═'*60}\nNormalised total energy (relative to RipTide)")
+    _print_table(["Bench"] + ENERGY_ARCHS, rows)
+    _write_csv(RESULTS_DIR / "energy.csv", ["benchmark"] + ENERGY_ARCHS,
+               [[r[0]] + [_fmt(energy_data[a][i], ".4f") if i < len(BENCHMARKS)
+                          else _fmt(geomeans[a], ".4f")
+                          for a in ENERGY_ARCHS]
+                for i, r in enumerate(rows)])
+
+    generate_energy_figure(energy_data, geomeans, BENCHMARKS, ENERGY_ARCHS,
+                           save_path=FIGS_DIR / "fig16.pdf")
+
+
+def evaluate_optimization(work_root):
+    """Step 6: Optimisation pass comparison on NEURA-ST -> CSV + figure."""
+    neura_st_cfg = ARCH_CONFIGS["NEURA-ST"]
+    opt_latencies = {v.name: {} for v in OPT_VARIANTS}
+
+    print(f"\n{'═'*60}\nOptimisation comparison (NEURA-ST)")
+    for bench in BENCHMARKS:
+        print(f"  Benchmark: {bench}")
+        key = (bench, "NEURA-ST")
+        if key not in BENCH_ARCH_SEGS:
+            for v in OPT_VARIANTS:
+                opt_latencies[v.name][bench] = None
+            continue
+
+        segs = BENCH_ARCH_SEGS[key]
+        for variant in OPT_VARIANTS:
+            variant_work = work_root / "opt" / bench / variant.name.replace(" ", "_")
+            variant_work.mkdir(parents=True, exist_ok=True)
+            try:
+                seg_results = []
+                for seg in segs:
+                    mapped = compile_opt_segment(
+                        seg, neura_st_cfg,
+                        PLDI_TEST_DIR / bench / neura_st_cfg.folder,
+                        variant_work, variant,
+                    )
+                    ii, steps = extract_ii_steps(mapped)
+                    seg_results.append((seg, ii, steps))
+                lat = bench_latency(seg_results)
+                opt_latencies[variant.name][bench] = lat
+                print(f"    {variant.name:<42s}  {lat:.0f} cycles")
+            except Exception as e:
+                print(f"    [ERROR] {variant.name}: {e}")
+                opt_latencies[variant.name][bench] = None
+
+    # Speedup relative to 'w/o Optimization'
+    vnames = [v.name for v in OPT_VARIANTS]
+    opt_speedup = {vn: [] for vn in vnames}
+    for bench in BENCHMARKS:
+        base_lat = opt_latencies["w/o Optimization"].get(bench)
+        for vn in vnames:
+            lat = opt_latencies[vn].get(bench)
+            opt_speedup[vn].append(base_lat / lat if base_lat and lat else None)
+
+    # Append geomean
+    for vn in vnames:
+        vals = [v for v in opt_speedup[vn] if v is not None]
+        opt_speedup[vn].append(_geomean(vals) or 0.0)
+
+    print(f"\nOptimisation geomeans:")
+    for vn in vnames:
+        print(f"  {vn:<42s}  {_fmt(opt_speedup[vn][-1])}")
+
+    _write_csv(RESULTS_DIR / "optimization.csv", ["benchmark"] + vnames,
+               [[BENCHMARKS[i]] + [_fmt(opt_speedup[vn][i], ".4f") for vn in vnames]
+                for i in range(len(BENCHMARKS))]
+               + [["Geomean"] + [_fmt(opt_speedup[vn][-1], ".4f") for vn in vnames]])
+
+    generate_optimization_figure(opt_speedup, BENCHMARKS,
+                                 save_path=FIGS_DIR / "fig17.pdf")
+
+
+def evaluate_scalability(work_root):
+    """Step 7: 4x4 vs 6x6 NEURA-ST scalability -> CSV + figure."""
+    _4x4, _6x6 = r"4x4 NEURA-ST", r"6x6 NEURA-ST"
+    configs = {_4x4: NEURA_OPT_4_4, _6x6: NEURA_OPT}
+    neura_st_cfg = ARCH_CONFIGS["NEURA-ST"]
+
+    scal_latencies = {name: {} for name in configs}
+
+    print(f"\n{'═'*60}\nScalability comparison (4x4 vs 6x6 NEURA-ST)")
+    for bench in SCALABILITY_BENCHMARKS:
+        print(f"  Benchmark: {bench}")
+        for cfg_name, binary in configs.items():
+            tag = "4x4" if binary == NEURA_OPT_4_4 else "6x6"
+            work_dir = work_root / "scalability" / bench / tag
+            lat = run_benchmark_scalability(bench, neura_st_cfg, binary, work_dir, verbose=True)
+            scal_latencies[cfg_name][bench] = lat
+            status = f"{lat:.0f} cycles" if lat is not None else "FAILED"
+            print(f"    {cfg_name:<22s}  {status}")
+
+    # Normalise: 4x4 = 1.0
+    scal_speedup = {name: [] for name in configs}
+    for bench in SCALABILITY_BENCHMARKS:
+        lat_4 = scal_latencies[_4x4].get(bench)
+        lat_6 = scal_latencies[_6x6].get(bench)
+        scal_speedup[_4x4].append(1.0 if lat_4 is not None else None)
+        scal_speedup[_6x6].append(lat_4 / lat_6 if lat_4 and lat_6 else None)
+
+    # Append geomeans
+    for name in configs:
+        vals = [v for v in scal_speedup[name] if v is not None]
+        scal_speedup[name].append(_geomean(vals) or 0.0)
+
+    # Improvement rate
+    n = len(SCALABILITY_BENCHMARKS) + 1
+    improvement_rate = [
+        (scal_speedup[_6x6][i] - scal_speedup[_4x4][i]) * 100
+        if scal_speedup[_6x6][i] is not None and scal_speedup[_4x4][i] is not None
+        else 0.0
+        for i in range(n)
+    ]
+
+    print(f"\nScalability geomeans:")
+    for name in configs:
+        print(f"  {name:<22s}  {scal_speedup[name][-1]:.3f}x")
+
+    cfg_names = list(configs.keys())
+    _write_csv(RESULTS_DIR / "scalability.csv",
+               ["benchmark"] + cfg_names + ["improvement_rate_%"],
+               [[SCALABILITY_BENCHMARKS[i]]
+                + [_fmt(scal_speedup[c][i], ".4f") for c in cfg_names]
+                + [f"{improvement_rate[i]:.2f}"]
+                for i in range(len(SCALABILITY_BENCHMARKS))]
+               + [["Geomean"]
+                  + [_fmt(scal_speedup[c][-1], ".4f") for c in cfg_names]
+                  + [f"{improvement_rate[-1]:.2f}"]])
+
+    generate_scalability_figure(scal_speedup, improvement_rate,
+                                SCALABILITY_BENCHMARKS,
+                                save_path=FIGS_DIR / "fig18.pdf")
+
+
+# ── Main ─────────────────────────────────────────────────────────────────
 
 def main():
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -1023,439 +399,27 @@ def main():
     with tempfile.TemporaryDirectory(prefix="neura_ae_") as tmp:
         work_root = Path(tmp)
 
-        # ── compile everything and collect latencies ──────────────────────
-        # latencies[arch_name][bench] = cycles  (or None on failure)
-        latencies: dict[str, dict[str, Optional[float]]] = {
-            arch: {} for arch in ARCHS
-        }
+        # Step 1: Compile all benchmarks, collect latencies
+        latencies = evaluate_latencies(work_root)
 
-        for bench in BENCHMARKS:
-            print(f"\n{'─'*60}")
-            print(f"Benchmark: {bench}")
-            for arch in ARCHS:
-                lat = run_benchmark(bench, arch, work_root, verbose=True)
-                latencies[arch][bench] = lat
-                status = f"{lat:.0f} cycles" if lat is not None else "FAILED"
-                print(f"  {arch:<12s}  {status}")
+        # Step 2: Speedup (fig13)
+        speedup_data, _ = evaluate_speedup(latencies)
 
-        # ── normalise to Marionette = 1.0 ────────────────────────────────
-        print(f"\n{'═'*60}")
-        print("Normalised speedup (relative to Marionette)")
-        print(f"{'Bench':<14s}", end="")
-        for arch in ARCHS:
-            print(f"  {arch:<12s}", end="")
-        print()
+        # Step 3: Performance per Area (fig15)
+        evaluate_ppa(latencies, speedup_data)
 
-        speedup_data: dict[str, list[Optional[float]]] = {
-            arch: [] for arch in ARCHS
-        }
+        # Step 4: IPC (fig14)
+        evaluate_ipc(latencies)
 
-        for bench in BENCHMARKS:
-            base = latencies["Marionette"].get(bench)
-            print(f"{bench:<14s}", end="")
-            for arch in ARCHS:
-                lat = latencies[arch].get(bench)
-                if base and lat:
-                    sp = base / lat
-                else:
-                    sp = None
-                speedup_data[arch].append(sp)
-                tag = f"{sp:.3f}" if sp is not None else "N/A"
-                print(f"  {tag:<12s}", end="")
-            print()
+        # Step 5: Energy (fig16)
+        evaluate_energy()
 
-        # ── geometric mean speedup ────────────────────────────────────────
-        print(f"{'Geomean':<14s}", end="")
-        geomeans: dict[str, Optional[float]] = {}
-        for arch in ARCHS:
-            vals = [v for v in speedup_data[arch] if v is not None]
-            gmean = functools.reduce(lambda a, b: a * b, vals, 1) ** (1 / len(vals)) if vals else None
-            geomeans[arch] = gmean
-            tag = f"{gmean:.3f}" if gmean is not None else "N/A"
-            print(f"  {tag:<12s}", end="")
-        print()
+        # Step 6: Optimisation comparison (fig17)
+        evaluate_optimization(work_root)
 
-        # ── write raw latency CSV ─────────────────────────────────────
-        latency_csv = RESULTS_DIR / "latency_cycles.csv"
-        with latency_csv.open("w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(["benchmark"] + ARCHS)
-            for bench in BENCHMARKS:
-                row = [bench] + [
-                    f"{latencies[arch].get(bench):.0f}"
-                    if latencies[arch].get(bench) is not None else "N/A"
-                    for arch in ARCHS
-                ]
-                writer.writerow(row)
-        print(f"\nLatency data written to {latency_csv}")
+        # Step 7: Scalability (fig18)
+        evaluate_scalability(work_root)
 
-        # ── write speedup CSV ─────────────────────────────────────────────
-        speedup_csv = RESULTS_DIR / "speedup.csv"
-        with speedup_csv.open("w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(["benchmark"] + ARCHS)
-            for i, bench in enumerate(BENCHMARKS):
-                row = [bench] + [
-                    f"{speedup_data[arch][i]:.4f}"
-                    if speedup_data[arch][i] is not None else "N/A"
-                    for arch in ARCHS
-                ]
-                writer.writerow(row)
-            gmean_row = ["Geomean"] + [
-                f"{geomeans[arch]:.4f}" if geomeans[arch] is not None else "N/A"
-                for arch in ARCHS
-            ]
-            writer.writerow(gmean_row)
-        print(f"Speedup data written to {speedup_csv}")
-
-        # ── generate speedup figure ───────────────────────────────────────
-        generate_speedup_figure(
-            speedup_data, geomeans, BENCHMARKS, ARCHS,
-            save_path=FIGS_DIR / "fig13.pdf",
-        )
-
-        # ── compute normalised Perf/Area ──────────────────────────────────
-        # PPA_normalised_arch = (lat_mario / area_mario) / (lat_arch / area_arch)
-        #                     = speedup * (area_mario / area_arch)
-        area_mario = ARCH_AREA_MM2["Marionette"]
-        ppa_data: dict[str, list[Optional[float]]] = {arch: [] for arch in ARCHS}
-        for i, bench in enumerate(BENCHMARKS):
-            lat_mario = latencies["Marionette"].get(bench)
-            for arch in ARCHS:
-                lat = latencies[arch].get(bench)
-                sp  = speedup_data[arch][i]
-                if sp is not None and arch in ARCH_AREA_MM2:
-                    ppa = sp * (area_mario / ARCH_AREA_MM2[arch])
-                else:
-                    ppa = None
-                ppa_data[arch].append(ppa)
-
-        geomeans_ppa: dict[str, Optional[float]] = {}
-        print(f"\n{'═'*60}")
-        print("Normalised Perf/Area (relative to Marionette)")
-        print(f"{'Bench':<14s}", end="")
-        for arch in ARCHS:
-            print(f"  {arch:<12s}", end="")
-        print()
-        for i, bench in enumerate(BENCHMARKS):
-            print(f"{bench:<14s}", end="")
-            for arch in ARCHS:
-                v = ppa_data[arch][i]
-                print(f"  {f'{v:.3f}' if v is not None else 'N/A':<12s}", end="")
-            print()
-        print(f"{'Geomean':<14s}", end="")
-        for arch in ARCHS:
-            vals = [v for v in ppa_data[arch] if v is not None]
-            gm = functools.reduce(lambda a, b: a * b, vals, 1) ** (1 / len(vals)) if vals else None
-            geomeans_ppa[arch] = gm
-            print(f"  {f'{gm:.3f}' if gm is not None else 'N/A':<12s}", end="")
-        print()
-
-        # ── write Perf/Area CSV ───────────────────────────────────────────
-        ppa_csv = RESULTS_DIR / "perf_per_area.csv"
-        with ppa_csv.open("w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(["benchmark"] + ARCHS)
-            for i, bench in enumerate(BENCHMARKS):
-                row = [bench] + [
-                    f"{ppa_data[arch][i]:.4f}" if ppa_data[arch][i] is not None else "N/A"
-                    for arch in ARCHS
-                ]
-                writer.writerow(row)
-            writer.writerow(["Geomean"] + [
-                f"{geomeans_ppa[arch]:.4f}" if geomeans_ppa[arch] is not None else "N/A"
-                for arch in ARCHS
-            ])
-        print(f"Perf/Area data written to {ppa_csv}")
-
-        # ── generate Perf/Area figure ─────────────────────────────────────
-        generate_ppa_figure(
-            ppa_data, geomeans_ppa, BENCHMARKS, ARCHS,
-            save_path=FIGS_DIR / "fig15.pdf",
-        )
-
-        # ── compute IPC ───────────────────────────────────────────────────
-        # IPC = total_instructions / total_cycles
-        ipc_data: dict[str, list[Optional[float]]] = {arch: [] for arch in ARCHS}
-        for bench in BENCHMARKS:
-            for arch in ARCHS:
-                n_instr = BENCH_ARCH_INSTRUCTIONS.get((bench, arch))
-                cycles  = latencies[arch].get(bench)
-                if n_instr is not None and cycles:
-                    ipc_data[arch].append(n_instr / cycles)
-                else:
-                    ipc_data[arch].append(None)
-
-        geomeans_ipc: dict[str, Optional[float]] = {}
-        print(f"\n{'═'*60}")
-        print("IPC (instructions per cycle)")
-        print(f"{'Bench':<14s}", end="")
-        for arch in ARCHS:
-            print(f"  {arch:<12s}", end="")
-        print()
-        for i, bench in enumerate(BENCHMARKS):
-            print(f"{bench:<14s}", end="")
-            for arch in ARCHS:
-                v = ipc_data[arch][i]
-                print(f"  {f'{v:.3f}' if v is not None else 'N/A':<12s}", end="")
-            print()
-        print(f"{'Geomean':<14s}", end="")
-        for arch in ARCHS:
-            vals = [v for v in ipc_data[arch] if v is not None]
-            gm = functools.reduce(lambda a, b: a * b, vals, 1) ** (1 / len(vals)) if vals else None
-            geomeans_ipc[arch] = gm
-            print(f"  {f'{gm:.3f}' if gm is not None else 'N/A':<12s}", end="")
-        print()
-
-        # ── write IPC CSV ─────────────────────────────────────────────────
-        ipc_csv = RESULTS_DIR / "ipc.csv"
-        with ipc_csv.open("w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(["benchmark"] + ARCHS)
-            for i, bench in enumerate(BENCHMARKS):
-                row = [bench] + [
-                    f"{ipc_data[arch][i]:.4f}" if ipc_data[arch][i] is not None else "N/A"
-                    for arch in ARCHS
-                ]
-                writer.writerow(row)
-            writer.writerow(["Geomean"] + [
-                f"{geomeans_ipc[arch]:.4f}" if geomeans_ipc[arch] is not None else "N/A"
-                for arch in ARCHS
-            ])
-        print(f"IPC data written to {ipc_csv}")
-
-        # ── generate IPC figure ───────────────────────────────────────────
-        generate_ipc_figure(
-            ipc_data, geomeans_ipc, BENCHMARKS, ARCHS,
-            save_path=FIGS_DIR / "fig14.pdf",
-        )
-        # ── compute normalised total energy ───────────────────────────────
-        # energy[arch][bench] = ARCH_POWER_MW[arch] * BENCH_ARCH_INSTRUCTIONS[(bench, arch)]
-        # normalised to RipTide = 1.0
-        energy_data: dict[str, list[Optional[float]]] = {arch: [] for arch in ENERGY_ARCHS}
-        for bench in BENCHMARKS:
-            riptide_instr = BENCH_ARCH_INSTRUCTIONS.get((bench, "RipTide"))
-            riptide_energy = ARCH_POWER_MW["RipTide"] * riptide_instr if riptide_instr else None
-            for arch in ENERGY_ARCHS:
-                n_instr = BENCH_ARCH_INSTRUCTIONS.get((bench, arch))
-                if n_instr is not None and riptide_energy:
-                    energy_data[arch].append((ARCH_POWER_MW[arch] * n_instr) / riptide_energy)
-                else:
-                    energy_data[arch].append(None)
-
-        geomeans_energy: dict[str, Optional[float]] = {}
-        print(f"\n{'═'*60}")
-        print("Normalised total energy (relative to RipTide)")
-        print(f"{'Bench':<14s}", end="")
-        for arch in ENERGY_ARCHS:
-            print(f"  {arch:<12s}", end="")
-        print()
-        for i, bench in enumerate(BENCHMARKS):
-            print(f"{bench:<14s}", end="")
-            for arch in ENERGY_ARCHS:
-                v = energy_data[arch][i]
-                print(f"  {f'{v:.3f}' if v is not None else 'N/A':<12s}", end="")
-            print()
-        print(f"{'Geomean':<14s}", end="")
-        for arch in ENERGY_ARCHS:
-            vals = [v for v in energy_data[arch] if v is not None]
-            gm = functools.reduce(lambda a, b: a * b, vals, 1) ** (1 / len(vals)) if vals else None
-            geomeans_energy[arch] = gm
-            print(f"  {f'{gm:.3f}' if gm is not None else 'N/A':<12s}", end="")
-        print()
-
-        # ── write energy CSV ──────────────────────────────────────────────
-        energy_csv = RESULTS_DIR / "energy.csv"
-        with energy_csv.open("w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(["benchmark"] + ENERGY_ARCHS)
-            for i, bench in enumerate(BENCHMARKS):
-                row = [bench] + [
-                    f"{energy_data[arch][i]:.4f}" if energy_data[arch][i] is not None else "N/A"
-                    for arch in ENERGY_ARCHS
-                ]
-                writer.writerow(row)
-            writer.writerow(["Geomean"] + [
-                f"{geomeans_energy[arch]:.4f}" if geomeans_energy[arch] is not None else "N/A"
-                for arch in ENERGY_ARCHS
-            ])
-        print(f"Energy data written to {energy_csv}")
-
-        # ── generate energy figure ────────────────────────────────────────
-        generate_energy_figure(
-            energy_data, geomeans_energy, BENCHMARKS, ENERGY_ARCHS,
-            save_path=FIGS_DIR / "fig16.pdf",
-        )
-
-        # ── optimisation comparison (NEURA-ST, 5 pass configurations) ─────
-        # Run all 5 OptVariant pipelines for every benchmark on NEURA-ST.
-        # Speedup is normalised so 'w/o Optimization' = 1.0.
-        neura_st_cfg = ARCH_CONFIGS["NEURA-ST"]
-        opt_latencies: dict[str, dict[str, Optional[float]]] = {
-            v.name: {} for v in OPT_VARIANTS
-        }
-
-        print(f"\n{'═'*60}")
-        print("Optimisation comparison (NEURA-ST)")
-        for bench in BENCHMARKS:
-            print(f"  Benchmark: {bench}")
-            key = (bench, "NEURA-ST")
-            if key not in BENCH_ARCH_SEGS:
-                print(f"    [SKIP] no NEURA-ST config for {bench}")
-                for v in OPT_VARIANTS:
-                    opt_latencies[v.name][bench] = None
-                continue
-            segs = BENCH_ARCH_SEGS[key]
-            for variant in OPT_VARIANTS:
-                variant_work = work_root / "opt" / bench / variant.name.replace(" ", "_")
-                variant_work.mkdir(parents=True, exist_ok=True)
-                try:
-                    seg_results = []
-                    for seg in segs:
-                        mapped = compile_opt_segment(
-                            seg, neura_st_cfg,
-                            PLDI_TEST_DIR / bench / neura_st_cfg.folder,
-                            variant_work, variant,
-                        )
-                        ii, steps = extract_ii_steps(mapped)
-                        seg_results.append((seg, ii, steps))
-                    lat = bench_latency(seg_results)
-                    opt_latencies[variant.name][bench] = lat
-                    print(f"    {variant.name:<42s}  {lat:.0f} cycles")
-                except Exception as e:
-                    print(f"    [ERROR] {variant.name}: {e}")
-                    opt_latencies[variant.name][bench] = None
-
-        # ── compute speedup relative to 'w/o Optimization' ────────────────
-        opt_speedup: dict[str, list[Optional[float]]] = {v.name: [] for v in OPT_VARIANTS}
-        for bench in BENCHMARKS:
-            base_lat = opt_latencies["w/o Optimization"].get(bench)
-            for variant in OPT_VARIANTS:
-                lat = opt_latencies[variant.name].get(bench)
-                if base_lat and lat:
-                    opt_speedup[variant.name].append(base_lat / lat)
-                else:
-                    opt_speedup[variant.name].append(None)
-
-        # Append geomean as last entry (figures.py uses bench_labels + ["Geomean"])
-        print(f"\nOptimisation geomeans (relative to w/o Optimization):")
-        for variant in OPT_VARIANTS:
-            vals = [v for v in opt_speedup[variant.name] if v is not None]
-            gm = functools.reduce(lambda a, b: a * b, vals, 1) ** (1 / len(vals)) if vals else None
-            opt_speedup[variant.name].append(gm if gm is not None else 0.0)
-            print(f"  {variant.name:<42s}  {f'{gm:.3f}' if gm else 'N/A'}")
-
-        # ── write optimisation CSV ────────────────────────────────────────
-        opt_csv = RESULTS_DIR / "optimization.csv"
-        with opt_csv.open("w", newline="") as f:
-            writer = csv.writer(f)
-            vnames = [v.name for v in OPT_VARIANTS]
-            writer.writerow(["benchmark"] + vnames)
-            for i, bench in enumerate(BENCHMARKS):
-                row = [bench] + [
-                    f"{opt_speedup[vn][i]:.4f}" if opt_speedup[vn][i] is not None else "N/A"
-                    for vn in vnames
-                ]
-                writer.writerow(row)
-            writer.writerow(["Geomean"] + [
-                f"{opt_speedup[vn][-1]:.4f}" if opt_speedup[vn][-1] else "N/A"
-                for vn in vnames
-            ])
-        print(f"Optimisation data written to {opt_csv}")
-
-        # ── generate optimisation figure ──────────────────────────────────
-        generate_optimization_figure(
-            opt_speedup, BENCHMARKS,
-            save_path=FIGS_DIR / "fig17.pdf",
-        )
-
-        # ── scalability comparison (4×4 vs 6×6 NEURA-ST) ─────────────────
-        _scal_4x4 = r"4x4 NEURA-ST"
-        _scal_6x6 = r"6x6 NEURA-ST"
-        _scal_configs = {_scal_4x4: NEURA_OPT_4_4, _scal_6x6: NEURA_OPT}
-        neura_st_scal_cfg = ARCH_CONFIGS["NEURA-ST"]
-
-        scalability_latencies: dict = {name: {} for name in _scal_configs}
-
-        print(f"\n{'═'*60}")
-        print("Scalability comparison (4×4 vs 6×6 NEURA-ST)")
-        for bench in SCALABILITY_BENCHMARKS:
-            print(f"  Benchmark: {bench}")
-            for cfg_name, binary in _scal_configs.items():
-                dir_tag = "4x4" if binary == NEURA_OPT_4_4 else "6x6"
-                scal_work = work_root / "scalability" / bench / dir_tag
-                lat = run_benchmark_scalability(
-                    bench, neura_st_scal_cfg, binary, scal_work, verbose=True
-                )
-                scalability_latencies[cfg_name][bench] = lat
-                status = f"{lat:.0f} cycles" if lat is not None else "FAILED"
-                print(f"    {cfg_name:<22s}  {status}")
-
-        # Normalise: 4×4 = 1.0, 6×6 relative to 4×4
-        scalability_speedup: dict = {name: [] for name in _scal_configs}
-        for bench in SCALABILITY_BENCHMARKS:
-            lat_4x4 = scalability_latencies[_scal_4x4].get(bench)
-            lat_6x6 = scalability_latencies[_scal_6x6].get(bench)
-            scalability_speedup[_scal_4x4].append(1.0 if lat_4x4 is not None else None)
-            scalability_speedup[_scal_6x6].append(
-                lat_4x4 / lat_6x6 if lat_4x4 and lat_6x6 else None
-            )
-
-        # Append geometric means as the last entry
-        for cfg_name in _scal_configs:
-            vals = [v for v in scalability_speedup[cfg_name] if v is not None]
-            gm = (
-                functools.reduce(lambda a, b: a * b, vals, 1) ** (1 / len(vals))
-                if vals else 0.0
-            )
-            scalability_speedup[cfg_name].append(gm)
-
-        # Improvement rate per benchmark + geomean
-        n_scal = len(SCALABILITY_BENCHMARKS) + 1  # +1 for geomean
-        improvement_rate = [
-            (scalability_speedup[_scal_6x6][i] - scalability_speedup[_scal_4x4][i]) * 100
-            if (
-                scalability_speedup[_scal_6x6][i] is not None
-                and scalability_speedup[_scal_4x4][i] is not None
-            ) else 0.0
-            for i in range(n_scal)
-        ]
-
-        print(f"\nScalability geomeans:")
-        for cfg_name in _scal_configs:
-            gm = scalability_speedup[cfg_name][-1]
-            print(f"  {cfg_name:<22s}  {gm:.3f}x")
-
-        # Write scalability CSV
-        scal_csv = RESULTS_DIR / "scalability.csv"
-        cfg_names = list(_scal_configs.keys())
-        with scal_csv.open("w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(["benchmark"] + cfg_names + ["improvement_rate_%"])
-            for i, bench in enumerate(SCALABILITY_BENCHMARKS):
-                row = [bench] + [
-                    f"{scalability_speedup[cfg][i]:.4f}"
-                    if scalability_speedup[cfg][i] is not None else "N/A"
-                    for cfg in cfg_names
-                ] + [f"{improvement_rate[i]:.2f}"]
-                writer.writerow(row)
-            writer.writerow(
-                ["Geomean"] + [
-                    f"{scalability_speedup[cfg][-1]:.4f}"
-                    if scalability_speedup[cfg][-1] else "N/A"
-                    for cfg in cfg_names
-                ] + [f"{improvement_rate[-1]:.2f}"]
-            )
-        print(f"Scalability data written to {scal_csv}")
-
-        # Generate scalability figure
-        generate_scalability_figure(
-            scalability_speedup, improvement_rate, SCALABILITY_BENCHMARKS,
-            save_path=FIGS_DIR / "fig18.pdf",
-        )
-
-
-# ════════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
     main()
