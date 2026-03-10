@@ -1,0 +1,142 @@
+ 
+****************************************
+Report : area
+Design : TileRTL__3033f08ff49a6fe4
+Version: V-2023.12
+Date   : Fri Oct 10 14:32:22 2025
+****************************************
+
+Library(s) Used:
+
+    tcbn22ullbwp30p140lvtffg0p88v0c (File: /usr/eelocal/tsmc_icdc/tsmc022/tsmc022_ULL/SC/tcbn22ullbwp30p140lvt/Rev110b/Front_End/timing_power_noise/NLDM/tcbn22ullbwp30p140lvt_110b/tcbn22ullbwp30p140lvtffg0p88v0c.db)
+
+Number of ports:                        22322
+Number of nets:                         32761
+Number of cells:                        22127
+Number of combinational cells:          18495
+Number of sequential cells:              3553
+Number of macros/black boxes:               0
+Number of buf/inv:                       1957
+Number of references:                      40
+
+Combinational area:              11844.629862
+Buf/Inv area:                      738.107991
+Noncombinational area:            6715.169949
+Macro/Black Box area:                0.000000
+Net Interconnect area:      undefined  (Wire load has zero net area)
+
+Total cell area:                 18559.799812
+Total area:                 undefined
+
+Hierarchical area distribution
+------------------------------
+
+                                  Global cell area            Local cell area
+                                  -------------------  ----------------------------- 
+Hierarchical cell                 Absolute    Percent  Combi-      Noncombi-  Black-
+                                  Total       Total    national    national   boxes   Design
+--------------------------------  ----------  -------  ----------  ---------  ------  ---------------------------------------
+TileRTL__3033f08ff49a6fe4         18559.7998    100.0    380.0160     5.6700  0.0000  TileRTL__3033f08ff49a6fe4
+const_mem                           228.9420      1.2     22.0500     5.6700  0.0000  ConstQueueDynamicRTL__661c73e50fcf5c28
+const_mem/reg_file                  201.2220      1.1     76.4820   124.7400  0.0000  RegisterFile__da749a1852bb59a5_8
+ctrl_mem                           2148.9300     11.6    203.4900   175.7700  0.0000  CtrlMemDynamicRTL__1a9ca0cabccf4eb9
+ctrl_mem/recv_pkt_queue             942.6060      5.1      0.0000     0.0000  0.0000  NormalQueueRTL__f63b6abaa911c2ae
+ctrl_mem/recv_pkt_queue/ctrl         15.1200      0.1      7.5600     7.5600  0.0000  NormalQueueCtrlRTL__num_entries_2_8
+ctrl_mem/recv_pkt_queue/dpath       927.4860      5.0      0.0000     0.0000  0.0000  NormalQueueDpathRTL__f63b6abaa911c2ae
+ctrl_mem/recv_pkt_queue/dpath/rf    927.4860      5.0    349.1460   578.3400  0.0000  RegisterFile__274a682996ceeb86
+ctrl_mem/reg_file                   827.0640      4.5    312.9840   514.0800  0.0000  RegisterFile__aad9df017cd26d90
+element                            4363.7580     23.5    160.5240     0.0000  0.0000  FlexibleFuRTL__7d2c8bcc2d30ac9c
+element/fu__0                       544.3200      2.9    531.0900    13.2300  0.0000  AdderRTL__292afbada18a7b1e
+element/fu__1                      1963.0800     10.6   1949.8500    13.2300  0.0000  MulRTL__292afbada18a7b1e
+element/fu__10                        1.6380      0.0      1.6380     0.0000  0.0000  NahRTL__292afbada18a7b1e
+element/fu__2                       262.5840      1.4    249.3540    13.2300  0.0000  LogicRTL__292afbada18a7b1e
+element/fu__3                       368.8020      2.0    355.5720    13.2300  0.0000  ShifterRTL__292afbada18a7b1e
+element/fu__4                       139.8600      0.8    124.7400    15.1200  0.0000  PhiRTL__292afbada18a7b1e
+element/fu__5                       256.7880      1.4    243.5580    13.2300  0.0000  CompRTL__292afbada18a7b1e
+element/fu__6                       149.1840      0.8    134.0640    15.1200  0.0000  GrantRTL__292afbada18a7b1e_1
+element/fu__7                       149.1840      0.8    134.0640    15.1200  0.0000  GrantRTL__292afbada18a7b1e_0
+element/fu__8                       216.3420      1.2    201.2220    15.1200  0.0000  MemUnitRTL__292afbada18a7b1e
+element/fu__9                       151.4520      0.8    138.2220    13.2300  0.0000  SelRTL__292afbada18a7b1e
+fu_crossbar                         310.4640      1.7    287.7840    22.6800  0.0000  CrossbarRTL__22da306610e47bb7
+register_cluster                   6913.2419     37.2    106.2180     0.0000  0.0000  RegisterClusterRTL__8a44c1a18964df48
+register_cluster/reg_bank__0       1701.6300      9.2     48.8880     0.0000  0.0000  RegisterBankRTL__875c77c0f9073b7c
+register_cluster/reg_bank__0/reg_file
+                                   1652.7420      8.9    654.8220   997.9200  0.0000  RegisterFile__84f0703fd9bfd535_3
+register_cluster/reg_bank__1       1701.6300      9.2     48.8880     0.0000  0.0000  RegisterBankRTL__e5fa866620bad084
+register_cluster/reg_bank__1/reg_file
+                                   1652.7420      8.9    654.8220   997.9200  0.0000  RegisterFile__84f0703fd9bfd535_2
+register_cluster/reg_bank__2       1701.6300      9.2     48.8880     0.0000  0.0000  RegisterBankRTL__7af232d7d9d1d953
+register_cluster/reg_bank__2/reg_file
+                                   1652.7420      8.9    654.8220   997.9200  0.0000  RegisterFile__84f0703fd9bfd535_1
+register_cluster/reg_bank__3       1702.1340      9.2     48.8880     0.0000  0.0000  RegisterBankRTL__01c957f3d2dd8862
+register_cluster/reg_bank__3/reg_file
+                                   1653.2460      8.9    655.3260   997.9200  0.0000  RegisterFile__84f0703fd9bfd535_0
+routing_crossbar                   1959.3000     10.6   1868.5800    90.7200  0.0000  CrossbarRTL__e3a68b34e071a69a
+tile_in_channel__0                  216.3420      1.2      0.0000     0.0000  0.0000  ChannelRTL__d316842813c529a6_7
+tile_in_channel__0/queues__0        216.3420      1.2      0.0000     0.0000  0.0000  NormalQueueRTL__e10c2d77bcb9538e_7
+tile_in_channel__0/queues__0/ctrl    15.1200      0.1      7.5600     7.5600  0.0000  NormalQueueCtrlRTL__num_entries_2_7
+tile_in_channel__0/queues__0/dpath
+                                    201.2220      1.1      0.0000     0.0000  0.0000  NormalQueueDpathRTL__e10c2d77bcb9538e_7
+tile_in_channel__0/queues__0/dpath/rf
+                                    201.2220      1.1     76.4820   124.7400  0.0000  RegisterFile__da749a1852bb59a5_7
+tile_in_channel__1                  216.3420      1.2      0.0000     0.0000  0.0000  ChannelRTL__d316842813c529a6_6
+tile_in_channel__1/queues__0        216.3420      1.2      0.0000     0.0000  0.0000  NormalQueueRTL__e10c2d77bcb9538e_6
+tile_in_channel__1/queues__0/ctrl    15.1200      0.1      7.5600     7.5600  0.0000  NormalQueueCtrlRTL__num_entries_2_6
+tile_in_channel__1/queues__0/dpath
+                                    201.2220      1.1      0.0000     0.0000  0.0000  NormalQueueDpathRTL__e10c2d77bcb9538e_6
+tile_in_channel__1/queues__0/dpath/rf
+                                    201.2220      1.1     76.4820   124.7400  0.0000  RegisterFile__da749a1852bb59a5_6
+tile_in_channel__2                  216.3420      1.2      0.0000     0.0000  0.0000  ChannelRTL__d316842813c529a6_5
+tile_in_channel__2/queues__0        216.3420      1.2      0.0000     0.0000  0.0000  NormalQueueRTL__e10c2d77bcb9538e_5
+tile_in_channel__2/queues__0/ctrl    15.1200      0.1      7.5600     7.5600  0.0000  NormalQueueCtrlRTL__num_entries_2_5
+tile_in_channel__2/queues__0/dpath
+                                    201.2220      1.1      0.0000     0.0000  0.0000  NormalQueueDpathRTL__e10c2d77bcb9538e_5
+tile_in_channel__2/queues__0/dpath/rf
+                                    201.2220      1.1     76.4820   124.7400  0.0000  RegisterFile__da749a1852bb59a5_5
+tile_in_channel__3                  216.3420      1.2      0.0000     0.0000  0.0000  ChannelRTL__d316842813c529a6_4
+tile_in_channel__3/queues__0        216.3420      1.2      0.0000     0.0000  0.0000  NormalQueueRTL__e10c2d77bcb9538e_4
+tile_in_channel__3/queues__0/ctrl    15.1200      0.1      7.5600     7.5600  0.0000  NormalQueueCtrlRTL__num_entries_2_4
+tile_in_channel__3/queues__0/dpath
+                                    201.2220      1.1      0.0000     0.0000  0.0000  NormalQueueDpathRTL__e10c2d77bcb9538e_4
+tile_in_channel__3/queues__0/dpath/rf
+                                    201.2220      1.1     76.4820   124.7400  0.0000  RegisterFile__da749a1852bb59a5_4
+tile_in_channel__4                  216.3420      1.2      0.0000     0.0000  0.0000  ChannelRTL__d316842813c529a6_3
+tile_in_channel__4/queues__0        216.3420      1.2      0.0000     0.0000  0.0000  NormalQueueRTL__e10c2d77bcb9538e_3
+tile_in_channel__4/queues__0/ctrl    15.1200      0.1      7.5600     7.5600  0.0000  NormalQueueCtrlRTL__num_entries_2_3
+tile_in_channel__4/queues__0/dpath
+                                    201.2220      1.1      0.0000     0.0000  0.0000  NormalQueueDpathRTL__e10c2d77bcb9538e_3
+tile_in_channel__4/queues__0/dpath/rf
+                                    201.2220      1.1     76.4820   124.7400  0.0000  RegisterFile__da749a1852bb59a5_3
+tile_in_channel__5                  216.3420      1.2      0.0000     0.0000  0.0000  ChannelRTL__d316842813c529a6_2
+tile_in_channel__5/queues__0        216.3420      1.2      0.0000     0.0000  0.0000  NormalQueueRTL__e10c2d77bcb9538e_2
+tile_in_channel__5/queues__0/ctrl    15.1200      0.1      7.5600     7.5600  0.0000  NormalQueueCtrlRTL__num_entries_2_2
+tile_in_channel__5/queues__0/dpath
+                                    201.2220      1.1      0.0000     0.0000  0.0000  NormalQueueDpathRTL__e10c2d77bcb9538e_2
+tile_in_channel__5/queues__0/dpath/rf
+                                    201.2220      1.1     76.4820   124.7400  0.0000  RegisterFile__da749a1852bb59a5_2
+tile_in_channel__6                  216.3420      1.2      0.0000     0.0000  0.0000  ChannelRTL__d316842813c529a6_1
+tile_in_channel__6/queues__0        216.3420      1.2      0.0000     0.0000  0.0000  NormalQueueRTL__e10c2d77bcb9538e_1
+tile_in_channel__6/queues__0/ctrl    15.1200      0.1      7.5600     7.5600  0.0000  NormalQueueCtrlRTL__num_entries_2_1
+tile_in_channel__6/queues__0/dpath
+                                    201.2220      1.1      0.0000     0.0000  0.0000  NormalQueueDpathRTL__e10c2d77bcb9538e_1
+tile_in_channel__6/queues__0/dpath/rf
+                                    201.2220      1.1     76.4820   124.7400  0.0000  RegisterFile__da749a1852bb59a5_1
+tile_in_channel__7                  216.3420      1.2      0.0000     0.0000  0.0000  ChannelRTL__d316842813c529a6_0
+tile_in_channel__7/queues__0        216.3420      1.2      0.0000     0.0000  0.0000  NormalQueueRTL__e10c2d77bcb9538e_0
+tile_in_channel__7/queues__0/ctrl    15.1200      0.1      7.5600     7.5600  0.0000  NormalQueueCtrlRTL__num_entries_2_0
+tile_in_channel__7/queues__0/dpath
+                                    201.2220      1.1      0.0000     0.0000  0.0000  NormalQueueDpathRTL__e10c2d77bcb9538e_0
+tile_in_channel__7/queues__0/dpath/rf
+                                    201.2220      1.1     76.4820   124.7400  0.0000  RegisterFile__da749a1852bb59a5_0
+tile_out_or_link__0                  64.7640      0.3     64.7640     0.0000  0.0000  LinkOrRTL__a54ca58e7852ace8_7
+tile_out_or_link__1                  64.8900      0.3     64.8900     0.0000  0.0000  LinkOrRTL__a54ca58e7852ace8_6
+tile_out_or_link__2                  64.8900      0.3     64.8900     0.0000  0.0000  LinkOrRTL__a54ca58e7852ace8_5
+tile_out_or_link__3                  64.8900      0.3     64.8900     0.0000  0.0000  LinkOrRTL__a54ca58e7852ace8_4
+tile_out_or_link__4                  64.7640      0.3     64.7640     0.0000  0.0000  LinkOrRTL__a54ca58e7852ace8_3
+tile_out_or_link__5                  64.7640      0.3     64.7640     0.0000  0.0000  LinkOrRTL__a54ca58e7852ace8_2
+tile_out_or_link__6                  64.8900      0.3     64.8900     0.0000  0.0000  LinkOrRTL__a54ca58e7852ace8_1
+tile_out_or_link__7                  64.8900      0.3     64.8900     0.0000  0.0000  LinkOrRTL__a54ca58e7852ace8_0
+--------------------------------  ----------  -------  ----------  ---------  ------  ---------------------------------------
+Total                                                  11844.6299  6715.1699  0.0000
+
+1

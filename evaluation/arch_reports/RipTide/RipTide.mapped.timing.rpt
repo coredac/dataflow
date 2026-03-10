@@ -1,0 +1,342 @@
+ 
+****************************************
+Report : timing
+        -path full
+        -delay max
+        -nets
+        -max_paths 1
+        -transition_time
+Design : TileRTL__33fa72361634261c
+Version: V-2023.12
+Date   : Fri Oct 10 15:20:57 2025
+****************************************
+
+ # A fanout number of 1000 was used for high fanout net computations.
+
+Operating Conditions: ffg0p88v0c   Library: tcbn22ullbwp30p140lvtffg0p88v0c
+Wire Load Model Mode: segmented
+
+  Startpoint: ctrl_mem/recv_pkt_queue/ctrl/head_reg_0_
+              (rising edge-triggered flip-flop clocked by clk[0])
+  Endpoint: register_cluster/reg_bank__3/reg_file/regs_reg_0__payload__31_
+            (rising edge-triggered flip-flop clocked by clk[0])
+  Path Group: clk[0]
+  Path Type: max
+
+  Des/Clust/Port     Wire Load Model       Library
+  ------------------------------------------------
+  GrantRTL__292afbada18a7b1e_2 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  GrantRTL__292afbada18a7b1e_1 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  GrantRTL__292afbada18a7b1e_0 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  NormalQueueCtrlRTL__num_entries_2_7 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  NormalQueueCtrlRTL__num_entries_2_6 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  NormalQueueCtrlRTL__num_entries_2_5 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  NormalQueueCtrlRTL__num_entries_2_4 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  NormalQueueCtrlRTL__num_entries_2_3 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  NormalQueueCtrlRTL__num_entries_2_2 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  NormalQueueCtrlRTL__num_entries_2_1 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  NormalQueueCtrlRTL__num_entries_2_0 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  RegisterFile__da749a1852bb59a5_7 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  RegisterFile__da749a1852bb59a5_6 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  RegisterFile__da749a1852bb59a5_5 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  RegisterFile__da749a1852bb59a5_4 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  RegisterFile__da749a1852bb59a5_3 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  RegisterFile__da749a1852bb59a5_2 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  RegisterFile__da749a1852bb59a5_1 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  RegisterFile__da749a1852bb59a5_0 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  NormalQueueDpathRTL__e10c2d77bcb9538e_6 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  NormalQueueDpathRTL__e10c2d77bcb9538e_5 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  NormalQueueDpathRTL__e10c2d77bcb9538e_4 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  NormalQueueDpathRTL__e10c2d77bcb9538e_3 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  NormalQueueDpathRTL__e10c2d77bcb9538e_2 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  NormalQueueDpathRTL__e10c2d77bcb9538e_1 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  NormalQueueDpathRTL__e10c2d77bcb9538e_0 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  NormalQueueRTL__e10c2d77bcb9538e_5 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  NormalQueueRTL__e10c2d77bcb9538e_4 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  NormalQueueRTL__e10c2d77bcb9538e_3 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  NormalQueueRTL__e10c2d77bcb9538e_2 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  NormalQueueRTL__e10c2d77bcb9538e_1 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  NormalQueueRTL__e10c2d77bcb9538e_0 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  ChannelRTL__d316842813c529a6_5 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  ChannelRTL__d316842813c529a6_4 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  ChannelRTL__d316842813c529a6_3 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  ChannelRTL__d316842813c529a6_2 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  ChannelRTL__d316842813c529a6_1 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  ChannelRTL__d316842813c529a6_0 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  RegisterFile__84f0703fd9bfd535_2 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  RegisterFile__84f0703fd9bfd535_1 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  RegisterFile__84f0703fd9bfd535_0 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  RegisterFile__274a682996ceeb86 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  NormalQueueDpathRTL__e10c2d77bcb9538e_7 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  RegisterFile__84f0703fd9bfd535_3 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  NormalQueueDpathRTL__f63b6abaa911c2ae ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  NormalQueueCtrlRTL__num_entries_2_8 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  NormalQueueRTL__e10c2d77bcb9538e_6 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  NormalQueueRTL__e10c2d77bcb9538e_7 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  RegisterBankRTL__01c957f3d2dd8862 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  RegisterBankRTL__7af232d7d9d1d953 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  RegisterBankRTL__e5fa866620bad084 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  RegisterBankRTL__875c77c0f9073b7c ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  SelRTL__292afbada18a7b1e ZeroWireload    tcbn22ullbwp30p140lvtffg0p88v0c
+  MemUnitRTL__292afbada18a7b1e ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  GrantRTL__292afbada18a7b1e_3 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  CompRTL__292afbada18a7b1e ZeroWireload   tcbn22ullbwp30p140lvtffg0p88v0c
+  PhiRTL__292afbada18a7b1e ZeroWireload    tcbn22ullbwp30p140lvtffg0p88v0c
+  ShifterRTL__292afbada18a7b1e ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  LogicRTL__292afbada18a7b1e ZeroWireload  tcbn22ullbwp30p140lvtffg0p88v0c
+  MulRTL__292afbada18a7b1e ZeroWireload    tcbn22ullbwp30p140lvtffg0p88v0c
+  AdderRTL__292afbada18a7b1e ZeroWireload  tcbn22ullbwp30p140lvtffg0p88v0c
+  RegisterFile__aad9df017cd26d90 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  NormalQueueRTL__f63b6abaa911c2ae ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  RegisterFile__da749a1852bb59a5_8 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  ChannelRTL__d316842813c529a6_6 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  ChannelRTL__d316842813c529a6_7 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  CrossbarRTL__e3a68b34e071a69a ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  RegisterClusterRTL__8a44c1a18964df48 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  CrossbarRTL__22da306610e47bb7 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  FlexibleFuRTL__ce1b7f3367163b3e ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  CtrlMemDynamicRTL__1a9ca0cabccf4eb9 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+  TileRTL__33fa72361634261c ZeroWireload   tcbn22ullbwp30p140lvtffg0p88v0c
+  ConstQueueDynamicRTL__661c73e50fcf5c28 ZeroWireload tcbn22ullbwp30p140lvtffg0p88v0c
+
+Attributes:
+    d - dont_touch
+    u - dont_use
+   mo - map_only
+   so - size_only
+    i - ideal_net or ideal_network
+  inf - infeasible path
+
+  Point                                                                                     Fanout     Trans      Incr       Path      Attributes
+  -------------------------------------------------------------------------------------------------------------------------------------------------------
+  clock clk[0] (rise edge)                                                                                        0.00       0.00
+  clock network delay (ideal)                                                                                     0.00       0.00
+  ctrl_mem/recv_pkt_queue/ctrl/head_reg_0_/CP (DFQD1BWP30P140LVT)                                       0.00      0.00 #     0.00 r
+  ctrl_mem/recv_pkt_queue/ctrl/head_reg_0_/Q (DFQD1BWP30P140LVT)                                        0.01      0.03       0.03 f
+  ctrl_mem/recv_pkt_queue/ctrl/raddr[0] (net)                                                 3                   0.00       0.03 f
+  ctrl_mem/recv_pkt_queue/ctrl/raddr[0] (NormalQueueCtrlRTL__num_entries_2_8)                                     0.00       0.03 f
+  ctrl_mem/recv_pkt_queue/ctrl__raddr_0_ (net)                                                                    0.00       0.03 f
+  ctrl_mem/recv_pkt_queue/dpath/raddr[0] (NormalQueueDpathRTL__f63b6abaa911c2ae)                                  0.00       0.03 f
+  ctrl_mem/recv_pkt_queue/dpath/raddr[0] (net)                                                                    0.00       0.03 f
+  ctrl_mem/recv_pkt_queue/dpath/rf/raddr[0] (RegisterFile__274a682996ceeb86)                                      0.00       0.03 f
+  ctrl_mem/recv_pkt_queue/dpath/rf/raddr[0] (net)                                                                 0.00       0.03 f
+  ctrl_mem/recv_pkt_queue/dpath/rf/U10/ZN (INVD1BWP30P140LVT)                                           0.01      0.01       0.04 r
+  ctrl_mem/recv_pkt_queue/dpath/rf/n138 (net)                                                 7                   0.00       0.04 r
+  ctrl_mem/recv_pkt_queue/dpath/rf/U4/ZN (INVD3BWP30P140LVT)                                            0.03      0.02       0.06 f
+  ctrl_mem/recv_pkt_queue/dpath/rf/n3 (net)                                                  91                   0.00       0.06 f
+  ctrl_mem/recv_pkt_queue/dpath/rf/U468/Z (AO22D0BWP30P140LVT)                                          0.01      0.02       0.08 f
+  ctrl_mem/recv_pkt_queue/dpath/rf/rdata[184] (net)                                           2                   0.00       0.08 f
+  ctrl_mem/recv_pkt_queue/dpath/rf/rdata[184] (RegisterFile__274a682996ceeb86)                                    0.00       0.08 f
+  ctrl_mem/recv_pkt_queue/dpath/send_msg[184] (net)                                                               0.00       0.08 f
+  ctrl_mem/recv_pkt_queue/dpath/send_msg[184] (NormalQueueDpathRTL__f63b6abaa911c2ae)                             0.00       0.08 f
+  ctrl_mem/recv_pkt_queue/send__msg[184] (net)                                                                    0.00       0.08 f
+  ctrl_mem/recv_pkt_queue/send__msg[184] (NormalQueueRTL__f63b6abaa911c2ae)                                       0.00       0.08 f
+  ctrl_mem/recv_pkt_queue__send__msg_payload__cmd__4_ (net)                                                       0.00       0.08 f
+  ctrl_mem/U51/ZN (CKND0BWP30P140LVT)                                                                   0.01      0.01       0.09 r
+  ctrl_mem/n625 (net)                                                                         3                   0.00       0.09 r
+  ctrl_mem/U52/ZN (ND3D1BWP30P140LVT)                                                                   0.01      0.01       0.10 f
+  ctrl_mem/n596 (net)                                                                         3                   0.00       0.10 f
+  ctrl_mem/U205/ZN (NR2D0BWP30P140LVT)                                                                  0.01      0.01       0.11 r
+  ctrl_mem/n602 (net)                                                                         2                   0.00       0.11 r
+  ctrl_mem/U3/ZN (ND2D0BWP30P140LVT)                                                                    0.01      0.01       0.12 f
+  ctrl_mem/n670 (net)                                                                         3                   0.00       0.12 f
+  ctrl_mem/U298/ZN (OAI211D1BWP30P140LVT)                                                               0.01      0.01       0.13 r
+  ctrl_mem/n607 (net)                                                                         1                   0.00       0.13 r
+  ctrl_mem/U47/ZN (NR2OPTIBD1BWP30P140LVT)                                                              0.01      0.01       0.13 f
+  ctrl_mem/send_ctrl__val[0] (net)                                                            2                   0.00       0.13 f
+  ctrl_mem/send_ctrl__val[0] (CtrlMemDynamicRTL__1a9ca0cabccf4eb9)                                                0.00       0.13 f
+  ctrl_mem__send_ctrl__val_0_ (net)                                                                               0.00       0.13 f
+  U959/ZN (INVD1BWP30P140LVT)                                                                           0.01      0.01       0.14 r
+  n1346 (net)                                                                                 4                   0.00       0.14 r
+  U620/ZN (NR2D0BWP30P140LVT)                                                                           0.01      0.00       0.14 f
+  routing_crossbar__recv_opt__val_0_ (net)                                                    1                   0.00       0.14 f
+  routing_crossbar/recv_opt__val[0] (CrossbarRTL__e3a68b34e071a69a)                                               0.00       0.14 f
+  routing_crossbar/recv_opt__val[0] (net)                                                                         0.00       0.14 f
+  routing_crossbar/U625/ZN (ND2D0BWP30P140LVT)                                                          0.01      0.01       0.15 r
+  routing_crossbar/n342 (net)                                                                 2                   0.00       0.15 r
+  routing_crossbar/U641/Z (OR4D1BWP30P140LVT)                                                           0.00      0.01       0.16 r
+  routing_crossbar/n130 (net)                                                                 1                   0.00       0.16 r
+  routing_crossbar/U642/Z (OR4D2BWP30P140LVT)                                                           0.05      0.04       0.20 r
+  routing_crossbar/n2545 (net)                                                               85                   0.00       0.20 r
+  routing_crossbar/U399/ZN (NR2D1P5BWP30P140LVT)                                                        0.01      0.01       0.20 f
+  routing_crossbar/send_data__val_9__0_ (net)                                                 2                   0.00       0.20 f
+  routing_crossbar/U1616/ZN (CKND0BWP30P140LVT)                                                         0.01      0.01       0.21 r
+  routing_crossbar/n1207 (net)                                                                5                   0.00       0.21 r
+  routing_crossbar/U1625/ZN (NR2D0BWP30P140LVT)                                                         0.01      0.01       0.22 f
+  routing_crossbar/n1209 (net)                                                                1                   0.00       0.22 f
+  routing_crossbar/U1626/Z (BUFFD1BWP30P140LVT)                                                         0.04      0.03       0.24 f
+  routing_crossbar/n1344 (net)                                                               33                   0.00       0.24 f
+  routing_crossbar/U1633/ZN (AOI22D0BWP30P140LVT)                                                       0.02      0.02       0.26 r
+  routing_crossbar/n1222 (net)                                                                1                   0.00       0.26 r
+  routing_crossbar/U1634/ZN (ND4D1BWP30P140LVT)                                                         0.02      0.01       0.27 f
+  routing_crossbar/send_data__msg[75] (net)                                                   2                   0.00       0.27 f
+  routing_crossbar/send_data__msg[75] (CrossbarRTL__e3a68b34e071a69a)                                             0.00       0.27 f
+  routing_crossbar__send_data__msg[69] (net)                                                                      0.00       0.27 f
+  register_cluster/recv_data_from_routing_crossbar__msg[75] (RegisterClusterRTL__8a44c1a18964df48)                0.00       0.27 f
+  register_cluster/recv_data_from_routing_crossbar__msg[75] (net)                                                 0.00       0.27 f
+  register_cluster/U136/Z (AO22D0BWP30P140LVT)                                                          0.01      0.02       0.29 f
+  register_cluster/send_data_to_fu__msg[75] (net)                                             1                   0.00       0.29 f
+  register_cluster/send_data_to_fu__msg[75] (RegisterClusterRTL__8a44c1a18964df48)                                0.00       0.29 f
+  register_cluster__send_data_to_fu__msg[69] (net)                                                                0.00       0.29 f
+  element/recv_in__msg[75] (FlexibleFuRTL__ce1b7f3367163b3e)                                                      0.00       0.29 f
+  element/recv_in__msg[75] (net)                                                                                  0.00       0.29 f
+  element/U4/Z (CKBD1BWP30P140LVT)                                                                      0.03      0.02       0.31 f
+  element/n5360 (net)                                                                        23                   0.00       0.31 f
+  element/fu__1/recv_in__msg[75] (MulRTL__292afbada18a7b1e)                                                       0.00       0.31 f
+  element/fu__1/recv_in__msg[75] (net)                                                                            0.00       0.31 f
+  element/fu__1/U696/ZN (AOI22D0BWP30P140LVT)                                                           0.02      0.01       0.32 r
+  element/fu__1/n73 (net)                                                                     1                   0.00       0.32 r
+  element/fu__1/U697/ZN (OAI21D1BWP30P140LVT)                                                           0.01      0.01       0.33 f
+  element/fu__1/n75 (net)                                                                     1                   0.00       0.33 f
+  element/fu__1/U526/ZN (AOI21D1BWP30P140LVT)                                                           0.02      0.01       0.34 r
+  element/fu__1/n76 (net)                                                                     1                   0.00       0.34 r
+  element/fu__1/U698/Z (BUFFD6BWP30P140LVT)                                                             0.01      0.02       0.36 r
+  element/fu__1/n1860 (net)                                                                  48                   0.00       0.36 r
+  element/fu__1/U589/ZN (INVD1BWP30P140LVT)                                                             0.02      0.01       0.37 f
+  element/fu__1/n832 (net)                                                                   15                   0.00       0.37 f
+  element/fu__1/U49/Z (MUX2D1BWP30P140LVT)                                                              0.01      0.02       0.39 f
+  element/fu__1/n738 (net)                                                                    7                   0.00       0.39 f
+  element/fu__1/U769/ZN (INVD1BWP30P140LVT)                                                             0.01      0.01       0.40 r
+  element/fu__1/n130 (net)                                                                    2                   0.00       0.40 r
+  element/fu__1/U773/ZN (ND2D1BWP30P140LVT)                                                             0.08      0.05       0.45 f
+  element/fu__1/n883 (net)                                                                   50                   0.00       0.45 f
+  element/fu__1/U28/ZN (CKND0BWP30P140LVT)                                                              0.03      0.03       0.47 r
+  element/fu__1/n1 (net)                                                                      7                   0.00       0.47 r
+  element/fu__1/U1406/ZN (AOI22D0BWP30P140LVT)                                                          0.02      0.01       0.48 f
+  element/fu__1/n741 (net)                                                                    1                   0.00       0.48 f
+  element/fu__1/U1407/ZN (OAI21D1BWP30P140LVT)                                                          0.02      0.01       0.49 r
+  element/fu__1/n742 (net)                                                                    1                   0.00       0.49 r
+  element/fu__1/U1408/ZN (AOI21D0BWP30P140LVT)                                                          0.02      0.01       0.50 f
+  element/fu__1/n746 (net)                                                                    2                   0.00       0.50 f
+  element/fu__1/U1410/ZN (ND2D0BWP30P140LVT)                                                            0.01      0.01       0.50 r
+  element/fu__1/n750 (net)                                                                    2                   0.00       0.50 r
+  element/fu__1/U1413/ZN (IND2D1BWP30P140LVT)                                                           0.01      0.01       0.51 r
+  element/fu__1/n1620 (net)                                                                   2                   0.00       0.51 r
+  element/fu__1/U2204/ZN (OAI32D0BWP30P140LVT)                                                          0.03      0.02       0.53 f
+  element/fu__1/intadd_2_CI (net)                                                             1                   0.00       0.53 f
+  element/fu__1/intadd_2_U25/CO (FA1D1BWP30P140LVT)                                                     0.01      0.02       0.55 f    mo 
+  element/fu__1/intadd_2_n24 (net)                                                            1                   0.00       0.55 f
+  element/fu__1/intadd_2_U24/CO (FA1D0BWP30P140LVT)                                                     0.01      0.02       0.57 f    mo 
+  element/fu__1/intadd_2_n23 (net)                                                            1                   0.00       0.57 f
+  element/fu__1/intadd_2_U23/CO (FA1D1BWP30P140LVT)                                                     0.01      0.02       0.59 f    mo 
+  element/fu__1/intadd_2_n22 (net)                                                            1                   0.00       0.59 f
+  element/fu__1/intadd_2_U22/CO (FA1D0BWP30P140LVT)                                                     0.01      0.02       0.61 f    mo 
+  element/fu__1/intadd_2_n21 (net)                                                            1                   0.00       0.61 f
+  element/fu__1/intadd_2_U21/CO (FA1D0BWP30P140LVT)                                                     0.01      0.02       0.63 f    mo 
+  element/fu__1/intadd_2_n20 (net)                                                            1                   0.00       0.63 f
+  element/fu__1/intadd_2_U20/CO (FA1D0BWP30P140LVT)                                                     0.01      0.02       0.65 f    mo 
+  element/fu__1/intadd_2_n19 (net)                                                            1                   0.00       0.65 f
+  element/fu__1/intadd_2_U19/CO (FA1D0BWP30P140LVT)                                                     0.01      0.02       0.67 f    mo 
+  element/fu__1/intadd_2_n18 (net)                                                            1                   0.00       0.67 f
+  element/fu__1/intadd_2_U18/CO (FA1D0BWP30P140LVT)                                                     0.01      0.02       0.69 f    mo 
+  element/fu__1/intadd_2_n17 (net)                                                            1                   0.00       0.69 f
+  element/fu__1/intadd_2_U17/CO (FA1D0BWP30P140LVT)                                                     0.01      0.02       0.71 f    mo 
+  element/fu__1/intadd_2_n16 (net)                                                            1                   0.00       0.71 f
+  element/fu__1/intadd_2_U16/CO (FA1D0BWP30P140LVT)                                                     0.01      0.02       0.73 f    mo 
+  element/fu__1/intadd_2_n15 (net)                                                            1                   0.00       0.73 f
+  element/fu__1/intadd_2_U15/CO (FA1D1BWP30P140LVT)                                                     0.01      0.02       0.75 f    mo 
+  element/fu__1/intadd_2_n14 (net)                                                            1                   0.00       0.75 f
+  element/fu__1/intadd_2_U14/CO (FA1D1BWP30P140LVT)                                                     0.01      0.02       0.77 f    mo 
+  element/fu__1/intadd_2_n13 (net)                                                            1                   0.00       0.77 f
+  element/fu__1/intadd_2_U13/CO (FA1D1BWP30P140LVT)                                                     0.01      0.02       0.78 f    mo 
+  element/fu__1/intadd_2_n12 (net)                                                            1                   0.00       0.78 f
+  element/fu__1/intadd_2_U12/S (FA1D1BWP30P140LVT)                                                      0.01      0.03       0.81 r    mo 
+  element/fu__1/intadd_2_SUM_13_ (net)                                                        1                   0.00       0.81 r
+  element/fu__1/U2298/ZN (CKND0BWP30P140LVT)                                                            0.01      0.01       0.82 f
+  element/fu__1/intadd_22_B_2_ (net)                                                          1                   0.00       0.82 f
+  element/fu__1/U2449/CO (FA1D1BWP30P140LVT)                                                            0.01      0.02       0.84 f    mo 
+  element/fu__1/intadd_22_n1 (net)                                                            3                   0.00       0.84 f
+  element/fu__1/U109/ZN (IOA21D1BWP30P140LVT)                                                           0.01      0.01       0.86 f
+  element/fu__1/n339 (net)                                                                    1                   0.00       0.86 f
+  element/fu__1/U591/CO (FA1D1BWP30P140LVT)                                                             0.01      0.02       0.88 f
+  element/fu__1/n362 (net)                                                                    1                   0.00       0.88 f
+  element/fu__1/U1057/CO (FA1D0BWP30P140LVT)                                                            0.01      0.02       0.90 f
+  element/fu__1/n365 (net)                                                                    1                   0.00       0.90 f
+  element/fu__1/U33/ZN (CKND0BWP30P140LVT)                                                              0.01      0.01       0.90 r
+  element/fu__1/n366 (net)                                                                    2                   0.00       0.90 r
+  element/fu__1/U590/ZN (ND2D1BWP30P140LVT)                                                             0.01      0.01       0.91 f
+  element/fu__1/n403 (net)                                                                    2                   0.00       0.91 f
+  element/fu__1/U31/ZN (ND2D1BWP30P140LVT)                                                              0.01      0.01       0.91 r
+  element/fu__1/n818 (net)                                                                    3                   0.00       0.91 r
+  element/fu__1/U98/ZN (OAI21D1BWP30P140LVT)                                                            0.02      0.01       0.93 f
+  element/fu__1/n409 (net)                                                                    1                   0.00       0.93 f
+  element/fu__1/U96/CO (FA1D1BWP30P140LVT)                                                              0.01      0.02       0.95 f
+  element/fu__1/n441 (net)                                                                    3                   0.00       0.95 f
+  element/fu__1/U94/ZN (IOA21D1BWP30P140LVT)                                                            0.01      0.01       0.96 f
+  element/fu__1/n444 (net)                                                                    1                   0.00       0.96 f
+  element/fu__1/U92/CO (FA1D1BWP30P140LVT)                                                              0.01      0.02       0.98 f
+  element/fu__1/n465 (net)                                                                    3                   0.00       0.98 f
+  element/fu__1/U91/ZN (IOA21D1BWP30P140LVT)                                                            0.01      0.01       0.99 f
+  element/fu__1/n1814 (net)                                                                   1                   0.00       0.99 f
+  element/fu__1/U2351/CO (FA1D0BWP30P140LVT)                                                            0.01      0.02       1.02 f
+  element/fu__1/n1829 (net)                                                                   1                   0.00       1.02 f
+  element/fu__1/U30/ZN (XNR4D1BWP30P140LVT)                                                             0.01      0.03       1.04 r
+  element/fu__1/n1908 (net)                                                                   1                   0.00       1.04 r
+  element/fu__1/U29/Z (XOR2D0BWP30P140LVT)                                                              0.01      0.01       1.06 f
+  element/fu__1/n1914 (net)                                                                   2                   0.00       1.06 f
+  element/fu__1/U2391/ZN (OAI21D1BWP30P140LVT)                                                          0.01      0.01       1.07 r
+  element/fu__1/n1912 (net)                                                                   1                   0.00       1.07 r
+  element/fu__1/U88/ZN (OAI31D0BWP30P140LVT)                                                            0.02      0.01       1.08 f
+  element/fu__1/n1920 (net)                                                                   2                   0.00       1.08 f
+  element/fu__1/U2393/ZN (OAI21D1BWP30P140LVT)                                                          0.01      0.01       1.09 r
+  element/fu__1/n1918 (net)                                                                   1                   0.00       1.09 r
+  element/fu__1/U87/ZN (OAI31D0BWP30P140LVT)                                                            0.02      0.01       1.10 f
+  element/fu__1/n1927 (net)                                                                   2                   0.00       1.10 f
+  element/fu__1/U86/ZN (OAI21D1BWP30P140LVT)                                                            0.01      0.01       1.11 r
+  element/fu__1/n1925 (net)                                                                   1                   0.00       1.11 r
+  element/fu__1/U2395/ZN (OAI31D1BWP30P140LVT)                                                          0.02      0.01       1.12 f
+  element/fu__1/n1934 (net)                                                                   2                   0.00       1.12 f
+  element/fu__1/U2397/ZN (OAI21D1BWP30P140LVT)                                                          0.01      0.01       1.13 r
+  element/fu__1/n1932 (net)                                                                   1                   0.00       1.13 r
+  element/fu__1/U2398/ZN (OAI31D1BWP30P140LVT)                                                          0.02      0.01       1.14 f
+  element/fu__1/n1941 (net)                                                                   2                   0.00       1.14 f
+  element/fu__1/U2400/ZN (OAI21D1BWP30P140LVT)                                                          0.01      0.01       1.15 r
+  element/fu__1/n1939 (net)                                                                   1                   0.00       1.15 r
+  element/fu__1/U2401/ZN (OAI31D0BWP30P140LVT)                                                          0.02      0.01       1.16 f
+  element/fu__1/n2067 (net)                                                                   1                   0.00       1.16 f
+  element/fu__1/U2444/ZN (OAI21D1BWP30P140LVT)                                                          0.02      0.01       1.17 r
+  element/fu__1/send_out__msg[69] (net)                                                       1                   0.00       1.17 r
+  element/fu__1/send_out__msg[69] (MulRTL__292afbada18a7b1e)                                                      0.00       1.17 r
+  element/fu__send_out__msg[331] (net)                                                                            0.00       1.17 r
+  element/U124/ZN (AOI22D1BWP30P140LVT)                                                                 0.02      0.01       1.18 f
+  element/n5075 (net)                                                                         1                   0.00       1.18 f
+  element/U125/ZN (IND4D2BWP30P140LVT)                                                                  0.02      0.01       1.19 r
+  element/send_out__msg[69] (net)                                                             1                   0.00       1.19 r
+  element/send_out__msg[69] (FlexibleFuRTL__ce1b7f3367163b3e)                                                     0.00       1.19 r
+  element__send_out__msg[32] (net)                                                                                0.00       1.19 r
+  fu_crossbar/recv_data__msg[69] (CrossbarRTL__22da306610e47bb7)                                                  0.00       1.19 r
+  fu_crossbar/recv_data__msg[69] (net)                                                                            0.00       1.19 r
+  fu_crossbar/U11/ZN (INVD2BWP30P140LVT)                                                                0.01      0.01       1.20 f
+  fu_crossbar/n280 (net)                                                                     12                   0.00       1.20 f
+  fu_crossbar/U663/ZN (NR2D1BWP30P140LVT)                                                               0.01      0.01       1.20 r
+  fu_crossbar/send_data__msg[34] (net)                                                        1                   0.00       1.20 r
+  fu_crossbar/send_data__msg[34] (CrossbarRTL__22da306610e47bb7)                                                  0.00       1.20 r
+  fu_crossbar__send_data__msg[32] (net)                                                                           0.00       1.20 r
+  register_cluster/recv_data_from_fu_crossbar__msg[34] (RegisterClusterRTL__8a44c1a18964df48)                     0.00       1.20 r
+  register_cluster/recv_data_from_fu_crossbar__msg[34] (net)                                                      0.00       1.20 r
+  register_cluster/reg_bank__3/inport_wdata[69] (RegisterBankRTL__01c957f3d2dd8862)                               0.00       1.20 r
+  register_cluster/reg_bank__3/inport_wdata[69] (net)                                                             0.00       1.20 r
+  register_cluster/reg_bank__3/U4/Z (AO22D0BWP30P140LVT)                                                0.01      0.02       1.22 r
+  register_cluster/reg_bank__3/reg_file__wdata[32] (net)                                      1                   0.00       1.22 r
+  register_cluster/reg_bank__3/reg_file/wdata[34] (RegisterFile__84f0703fd9bfd535_0)                              0.00       1.22 r
+  register_cluster/reg_bank__3/reg_file/wdata[34] (net)                                                           0.00       1.22 r
+  register_cluster/reg_bank__3/reg_file/U2/ZN (INVD2BWP30P140LVT)                                       0.01      0.01       1.23 f
+  register_cluster/reg_bank__3/reg_file/n810 (net)                                           16                   0.00       1.23 f
+  register_cluster/reg_bank__3/reg_file/U1010/ZN (AOI22D1BWP30P140LVT)                                  0.02      0.01       1.24 r
+  register_cluster/reg_bank__3/reg_file/n845 (net)                                            1                   0.00       1.24 r
+  register_cluster/reg_bank__3/reg_file/regs_reg_0__payload__31_/D (DFQD1BWP30P140LVT)                  0.02      0.00       1.24 r
+  data arrival time                                                                                                          1.24
+
+  clock clk[0] (rise edge)                                                                                        1.25       1.25
+  clock network delay (ideal)                                                                                     0.00       1.25
+  register_cluster/reg_bank__3/reg_file/regs_reg_0__payload__31_/CP (DFQD1BWP30P140LVT)                           0.00       1.25 r
+  library setup time                                                                                             -0.01       1.24
+  data required time                                                                                                         1.24
+  -------------------------------------------------------------------------------------------------------------------------------------------------------
+  data required time                                                                                                         1.24
+  data arrival time                                                                                                         -1.24
+  -------------------------------------------------------------------------------------------------------------------------------------------------------
+  slack (MET)                                                                                                                0.00
+
+
+1

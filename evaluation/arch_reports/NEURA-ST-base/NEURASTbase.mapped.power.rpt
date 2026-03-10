@@ -1,0 +1,344 @@
+Information: Propagating switching activity (low effort zero delay simulation). (PWR-6)
+Warning: Design has unannotated primary inputs. (PWR-414)
+Warning: Design has unannotated sequential cell outputs. (PWR-415)
+ 
+****************************************
+Report : power
+        -hier
+        -analysis_effort low
+Design : TileRTL__b9cee57e12f63681
+Version: V-2023.12
+Date   : Mon Oct 20 20:34:21 2025
+****************************************
+
+
+Library(s) Used:
+
+    tcbn22ullbwp30p140lvtffg0p88v0c (File: /usr/eelocal/tsmc_icdc/tsmc022/tsmc022_ULL/SC/tcbn22ullbwp30p140lvt/Rev110b/Front_End/timing_power_noise/NLDM/tcbn22ullbwp30p140lvt_110b/tcbn22ullbwp30p140lvtffg0p88v0c.db)
+
+
+Operating Conditions: ffg0p88v0c   Library: tcbn22ullbwp30p140lvtffg0p88v0c
+Wire Load Model Mode: segmented
+
+Design        Wire Load Model            Library
+------------------------------------------------
+TileRTL__b9cee57e12f63681
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+ConstQueueDynamicRTL__e446c26e2fefb382
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+CtrlMemDynamicRTL__d81410508ce3d397
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+FlexibleFuRTL__6163db5f71dda1d1
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+CrossbarRTL__1ae1442f18fdd5a0
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+RegisterClusterRTL__8a44c1a18964df48
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+CrossbarRTL__6db6be5569fb594a
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+ChannelRTL__d316842813c529a6_7
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+ChannelRTL__d316842813c529a6_6
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+LinkOrRTL__a54ca58e7852ace8_7
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+RegisterFile__1c27d4c14ceb33a8
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+NormalQueueRTL__b461308b663cbca5
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+RegisterFile__56b81172738cfe98
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+AdderRTL__ca88be7f1905246f
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+MulRTL__ca88be7f1905246f
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+LogicRTL__ca88be7f1905246f
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+ShifterRTL__ca88be7f1905246f
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+PhiRTL__ca88be7f1905246f
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+CompRTL__ca88be7f1905246f
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+MemUnitRTL__ca88be7f1905246f
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+SelRTL__ca88be7f1905246f
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+NahRTL__ca88be7f1905246f
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+RegisterBankRTL__875c77c0f9073b7c
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+RegisterBankRTL__e5fa866620bad084
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+RegisterBankRTL__7af232d7d9d1d953
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+RegisterBankRTL__01c957f3d2dd8862
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+NormalQueueRTL__e10c2d77bcb9538e_7
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+NormalQueueRTL__e10c2d77bcb9538e_6
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+NormalQueueCtrlRTL__num_entries_2_8
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+NormalQueueDpathRTL__b461308b663cbca5
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+RegisterFile__84f0703fd9bfd535_3
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+NormalQueueCtrlRTL__num_entries_2_7
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+NormalQueueDpathRTL__e10c2d77bcb9538e_7
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+RegisterFile__1d0061fb04290bf8
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+RegisterFile__da749a1852bb59a5_7
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+RegisterFile__84f0703fd9bfd535_0
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+RegisterFile__84f0703fd9bfd535_1
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+RegisterFile__84f0703fd9bfd535_2
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+NormalQueueCtrlRTL__num_entries_2_0
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+NormalQueueCtrlRTL__num_entries_2_1
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+NormalQueueCtrlRTL__num_entries_2_2
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+NormalQueueCtrlRTL__num_entries_2_3
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+NormalQueueCtrlRTL__num_entries_2_4
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+NormalQueueCtrlRTL__num_entries_2_5
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+NormalQueueCtrlRTL__num_entries_2_6
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+LinkOrRTL__a54ca58e7852ace8_0
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+LinkOrRTL__a54ca58e7852ace8_1
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+LinkOrRTL__a54ca58e7852ace8_2
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+LinkOrRTL__a54ca58e7852ace8_3
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+LinkOrRTL__a54ca58e7852ace8_4
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+LinkOrRTL__a54ca58e7852ace8_5
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+LinkOrRTL__a54ca58e7852ace8_6
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+NormalQueueDpathRTL__e10c2d77bcb9538e_0
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+NormalQueueDpathRTL__e10c2d77bcb9538e_1
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+NormalQueueDpathRTL__e10c2d77bcb9538e_2
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+NormalQueueDpathRTL__e10c2d77bcb9538e_3
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+NormalQueueDpathRTL__e10c2d77bcb9538e_4
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+NormalQueueDpathRTL__e10c2d77bcb9538e_5
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+NormalQueueDpathRTL__e10c2d77bcb9538e_6
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+ChannelRTL__d316842813c529a6_0
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+ChannelRTL__d316842813c529a6_1
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+ChannelRTL__d316842813c529a6_2
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+ChannelRTL__d316842813c529a6_3
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+ChannelRTL__d316842813c529a6_4
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+ChannelRTL__d316842813c529a6_5
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+NormalQueueRTL__e10c2d77bcb9538e_0
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+NormalQueueRTL__e10c2d77bcb9538e_1
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+NormalQueueRTL__e10c2d77bcb9538e_2
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+NormalQueueRTL__e10c2d77bcb9538e_3
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+NormalQueueRTL__e10c2d77bcb9538e_4
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+NormalQueueRTL__e10c2d77bcb9538e_5
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+RegisterFile__da749a1852bb59a5_0
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+RegisterFile__da749a1852bb59a5_1
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+RegisterFile__da749a1852bb59a5_2
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+RegisterFile__da749a1852bb59a5_3
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+RegisterFile__da749a1852bb59a5_4
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+RegisterFile__da749a1852bb59a5_5
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+RegisterFile__da749a1852bb59a5_6
+                       ZeroWireload      tcbn22ullbwp30p140lvtffg0p88v0c
+
+
+Global Operating Voltage = 0.88 
+Power-specific unit information :
+    Voltage Units = 1V
+    Capacitance Units = 1.000000pf
+    Time Units = 1ns
+    Dynamic Power Units = 1mW    (derived from V,C,T units)
+    Leakage Power Units = 1nW
+
+
+--------------------------------------------------------------------------------
+                                       Switch   Int      Leak     Total
+Hierarchy                              Power    Power    Power    Power    %
+--------------------------------------------------------------------------------
+TileRTL__b9cee57e12f63681                 0.268   12.629 1.36e+06   14.259 100.0
+  tile_out_or_link__7 (LinkOrRTL__a54ca58e7852ace8_0)
+                                       2.59e-03 1.93e-04 9.30e+03 1.21e-02   0.1
+  tile_out_or_link__6 (LinkOrRTL__a54ca58e7852ace8_1)
+                                       2.36e-04 1.61e-04 9.30e+03 9.70e-03   0.1
+  tile_out_or_link__5 (LinkOrRTL__a54ca58e7852ace8_2)
+                                       4.96e-04 1.65e-04 9.30e+03 9.96e-03   0.1
+  tile_out_or_link__4 (LinkOrRTL__a54ca58e7852ace8_3)
+                                       6.08e-04 1.67e-04 9.34e+03 1.01e-02   0.1
+  tile_out_or_link__3 (LinkOrRTL__a54ca58e7852ace8_4)
+                                       2.30e-04 1.62e-04 9.30e+03 9.69e-03   0.1
+  tile_out_or_link__2 (LinkOrRTL__a54ca58e7852ace8_5)
+                                       2.31e-04 1.62e-04 9.30e+03 9.69e-03   0.1
+  tile_out_or_link__1 (LinkOrRTL__a54ca58e7852ace8_6)
+                                       9.67e-04 1.72e-04 9.30e+03 1.04e-02   0.1
+  tile_out_or_link__0 (LinkOrRTL__a54ca58e7852ace8_7)
+                                       1.37e-03 1.76e-04 9.30e+03 1.08e-02   0.1
+  tile_in_channel__7 (ChannelRTL__d316842813c529a6_0)
+                                       4.81e-03    0.162 1.46e+04    0.182   1.3
+    queues__0 (NormalQueueRTL__e10c2d77bcb9538e_0)
+                                       4.81e-03    0.162 1.46e+04    0.182   1.3
+      dpath (NormalQueueDpathRTL__e10c2d77bcb9538e_0)
+                                       4.25e-03    0.153 1.37e+04    0.171   1.2
+        rf (RegisterFile__da749a1852bb59a5_0)
+                                       4.25e-03    0.153 1.37e+04    0.171   1.2
+      ctrl (NormalQueueCtrlRTL__num_entries_2_0)
+                                       5.64e-04 9.66e-03  911.550 1.11e-02   0.1
+  tile_in_channel__6 (ChannelRTL__d316842813c529a6_1)
+                                       4.80e-03    0.162 1.46e+04    0.182   1.3
+    queues__0 (NormalQueueRTL__e10c2d77bcb9538e_1)
+                                       4.80e-03    0.162 1.46e+04    0.182   1.3
+      dpath (NormalQueueDpathRTL__e10c2d77bcb9538e_1)
+                                       4.31e-03    0.153 1.36e+04    0.171   1.2
+        rf (RegisterFile__da749a1852bb59a5_1)
+                                       4.31e-03    0.153 1.36e+04    0.171   1.2
+      ctrl (NormalQueueCtrlRTL__num_entries_2_1)
+                                       4.91e-04 9.64e-03  917.031 1.11e-02   0.1
+  tile_in_channel__5 (ChannelRTL__d316842813c529a6_2)
+                                       4.84e-03    0.162 1.46e+04    0.182   1.3
+    queues__0 (NormalQueueRTL__e10c2d77bcb9538e_2)
+                                       4.84e-03    0.162 1.46e+04    0.182   1.3
+      dpath (NormalQueueDpathRTL__e10c2d77bcb9538e_2)
+                                       4.28e-03    0.153 1.36e+04    0.171   1.2
+        rf (RegisterFile__da749a1852bb59a5_2)
+                                       4.28e-03    0.153 1.36e+04    0.171   1.2
+      ctrl (NormalQueueCtrlRTL__num_entries_2_2)
+                                       5.57e-04 9.65e-03  909.943 1.11e-02   0.1
+  tile_in_channel__4 (ChannelRTL__d316842813c529a6_3)
+                                       4.96e-03    0.163 1.46e+04    0.182   1.3
+    queues__0 (NormalQueueRTL__e10c2d77bcb9538e_3)
+                                       4.96e-03    0.163 1.46e+04    0.182   1.3
+      dpath (NormalQueueDpathRTL__e10c2d77bcb9538e_3)
+                                       4.39e-03    0.153 1.36e+04    0.171   1.2
+        rf (RegisterFile__da749a1852bb59a5_3)
+                                       4.39e-03    0.153 1.36e+04    0.171   1.2
+      ctrl (NormalQueueCtrlRTL__num_entries_2_3)
+                                       5.75e-04 9.68e-03  917.519 1.12e-02   0.1
+  tile_in_channel__3 (ChannelRTL__d316842813c529a6_4)
+                                       4.89e-03    0.162 1.46e+04    0.182   1.3
+    queues__0 (NormalQueueRTL__e10c2d77bcb9538e_4)
+                                       4.89e-03    0.162 1.46e+04    0.182   1.3
+      dpath (NormalQueueDpathRTL__e10c2d77bcb9538e_4)
+                                       4.31e-03    0.153 1.37e+04    0.171   1.2
+        rf (RegisterFile__da749a1852bb59a5_4)
+                                       4.31e-03    0.153 1.37e+04    0.171   1.2
+      ctrl (NormalQueueCtrlRTL__num_entries_2_4)
+                                       5.76e-04 9.67e-03  910.832 1.12e-02   0.1
+  tile_in_channel__2 (ChannelRTL__d316842813c529a6_5)
+                                       4.81e-03    0.162 1.46e+04    0.182   1.3
+    queues__0 (NormalQueueRTL__e10c2d77bcb9538e_5)
+                                       4.81e-03    0.162 1.46e+04    0.182   1.3
+      dpath (NormalQueueDpathRTL__e10c2d77bcb9538e_5)
+                                       4.24e-03    0.153 1.36e+04    0.170   1.2
+        rf (RegisterFile__da749a1852bb59a5_5)
+                                       4.24e-03    0.153 1.36e+04    0.170   1.2
+      ctrl (NormalQueueCtrlRTL__num_entries_2_5)
+                                       5.70e-04 9.67e-03  915.014 1.12e-02   0.1
+  tile_in_channel__1 (ChannelRTL__d316842813c529a6_6)
+                                       4.93e-03    0.162 1.46e+04    0.182   1.3
+    queues__0 (NormalQueueRTL__e10c2d77bcb9538e_6)
+                                       4.93e-03    0.162 1.46e+04    0.182   1.3
+      dpath (NormalQueueDpathRTL__e10c2d77bcb9538e_6)
+                                       4.37e-03    0.153 1.36e+04    0.171   1.2
+        rf (RegisterFile__da749a1852bb59a5_6)
+                                       4.37e-03    0.153 1.36e+04    0.171   1.2
+      ctrl (NormalQueueCtrlRTL__num_entries_2_6)
+                                       5.67e-04 9.66e-03  912.272 1.11e-02   0.1
+  tile_in_channel__0 (ChannelRTL__d316842813c529a6_7)
+                                       4.82e-03    0.162 1.46e+04    0.182   1.3
+    queues__0 (NormalQueueRTL__e10c2d77bcb9538e_7)
+                                       4.82e-03    0.162 1.46e+04    0.182   1.3
+      dpath (NormalQueueDpathRTL__e10c2d77bcb9538e_7)
+                                       4.33e-03    0.153 1.36e+04    0.171   1.2
+        rf (RegisterFile__da749a1852bb59a5_7)
+                                       4.33e-03    0.153 1.36e+04    0.171   1.2
+      ctrl (NormalQueueCtrlRTL__num_entries_2_7)
+                                       4.88e-04 9.66e-03  910.851 1.11e-02   0.1
+  routing_crossbar (CrossbarRTL__6db6be5569fb594a)
+                                       3.52e-04    0.589 1.36e+05    0.725   5.1
+  register_cluster (RegisterClusterRTL__8a44c1a18964df48)
+                                       8.96e-05    4.681 3.55e+05    5.036  35.3
+    reg_bank__3 (RegisterBankRTL__01c957f3d2dd8862)
+                                       6.32e-06    1.170 8.75e+04    1.258   8.8
+      reg_file (RegisterFile__84f0703fd9bfd535_0)
+                                       4.89e-06    1.170 8.66e+04    1.257   8.8
+    reg_bank__2 (RegisterBankRTL__7af232d7d9d1d953)
+                                       3.70e-06    1.170 8.76e+04    1.258   8.8
+      reg_file (RegisterFile__84f0703fd9bfd535_1)
+                                       3.10e-06    1.170 8.66e+04    1.257   8.8
+    reg_bank__1 (RegisterBankRTL__e5fa866620bad084)
+                                       6.91e-06    1.170 8.76e+04    1.258   8.8
+      reg_file (RegisterFile__84f0703fd9bfd535_2)
+                                       5.72e-06    1.170 8.66e+04    1.257   8.8
+    reg_bank__0 (RegisterBankRTL__875c77c0f9073b7c)
+                                       8.46e-06    1.170 8.75e+04    1.258   8.8
+      reg_file (RegisterFile__84f0703fd9bfd535_3)
+                                       7.15e-06    1.170 8.65e+04    1.257   8.8
+  fu_crossbar (CrossbarRTL__1ae1442f18fdd5a0)
+                                       5.52e-05    0.147 2.38e+04    0.170   1.2
+  element (FlexibleFuRTL__6163db5f71dda1d1)
+                                       1.91e-03    0.133 1.91e+05    0.325   2.3
+    fu__8 (NahRTL__ca88be7f1905246f)   7.17e-08 2.61e-07  155.162 1.55e-04   0.0
+    fu__7 (SelRTL__ca88be7f1905246f)   8.36e-05 1.56e-02 1.07e+04 2.64e-02   0.2
+    fu__6 (MemUnitRTL__ca88be7f1905246f)
+                                       1.16e-04 1.97e-02 9.68e+03 2.95e-02   0.2
+    fu__5 (CompRTL__ca88be7f1905246f)  1.20e-04 1.57e-02 1.20e+04 2.78e-02   0.2
+    fu__4 (PhiRTL__ca88be7f1905246f)   8.35e-05 1.78e-02 6.12e+03 2.40e-02   0.2
+    fu__3 (ShifterRTL__ca88be7f1905246f)
+                                       1.65e-04 1.57e-02 1.97e+04 3.55e-02   0.2
+    fu__2 (LogicRTL__ca88be7f1905246f) 1.06e-04 1.56e-02 1.16e+04 2.74e-02   0.2
+    fu__1 (MulRTL__ca88be7f1905246f)   9.29e-04 1.68e-02 9.27e+04    0.110   0.8
+    fu__0 (AdderRTL__ca88be7f1905246f) 2.88e-04 1.59e-02 2.31e+04 3.92e-02   0.3
+  ctrl_mem (CtrlMemDynamicRTL__d81410508ce3d397)
+                                       2.85e-02    4.930 3.80e+05    5.339  37.4
+    reg_file (RegisterFile__56b81172738cfe98)
+                                       3.28e-04    3.316 2.48e+05    3.564  25.0
+    recv_pkt_queue (NormalQueueRTL__b461308b663cbca5)
+                                       1.46e-02    0.715 5.53e+04    0.785   5.5
+      dpath (NormalQueueDpathRTL__b461308b663cbca5)
+                                       1.40e-02    0.706 5.45e+04    0.774   5.4
+        rf (RegisterFile__1d0061fb04290bf8)
+                                       1.40e-02    0.706 5.45e+04    0.774   5.4
+      ctrl (NormalQueueCtrlRTL__num_entries_2_8)
+                                       6.43e-04 9.60e-03  863.634 1.11e-02   0.1
+  const_mem (ConstQueueDynamicRTL__e446c26e2fefb382)
+                                       8.86e-04    0.823 6.15e+04    0.885   6.2
+    reg_file (RegisterFile__1c27d4c14ceb33a8)
+                                       5.73e-04    0.805 5.93e+04    0.864   6.1
+1
