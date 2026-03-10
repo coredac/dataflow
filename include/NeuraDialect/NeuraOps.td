@@ -163,7 +163,7 @@ def Neura_LoadIndexedOp: Op<NeuraDialect, "load_indexed">{
   }];
   let arguments = (ins AnyType:$base, Variadic<AnyType>:$indices);
   let results = (outs AnyType:$result);
-  let assemblyFormat = "$base `[` $indices `:` type($indices) `]` type($base) attr-dict `:` type($result)";
+  let assemblyFormat = "$base `[` ($indices^ `:` type($indices))? `]` type($base) attr-dict `:` type($result)";
 }
 
 //Defines a store operation with integrated address calculation.
@@ -177,7 +177,7 @@ def Neura_StoreIndexedOp: Op<NeuraDialect, "store_indexed"> {
   }];
   let arguments = (ins AnyType:$value, AnyType:$base, Variadic<AnyType>:$indices);
   let results = (outs);
-  let assemblyFormat = "$value `to` $base `[` $indices `:` type($indices) `]` type($base) attr-dict `:` type($value)";
+  let assemblyFormat = "$value `to` $base `[` ($indices^ `:` type($indices))? `]` type($base) attr-dict `:` type($value)";
 }
 
 // Defines a pointer computation operation.
