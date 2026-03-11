@@ -75,15 +75,52 @@ def ConvertAffineToTaskflow : Pass<"convert-affine-to-taskflow", "ModuleOp">{
 }
 
 def ConvertTaskflowToNeura : Pass<"convert-taskflow-to-neura", "ModuleOp">{
-  let summary = "Convert taskflow.hyperblock to neura.kernel";
+  let summary = "Convert taskflow operations to neura.kernel";
   let description = [{
-    Converts taskflow.hyperblock operations with leaf counters into neura.kernel
-    operations suitable for CGRA tile array mapping.
+    Converts taskflow.hyperblock operations into neura.kernel operations suitable for
+    CGRA tile array mapping.
+
+    Converts the entire taskflow.hyperblock operations and corresponding counters ops
+    to neura.kernel, based on the input architecture spec file.
+
+    mlir-neura-opt --convert-taskflow-to-neura input.mlir --architecture-spec=$PATH/architecture.yaml -o output.mlir
   }];
   let constructor = "mlir::createConvertTaskflowToNeuraPass()";
   let dependentDialects = [
     "mlir::taskflow::TaskflowDialect",
     "mlir::neura::NeuraDialect"
+    "mlir::affine::AffineDialect"
+  ];
+}
+
+def FoldSubView : Pass<"fold-subview", "func::FuncOp"> {
+  let summary = "Folds memref.subview into affine load/store operations";
+  let description = [{
+    Eliminates memref.subview operations by folding them into their users
+    (affine.load and affine.store). Adjusts indices to account for subview
+    offsets and strides, enabling direct access to the source memref.
+  }];
+  let constructor = "mlir::createFoldSubViewPass()";
+  let dependentDialects = [
+    "mlir::affine::AffineDialect",
+    "mlir::memref::MemRefDialect",
+    "mlir::arith::ArithDialect",
+    "mlir::func::FuncDialect"
+  ];
+}
+
+def ConvertCopyToAffineLoops : Pass<"convert-copy-to-affine-loops", "func::FuncOp"> {
+  let summary = "Converts memref.copy to explicit affine loop nests";
+  let description = [{
+    Converts memref.copy operations into explicit affine.for loop nests
+    with affine.load and affine.store operations. This makes data movement
+    explicit for CGRA compilation with global addressing.
+  }];
+  let constructor = "mlir::createConvertCopyToAffineLoopsPass()";
+  let dependentDialects = [
+    "mlir::affine::AffineDialect",
+    "mlir::memref::MemRefDialect",
+    "mlir::func::FuncDialect"
   ];
 }
 

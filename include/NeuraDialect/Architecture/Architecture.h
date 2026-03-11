@@ -491,6 +491,26 @@ public:
   std::vector<Tile *> getAllTiles() const;
   std::vector<Link *> getAllLinks() const;
 
+  // Checks if the architecture supports counter operations.
+  bool canSupportCounter() const;
+
+  // Clones the architecture but with new per-cgra dimensions.
+  // The provided tile_overrides will be appended to the existing ones.
+  //
+  // Example — create an 8×4 tile array (2×1 CGRA rectangle) with all tiles
+  // present:
+  //   auto arch_2x1 = getArchitecture().cloneWithNewDimensions(8, 4);
+  //
+  // Example — create a 12×8 bounding box for a T-shape (4 CGRAs) where only
+  // specific tiles are valid:
+  //   std::vector<TileOverride> overrides;
+  //   // First mark all tiles as non-existent, then mark valid ones existent.
+  //   // (see MapToAcceleratorPass for the full valid_tiles parsing logic)
+  //   auto arch_T = getArchitecture().cloneWithNewDimensions(8, 12, overrides);
+  std::unique_ptr<Architecture> cloneWithNewDimensions(
+      int new_per_cgra_rows, int new_per_cgra_columns,
+      const std::vector<TileOverride> &additional_overrides = {}) const;
+
 private:
   // Helper methods for constructor initialization.
   void initializeTiles(int rows, int columns);
@@ -529,10 +549,20 @@ private:
   int per_cgra_rows_;
   int per_cgra_columns_;
   int max_ctrl_mem_items_;
+
+  BaseTopology multi_cgra_base_topology_;
+  BaseTopology per_cgra_base_topology_;
+  TileDefaults tile_defaults_;
+  std::vector<TileOverride> tile_overrides_;
+  LinkDefaults link_defaults_;
+  std::vector<LinkOverride> link_overrides_;
 };
 
 // Function for getting the architecture object.
 const Architecture &getArchitecture();
+
+// Function for getting the latency specification file path.
+const std::string &getLatencySpecFile();
 } // namespace neura
 } // namespace mlir
 

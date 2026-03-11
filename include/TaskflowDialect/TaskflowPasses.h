@@ -12,12 +12,25 @@
 #include <memory>
 namespace mlir {
 namespace taskflow {
+
+void registerTaskflowConversionPassPipeline();
+void registerTosaToAffineConversionPassPipeline();
+
 // Passes defined in TaskflowPasses.td
 #define GEN_PASS_DECL
 #include "TaskflowDialect/TaskflowPasses.h.inc"
 std::unique_ptr<mlir::Pass> createConstructHyperblockFromTaskPass();
-std::unique_ptr<mlir::Pass> createCanonicalizeTaskPass();
 std::unique_ptr<mlir::Pass> createClassifyCountersPass();
+std::unique_ptr<mlir::Pass> createMapTaskOnCgraPass();
+std::unique_ptr<mlir::Pass> createFuseTaskPass();
+
+//=========================================================//
+// Optimization Passes
+//=========================================================//
+std::unique_ptr<mlir::Pass> createAffineLoopTreeSerializationPass();
+std::unique_ptr<mlir::Pass> createAffineLoopPerfectionPass();
+std::unique_ptr<mlir::Pass> createMemoryAccessStreamingFusionPass();
+std::unique_ptr<mlir::Pass> createResourceAwareTaskOptimizationPass();
 
 #define GEN_PASS_REGISTRATION
 #include "TaskflowDialect/TaskflowPasses.h.inc"

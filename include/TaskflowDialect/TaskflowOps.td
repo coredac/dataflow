@@ -39,44 +39,46 @@ def TaskflowTaskOp : TaskflowOpBase<"task", [
     1. Memory dependencies: memrefs that are read or written by the task
     2. Value dependencies: SSA values from producer tasks
 
+    The `original_read_memrefs` and `original_write_memrefs` attributes record the actural
+    original memrefs that this task accesses,
+    enabling data placement analysis for multi-CGRA mapping.
+
     Example:
-      // Memory input: %mem, Value input: %val
+      // Memory inputs: %mem, Value inputs: %val
       $out_mem, %out_val = taskflow.task "Task_0"
-        memory_inputs(%mem : memref<4xi32>)
-        value_inputs(%val : i32) {
-      ^bb0(%a0: memref<4xi32>, %a1: i32):
+        dependency_read_in(%mem : memref<4xi32>)
+        dependency_write_in(%arg5 : memref<?xi32>)
+        value_inputs(%val : i32)
+        [original_read_memrefs(%arg0 : memref<?x8x6xi32>),
+         original_write_memrefs(%arg5 : memref<?xi32>)] {
+      ^bb0(%a0: memref<4xi32>, %a1: memref<?xi32>, %a2: i32):
         affine.for %i = 0 to 4 {
           %v = affine.load %a0[%i] : memref<4xi32>
-          %sum = arith.addi %v, %a1 : i32
-          affine.store %sum, %a0[%i] : memref<4xi32>
+          %sum = arith.addi %v, %a2 : i32
+          affine.store %sum, %a1[%i] : memref<?xi32>
         }
-        taskflow.yield memory_outputs(%a0 : memref<4xi32>) value_outputs(%a1 : i32)
-      } : (memref<4xi32>, i32) -> (memref<4xi32>, i32)
+        taskflow.yield reads(%a0 : memref<4xi32>) writes(%a1 : memref<?xi32>) values(%a2 : i32)
+      } : (memref<4xi32>, memref<?xi32>, i32) -> (memref<4xi32>, memref<?xi32>, i32)
   }];
 
   let arguments = (ins
-    Variadic<AnyMemRef>:$memory_inputs,
+    Variadic<AnyMemRef>:$dependency_read_in,
+    Variadic<AnyMemRef>:$dependency_write_in,
     Variadic<AnyType>:$value_inputs,
-    StrAttr:$task_name
+    StrAttr:$task_name,
+    Variadic<AnyMemRef>:$original_read_memrefs,
+    Variadic<AnyMemRef>:$original_write_memrefs
   );
 
   let results = (outs
-    Variadic<AnyMemRef>:$memory_outputs,
+    Variadic<AnyMemRef>:$dependency_read_out,
+    Variadic<AnyMemRef>:$dependency_write_out,
     Variadic<AnyType>:$value_outputs
   );
 
   let regions = (region SizedRegion<1>:$body);
 
-  // let hasCustomAssemblyFormat = 1;
-
-  // let assemblyFormat = [{
-  //   (`memory_inputs` `(` $memory_inputs^ `:` type($memory_inputs) `)`)?
-  //   (`value_inputs` `(` $value_inputs^ `:` type($value_inputs) `)`)?
-  //   attr-dict-with-keyword
-  //   $body
-  //   `->` `(` type($memory_outputs) `,` type($value_outputs) `)`
-  // }];
-
+  let hasCustomAssemblyFormat = 1;
 }
 
 // Defines the yield operation to terminate a Taskflow task.
@@ -94,21 +96,16 @@ def TaskflowYieldOp : TaskflowOpBase<"yield", [Terminator, Pure, ReturnLike, Att
   }];
 
   let arguments = (ins
+    Variadic<AnyMemRef>:$read_results,
     Variadic<AnyMemRef>:$memory_results,
     Variadic<AnyType>:$value_results);
 
-  // let assemblyFormat = [{
-  //   (`memory_outputs` `(` $memory_results^ `:` type($memory_results) `)`)?
-  //   (`value_outputs` `(` $value_results^ `:` type($value_results) `)`)?
-  //   attr-dict
-  // }];
-
-  // let hasCustomAssemblyFormat = 1;
+  let hasCustomAssemblyFormat = 1;
 
   let builders = [
     // Default builder for empty yield.
     OpBuilder<(ins), [{
-    build($_builder, $_state, ValueRange{}, ValueRange{});
+    build($_builder, $_state, ValueRange{}, ValueRange{}, ValueRange{});
     }]>
   ];
 }

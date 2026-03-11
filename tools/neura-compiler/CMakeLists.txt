@@ -5,6 +5,7 @@ set(LIBS
         ${dialect_libs}
         ${conversion_libs}
         MLIRNeuraTransforms
+        MLIRTaskflowTransforms
         MLIRConversion
         MLIRNeura
         MLIRTransforms
@@ -13,6 +14,8 @@ set(LIBS
         MLIRIR
         MLIRParser
         MLIRSupport
+        MLIRFuncAllExtensions
+        MLIRTensorAllExtensions
         )
 
 target_link_libraries(neura-compiler PRIVATE ${LIBS})

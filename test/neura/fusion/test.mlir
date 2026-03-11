@@ -29,11 +29,11 @@
 
 // CHECK-FUSED: func.func @_Z6kernelPA1024_iPiS1_S1_S1_
 // CHECK-FUSED: accelerator = "neura"
-// CHECK-FUSED-DAG: %91 = neura.load_indexed %89[%90 : !neura.data<i64, i1>] !neura.data<!llvm.ptr, i1> : !neura.data<i32, i1>
-// CHECK-FUSED-DAG: %82 = "neura.mul_add"(%79, %80, %81) : (!neura.data<i32, i1>, !neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
-// CHECK-FUSED-DAG: %95 = "neura.mul_add"(%92, %93, %94) : (!neura.data<i32, i1>, !neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
+// CHECK-FUSED-DAG: %102 = neura.load_indexed %100[%101 : !neura.data<i64, i1>] !neura.data<!llvm.ptr, i1> : !neura.data<i32, i1>
+// CHECK-FUSED-DAG: %93 = "neura.mul_add"(%90, %91, %92) : (!neura.data<i32, i1>, !neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
+// CHECK-FUSED-DAG: %106 = "neura.mul_add"(%103, %104, %105) : (!neura.data<i32, i1>, !neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
 
-// CHECK-MAPPING: mapping_info = {compiled_ii = 12 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 9 : i32, res_mii = 5 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}
+// CHECK-MAPPING: mapping_info = {compiled_ii = 13 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 9 : i32, res_mii = 6 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}
 
 // RUN: mlir-neura-opt --architecture-spec=%S/../../arch_spec/architecture.yaml --verify-each=true --mlir-print-ir-after-failure \
 // RUN:           --assign-accelerator \
@@ -49,26 +49,25 @@
 // RUN:           --iter-merge-pattern="min-support=3 max-iter=4" %t-kernel.mlir \
 // RUN: | FileCheck %s --check-prefix=CHECK-ITER-MERGE-PATTERN
 
-// CHECK-ITER-MERGE-PATTERN:      %11:2 = "neura.fused_op"(%10) <{frequency = 4 : i64, pattern_id = 9 : i64, pattern_name = "grant_once->phi_start"}> ({
+// CHECK-ITER-MERGE-PATTERN:      %9:2 = "neura.fused_op"(%8) <{frequency = 4 : i64, pattern_id = 8 : i64, pattern_name = "grant_once->phi_start"}> ({
 // CHECK-ITER-MERGE-PATTERN-NEXT:     ^bb0(%arg5: !neura.data<i64, i1>):
-// CHECK-ITER-MERGE-PATTERN-NEXT:       %61 = "neura.grant_once"() <{constant_value = 0 : i64}> : () -> !neura.data<i64, i1>
-// CHECK-ITER-MERGE-PATTERN-NEXT:       %62 = neura.phi_start %61, %arg5 : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
-// CHECK-ITER-MERGE-PATTERN-NEXT:       neura.yield results(%61, %62 : !neura.data<i64, i1>, !neura.data<i64, i1>)
+// CHECK-ITER-MERGE-PATTERN-NEXT:       %72 = "neura.grant_once"() <{constant_value = 0 : i64}> : () -> !neura.data<i64, i1>
+// CHECK-ITER-MERGE-PATTERN-NEXT:       %73 = neura.phi_start %72, %arg5 : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
+// CHECK-ITER-MERGE-PATTERN-NEXT:       neura.yield results(%72, %73 : !neura.data<i64, i1>, !neura.data<i64, i1>)
 // CHECK-ITER-MERGE-PATTERN-NEXT:     }) : (!neura.data<i64, i1>) -> (!neura.data<i64, i1>, !neura.data<i64, i1>)
-// CHECK-ITER-MERGE-PATTERN:      %16:2 = "neura.fused_op"(%4, %13, %15) <{frequency = 8 : i64, pattern_id = 10 : i64, pattern_name = "phi_start->fused_op:gep->load"}> ({
-// CHECK-ITER-MERGE-PATTERN-NEXT:     ^bb0(%arg5: !neura.data<!llvm.ptr, i1>, %arg6: !neura.data<!llvm.ptr, i1>, %arg7: !neura.data<i64, i1>):
-// CHECK-ITER-MERGE-PATTERN-NEXT:       %61 = neura.phi_start %arg5, %arg6 : !neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1> -> !neura.data<!llvm.ptr, i1>
-// CHECK-ITER-MERGE-PATTERN-NEXT:       %62 = "neura.gep"(%61, %arg7) <{operandSegmentSizes = array<i32: 1, 1>}> : (!neura.data<!llvm.ptr, i1>, !neura.data<i64, i1>) -> !neura.data<!llvm.ptr, i1>
-// CHECK-ITER-MERGE-PATTERN-NEXT:       %63 = "neura.load"(%62) : (!neura.data<!llvm.ptr, i1>) -> !neura.data<i32, i1>
-// CHECK-ITER-MERGE-PATTERN-NEXT:       neura.yield results(%61, %63 : !neura.data<!llvm.ptr, i1>, !neura.data<i32, i1>)
-// CHECK-ITER-MERGE-PATTERN-NEXT:     }) : (!neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1>, !neura.data<i64, i1>) -> (!neura.data<!llvm.ptr, i1>, !neura.data<i32, i1>)
-// CHECK-ITER-MERGE-PATTERN:     %17:3 = "neura.fused_op"(%2, %12, %15) <{frequency = 8 : i64, pattern_id = 10 : i64, pattern_name = "phi_start->fused_op:gep->load"}> ({
-// CHECK-ITER-MERGE-PATTERN-NEXT:     ^bb0(%arg5: !neura.data<!llvm.ptr, i1>, %arg6: !neura.data<!llvm.ptr, i1>, %arg7: !neura.data<i64, i1>):
-// CHECK-ITER-MERGE-PATTERN-NEXT:       %61 = neura.phi_start %arg5, %arg6 : !neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1> -> !neura.data<!llvm.ptr, i1>
-// CHECK-ITER-MERGE-PATTERN-NEXT:       %62 = "neura.gep"(%61, %arg7) <{operandSegmentSizes = array<i32: 1, 1>}> : (!neura.data<!llvm.ptr, i1>, !neura.data<i64, i1>) -> !neura.data<!llvm.ptr, i1>
-// CHECK-ITER-MERGE-PATTERN-NEXT:       %63 = "neura.load"(%62) : (!neura.data<!llvm.ptr, i1>) -> !neura.data<i32, i1>
-// CHECK-ITER-MERGE-PATTERN-NEXT:       neura.yield results(%61, %62, %63 : !neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1>, !neura.data<i32, i1>)
-// CHECK-ITER-MERGE-PATTERN-NEXT:     }) : (!neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1>, !neura.data<i64, i1>) -> (!neura.data<!llvm.ptr, i1>, !neura.data<!llvm.ptr, i1>, !neura.data<i32, i1>)
+// CHECK-ITER-MERGE-PATTERN:      %38:2 = "neura.fused_op"(%9#1, %37, %26) <{frequency = 4 : i64, pattern_id = 9 : i64, pattern_name = "phi_start->fused_op:gep->load"}> ({
+// CHECK-ITER-MERGE-PATTERN-NEXT:     ^bb0(%arg5: !neura.data<i64, i1>, %arg6: !neura.data<i64, i1>, %arg7: !neura.data<!llvm.ptr, i1>):
+// CHECK-ITER-MERGE-PATTERN-NEXT:       %72 = neura.phi_start %arg5, %arg6 : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
+// CHECK-ITER-MERGE-PATTERN-NEXT:       %73 = "neura.gep"(%arg7, %72) <{operandSegmentSizes = array<i32: 1, 1>}> : (!neura.data<!llvm.ptr, i1>, !neura.data<i64, i1>) -> !neura.data<!llvm.ptr, i1>
+// CHECK-ITER-MERGE-PATTERN-NEXT:       %74 = "neura.load"(%73) : (!neura.data<!llvm.ptr, i1>) -> !neura.data<i32, i1>
+// CHECK-ITER-MERGE-PATTERN-NEXT:       neura.yield results(%72, %74 : !neura.data<i64, i1>, !neura.data<i32, i1>)
+// CHECK-ITER-MERGE-PATTERN-NEXT:     }) : (!neura.data<i64, i1>, !neura.data<i64, i1>, !neura.data<!llvm.ptr, i1>) -> (!neura.data<i64, i1>, !neura.data<i32, i1>)
+// CHECK-ITER-MERGE-PATTERN:      %39:2 = "neura.fused_op"(%32, %30, %38#0) <{frequency = 4 : i64, pattern_id = 0 : i64, pattern_name = "gep->load"}> ({
+// CHECK-ITER-MERGE-PATTERN-NEXT:     ^bb0(%arg5: !neura.data<!llvm.ptr, i1>, %arg6: !neura.data<i64, i1>, %arg7: !neura.data<i64, i1>):
+// CHECK-ITER-MERGE-PATTERN-NEXT:       %72 = "neura.gep"(%arg5, %arg6, %arg7) <{operandSegmentSizes = array<i32: 1, 2>}> : (!neura.data<!llvm.ptr, i1>, !neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<!llvm.ptr, i1>
+// CHECK-ITER-MERGE-PATTERN-NEXT:       %73 = "neura.load"(%72) : (!neura.data<!llvm.ptr, i1>) -> !neura.data<i32, i1>
+// CHECK-ITER-MERGE-PATTERN-NEXT:       neura.yield results(%72, %73 : !neura.data<!llvm.ptr, i1>, !neura.data<i32, i1>)
+// CHECK-ITER-MERGE-PATTERN-NEXT:     }) : (!neura.data<!llvm.ptr, i1>, !neura.data<i64, i1>, !neura.data<i64, i1>) -> (!neura.data<!llvm.ptr, i1>, !neura.data<i32, i1>)
 
 // RUN: mlir-neura-opt --architecture-spec=%S/../../arch_spec/architecture.yaml --verify-each=true --mlir-print-ir-after-failure \
 // RUN:           --assign-accelerator \
@@ -84,17 +83,17 @@
 // RUN:           --init-pattern %t-kernel.mlir \
 // RUN:           | FileCheck %s --check-prefix=CHECK-INIT-PATTERN
 
-// CHECK-INIT-PATTERN:          %21:2 = "neura.fused_op"(%16, %20) <{frequency = 6 : i64, pattern_id = 2 : i64, pattern_name = "gep->load"}> ({
+// CHECK-INIT-PATTERN:          %45:2 = "neura.fused_op"(%38, %36, %44) <{frequency = 4 : i64, pattern_id = 2 : i64, pattern_name = "gep->load"}> ({
+// CHECK-INIT-PATTERN-NEXT:     ^bb0(%arg5: !neura.data<!llvm.ptr, i1>, %arg6: !neura.data<i64, i1>, %arg7: !neura.data<i64, i1>):
+// CHECK-INIT-PATTERN-NEXT:       %81 = "neura.gep"(%arg5, %arg6, %arg7) <{operandSegmentSizes = array<i32: 1, 2>}> : (!neura.data<!llvm.ptr, i1>, !neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<!llvm.ptr, i1>
+// CHECK-INIT-PATTERN-NEXT:       %82 = "neura.load"(%81) : (!neura.data<!llvm.ptr, i1>) -> !neura.data<i32, i1>
+// CHECK-INIT-PATTERN-NEXT:       neura.yield results(%81, %82 : !neura.data<!llvm.ptr, i1>, !neura.data<i32, i1>)
+// CHECK-INIT-PATTERN-NEXT:     }) : (!neura.data<!llvm.ptr, i1>, !neura.data<i64, i1>, !neura.data<i64, i1>) -> (!neura.data<!llvm.ptr, i1>, !neura.data<i32, i1>)
+// CHECK-INIT-PATTERN-NEXT:     %46 = "neura.fused_op"(%32, %44) <{frequency = 4 : i64, pattern_id = 2 : i64, pattern_name = "gep->load"}> ({
 // CHECK-INIT-PATTERN-NEXT:     ^bb0(%arg5: !neura.data<!llvm.ptr, i1>, %arg6: !neura.data<i64, i1>):
-// CHECK-INIT-PATTERN-NEXT:       %72 = "neura.gep"(%arg5, %arg6) <{operandSegmentSizes = array<i32: 1, 1>}> : (!neura.data<!llvm.ptr, i1>, !neura.data<i64, i1>) -> !neura.data<!llvm.ptr, i1>
-// CHECK-INIT-PATTERN-NEXT:       %73 = "neura.load"(%72) : (!neura.data<!llvm.ptr, i1>) -> !neura.data<i32, i1>
-// CHECK-INIT-PATTERN-NEXT:       neura.yield results(%72, %73 : !neura.data<!llvm.ptr, i1>, !neura.data<i32, i1>)
-// CHECK-INIT-PATTERN-NEXT:     }) : (!neura.data<!llvm.ptr, i1>, !neura.data<i64, i1>) -> (!neura.data<!llvm.ptr, i1>, !neura.data<i32, i1>)
-// CHECK-INIT-PATTERN-NEXT:     %22 = "neura.fused_op"(%18, %20) <{frequency = 6 : i64, pattern_id = 2 : i64, pattern_name = "gep->load"}> ({
-// CHECK-INIT-PATTERN-NEXT:     ^bb0(%arg5: !neura.data<!llvm.ptr, i1>, %arg6: !neura.data<i64, i1>):
-// CHECK-INIT-PATTERN-NEXT:       %72 = "neura.gep"(%arg5, %arg6) <{operandSegmentSizes = array<i32: 1, 1>}> : (!neura.data<!llvm.ptr, i1>, !neura.data<i64, i1>) -> !neura.data<!llvm.ptr, i1>
-// CHECK-INIT-PATTERN-NEXT:       %73 = "neura.load"(%72) : (!neura.data<!llvm.ptr, i1>) -> !neura.data<i32, i1>
-// CHECK-INIT-PATTERN-NEXT:       neura.yield results(%73 : !neura.data<i32, i1>)
+// CHECK-INIT-PATTERN-NEXT:       %81 = "neura.gep"(%arg5, %arg6) <{operandSegmentSizes = array<i32: 1, 1>}> : (!neura.data<!llvm.ptr, i1>, !neura.data<i64, i1>) -> !neura.data<!llvm.ptr, i1>
+// CHECK-INIT-PATTERN-NEXT:       %82 = "neura.load"(%81) : (!neura.data<!llvm.ptr, i1>) -> !neura.data<i32, i1>
+// CHECK-INIT-PATTERN-NEXT:       neura.yield results(%82 : !neura.data<i32, i1>)
 // CHECK-INIT-PATTERN-NEXT:     }) : (!neura.data<!llvm.ptr, i1>, !neura.data<i64, i1>) -> !neura.data<i32, i1>
 
 // RUN: mlir-neura-opt --architecture-spec=%S/../../arch_spec/architecture.yaml --verify-each=true --mlir-print-ir-after-failure \
@@ -112,7 +111,7 @@
 // RUN:           --insert-data-mov \
 // RUN:           --map-to-accelerator="mapping-strategy=heuristic backtrack-config=simple" %t-kernel.mlir | FileCheck %s --check-prefix=CHECK-ITER-MERGE-PATTERN-MAPPING
 
-// CHECK-ITER-MERGE-PATTERN-MAPPING: mapping_info = {compiled_ii = 12 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 8 : i32, res_mii = 3 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}
+// CHECK-ITER-MERGE-PATTERN-MAPPING: mapping_info = {compiled_ii = 11 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 8 : i32, res_mii = 4 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}
 
 // RUN: mlir-neura-opt --architecture-spec=%S/../../arch_spec/architecture.yaml --verify-each=true --mlir-print-ir-after-failure \
 // RUN:           --assign-accelerator \
@@ -140,7 +139,7 @@
 // CHECK-HARDWARE-MERGE:         "instance_count": 2,
 // CHECK-HARDWARE-MERGE:         "supported_single_ops": ["neura.gep", "neura.grant_once", "neura.grant_predicate", "neura.load", "neura.phi_start", "neura.store"],
 // CHECK-HARDWARE-MERGE:         "supported_composite_ops": [
-// CHECK-HARDWARE-MERGE:           {"pattern_id": 10, "name": "phi_start->fused_op:gep->load"},
+// CHECK-HARDWARE-MERGE:           {"pattern_id": 9, "name": "phi_start->fused_op:gep->load"},
 // CHECK-HARDWARE-MERGE:           {"pattern_id": 0, "name": "gep->load"},
 // CHECK-HARDWARE-MERGE:           {"pattern_id": 11, "name": "phi_start->grant_predicate"}
 // CHECK-HARDWARE-MERGE:         ],
@@ -157,7 +156,7 @@
 // CHECK-HARDWARE-MERGE:         ],
 // CHECK-HARDWARE-MERGE:         "pattern_execution_plans": [
 // CHECK-HARDWARE-MERGE:           {
-// CHECK-HARDWARE-MERGE:             "pattern_id": 10,
+// CHECK-HARDWARE-MERGE:             "pattern_id": 9,
 // CHECK-HARDWARE-MERGE:             "pattern_name": "phi_start->fused_op:gep->load",
 // CHECK-HARDWARE-MERGE:             "fu_mapping": [0, 1, 2],
 // CHECK-HARDWARE-MERGE:             "execution_stages": [
@@ -216,12 +215,11 @@
 // CHECK-HARDWARE-MERGE:       },
 // CHECK-HARDWARE-MERGE:       {
 // CHECK-HARDWARE-MERGE:         "template_id": 1,
-// CHECK-HARDWARE-MERGE:         "instance_count": 3,
+// CHECK-HARDWARE-MERGE:         "instance_count": 2,
 // CHECK-HARDWARE-MERGE:         "supported_single_ops": ["neura.grant_once", "neura.grant_predicate", "neura.icmp"],
 // CHECK-HARDWARE-MERGE:         "supported_composite_ops": [
-// CHECK-HARDWARE-MERGE:           {"pattern_id": 1, "name": "fused_op:icmp->grant_predicate->grant_predicate"},
-// CHECK-HARDWARE-MERGE:           {"pattern_id": 3, "name": "icmp->grant_predicate"},
-// CHECK-HARDWARE-MERGE:           {"pattern_id": 2, "name": "grant_predicate->grant_predicate"}
+// CHECK-HARDWARE-MERGE:           {"pattern_id": 2, "name": "fused_op:icmp->grant_predicate->grant_predicate"},
+// CHECK-HARDWARE-MERGE:           {"pattern_id": 3, "name": "icmp->grant_predicate"}
 // CHECK-HARDWARE-MERGE:         ],
 // CHECK-HARDWARE-MERGE:         "functional_units": [
 // CHECK-HARDWARE-MERGE:           {"fu_id": 0, "op_type": "neura.icmp"},
@@ -230,11 +228,11 @@
 // CHECK-HARDWARE-MERGE:         ],
 // CHECK-HARDWARE-MERGE:         "fu_connections": [
 // CHECK-HARDWARE-MERGE:           {"from_fu": 0, "to_fu": 1},
-// CHECK-HARDWARE-MERGE:           {"from_fu": 1, "to_fu": 2}
+// CHECK-HARDWARE-MERGE:           {"from_fu": 0, "to_fu": 2}
 // CHECK-HARDWARE-MERGE:         ],
 // CHECK-HARDWARE-MERGE:         "pattern_execution_plans": [
 // CHECK-HARDWARE-MERGE:           {
-// CHECK-HARDWARE-MERGE:             "pattern_id": 1,
+// CHECK-HARDWARE-MERGE:             "pattern_id": 2,
 // CHECK-HARDWARE-MERGE:             "pattern_name": "fused_op:icmp->grant_predicate->grant_predicate",
 // CHECK-HARDWARE-MERGE:             "fu_mapping": [0, 1, 2],
 // CHECK-HARDWARE-MERGE:             "execution_stages": [
@@ -266,34 +264,16 @@
 // CHECK-HARDWARE-MERGE:                 "parallel_ops": ["neura.grant_predicate"]
 // CHECK-HARDWARE-MERGE:               }
 // CHECK-HARDWARE-MERGE:             ]
-// CHECK-HARDWARE-MERGE:           },
-// CHECK-HARDWARE-MERGE:           {
-// CHECK-HARDWARE-MERGE:             "pattern_id": 2,
-// CHECK-HARDWARE-MERGE:             "pattern_name": "grant_predicate->grant_predicate",
-// CHECK-HARDWARE-MERGE:             "fu_mapping": [1, 2],
-// CHECK-HARDWARE-MERGE:             "execution_stages": [
-// CHECK-HARDWARE-MERGE:               {
-// CHECK-HARDWARE-MERGE:                 "stage": 0,
-// CHECK-HARDWARE-MERGE:                 "parallel_fus": [1],
-// CHECK-HARDWARE-MERGE:                 "parallel_ops": ["neura.grant_predicate"]
-// CHECK-HARDWARE-MERGE:               },
-// CHECK-HARDWARE-MERGE:               {
-// CHECK-HARDWARE-MERGE:                 "stage": 1,
-// CHECK-HARDWARE-MERGE:                 "parallel_fus": [2],
-// CHECK-HARDWARE-MERGE:                 "parallel_ops": ["neura.grant_predicate"]
-// CHECK-HARDWARE-MERGE:               }
-// CHECK-HARDWARE-MERGE:             ]
 // CHECK-HARDWARE-MERGE:           }
 // CHECK-HARDWARE-MERGE:         ]
 // CHECK-HARDWARE-MERGE:       },
 // CHECK-HARDWARE-MERGE:       {
 // CHECK-HARDWARE-MERGE:         "template_id": 2,
-// CHECK-HARDWARE-MERGE:         "instance_count": 2,
+// CHECK-HARDWARE-MERGE:         "instance_count": 1,
 // CHECK-HARDWARE-MERGE:         "supported_single_ops": ["neura.grant_once", "neura.grant_predicate", "neura.phi_start"],
 // CHECK-HARDWARE-MERGE:         "supported_composite_ops": [
-// CHECK-HARDWARE-MERGE:           {"pattern_id": 4, "name": "grant_once->fused_op:phi_start->phi_start"},
-// CHECK-HARDWARE-MERGE:           {"pattern_id": 9, "name": "grant_once->phi_start"},
-// CHECK-HARDWARE-MERGE:           {"pattern_id": 8, "name": "phi_start->phi_start"}
+// CHECK-HARDWARE-MERGE:           {"pattern_id": 5, "name": "grant_once->fused_op:phi_start->phi_start"},
+// CHECK-HARDWARE-MERGE:           {"pattern_id": 8, "name": "grant_once->phi_start"}
 // CHECK-HARDWARE-MERGE:         ],
 // CHECK-HARDWARE-MERGE:         "functional_units": [
 // CHECK-HARDWARE-MERGE:           {"fu_id": 0, "op_type": "neura.grant_once"},
@@ -306,7 +286,7 @@
 // CHECK-HARDWARE-MERGE:         ],
 // CHECK-HARDWARE-MERGE:         "pattern_execution_plans": [
 // CHECK-HARDWARE-MERGE:           {
-// CHECK-HARDWARE-MERGE:             "pattern_id": 9,
+// CHECK-HARDWARE-MERGE:             "pattern_id": 8,
 // CHECK-HARDWARE-MERGE:             "pattern_name": "grant_once->phi_start",
 // CHECK-HARDWARE-MERGE:             "fu_mapping": [0, 1],
 // CHECK-HARDWARE-MERGE:             "execution_stages": [
@@ -323,7 +303,7 @@
 // CHECK-HARDWARE-MERGE:             ]
 // CHECK-HARDWARE-MERGE:           },
 // CHECK-HARDWARE-MERGE:           {
-// CHECK-HARDWARE-MERGE:             "pattern_id": 4,
+// CHECK-HARDWARE-MERGE:             "pattern_id": 5,
 // CHECK-HARDWARE-MERGE:             "pattern_name": "grant_once->fused_op:phi_start->phi_start",
 // CHECK-HARDWARE-MERGE:             "fu_mapping": [0, 1, 2],
 // CHECK-HARDWARE-MERGE:             "execution_stages": [
@@ -339,23 +319,6 @@
 // CHECK-HARDWARE-MERGE:               },
 // CHECK-HARDWARE-MERGE:               {
 // CHECK-HARDWARE-MERGE:                 "stage": 2,
-// CHECK-HARDWARE-MERGE:                 "parallel_fus": [2],
-// CHECK-HARDWARE-MERGE:                 "parallel_ops": ["neura.phi_start"]
-// CHECK-HARDWARE-MERGE:               }
-// CHECK-HARDWARE-MERGE:             ]
-// CHECK-HARDWARE-MERGE:           },
-// CHECK-HARDWARE-MERGE:           {
-// CHECK-HARDWARE-MERGE:             "pattern_id": 8,
-// CHECK-HARDWARE-MERGE:             "pattern_name": "phi_start->phi_start",
-// CHECK-HARDWARE-MERGE:             "fu_mapping": [1, 2],
-// CHECK-HARDWARE-MERGE:             "execution_stages": [
-// CHECK-HARDWARE-MERGE:               {
-// CHECK-HARDWARE-MERGE:                 "stage": 0,
-// CHECK-HARDWARE-MERGE:                 "parallel_fus": [1],
-// CHECK-HARDWARE-MERGE:                 "parallel_ops": ["neura.phi_start"]
-// CHECK-HARDWARE-MERGE:               },
-// CHECK-HARDWARE-MERGE:               {
-// CHECK-HARDWARE-MERGE:                 "stage": 1,
 // CHECK-HARDWARE-MERGE:                 "parallel_fus": [2],
 // CHECK-HARDWARE-MERGE:                 "parallel_ops": ["neura.phi_start"]
 // CHECK-HARDWARE-MERGE:               }

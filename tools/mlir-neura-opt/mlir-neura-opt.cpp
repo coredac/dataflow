@@ -34,6 +34,9 @@ using mlir::neura::util::ArchParser;
 // Global variable to store architecture spec file path
 static std::string architecture_spec_file;
 
+// Global variable to store latency spec file path
+static std::string latency_spec_file;
+
 const Architecture &mlir::neura::getArchitecture() {
   static Architecture instance = []() {
     auto arch_parser = ArchParser(architecture_spec_file);
@@ -44,6 +47,10 @@ const Architecture &mlir::neura::getArchitecture() {
     return std::move(architecture_result.value());
   }();
   return instance;
+}
+
+const std::string &mlir::neura::getLatencySpecFile() {
+  return latency_spec_file;
 }
 
 int main(int argc, char **argv) {
@@ -67,6 +74,15 @@ int main(int argc, char **argv) {
     } else if (arg_ref.starts_with("--architecture-spec=")) {
       architecture_spec_file =
           arg_ref.substr(strlen("--architecture-spec=")).str();
+      continue;
+    } else if (arg_ref == "--latency-spec") {
+      if (i + 1 < argc) {
+        latency_spec_file = argv[i + 1];
+        ++i; // skip value
+        continue;
+      }
+    } else if (arg_ref.starts_with("--latency-spec=")) {
+      latency_spec_file = arg_ref.substr(strlen("--latency-spec=")).str();
       continue;
     }
     forwarded_args.push_back(argv[i]);
