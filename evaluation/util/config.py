@@ -10,16 +10,20 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-# ── Tool paths (adjust if locations differ) ──────────────────────────────
+# ── Project root (auto-detected from this file's location) ──────────────
+# Works both locally and inside Docker at /workspace/dataflow/
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
-CGEIST    = "/home/lucas/Project/dataflow/thirdparty/polygeist/cgeist"
-MLIR_OPT  = "mlir-opt"
-NEURA_OPT = "/home/lucas/Project/dataflow/build/tools/mlir-neura-opt/mlir-neura-opt"
-NEURA_OPT_4_4 = "/home/lucas/Project/dataflow/build/tools/mlir-neura-opt/mlir-neura-opt-4x4"
+# ── Tool paths ───────────────────────────────────────────────────────────
 
-BENCHMARKS_DIR = Path("/home/lucas/Project/dataflow/evaluation/benchmarks")
-RESULTS_DIR   = Path("/home/lucas/Project/dataflow/evaluation/results")
-FIGS_DIR      = Path("/home/lucas/Project/dataflow/evaluation/figs")
+CGEIST      = str(_PROJECT_ROOT / "thirdparty" / "polygeist" / "cgeist")
+MLIR_OPT    = "mlir-opt"
+NEURA_OPT   = str(_PROJECT_ROOT / "build" / "tools" / "mlir-neura-opt" / "mlir-neura-opt")
+NEURA_OPT_4_4 = str(_PROJECT_ROOT / "build" / "tools" / "mlir-neura-opt" / "mlir-neura-opt-4x4")
+
+BENCHMARKS_DIR = _PROJECT_ROOT / "evaluation" / "benchmarks"
+RESULTS_DIR    = _PROJECT_ROOT / "evaluation" / "results"
+FIGS_DIR       = _PROJECT_ROOT / "evaluation" / "figs"
 
 # ── Physical constants ───────────────────────────────────────────────────
 
