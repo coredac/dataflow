@@ -14,13 +14,7 @@ cgra_defaults:
   columns: 4
   ctrl_mem_items: 20
   base_topology: "mesh"
-  # Architectural annotation: which side of each 4x4 CGRA is attached to
-  # off-chip memory.
-  #
-  # This does not replace the explicit `tile_overrides` below. It records the
-  # intended memory attachment side, while the overrides enumerate the concrete
-  # memory-capable tiles used for comparison/debugging.
-  memory_side: "West"
+
   memory:
     banks: 4
 
