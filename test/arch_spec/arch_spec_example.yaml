@@ -1,8 +1,3 @@
-# Arch spec with memory access expressed in one file at two levels:
-# 1) Architectural intent: `memory_side` says which side of each CGRA connects
-#    to off-chip memory.
-# 2) Explicit realization: `tile_overrides` lists the concrete memory-capable
-#    tiles and their FU list for simulation / Verilog comparison.
 architecture:
   name: "NeuraMultiCgra"
   version: "1.0"
@@ -75,36 +70,9 @@ tile_overrides:
     cgra_y: 0
     tile_x: 0
     tile_y: 0
-    fu_types: ["add", "mul", "div", "fadd", "fmul", "fdiv", "logic", "cmp", "sel", "type_conv", "vfmul", "fadd_fadd", "fmul_fadd", "grant", "loop_control", "phi", "constant", "return", "alloca", "shift", "mem", "mem_indexed"]
+    fu_types: ["mem", "mem_indexed"]
     num_registers: 32
     existence: true
-
-  - cgra_x: 0
-    cgra_y: 0
-    tile_x: 0
-    tile_y: 1
-    fu_types: ["add", "mul", "div", "fadd", "fmul", "fdiv", "logic", "cmp", "sel", "type_conv", "vfmul", "fadd_fadd", "fmul_fadd", "grant", "loop_control", "phi", "constant", "return", "alloca", "shift", "mem", "mem_indexed"]
-    num_registers: 32
-    existence: true
-
-  - cgra_x: 0
-    cgra_y: 0
-    tile_x: 0
-    tile_y: 2
-    fu_types: ["add", "mul", "div", "fadd", "fmul", "fdiv", "logic", "cmp", "sel", "type_conv", "vfmul", "fadd_fadd", "fmul_fadd", "grant", "loop_control", "phi", "constant", "return", "alloca", "shift", "mem", "mem_indexed"]
-    num_registers: 32
-    existence: true
-
-  - cgra_x: 0
-    cgra_y: 0
-    tile_x: 0
-    tile_y: 3
-    fu_types: ["add", "mul", "div", "fadd", "fmul", "fdiv", "logic", "cmp", "sel", "type_conv", "vfmul", "fadd_fadd", "fmul_fadd", "grant", "loop_control", "phi", "constant", "return", "alloca", "shift", "mem", "mem_indexed"]
-    num_registers: 32
-    existence: true
-
-  # Repeat the same pattern for other CGRAs if they also expose their West side
-  # to off-chip memory.
 
   - cgra_x: 1
     cgra_y: 0
