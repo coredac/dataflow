@@ -14,12 +14,15 @@ cgra_defaults:
   columns: 4
   ctrl_mem_items: 20
   base_topology: "mesh"
+
   memory:
     banks: 4
 
 tile_defaults:
   num_registers: 128
-  fu_types: ["add", "mul", "div", "fadd", "fmul", "fdiv", "logic", "cmp", "sel", "type_conv", "vfmul", "fadd_fadd", "fmul_fadd", "grant", "loop_control", "phi", "constant", "mem", "return", "mem_indexed", "alloca", "shift"]  # comprehensive function unit types
+  # Default tiles do not assume a dedicated memory unit. Memory-capable tiles
+  # are declared explicitly in `tile_overrides`.
+  fu_types: ["add", "mul", "div", "fadd", "fmul", "fdiv", "logic", "cmp", "sel", "type_conv", "vfmul", "fadd_fadd", "fmul_fadd", "grant", "loop_control", "phi", "constant", "return", "alloca", "shift"]
 
 link_defaults:
   latency: 1
@@ -50,6 +53,12 @@ link_overrides:
     bandwidth: 32
     existence: true
 
+# Basic method: explicitly list the tiles on the memory-connected side and give
+# them an overridden FU list that includes the mem unit. This is the concrete
+# configuration used for simulation / Verilog comparison.
+#
+# Example below: for CGRA (0,0), the West side is attached to off-chip memory,
+# so all tiles with tile_x = 0 are explicitly made memory-capable.
 tile_overrides:
   - cgra_x: 0
     cgra_y: 0
@@ -61,9 +70,9 @@ tile_overrides:
 
   - cgra_x: 1
     cgra_y: 0
-    tile_x: 3
+    tile_x: 0
     tile_y: 0
-    fu_types: ["mem", "mem_indexed"]
+    fu_types: ["add", "mul", "div", "fadd", "fmul", "fdiv", "logic", "cmp", "sel", "type_conv", "vfmul", "fadd_fadd", "fmul_fadd", "grant", "loop_control", "phi", "constant", "return", "alloca", "shift", "mem", "mem_indexed"]
     num_registers: 32
     existence: true
 
