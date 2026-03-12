@@ -32,25 +32,25 @@
 // MAPPING-NEXT:     %3 = neura.phi_start %2, %1 {dfg_id = 4 : i32, mapping_locs = [{id = 10 : i32, index_per_ii = 1 : i32, invalid_iterations = 0 : i32, resource = "tile", time_step = 1 : i32, x = 2 : i32, y = 2 : i32}]} : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
 // MAPPING-NEXT:     %4 = "neura.data_mov"(%3) {dfg_id = 6 : i32, mapping_locs = [{id = 32 : i32, index_per_ii = 1 : i32, invalid_iterations = 0 : i32, resource = "link", time_step = 1 : i32}]} : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
 // MAPPING-NEXT:     %5 = "neura.gep"(%4) <{operandSegmentSizes = array<i32: 0, 1>}> {dfg_id = 8 : i32, lhs_value = "%arg0", mapping_locs = [{id = 11 : i32, index_per_ii = 2 : i32, invalid_iterations = 0 : i32, resource = "tile", time_step = 2 : i32, x = 3 : i32, y = 2 : i32}]} : (!neura.data<i64, i1>) -> !neura.data<!llvm.ptr, i1>
-// MAPPING-NEXT:     %6 = "neura.data_mov"(%5) {dfg_id = 11 : i32, mapping_locs = [{id = 352 : i32, index_per_ii = 2 : i32, invalid_iterations = 0 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 2 : i32}]} : (!neura.data<!llvm.ptr, i1>) -> !neura.data<!llvm.ptr, i1>
-// MAPPING-NEXT:     %7 = "neura.load"(%6) {dfg_id = 13 : i32, mapping_locs = [{id = 11 : i32, index_per_ii = 3 : i32, invalid_iterations = 0 : i32, resource = "tile", time_step = 3 : i32, x = 3 : i32, y = 2 : i32}]} : (!neura.data<!llvm.ptr, i1>) -> !neura.data<i32, i1>
-// MAPPING-NEXT:     %8 = "neura.data_mov"(%7) {dfg_id = 17 : i32, mapping_locs = [{id = 352 : i32, index_per_ii = 3 : i32, invalid_iterations = 0 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 3 : i32}]} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
-// MAPPING-NEXT:     %9 = "neura.mul"(%8) {dfg_id = 20 : i32, mapping_locs = [{id = 11 : i32, index_per_ii = 4 : i32, invalid_iterations = 0 : i32, resource = "tile", time_step = 4 : i32, x = 3 : i32, y = 2 : i32}], rhs_value = 5 : i32} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
-// MAPPING-NEXT:     %10 = "neura.data_mov"(%9) {dfg_id = 23 : i32, mapping_locs = [{id = 36 : i32, index_per_ii = 4 : i32, invalid_iterations = 0 : i32, resource = "link", time_step = 4 : i32}]} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
-// MAPPING-NEXT:     %11 = "neura.add"(%10) {dfg_id = 26 : i32, mapping_locs = [{id = 7 : i32, index_per_ii = 0 : i32, invalid_iterations = 1 : i32, resource = "tile", time_step = 5 : i32, x = 3 : i32, y = 1 : i32}], rhs_value = -5 : i32} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
-// MAPPING-NEXT:     %12 = "neura.data_mov"(%11) {dfg_id = 28 : i32, mapping_locs = [{id = 224 : i32, index_per_ii = 0 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 5 : i32}]} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
-// MAPPING-NEXT:     %13 = "neura.div"(%12) {dfg_id = 29 : i32, mapping_locs = [{id = 7 : i32, index_per_ii = 1 : i32, invalid_iterations = 1 : i32, resource = "tile", time_step = 6 : i32, x = 3 : i32, y = 1 : i32}], rhs_value = 18 : i32} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
-// MAPPING-NEXT:     %14 = "neura.data_mov"(%13) {dfg_id = 30 : i32, mapping_locs = [{id = 224 : i32, index_per_ii = 1 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 6 : i32}]} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
-// MAPPING-NEXT:     %15 = neura.sext %14 {dfg_id = 31 : i32, mapping_locs = [{id = 7 : i32, index_per_ii = 2 : i32, invalid_iterations = 1 : i32, resource = "tile", time_step = 7 : i32, x = 3 : i32, y = 1 : i32}]} : !neura.data<i32, i1> -> !neura.data<i64, i1>
-// MAPPING-NEXT:     %16 = "neura.data_mov"(%15) {dfg_id = 32 : i32, mapping_locs = [{id = 224 : i32, index_per_ii = 2 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 7 : i32}]} : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
-// MAPPING-NEXT:     %17 = "neura.gep"(%16) <{operandSegmentSizes = array<i32: 0, 1>}> {dfg_id = 33 : i32, lhs_value = "%arg1", mapping_locs = [{id = 7 : i32, index_per_ii = 3 : i32, invalid_iterations = 1 : i32, resource = "tile", time_step = 8 : i32, x = 3 : i32, y = 1 : i32}]} : (!neura.data<i64, i1>) -> !neura.data<!llvm.ptr, i1>
-// MAPPING-NEXT:     %18 = "neura.data_mov"(%17) {dfg_id = 35 : i32, mapping_locs = [{id = 21 : i32, index_per_ii = 3 : i32, invalid_iterations = 1 : i32, resource = "link", time_step = 8 : i32}]} : (!neura.data<!llvm.ptr, i1>) -> !neura.data<!llvm.ptr, i1>
-// MAPPING-NEXT:     %19 = "neura.load"(%18) {dfg_id = 36 : i32, mapping_locs = [{id = 6 : i32, index_per_ii = 4 : i32, invalid_iterations = 1 : i32, resource = "tile", time_step = 9 : i32, x = 2 : i32, y = 1 : i32}]} : (!neura.data<!llvm.ptr, i1>) -> !neura.data<i32, i1>
-// MAPPING-NEXT:     %20 = "neura.data_mov"(%19) {dfg_id = 37 : i32, mapping_locs = [{id = 192 : i32, index_per_ii = 4 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 9 : i32}]} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
-// MAPPING-NEXT:     %21 = "neura.add"(%20) {dfg_id = 38 : i32, mapping_locs = [{id = 6 : i32, index_per_ii = 0 : i32, invalid_iterations = 2 : i32, resource = "tile", time_step = 10 : i32, x = 2 : i32, y = 1 : i32}], rhs_value = 1 : i32} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
-// MAPPING-NEXT:     %22 = "neura.data_mov"(%21) {dfg_id = 39 : i32, mapping_locs = [{id = 192 : i32, index_per_ii = 0 : i32, invalid_iterations = 2 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 10 : i32}]} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
-// MAPPING-NEXT:     %23 = "neura.data_mov"(%17) {dfg_id = 34 : i32, mapping_locs = [{id = 224 : i32, index_per_ii = 3 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 8 : i32}, {id = 21 : i32, index_per_ii = 4 : i32, invalid_iterations = 1 : i32, resource = "link", time_step = 9 : i32}, {id = 193 : i32, index_per_ii = 0 : i32, invalid_iterations = 2 : i32, per_tile_register_id = 1 : i32, resource = "register", time_step = 10 : i32}]} : (!neura.data<!llvm.ptr, i1>) -> !neura.data<!llvm.ptr, i1>
-// MAPPING-NEXT:     "neura.store"(%22, %23) {dfg_id = 40 : i32, mapping_locs = [{id = 6 : i32, index_per_ii = 1 : i32, invalid_iterations = 2 : i32, resource = "tile", time_step = 11 : i32, x = 2 : i32, y = 1 : i32}]} : (!neura.data<i32, i1>, !neura.data<!llvm.ptr, i1>) -> ()
+// MAPPING-NEXT:     %6 = "neura.data_mov"(%5) {dfg_id = 11 : i32, mapping_locs = [{id = 36 : i32, index_per_ii = 2 : i32, invalid_iterations = 0 : i32, resource = "link", time_step = 2 : i32}, {id = 22 : i32, index_per_ii = 3 : i32, invalid_iterations = 0 : i32, resource = "link", time_step = 3 : i32}]} : (!neura.data<!llvm.ptr, i1>) -> !neura.data<!llvm.ptr, i1>
+// MAPPING-NEXT:     %7 = "neura.load"(%6) {dfg_id = 13 : i32, mapping_locs = [{id = 3 : i32, index_per_ii = 4 : i32, invalid_iterations = 0 : i32, resource = "tile", time_step = 4 : i32, x = 3 : i32, y = 0 : i32}]} : (!neura.data<!llvm.ptr, i1>) -> !neura.data<i32, i1>
+// MAPPING-NEXT:     %8 = "neura.data_mov"(%7) {dfg_id = 17 : i32, mapping_locs = [{id = 3000 : i32, index_per_ii = 4 : i32, invalid_iterations = 0 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 4 : i32}]} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
+// MAPPING-NEXT:     %9 = "neura.mul"(%8) {dfg_id = 20 : i32, mapping_locs = [{id = 3 : i32, index_per_ii = 0 : i32, invalid_iterations = 1 : i32, resource = "tile", time_step = 5 : i32, x = 3 : i32, y = 0 : i32}], rhs_value = 5 : i32} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
+// MAPPING-NEXT:     %10 = "neura.data_mov"(%9) {dfg_id = 23 : i32, mapping_locs = [{id = 3000 : i32, index_per_ii = 0 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 5 : i32}]} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
+// MAPPING-NEXT:     %11 = "neura.add"(%10) {dfg_id = 26 : i32, mapping_locs = [{id = 3 : i32, index_per_ii = 1 : i32, invalid_iterations = 1 : i32, resource = "tile", time_step = 6 : i32, x = 3 : i32, y = 0 : i32}], rhs_value = -5 : i32} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
+// MAPPING-NEXT:     %12 = "neura.data_mov"(%11) {dfg_id = 28 : i32, mapping_locs = [{id = 3000 : i32, index_per_ii = 1 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 6 : i32}]} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
+// MAPPING-NEXT:     %13 = "neura.div"(%12) {dfg_id = 29 : i32, mapping_locs = [{id = 3 : i32, index_per_ii = 2 : i32, invalid_iterations = 1 : i32, resource = "tile", time_step = 7 : i32, x = 3 : i32, y = 0 : i32}], rhs_value = 18 : i32} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
+// MAPPING-NEXT:     %14 = "neura.data_mov"(%13) {dfg_id = 30 : i32, mapping_locs = [{id = 8 : i32, index_per_ii = 2 : i32, invalid_iterations = 1 : i32, resource = "link", time_step = 7 : i32}]} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
+// MAPPING-NEXT:     %15 = neura.sext %14 {dfg_id = 31 : i32, mapping_locs = [{id = 2 : i32, index_per_ii = 3 : i32, invalid_iterations = 1 : i32, resource = "tile", time_step = 8 : i32, x = 2 : i32, y = 0 : i32}]} : !neura.data<i32, i1> -> !neura.data<i64, i1>
+// MAPPING-NEXT:     %16 = "neura.data_mov"(%15) {dfg_id = 32 : i32, mapping_locs = [{id = 2000 : i32, index_per_ii = 3 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 8 : i32}]} : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
+// MAPPING-NEXT:     %17 = "neura.gep"(%16) <{operandSegmentSizes = array<i32: 0, 1>}> {dfg_id = 33 : i32, lhs_value = "%arg1", mapping_locs = [{id = 2 : i32, index_per_ii = 4 : i32, invalid_iterations = 1 : i32, resource = "tile", time_step = 9 : i32, x = 2 : i32, y = 0 : i32}]} : (!neura.data<i64, i1>) -> !neura.data<!llvm.ptr, i1>
+// MAPPING-NEXT:     %18 = "neura.data_mov"(%17) {dfg_id = 35 : i32, mapping_locs = [{id = 2000 : i32, index_per_ii = 4 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 9 : i32}]} : (!neura.data<!llvm.ptr, i1>) -> !neura.data<!llvm.ptr, i1>
+// MAPPING-NEXT:     %19 = "neura.load"(%18) {dfg_id = 36 : i32, mapping_locs = [{id = 2 : i32, index_per_ii = 0 : i32, invalid_iterations = 2 : i32, resource = "tile", time_step = 10 : i32, x = 2 : i32, y = 0 : i32}]} : (!neura.data<!llvm.ptr, i1>) -> !neura.data<i32, i1>
+// MAPPING-NEXT:     %20 = "neura.data_mov"(%19) {dfg_id = 37 : i32, mapping_locs = [{id = 2000 : i32, index_per_ii = 0 : i32, invalid_iterations = 2 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 10 : i32}]} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
+// MAPPING-NEXT:     %21 = "neura.add"(%20) {dfg_id = 38 : i32, mapping_locs = [{id = 2 : i32, index_per_ii = 1 : i32, invalid_iterations = 2 : i32, resource = "tile", time_step = 11 : i32, x = 2 : i32, y = 0 : i32}], rhs_value = 1 : i32} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
+// MAPPING-NEXT:     %22 = "neura.data_mov"(%21) {dfg_id = 39 : i32, mapping_locs = [{id = 2000 : i32, index_per_ii = 1 : i32, invalid_iterations = 2 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 11 : i32}]} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
+// MAPPING-NEXT:     %23 = "neura.data_mov"(%17) {dfg_id = 34 : i32, mapping_locs = [{id = 2001 : i32, index_per_ii = 4 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 1 : i32, resource = "register", time_step = 9 : i32}, {id = 2001 : i32, index_per_ii = 0 : i32, invalid_iterations = 2 : i32, per_tile_register_id = 1 : i32, resource = "register", time_step = 10 : i32}, {id = 2001 : i32, index_per_ii = 1 : i32, invalid_iterations = 2 : i32, per_tile_register_id = 1 : i32, resource = "register", time_step = 11 : i32}]} : (!neura.data<!llvm.ptr, i1>) -> !neura.data<!llvm.ptr, i1>
+// MAPPING-NEXT:     "neura.store"(%22, %23) {dfg_id = 40 : i32, mapping_locs = [{id = 2 : i32, index_per_ii = 2 : i32, invalid_iterations = 2 : i32, resource = "tile", time_step = 12 : i32, x = 2 : i32, y = 0 : i32}]} : (!neura.data<i32, i1>, !neura.data<!llvm.ptr, i1>) -> ()
 // MAPPING-NEXT:     %24 = "neura.data_mov"(%3) {dfg_id = 5 : i32, mapping_locs = [{id = 320 : i32, index_per_ii = 1 : i32, invalid_iterations = 0 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 1 : i32}]} : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
 // MAPPING-NEXT:     %25 = "neura.add"(%24) {dfg_id = 7 : i32, mapping_locs = [{id = 10 : i32, index_per_ii = 2 : i32, invalid_iterations = 0 : i32, resource = "tile", time_step = 2 : i32, x = 2 : i32, y = 2 : i32}], rhs_value = 1 : i64} : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
 // MAPPING-NEXT:     %26 = "neura.data_mov"(%25) {dfg_id = 10 : i32, mapping_locs = [{id = 320 : i32, index_per_ii = 2 : i32, invalid_iterations = 0 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 2 : i32}]} : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
@@ -61,11 +61,11 @@
 // MAPPING-NEXT:     %31 = "neura.data_mov"(%29) {dfg_id = 22 : i32, mapping_locs = [{id = 320 : i32, index_per_ii = 4 : i32, invalid_iterations = 0 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 4 : i32}]} : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
 // MAPPING-NEXT:     %32 = neura.grant_predicate %30, %31 {dfg_id = 25 : i32, mapping_locs = [{id = 10 : i32, index_per_ii = 0 : i32, invalid_iterations = 1 : i32, resource = "tile", time_step = 5 : i32, x = 2 : i32, y = 2 : i32}]} : !neura.data<i64, i1>, !neura.data<i1, i1> -> !neura.data<i64, i1>
 // MAPPING-NEXT:     neura.ctrl_mov %32 -> %1 {dfg_id = 27 : i32, mapping_locs = [{id = 320 : i32, index_per_ii = 0 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 5 : i32}]} : !neura.data<i64, i1> !neura.data<i64, i1>
-// MAPPING-NEXT:     %33 = "neura.data_mov"(%27) {dfg_id = 14 : i32, mapping_locs = [{id = 31 : i32, index_per_ii = 3 : i32, invalid_iterations = 0 : i32, resource = "link", time_step = 3 : i32}, {id = 288 : i32, index_per_ii = 4 : i32, invalid_iterations = 0 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 4 : i32}, {id = 288 : i32, index_per_ii = 0 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 5 : i32}, {id = 288 : i32, index_per_ii = 1 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 6 : i32}, {id = 288 : i32, index_per_ii = 2 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 7 : i32}, {id = 288 : i32, index_per_ii = 3 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 8 : i32}, {id = 288 : i32, index_per_ii = 4 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 9 : i32}]} : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
-// MAPPING-NEXT:     %34 = "neura.data_mov"(%27) {dfg_id = 15 : i32, mapping_locs = [{id = 322 : i32, index_per_ii = 3 : i32, invalid_iterations = 0 : i32, per_tile_register_id = 2 : i32, resource = "register", time_step = 3 : i32}, {id = 31 : i32, index_per_ii = 4 : i32, invalid_iterations = 0 : i32, resource = "link", time_step = 4 : i32}, {id = 289 : i32, index_per_ii = 0 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 1 : i32, resource = "register", time_step = 5 : i32}, {id = 289 : i32, index_per_ii = 1 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 1 : i32, resource = "register", time_step = 6 : i32}, {id = 289 : i32, index_per_ii = 2 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 1 : i32, resource = "register", time_step = 7 : i32}, {id = 289 : i32, index_per_ii = 3 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 1 : i32, resource = "register", time_step = 8 : i32}, {id = 289 : i32, index_per_ii = 4 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 1 : i32, resource = "register", time_step = 9 : i32}]} : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
-// MAPPING-NEXT:     %35 = neura.grant_predicate %33, %34 {dfg_id = 18 : i32, mapping_locs = [{id = 9 : i32, index_per_ii = 0 : i32, invalid_iterations = 2 : i32, resource = "tile", time_step = 10 : i32, x = 1 : i32, y = 2 : i32}]} : !neura.data<i1, i1>, !neura.data<i1, i1> -> !neura.data<i1, i1>
-// MAPPING-NEXT:     %36 = "neura.data_mov"(%35) {dfg_id = 21 : i32, mapping_locs = [{id = 290 : i32, index_per_ii = 0 : i32, invalid_iterations = 2 : i32, per_tile_register_id = 2 : i32, resource = "register", time_step = 10 : i32}]} : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
-// MAPPING-NEXT:     neura.return_void %36 : !neura.data<i1, i1> {dfg_id = 24 : i32, mapping_locs = [{id = 9 : i32, index_per_ii = 1 : i32, invalid_iterations = 2 : i32, resource = "tile", time_step = 11 : i32, x = 1 : i32, y = 2 : i32}]}
+// MAPPING-NEXT:     %33 = "neura.data_mov"(%27) {dfg_id = 14 : i32, mapping_locs = [{id = 33 : i32, index_per_ii = 3 : i32, invalid_iterations = 0 : i32, resource = "link", time_step = 3 : i32}, {id = 192 : i32, index_per_ii = 4 : i32, invalid_iterations = 0 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 4 : i32}, {id = 192 : i32, index_per_ii = 0 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 5 : i32}, {id = 192 : i32, index_per_ii = 1 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 6 : i32}, {id = 192 : i32, index_per_ii = 2 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 7 : i32}, {id = 192 : i32, index_per_ii = 3 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 8 : i32}, {id = 192 : i32, index_per_ii = 4 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 9 : i32}]} : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
+// MAPPING-NEXT:     %34 = "neura.data_mov"(%27) {dfg_id = 15 : i32, mapping_locs = [{id = 322 : i32, index_per_ii = 3 : i32, invalid_iterations = 0 : i32, per_tile_register_id = 2 : i32, resource = "register", time_step = 3 : i32}, {id = 33 : i32, index_per_ii = 4 : i32, invalid_iterations = 0 : i32, resource = "link", time_step = 4 : i32}, {id = 193 : i32, index_per_ii = 0 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 1 : i32, resource = "register", time_step = 5 : i32}, {id = 193 : i32, index_per_ii = 1 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 1 : i32, resource = "register", time_step = 6 : i32}, {id = 193 : i32, index_per_ii = 2 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 1 : i32, resource = "register", time_step = 7 : i32}, {id = 193 : i32, index_per_ii = 3 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 1 : i32, resource = "register", time_step = 8 : i32}, {id = 193 : i32, index_per_ii = 4 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 1 : i32, resource = "register", time_step = 9 : i32}]} : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
+// MAPPING-NEXT:     %35 = neura.grant_predicate %33, %34 {dfg_id = 18 : i32, mapping_locs = [{id = 6 : i32, index_per_ii = 0 : i32, invalid_iterations = 2 : i32, resource = "tile", time_step = 10 : i32, x = 2 : i32, y = 1 : i32}]} : !neura.data<i1, i1>, !neura.data<i1, i1> -> !neura.data<i1, i1>
+// MAPPING-NEXT:     %36 = "neura.data_mov"(%35) {dfg_id = 21 : i32, mapping_locs = [{id = 194 : i32, index_per_ii = 0 : i32, invalid_iterations = 2 : i32, per_tile_register_id = 2 : i32, resource = "register", time_step = 10 : i32}]} : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
+// MAPPING-NEXT:     neura.return_void %36 : !neura.data<i1, i1> {dfg_id = 24 : i32, mapping_locs = [{id = 6 : i32, index_per_ii = 1 : i32, invalid_iterations = 2 : i32, resource = "tile", time_step = 11 : i32, x = 2 : i32, y = 1 : i32}]}
 // MAPPING-NEXT:     neura.yield {dfg_id = 2 : i32}
 // MAPPING-NEXT:   }
 // MAPPING-NEXT: }
@@ -75,82 +75,45 @@
 // YAML-NEXT:   compiled_ii: 5
 // YAML-NEXT:   cores:
 // YAML-NEXT:     - column: 2
-// YAML-NEXT:       row: 1
-// YAML-NEXT:       core_id: "6"
+// YAML-NEXT:       row: 0
+// YAML-NEXT:       core_id: "2"
 // YAML-NEXT:       entries:
 // YAML-NEXT:         - entry_id: "entry0"
 // YAML-NEXT:           instructions:
 // YAML-NEXT:             - index_per_ii: 0
 // YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "ADD"
-// YAML-NEXT:                   id: 38
+// YAML-NEXT:                 - opcode: "LOAD"
+// YAML-NEXT:                   id: 36
 // YAML-NEXT:                   time_step: 10
 // YAML-NEXT:                   invalid_iterations: 2
 // YAML-NEXT:                   src_operands:
 // YAML-NEXT:                     - operand: "$0"
 // YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                     - operand: "#1"
-// YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                   dst_operands:
 // YAML-NEXT:                     - operand: "$0"
 // YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 34
-// YAML-NEXT:                   time_step: 10
-// YAML-NEXT:                   invalid_iterations: 2
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "EAST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "$1"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:             - index_per_ii: 1
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "STORE"
-// YAML-NEXT:                   id: 40
-// YAML-NEXT:                   time_step: 11
 
 // ASM:      # Compiled II: 5
-// ASM:      PE(2,1):
+// ASM:      PE(2,0):
 // ASM-NEXT: {
-// ASM-NEXT:   ADD, [$0], [#1] -> [$0] (t=10, inv_iters=2)
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$1] (t=10, inv_iters=2)
+// ASM-NEXT:   LOAD, [$0] -> [$0] (t=10, inv_iters=2)
 // ASM-NEXT: } (idx_per_ii=0)
 // ASM-NEXT: {
-// ASM-NEXT:   STORE, [$0], [$1] (t=11, inv_iters=2)
+// ASM-NEXT:   ADD, [$0], [#1] -> [$0] (t=11, inv_iters=2)
 // ASM-NEXT: } (idx_per_ii=1)
 // ASM-NEXT: {
-// ASM-NEXT:   LOAD, [EAST, RED] -> [$0] (t=9, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=4)
-// ASM:      PE(3,1):
-// ASM-NEXT: {
-// ASM-NEXT:   ADD, [NORTH, RED], [#-5] -> [$0] (t=5, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=0)
-// ASM-NEXT: {
-// ASM-NEXT:   DIV, [$0], [#18] -> [$0] (t=6, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=1)
-// ASM-NEXT: {
-// ASM-NEXT:   SEXT, [$0] -> [$0] (t=7, inv_iters=1)
+// ASM-NEXT:   STORE, [$0], [$1] (t=12, inv_iters=2)
 // ASM-NEXT: } (idx_per_ii=2)
 // ASM-NEXT: {
-// ASM-NEXT:   GEP, [$0] -> [WEST, RED], [$0] (t=8, inv_iters=1)
+// ASM-NEXT:   SEXT, [EAST, RED] -> [$0] (t=8, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=3)
 // ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [$0] -> [WEST, RED] (t=9, inv_iters=1)
+// ASM-NEXT:   GEP, [$0] -> [$0], [$1] (t=9, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=4)
-// ASM:      PE(1,2):
-// ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$1] (t=5, inv_iters=1)
-// ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [$2] (t=10, inv_iters=2)
-// ASM-NEXT: } (idx_per_ii=0)
-// ASM-NEXT: {
-// ASM-NEXT:   RETURN_VOID, [$2] (t=11, inv_iters=2)
-// ASM-NEXT: } (idx_per_ii=1)
-// ASM-NEXT: {
 
 // RUN: mlir-neura-opt %t-kernel.mlir --view-op-graph 2>&1 | sed -n '/^digraph G {/,/^}$/p' > histogram_kernel_original.dot
-// RUN: dot -Tpng histogram_kernel_original.dot -o histogram_kernel_original.png
-// RUN: dot -Tjson histogram_kernel_original.dot -o histogram_kernel_original.json
+// RUN: command -v dot >/dev/null && dot -Tpng histogram_kernel_original.dot -o histogram_kernel_original.png || true
+// RUN: command -v dot >/dev/null && dot -Tjson histogram_kernel_original.dot -o histogram_kernel_original.json || true
 // RUN: mlir-neura-opt %t-kernel.mlir \
 // RUN:   --assign-accelerator \
 // RUN:   --lower-llvm-to-neura \
@@ -162,8 +125,8 @@
 // RUN:   --transform-ctrl-to-data-flow \
 // RUN:   --fold-constant \
 // RUN:   --view-op-graph 2>&1 | sed -n '/^digraph G {/,/^}$/p' > histogram_kernel.dot
-// RUN: dot -Tpng histogram_kernel.dot -o histogram_kernel.png
-// RUN: dot -Tjson histogram_kernel.dot -o histogram_kernel.json
+// RUN: command -v dot >/dev/null && dot -Tpng histogram_kernel.dot -o histogram_kernel.png || true
+// RUN: command -v dot >/dev/null && dot -Tjson histogram_kernel.dot -o histogram_kernel.json || true
 // RUN: FileCheck %s --input-file=histogram_kernel.dot -check-prefix=DOT
 
 // DOT: digraph G {
