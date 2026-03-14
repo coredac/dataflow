@@ -25,7 +25,7 @@
 // RUN:           --fold-constant \
 // RUN:           --fuse-pattern \
 // RUN:           --insert-data-mov \
-// RUN:           --map-to-accelerator="mapping-strategy=heuristic backtrack-config=customized" %t-kernel.mlir | FileCheck %s --check-prefix=CHECK-MAPPING
+// RUN:           --map-operation-on-tile="mapping-strategy=heuristic backtrack-config=customized" %t-kernel.mlir | FileCheck %s --check-prefix=CHECK-MAPPING
 
 // CHECK-FUSED: func.func @_Z6kernelPA1024_iPiS1_S1_S1_
 // CHECK-FUSED: accelerator = "neura"
@@ -109,7 +109,7 @@
 // RUN:           --fold-constant \
 // RUN:           --iter-merge-pattern="min-support=3 max-iter=4" \
 // RUN:           --insert-data-mov \
-// RUN:           --map-to-accelerator="mapping-strategy=heuristic backtrack-config=simple" %t-kernel.mlir | FileCheck %s --check-prefix=CHECK-ITER-MERGE-PATTERN-MAPPING
+// RUN:           --map-operation-on-tile="mapping-strategy=heuristic backtrack-config=simple" %t-kernel.mlir | FileCheck %s --check-prefix=CHECK-ITER-MERGE-PATTERN-MAPPING
 
 // CHECK-ITER-MERGE-PATTERN-MAPPING: mapping_info = {compiled_ii = 11 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 8 : i32, res_mii = 4 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}
 

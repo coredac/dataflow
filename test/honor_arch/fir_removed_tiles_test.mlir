@@ -16,7 +16,7 @@
 // RUN:   --transform-ctrl-to-data-flow \
 // RUN:   --fold-constant \
 // RUN:   --insert-data-mov \
-// RUN:   --map-to-accelerator="mapping-strategy=heuristic" \
+// RUN:   --map-operation-on-tile="mapping-strategy=heuristic" \
 // RUN:   --architecture-spec=%S/../arch_spec/custom_arch_with_removed_tiles.yaml \
 // RUN:   -o %t-after-mapping.mlir
 

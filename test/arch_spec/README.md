@@ -45,7 +45,7 @@ To use this architecture specification in your tests, add the following option t
 mlir-neura-opt input.mlir \
   --assign-accelerator \
   --lower-llvm-to-neura \
-  --map-to-accelerator="mapping-strategy=heuristic" \
+  --map-operation-on-tile="mapping-strategy=heuristic" \
   --architecture-spec=arch_spec/architecture.yaml \
   --generate-code
 ```

@@ -70,7 +70,7 @@
 // RUN: --fuse-loop-control \
 // RUN: --fold-constant \
 // RUN: --insert-data-mov \
-// RUN: --map-to-accelerator="mapping-strategy=heuristic backtrack-config=customized" \
+// RUN: --map-operation-on-tile="mapping-strategy=heuristic backtrack-config=customized" \
 // RUN: --architecture-spec=../../arch_spec/architecture.yaml \
 // RUN: -o %t-fused-mapped.mlir
 // RUN: FileCheck %s --input-file=%t-fused-mapped.mlir --check-prefix=FUSE-MAPPING

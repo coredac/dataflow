@@ -23,7 +23,7 @@
 // RUN:   --transform-ctrl-to-data-flow \
 // RUN:   --fold-constant \
 // RUN:   --insert-data-mov \
-// RUN:   --map-to-accelerator="mapping-strategy=heuristic" \
+// RUN:   --map-operation-on-tile="mapping-strategy=heuristic" \
 // RUN:   --architecture-spec=%S/../../arch_spec/architecture.yaml \
 // RUN:   --generate-code -o %t-mapping.mlir
 // RUN: FileCheck %s --input-file=%t-mapping.mlir -check-prefix=MAPPING

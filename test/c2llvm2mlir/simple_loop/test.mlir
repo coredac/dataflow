@@ -45,7 +45,7 @@
 // RUN:   --view-op-graph \
 // RUN:   --architecture-spec=../../arch_spec/architecture.yaml \
 // RUN:   --insert-data-mov \
-// RUN:   --map-to-accelerator="mapping-strategy=heuristic backtrack-config=customized=5,3 dump-mapping-table=true" %t-kernel.mlir -o %t-kernel-mapped.mlir 2>&1 | tee %t-kernel-mapping-output.txt
+// RUN:   --map-operation-on-tile="mapping-strategy=heuristic backtrack-config=customized=5,3 dump-mapping-table=true" %t-kernel.mlir -o %t-kernel-mapped.mlir 2>&1 | tee %t-kernel-mapping-output.txt
 // RUN: FileCheck %s --check-prefix=CHECK-MAPPING-TABLE < %t-kernel-mapping-output.txt
 // RUN: FileCheck %s --check-prefix=CHECK-LLVM2NEURA-MAP < %t-kernel-mapped.mlir
 

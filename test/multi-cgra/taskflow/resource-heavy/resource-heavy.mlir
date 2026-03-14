@@ -192,16 +192,17 @@ module {
 // TASKFLOW:        return
 
 // RESOPT:      taskflow.task @Task_0_Task_1_utilfused
-// RESOPT-SAME: {cgra_count = 3 : i32, compiled_ii = 1 : i32, steps = 10 : i32, tile_shape = "2x2[(0,0)(1,0)(0,1)]", trip_count = 64 : i32}
+// RESOPT-SAME: {cgra_count = 3 : i32, compiled_ii = 1 : i32, steps = 10 : i32
+// RESOPT-SAME: tile_shape = "1x3", trip_count = 64 : i32}
 // RESOPT:      return
 
 // CGRA Tile Occupation after RESOPT (4x4 grid, col x row):
 // +---+---+---+---+
-// | 0 | 0 | . | . |   row=0: Task_0_Task_1_utilfused occupies 3 CGRAs
-// +---+---+---+---+         in a 2x2 non-rectangular layout:
-// | 0 | . | . | . |         (0,0), (1,0), (0,1)
+// | 0 | 0 | 0 | . |   row=0: Task_0_Task_1_utilfused occupies 3 CGRAs
+// +---+---+---+---+         in a 1x3 rectangular layout:
+// | . | . | . | . |         (0,0), (1,0), (2,0)
 // +---+---+---+---+
-// | . | . | . | . |   Total tile array: 8x8 (3 CGRAs × 16 tiles = 48 tiles)
+// | . | . | . | . |   Total tile array: 4x12 (3 CGRAs × 16 tiles = 48 tiles)
 // +---+---+---+---+
 // | . | . | . | . |   res_mii=3 (16 tiles) → 2 (32 tiles) → 1 (48 tiles)
 // +---+---+---+---+   
