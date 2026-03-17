@@ -207,7 +207,7 @@ func.func @loop_test() -> f32 {
 
 // MAPPING:        func.func @loop_test() -> f32 attributes {accelerator = "neura", dataflow_mode = "predicate", mapping_info = {compiled_ii = 4 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 4 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {
 
-// YAML:      array_config:
+// YAML: array_config:
 // YAML-NEXT:   columns: 4
 // YAML-NEXT:   rows: 4
 // YAML-NEXT:   compiled_ii: 4
@@ -247,9 +247,19 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:                   time_step: 2
 // YAML-NEXT:                   invalid_iterations: 0
 // YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "#0.000000"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 3
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "PHI_START"
+// YAML-NEXT:                   id: 8
+// YAML-NEXT:                   time_step: 3
 
-// ASM:      # Compiled II: 4
-// ASM:      PE(0,0):
+// ASM: # Compiled II: 4
+// ASM: PE(0,0):
 // ASM-NEXT: {
 // ASM-NEXT:   GRANT_ONCE, [#0] -> [EAST, RED] (t=0, inv_iters=0)
 // ASM-NEXT:   DATA_MOV, [EAST, RED] -> [NORTH, RED] (t=4, inv_iters=1)
@@ -260,7 +270,7 @@ func.func @loop_test() -> f32 {
 // ASM-NEXT: {
 // ASM-NEXT:   PHI_START, [$0], [NORTH, RED] -> [NORTH, RED] (t=3, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=3)
-// ASM:      PE(1,0):
+// ASM: PE(1,0):
 // ASM-NEXT: {
 // ASM-NEXT:   GRANT_PREDICATE, [$1], [$0] -> [$0] (t=4, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=0)
@@ -274,13 +284,22 @@ func.func @loop_test() -> f32 {
 // ASM-NEXT: {
 // ASM-NEXT:   ICMP_SLT, [$0], [#10] -> [$0], [WEST, RED], [EAST, RED] (t=3, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=3)
-// ASM:      PE(2,0):
+// ASM: PE(2,0):
 // ASM-NEXT: {
 // ASM-NEXT:   NOT, [WEST, RED] -> [WEST, RED] (t=4, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=0)
-// ASM:      PE(0,1):
+// ASM: PE(0,1):
 // ASM-NEXT: {
 // ASM-NEXT:   FADD, [SOUTH, RED], [#3.000000] -> [$0], [EAST, RED] (t=4, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=0)
 // ASM-NEXT: {
 // ASM-NEXT:   DATA_MOV, [SOUTH, RED] -> [$1] (t=5, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=1)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [SOUTH, RED] (t=6, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=2)
+// ASM: PE(1,1):
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$0] (t=5, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=1)
+// ASM-NEXT: {

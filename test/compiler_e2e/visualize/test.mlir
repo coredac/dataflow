@@ -25,74 +25,55 @@ func.func @test_print_op_graph(%a: f32, %b: f32) -> f32 {
 // MAPPING:    neura.yield {dfg_id = 1 : i32}
 
 // YAML: array_config:
-// YAML:   columns: 4
-// YAML:   rows: 4
-// YAML:   compiled_ii: 1
-// YAML:   cores:
-// YAML:     - column: 0
-// YAML:       row: 0
-// YAML:       core_id: "0"
-// YAML:       entries:
-// YAML:         - entry_id: "entry0"
-// YAML:           instructions:
-// YAML:             - index_per_ii: 0
-// YAML:               operations:
-// YAML:                 - opcode: "CONSTANT"
-// YAML:                   id: 0
-// YAML:                   time_step: 0
-// YAML:                   invalid_iterations: 0
-// YAML:                   src_operands:
-// YAML:                     - operand: "arg0"
-// YAML:                   dst_operands:
-// YAML:                     - operand: "EAST"
-// YAML:     - column: 1
-// YAML:       row: 0
-// YAML:       core_id: "1"
-// YAML:       entries:
-// YAML:         - entry_id: "entry0"
-// YAML:           instructions:
-// YAML:             - index_per_ii: 0
-// YAML:               operations:
-// YAML:                 - opcode: "FADD"
-// YAML:                   id: 3
-// YAML:                   time_step: 1
-// YAML:                   invalid_iterations: 1
-// YAML:                   src_operands:
-// YAML:                     - operand: "WEST"
-// YAML:                     - operand: "arg1"
-// YAML:                   dst_operands:
-// YAML:                     - operand: "EAST"
-// YAML:     - column: 2
-// YAML:       row: 0
-// YAML:       core_id: "2"
-// YAML:       entries:
-// YAML:         - entry_id: "entry0"
-// YAML:           instructions:
-// YAML:             - index_per_ii: 0
-// YAML:               operations:
-// YAML:                 - opcode: "FMUL"
-// YAML:                   id: 5
-// YAML:                   time_step: 2
-// YAML:                   invalid_iterations: 2
-// YAML:                   src_operands:
-// YAML:                     - operand: "WEST"
-// YAML:                     - operand: "#2.000000"
-// YAML:                   dst_operands:
-// YAML:                     - operand: "EAST"
-// YAML:     - column: 3
-// YAML:       row: 0
-// YAML:       core_id: "3"
-// YAML:       entries:
-// YAML:         - entry_id: "entry0"
-// YAML:           instructions:
-// YAML:             - index_per_ii: 0
-// YAML:               operations:
-// YAML:                 - opcode: "RETURN_VALUE"
-// YAML:                   id: 7
-// YAML:                   time_step: 3
-// YAML:                   invalid_iterations: 3
-// YAML:                   src_operands:
-// YAML:                     - operand: "WEST"
+// YAML-NEXT:   columns: 4
+// YAML-NEXT:   rows: 4
+// YAML-NEXT:   compiled_ii: 1
+// YAML-NEXT:   cores:
+// YAML-NEXT:     - column: 0
+// YAML-NEXT:       row: 0
+// YAML-NEXT:       core_id: "0"
+// YAML-NEXT:       entries:
+// YAML-NEXT:         - entry_id: "entry0"
+// YAML-NEXT:           instructions:
+// YAML-NEXT:             - index_per_ii: 0
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "CONSTANT"
+// YAML-NEXT:                   id: 0
+// YAML-NEXT:                   time_step: 0
+// YAML-NEXT:                   invalid_iterations: 0
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "arg0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:     - column: 1
+// YAML-NEXT:       row: 0
+// YAML-NEXT:       core_id: "1"
+// YAML-NEXT:       entries:
+// YAML-NEXT:         - entry_id: "entry0"
+// YAML-NEXT:           instructions:
+// YAML-NEXT:             - index_per_ii: 0
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "FADD"
+// YAML-NEXT:                   id: 3
+// YAML-NEXT:                   time_step: 1
+// YAML-NEXT:                   invalid_iterations: 1
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "WEST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "arg1"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:     - column: 2
+// YAML-NEXT:       row: 0
+// YAML-NEXT:       core_id: "2"
+// YAML-NEXT:       entries:
+// YAML-NEXT:         - entry_id: "entry0"
+// YAML-NEXT:           instructions:
+// YAML-NEXT:             - index_per_ii: 0
 
 // DFG: nodes:
 // DFG:   - id: 0
@@ -123,23 +104,23 @@ func.func @test_print_op_graph(%a: f32, %b: f32) -> f32 {
 // DFG:   - from: 0
 // DFG:     to: 3
 
-// ASM:  Compiled II: 1
-// ASM:  PE(0,0):
-// ASM:  {
-// ASM:    CONSTANT, [arg0] -> [EAST, RED] (t=0, inv_iters=0)
-// ASM:  } (idx_per_ii=0)
-// ASM:  PE(1,0):
-// ASM:  {
-// ASM:    FADD, [WEST, RED], [arg1] -> [EAST, RED] (t=1, inv_iters=1)
-// ASM:  } (idx_per_ii=0)
-// ASM:  PE(2,0):
-// ASM:  {
-// ASM:    FMUL, [WEST, RED], [#2.000000] -> [EAST, RED] (t=2, inv_iters=2)
-// ASM:  } (idx_per_ii=0)
-// ASM:  PE(3,0):
-// ASM:  {
-// ASM:    RETURN_VALUE, [WEST, RED] (t=3, inv_iters=3)
-// ASM:  } (idx_per_ii=0)
+// ASM: # Compiled II: 1
+// ASM: PE(0,0):
+// ASM-NEXT: {
+// ASM-NEXT:   CONSTANT, [arg0] -> [EAST, RED] (t=0, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=0)
+// ASM: PE(1,0):
+// ASM-NEXT: {
+// ASM-NEXT:   FADD, [WEST, RED], [arg1] -> [EAST, RED] (t=1, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=0)
+// ASM: PE(2,0):
+// ASM-NEXT: {
+// ASM-NEXT:   FMUL, [WEST, RED], [#2.000000] -> [EAST, RED] (t=2, inv_iters=2)
+// ASM-NEXT: } (idx_per_ii=0)
+// ASM: PE(3,0):
+// ASM-NEXT: {
+// ASM-NEXT:   RETURN_VALUE, [WEST, RED] (t=3, inv_iters=3)
+// ASM-NEXT: } (idx_per_ii=0)
 
 
 // CHECK-GRAPH: digraph G

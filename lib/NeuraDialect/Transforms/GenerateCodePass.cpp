@@ -345,7 +345,7 @@ struct GenerateCodePass
 
   StringRef getArgument() const override { return "generate-code"; }
   StringRef getDescription() const override {
-    return "CGRA YAML/ASM gen (multi-hop routers + endpoint register deposit + timing-aware rewiring, with CTRL_MOV kept).";
+    return "CGRA YAML/ASM gen (multi-hop routers + endpoint register deposit + timing-aware rewiring, with CTRL_MOV kept). DATA_MOV reg->outport uses hardware bypass (no egress instruction).";
   }
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mlir::func::FuncDialect>();
@@ -372,6 +372,30 @@ struct GenerateCodePass
   std::unordered_set<uint64_t> deposit_signatures; // (dstTileId, time_step, regId).
   std::unordered_set<uint64_t> egress_signatures;  // (srcTileId, time_step, regId, out_dir).
 
+  // Tracks register reads from routing bypass paths (reg -> outport via
+  // hardware direct path, bypassing the FU). Used for single-read-port
+  // constraint validation: if a computation and a routing bypass both
+  // read from the same register cluster in the same time step, they
+  // must read the identical register index.
+  struct BypassRead {
+    int col_idx, row_idx;
+    int index_per_ii;
+    int reg_id;
+  };
+  SmallVector<BypassRead, 8> bypass_reads;
+
+  static constexpr int kRegsPerCluster = 8;
+  struct RegClusterInfo { int cluster_no; int intra_index; };
+  static RegClusterInfo getRegClusterInfo(int reg_id) {
+    return {reg_id / kRegsPerCluster, reg_id % kRegsPerCluster};
+  }
+  static int parseRegIdFromOperand(const std::string &operand) {
+    if (operand.size() < 2 || operand[0] != '$') return -1;
+    for (size_t i = 1; i < operand.size(); ++i)
+      if (!std::isdigit(static_cast<unsigned char>(operand[i]))) return -1;
+    return std::stoi(operand.substr(1));
+  }
+
   // ---------- helpers to place materialized instructions ----------.
   void placeRouterHop(const Topology &topology, int tile_id, int time_step,
                       StringRef input_direction, StringRef output_direction,
@@ -397,6 +421,7 @@ struct GenerateCodePass
     hop_signatures.clear();
     deposit_signatures.clear();
     egress_signatures.clear();
+    bypass_reads.clear();
     instruction_id_map.clear();
     next_instruction_id = 0;
     timing_field_error = false;
@@ -787,12 +812,25 @@ struct GenerateCodePass
     // Producer endpoints & intermediate hops.
     setProducerDestination(basics.producer, basics.producer_direction, basics.regs, basics.reg_split.src_reg_step);
     if (!basics.links.empty() && basics.reg_split.src_reg_step) {
-      int src_tile = topo.srcTileOfLink(basics.links.front().link_id);
-      int first_link_time_step = basics.links.front().time_step;
-      int egress_instruction_id = basics.mov_dfg_id >= 0 ? basics.mov_dfg_id * 10000 : -1;
-      placeSrcEgress(topo, src_tile, first_link_time_step, basics.producer_direction,
-                     basics.reg_split.src_reg_step->regId,
-                     /*asCtrlMov=*/IsCtrl, egress_instruction_id);
+      if constexpr (IsCtrl) {
+        // CTRL_MOV still requires an explicit egress instruction.
+        int src_tile = topo.srcTileOfLink(basics.links.front().link_id);
+        int first_link_time_step = basics.links.front().time_step;
+        int egress_instruction_id = basics.mov_dfg_id >= 0 ? basics.mov_dfg_id * 10000 : -1;
+        placeSrcEgress(topo, src_tile, first_link_time_step, basics.producer_direction,
+                       basics.reg_split.src_reg_step->regId,
+                       /*asCtrlMov=*/true, egress_instruction_id);
+      } else {
+        // DATA_MOV: the hardware provides a direct path from register bank
+        // to routing crossbar, so no explicit egress instruction is needed.
+        // Records the bypass read for single-read-port constraint validation.
+        int src_tile = topo.srcTileOfLink(basics.links.front().link_id);
+        int first_link_time_step = basics.links.front().time_step;
+        auto [tile_x, tile_y] = topo.tile_location.lookup(src_tile);
+        bypass_reads.push_back({tile_x, tile_y,
+                                indexPerIiFromTimeStep(first_link_time_step),
+                                basics.reg_split.src_reg_step->regId});
+      }
     }
     size_t hop_counter = 1;
     generateIntermediateHops<IsCtrl>(basics.links, topo, basics.mov_dfg_id, hop_counter);
@@ -1139,22 +1177,23 @@ struct GenerateCodePass
       SmallVector<LinkStep, 8> link_steps = collectLinkSteps(operation);
       SmallVector<std::pair<int,int>, 8> hop_tiles;
       SmallVector<int, 8> hop_time_steps;
-      // Detect whether this mov has a src_reg_step (reg.time_step < first_link_time_step). If so,
-      // an egress instruction exists with id=mov_id*10000 and must participate in edges.
+      // Detects whether this mov has a src_reg_step (reg.time_step < first_link_time_step).
+      // For CTRL_MOV, an explicit egress instruction exists with id=mov_id*10000.
+      // For DATA_MOV, the hardware bypass handles reg -> outport routing
+      // directly, so no egress instruction or DFG node is created.
       bool has_src_reg_step = false;
       if (!link_steps.empty()) {
         SmallVector<RegStep, 4> regs = collectRegSteps(operation);
         MovRegSplit reg_split = splitMovRegs(regs, link_steps);
         has_src_reg_step = reg_split.src_reg_step.has_value();
-        if (has_src_reg_step) {
+        if (has_src_reg_step && isCtrlMov(operation)) {
           int base = mov_dfg_id * 10000;
           int egress_id = base;
           int src_tile_id = topology.srcTileOfLink(link_steps.front().link_id);
           auto coord = topology.tile_location.lookup(src_tile_id);
-          // Add placeholder node now (will be filled/confirmed by injectMaterializedInstructionNodes).
           if (!nodes.count(egress_id)) {
             nodes[egress_id] = DfgNodeInfo{
-                isCtrlMov(operation) ? "CTRL_MOV" : "DATA_MOV",
+                "CTRL_MOV",
                 coord.first, coord.second, link_steps.front().time_step};
           }
         }
@@ -1197,15 +1236,14 @@ struct GenerateCodePass
             HopRewriteInfo{mov_dfg_id, producer_id, consumer_ids, hop_tiles, hop_time_steps});
       }
 
-      // Also rewrite edges for single-hop (no intermediate hop nodes) when egress exists:
-      // producer -> egress(base) -> mov_id -> consumers
-      // so that DFG edges align with instruction ids.
-      if (has_src_reg_step && hop_tiles.empty()) {
+      // For CTRL_MOV with src_reg_step and single-hop (no intermediate hop nodes),
+      // rewrite edges to route through the egress node. DATA_MOV paths use
+      // hardware bypass so no egress node exists.
+      if (has_src_reg_step && hop_tiles.empty() && isCtrlMov(operation)) {
         if (producer_id >= 0)
           skip_edges.insert({producer_id, mov_dfg_id});
         for (int consumer_id : consumer_ids)
           skip_edges.insert({mov_dfg_id, consumer_id});
-        // Store a rewrite with empty hop list; later we will special-case it.
         rewrites.push_back(HopRewriteInfo{mov_dfg_id, producer_id, consumer_ids, /*hop_tiles*/{}, /*hop_time_steps*/{}});
       }
     });
@@ -1694,6 +1732,52 @@ struct GenerateCodePass
     inst->dst_operands.emplace_back(text, "RED");
   }
 
+  // Validates the single-read-port constraint for register routing bypass.
+  // The hardware provides a direct path from each register bank to the
+  // routing crossbar (bypassing the FU). Since each register bank has
+  // only one read port, if a computation (towards FU) and a routing
+  // bypass (towards routing crossbar) both read from the SAME register
+  // cluster in the same tile and time step, they MUST read the identical
+  // register index. 
+  //
+  // Note: This constraint only applies to same-tile routing bypasses
+  // (cross-tile bypasses that use links may have different constraints).
+  // However, due to the way the mapper works, cross-tile routing bypasses
+  // with src_reg_step are also tracked and validated for consistency.
+  void validateRegReadConstraints() {
+    for (const BypassRead &bypass : bypass_reads) {
+      RegClusterInfo bypass_info = getRegClusterInfo(bypass.reg_id);
+      auto tile_it = tile_time_instructions.find({bypass.col_idx, bypass.row_idx});
+      if (tile_it == tile_time_instructions.end()) continue;
+      auto ts_it = tile_it->second.find(bypass.index_per_ii);
+      if (ts_it == tile_it->second.end()) continue;
+
+      for (const Instruction &inst : ts_it->second) {
+        if (inst.opcode == "DATA_MOV" || inst.opcode == "CTRL_MOV") continue;
+
+        for (const Operand &src : inst.src_operands) {
+          int comp_reg_id = parseRegIdFromOperand(src.operand);
+          if (comp_reg_id < 0) continue;
+          RegClusterInfo comp_info = getRegClusterInfo(comp_reg_id);
+          if (comp_info.cluster_no != bypass_info.cluster_no) continue;
+          if (comp_info.intra_index != bypass_info.intra_index) {
+            llvm::errs()
+                << "[WARNING] Register read-port conflict at tile("
+                << bypass.col_idx << "," << bypass.row_idx
+                << ") index_per_ii=" << bypass.index_per_ii
+                << ": computation reads register $" << comp_reg_id
+                << " (cluster " << comp_info.cluster_no
+                << ", index " << comp_info.intra_index
+                << ") but routing bypass reads register $" << bypass.reg_id
+                << " (cluster " << bypass_info.cluster_no
+                << ", index " << bypass_info.intra_index
+                << "). Both should read the identical register if from same cluster.\n";
+          }
+        }
+      }
+    }
+  }
+
   // ---------- entry point ----------.
   void runOnOperation() override {
     ModuleOp module = getOperation();
@@ -1719,6 +1803,12 @@ struct GenerateCodePass
         expandMovImpl<false>(op, topo, /*unused*/reserve_to_phi_map);
       for (Operation *op : ctrl_movs)
         expandMovImpl<true>(op,  topo, reserve_to_phi_map);
+
+      // Validates the single-read-port constraint for register routing bypass
+      // paths: same-cluster reads from computation and routing bypass must
+      // use the identical register index.
+      validateRegReadConstraints();
+
       logUnresolvedOperands();
 
       std::unordered_set<int> materialized_ids;

@@ -69,7 +69,7 @@
 // MAPPING-NEXT:     neura.yield {dfg_id = 2 : i32}
 // MAPPING-NEXT:   }
 // MAPPING-NEXT: }
-// YAML:      array_config:
+// YAML: array_config:
 // YAML-NEXT:   columns: 4
 // YAML-NEXT:   rows: 4
 // YAML-NEXT:   compiled_ii: 5
@@ -92,9 +92,36 @@
 // YAML-NEXT:                   dst_operands:
 // YAML-NEXT:                     - operand: "$0"
 // YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 1
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "ADD"
+// YAML-NEXT:                   id: 38
+// YAML-NEXT:                   time_step: 11
+// YAML-NEXT:                   invalid_iterations: 2
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "#1"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 2
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "STORE"
+// YAML-NEXT:                   id: 40
+// YAML-NEXT:                   time_step: 12
+// YAML-NEXT:                   invalid_iterations: 2
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "$1"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 3
+// YAML-NEXT:               operations:
 
-// ASM:      # Compiled II: 5
-// ASM:      PE(2,0):
+// ASM: # Compiled II: 5
+// ASM: PE(2,0):
 // ASM-NEXT: {
 // ASM-NEXT:   LOAD, [$0] -> [$0] (t=10, inv_iters=2)
 // ASM-NEXT: } (idx_per_ii=0)
@@ -110,6 +137,34 @@
 // ASM-NEXT: {
 // ASM-NEXT:   GEP, [$0] -> [$0], [$1] (t=9, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=4)
+// ASM: PE(3,0):
+// ASM-NEXT: {
+// ASM-NEXT:   MUL, [$0], [#5] -> [$0] (t=5, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=0)
+// ASM-NEXT: {
+// ASM-NEXT:   ADD, [$0], [#-5] -> [$0] (t=6, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=1)
+// ASM-NEXT: {
+// ASM-NEXT:   DIV, [$0], [#18] -> [WEST, RED] (t=7, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=2)
+// ASM-NEXT: {
+// ASM-NEXT:   LOAD, [NORTH, RED] -> [$0] (t=4, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=4)
+// ASM: PE(2,1):
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$1] (t=5, inv_iters=1)
+// ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [$2] (t=10, inv_iters=2)
+// ASM-NEXT: } (idx_per_ii=0)
+// ASM-NEXT: {
+// ASM-NEXT:   RETURN_VOID, [$2] (t=11, inv_iters=2)
+// ASM-NEXT: } (idx_per_ii=1)
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$0] (t=4, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=4)
+// ASM: PE(3,1):
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [SOUTH, RED] (t=3, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=3)
 
 // RUN: mlir-neura-opt %t-kernel.mlir --view-op-graph 2>&1 | sed -n '/^digraph G {/,/^}$/p' > histogram_kernel_original.dot
 // RUN: command -v dot >/dev/null && dot -Tpng histogram_kernel_original.dot -o histogram_kernel_original.png || true

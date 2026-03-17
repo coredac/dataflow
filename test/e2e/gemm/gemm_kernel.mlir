@@ -298,47 +298,52 @@
 // YAML-NEXT:   columns: 4
 // YAML-NEXT:   rows: 4
 // YAML-NEXT:   compiled_ii: 17
-// YAML:       core_id: "0"
-// YAML:       entries:
-// YAML:         - entry_id: "entry0"
-// YAML:           instructions:
-// YAML:             - index_per_ii: 0
-// YAML:               operations:
-// YAML:                 - opcode: "GRANT_PREDICATE"
-// YAML:             - index_per_ii: 1
-// YAML:               operations:
-// YAML:                 - opcode: "MUL"
-// YAML:             - index_per_ii: 2
-// YAML:               operations:
-// YAML:                 - opcode: "GRANT_PREDICATE"
-// YAML:             - index_per_ii: 4
-// YAML:               operations:
-// YAML:                 - opcode: "GRANT_ONCE"
-// YAML:                 - opcode: "DATA_MOV"
-// YAML:             - index_per_ii: 5
-// YAML:               operations:
-// YAML:                 - opcode: "DATA_MOV"
-// YAML:             - index_per_ii: 8
-// YAML:               operations:
-// YAML:                 - opcode: "GRANT_ONCE"
-// YAML:             - index_per_ii: 9
-// YAML:               operations:
-// YAML:                 - opcode: "GRANT_PREDICATE"
-// YAML:             - index_per_ii: 10
-// YAML:               operations:
-// YAML:                 - opcode: "ZEXT"
-// YAML:             - index_per_ii: 13
-// YAML:               operations:
-// YAML:                 - opcode: "DATA_MOV"
-// YAML:             - index_per_ii: 14
-// YAML:               operations:
-// YAML:                 - opcode: "DATA_MOV"
-// YAML:             - index_per_ii: 15
-// YAML:               operations:
-// YAML:                 - opcode: "NOT"
-// YAML:             - index_per_ii: 16
-// YAML:               operations:
-// YAML:                 - opcode: "GRANT_ONCE"
+// YAML-NEXT:   cores:
+// YAML-NEXT:     - column: 0
+// YAML-NEXT:       row: 0
+// YAML-NEXT:       core_id: "0"
+// YAML-NEXT:       entries:
+// YAML-NEXT:         - entry_id: "entry0"
+// YAML-NEXT:           instructions:
+// YAML-NEXT:             - index_per_ii: 0
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "GRANT_PREDICATE"
+// YAML-NEXT:                   id: 66
+// YAML-NEXT:                   time_step: 17
+// YAML-NEXT:                   invalid_iterations: 1
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 1
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "MUL"
+// YAML-NEXT:                   id: 152
+// YAML-NEXT:                   time_step: 18
+// YAML-NEXT:                   invalid_iterations: 1
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 2
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "GRANT_PREDICATE"
+// YAML-NEXT:                   id: 184
+// YAML-NEXT:                   time_step: 19
+// YAML-NEXT:                   invalid_iterations: 1
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "$1"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "$3"
+// YAML-NEXT:                       color: "RED"
 //
 // ASM: # Compiled II: 17
 // ASM: PE(0,0):
@@ -380,3 +385,11 @@
 // ASM-NEXT:   GRANT_ONCE, [$0] -> [$0] (t=16, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=16)
 // ASM: PE(1,0):
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [WEST, RED] (t=17, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=0)
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$0] (t=18, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=1)
+// ASM-NEXT: {
+// ASM-NEXT:   ADD, [EAST, RED], [WEST, RED] -> [EAST, RED] (t=19, inv_iters=1)
