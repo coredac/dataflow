@@ -244,6 +244,10 @@ struct Topology {
     if (dc == -1 && dr == 0) return "WEST";
     if (dc == 0 && dr == 1) return "NORTH";
     if (dc == 0 && dr == -1) return "SOUTH";
+    if (dc == 1 && dr == 1) return "NORTHEAST";
+    if (dc == -1 && dr == 1) return "NORTHWEST";
+    if (dc == 1 && dr == -1) return "SOUTHEAST";
+    if (dc == -1 && dr == -1) return "SOUTHWEST";
     return "LOCAL";
   }
   StringRef dirFromLink(int link_id) const {
@@ -256,6 +260,10 @@ struct Topology {
     if (d == "WEST") return "EAST";
     if (d == "NORTH") return "SOUTH";
     if (d == "SOUTH") return "NORTH";
+    if (d == "NORTHEAST") return "SOUTHWEST";
+    if (d == "NORTHWEST") return "SOUTHEAST";
+    if (d == "SOUTHEAST") return "NORTHWEST";
+    if (d == "SOUTHWEST") return "NORTHEAST";
     return "LOCAL";
   }
   int srcTileOfLink(int link_id) const { return link_ends.lookup(link_id).first; }
