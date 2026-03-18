@@ -551,14 +551,43 @@ bool mlir::neura::tryRouteBackwardMove(Operation *mov_op, MappingLoc src_loc,
 Register *mlir::neura::getAvailableRegister(const MappingState &state,
                                             Tile *tile, int start_time,
                                             int exclusive_end_time) {
+  // Collect registers occupied by computations (non-MOV operations) on this
+  // tile within the time range. These represent FU-bound reads that share
+  // the register file's single read port with any routing bypass.
+  std::set<Register *> computation_regs;
   for (Register *reg : tile->getRegisters()) {
-    // FIXME: We may need constrain the register availability to the conflicting
-    // input channel (either the input channel or a register file on the same
-    // input direction could be active at one time).
-    if (state.isAvailableAcrossTimeInRange(reg, start_time,
-                                           exclusive_end_time)) {
-      return reg;
+    for (int t = start_time; t < exclusive_end_time; ++t) {
+      auto op = state.getOpAt({reg, t});
+      if (!op.has_value()) continue;
+      Operation *mapped_op = op.value();
+      if (isa<neura::DataMovOp>(mapped_op) || isa<neura::CtrlMovOp>(mapped_op))
+        continue;
+      computation_regs.insert(reg);
     }
+  }
+
+  for (Register *reg : tile->getRegisters()) {
+    if (!state.isAvailableAcrossTimeInRange(reg, start_time,
+                                            exclusive_end_time))
+      continue;
+
+    // Single-read-port constraint: if a computation already reads from the
+    // same register file (cluster), the bypass must use the identical register.
+    // If from a different register file, no constraint applies.
+    RegisterFile *candidate_file = reg->getRegisterFile();
+    bool conflict = false;
+    for (Register *comp_reg : computation_regs) {
+      if (comp_reg->getRegisterFile() != candidate_file)
+        continue;
+      // Same register file — only the exact same register is allowed.
+      if (comp_reg != reg) {
+        conflict = true;
+        break;
+      }
+    }
+    if (conflict) continue;
+
+    return reg;
   }
   return nullptr;
 }
