@@ -86,6 +86,7 @@ static bool isPhiStart(Operation *op) { return dyn_cast<PhiStartOp>(op) != nullp
 static bool isReserve(Operation *op) { return dyn_cast<ReserveOp>(op) != nullptr; }
 static bool isConstant(Operation *op) { return dyn_cast<ConstantOp>(op) != nullptr; }
 static bool isFusedOp(Operation *op) { return dyn_cast<FusedOp>(op) != nullptr; }
+static bool isStore(Operation *op) { return dyn_cast<StoreOp>(op) != nullptr; }
 // ---- Constant for phi_start operation ----.
 static constexpr unsigned kReserveOpIndex = 1;
 
@@ -526,6 +527,18 @@ struct GenerateCodePass
         // Handles normal operands, including operations with rhs_value attribute.
         SmallVector<Value> operands; operands.reserve(op->getNumOperands());
         
+        // Store may have only address operand; lhs_value carries the stored scalar.
+        // Keep src_operands and operation_to_operands index-aligned for rewiring.
+        if (isStore(op) && op->getNumOperands() == 1) {
+          if (auto lhs_value_attr = op->getAttr(attr::kLhsValue)) {
+            std::string lhs_literal = extractConstantLiteralFromAttr(lhs_value_attr);
+            if (!lhs_literal.empty()) {
+              inst.src_operands.emplace_back(lhs_literal, "RED");
+              operands.push_back(Value()); // placeholder for constant slot.
+            }
+          }
+        }
+
         // Processes actual Value operands (if any).
         for (Value v : op->getOperands()) {
           operands.push_back(v);
