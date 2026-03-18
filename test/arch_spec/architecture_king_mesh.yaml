@@ -3,7 +3,7 @@ architecture:
   version: "1.0"
 
 multi_cgra_defaults:
-  base_topology: "king_mesh"
+  base_topology: "mesh"
   rows: 1
   columns: 1
 
