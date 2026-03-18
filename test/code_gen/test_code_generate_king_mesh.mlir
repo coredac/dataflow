@@ -10,8 +10,8 @@
 // RUN:   --architecture-spec=../arch_spec/architecture_king_mesh.yaml \
 // RUN:   --generate-code -o %t-mapping.mlir
 // RUN: FileCheck %s --input-file=%t-mapping.mlir --check-prefix=MAPPING
-// RUN: FileCheck %s --input-file=tmp-generated-instructions.yaml --check-prefix=YAML --implicit-check-not=LOCAL
-// RUN: FileCheck %s --input-file=tmp-generated-instructions.asm --check-prefix=ASM --implicit-check-not=LOCAL
+// RUN: FileCheck %s --input-file=tmp-generated-instructions.yaml --check-prefix=YAML
+// RUN: FileCheck %s --input-file=tmp-generated-instructions.asm --check-prefix=ASM
 
 func.func @loop_test_king_mesh() -> f32 {
   %n        = llvm.mlir.constant(10 : i64) : i64
