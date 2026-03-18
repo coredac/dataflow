@@ -432,19 +432,20 @@
 // ASM-NEXT: } (idx_per_ii=8)
 // ASM-NEXT: {
 // ASM-NEXT:   AND, [$1], [#3] -> [$0], [NORTH, RED] (t=9, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [$0] -> [EAST, RED] (t=9, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=9)
 // ASM-NEXT: {
 // ASM-NEXT:   ICMP_EQ, [$0], [#0] -> [EAST, RED], [$1], [$0] (t=10, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=10)
 // ASM-NEXT: {
 // ASM-NEXT:   NOT, [$0] -> [NORTH, RED], [$1], [$0] (t=11, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [$1] -> [EAST, RED] (t=11, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=11)
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [$0] -> [NORTH, RED] (t=12, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=12)
 // ASM-NEXT: {
 // ASM-NEXT:   GRANT_PREDICATE, [$2], [$3] -> [$0] (t=13, inv_iters=0)
 // ASM-NEXT:   CTRL_MOV, [EAST, RED] -> [$2] (t=13, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=13)
-// ASM-NEXT: {
-// ASM-NEXT:   PHI, [$0], [NORTH, RED] -> [$0] (t=14, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=14)
 
 

@@ -345,7 +345,7 @@ struct GenerateCodePass
 
   StringRef getArgument() const override { return "generate-code"; }
   StringRef getDescription() const override {
-    return "CGRA YAML/ASM gen (multi-hop routers + endpoint register deposit + timing-aware rewiring, with CTRL_MOV kept). DATA_MOV reg->outport uses hardware bypass (no egress instruction).";
+    return "CGRA YAML/ASM gen (multi-hop routers + endpoint register deposit + timing-aware rewiring, with CTRL_MOV kept). Validates single-read-port constraint for reg->outport bypass.";
   }
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mlir::func::FuncDialect>();
@@ -812,20 +812,13 @@ struct GenerateCodePass
     // Producer endpoints & intermediate hops.
     setProducerDestination(basics.producer, basics.producer_direction, basics.regs, basics.reg_split.src_reg_step);
     if (!basics.links.empty() && basics.reg_split.src_reg_step) {
-      if constexpr (IsCtrl) {
-        // CTRL_MOV still requires an explicit egress instruction.
-        int src_tile = topo.srcTileOfLink(basics.links.front().link_id);
-        int first_link_time_step = basics.links.front().time_step;
-        int egress_instruction_id = basics.mov_dfg_id >= 0 ? basics.mov_dfg_id * 10000 : -1;
-        placeSrcEgress(topo, src_tile, first_link_time_step, basics.producer_direction,
-                       basics.reg_split.src_reg_step->regId,
-                       /*asCtrlMov=*/true, egress_instruction_id);
-      } else {
-        // DATA_MOV: the hardware provides a direct path from register bank
-        // to routing crossbar, so no explicit egress instruction is needed.
-        // Records the bypass read for single-read-port constraint validation.
-        int src_tile = topo.srcTileOfLink(basics.links.front().link_id);
-        int first_link_time_step = basics.links.front().time_step;
+      int src_tile = topo.srcTileOfLink(basics.links.front().link_id);
+      int first_link_time_step = basics.links.front().time_step;
+      int egress_instruction_id = basics.mov_dfg_id >= 0 ? basics.mov_dfg_id * 10000 : -1;
+      placeSrcEgress(topo, src_tile, first_link_time_step, basics.producer_direction,
+                     basics.reg_split.src_reg_step->regId,
+                     /*asCtrlMov=*/IsCtrl, egress_instruction_id);
+      if constexpr (!IsCtrl) {
         auto [tile_x, tile_y] = topo.tile_location.lookup(src_tile);
         bypass_reads.push_back({tile_x, tile_y,
                                 indexPerIiFromTimeStep(first_link_time_step),
@@ -1177,23 +1170,21 @@ struct GenerateCodePass
       SmallVector<LinkStep, 8> link_steps = collectLinkSteps(operation);
       SmallVector<std::pair<int,int>, 8> hop_tiles;
       SmallVector<int, 8> hop_time_steps;
-      // Detects whether this mov has a src_reg_step (reg.time_step < first_link_time_step).
-      // For CTRL_MOV, an explicit egress instruction exists with id=mov_id*10000.
-      // For DATA_MOV, the hardware bypass handles reg -> outport routing
-      // directly, so no egress instruction or DFG node is created.
+      // Detect whether this mov has a src_reg_step (reg.time_step < first_link_time_step). If so,
+      // an egress instruction exists with id=mov_id*10000 and must participate in edges.
       bool has_src_reg_step = false;
       if (!link_steps.empty()) {
         SmallVector<RegStep, 4> regs = collectRegSteps(operation);
         MovRegSplit reg_split = splitMovRegs(regs, link_steps);
         has_src_reg_step = reg_split.src_reg_step.has_value();
-        if (has_src_reg_step && isCtrlMov(operation)) {
+        if (has_src_reg_step) {
           int base = mov_dfg_id * 10000;
           int egress_id = base;
           int src_tile_id = topology.srcTileOfLink(link_steps.front().link_id);
           auto coord = topology.tile_location.lookup(src_tile_id);
           if (!nodes.count(egress_id)) {
             nodes[egress_id] = DfgNodeInfo{
-                "CTRL_MOV",
+                isCtrlMov(operation) ? "CTRL_MOV" : "DATA_MOV",
                 coord.first, coord.second, link_steps.front().time_step};
           }
         }
@@ -1236,14 +1227,15 @@ struct GenerateCodePass
             HopRewriteInfo{mov_dfg_id, producer_id, consumer_ids, hop_tiles, hop_time_steps});
       }
 
-      // For CTRL_MOV with src_reg_step and single-hop (no intermediate hop nodes),
-      // rewrite edges to route through the egress node. DATA_MOV paths use
-      // hardware bypass so no egress node exists.
-      if (has_src_reg_step && hop_tiles.empty() && isCtrlMov(operation)) {
+      // Also rewrite edges for single-hop (no intermediate hop nodes) when egress exists:
+      // producer -> egress(base) -> mov_id -> consumers
+      // so that DFG edges align with instruction ids.
+      if (has_src_reg_step && hop_tiles.empty()) {
         if (producer_id >= 0)
           skip_edges.insert({producer_id, mov_dfg_id});
         for (int consumer_id : consumer_ids)
           skip_edges.insert({mov_dfg_id, consumer_id});
+        // Store a rewrite with empty hop list; later we will special-case it.
         rewrites.push_back(HopRewriteInfo{mov_dfg_id, producer_id, consumer_ids, /*hop_tiles*/{}, /*hop_time_steps*/{}});
       }
     });

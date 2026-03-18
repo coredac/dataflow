@@ -227,6 +227,9 @@
 // ASM-NEXT:   PHI_START, [$0], [NORTH, RED] -> [$0], [NORTH, RED] (t=2, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=2)
 // ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [$0] -> [NORTH, RED] (t=3, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=3)
+// ASM-NEXT: {
 // ASM-NEXT:   LOAD, [NORTH, RED] -> [EAST, RED] (t=7, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=7)
 // ASM-NEXT: {
@@ -240,9 +243,6 @@
 // ASM-NEXT:   DATA_MOV, [WEST, RED] -> [EAST, RED] (t=10, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=10)
 // ASM: PE(2,0):
-// ASM-NEXT: {
-// ASM-NEXT:   STORE, [NORTH, RED], [WEST, RED] (t=11, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=0)
 // ASM-NEXT: {
 
 

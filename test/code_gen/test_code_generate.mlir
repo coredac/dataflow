@@ -176,6 +176,9 @@ func.func @loop_test() -> f32 {
 // ASM-NEXT: } (idx_per_ii=2)
 // ASM: PE(2,0):
 // ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [$0] -> [NORTH, RED] (t=4, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=0)
+// ASM-NEXT: {
 // ASM-NEXT:   GRANT_PREDICATE, [WEST, RED], [NORTH, RED] -> [WEST, RED] (t=5, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=1)
 // ASM-NEXT: {
@@ -197,8 +200,5 @@ func.func @loop_test() -> f32 {
 // ASM-NEXT: } (idx_per_ii=1)
 // ASM-NEXT: {
 // ASM-NEXT:   CONSTANT, [#3.000000] -> [$0] (t=2, inv_iters=0)
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [SOUTH, RED] (t=6, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=2)
-// ASM-NEXT: {
 
 

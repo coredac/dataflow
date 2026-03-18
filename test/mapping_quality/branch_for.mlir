@@ -282,6 +282,7 @@ func.func @loop_test() -> f32 {
 // ASM: PE(2,1):
 // ASM-NEXT: {
 // ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [WEST, RED] (t=4, inv_iters=1)
+// ASM-NEXT:   DATA_MOV, [$2] -> [NORTH, RED] (t=4, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=0)
 // ASM-NEXT: {
 // ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$0] (t=2, inv_iters=0)
@@ -290,4 +291,3 @@ func.func @loop_test() -> f32 {
 // ASM-NEXT:   ICMP_SLT, [WEST, RED], [EAST, RED] -> [SOUTH, RED], [WEST, RED], [$2], [$1], [EAST, RED], [NORTH, RED] (t=3, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=3)
 // ASM: PE(3,1):
-// ASM-NEXT: {
