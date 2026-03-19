@@ -86,7 +86,6 @@ static bool isPhiStart(Operation *op) { return dyn_cast<PhiStartOp>(op) != nullp
 static bool isReserve(Operation *op) { return dyn_cast<ReserveOp>(op) != nullptr; }
 static bool isConstant(Operation *op) { return dyn_cast<ConstantOp>(op) != nullptr; }
 static bool isFusedOp(Operation *op) { return dyn_cast<FusedOp>(op) != nullptr; }
-static bool isStore(Operation *op) { return dyn_cast<StoreOp>(op) != nullptr; }
 // ---- Constant for phi_start operation ----.
 static constexpr unsigned kReserveOpIndex = 1;
 
@@ -524,33 +523,45 @@ struct GenerateCodePass
         // Checks if operation has constant_value attribute (for non-CONSTANT operations).
         inst.src_operands.emplace_back(getConstantLiteral(op), "RED");
       } else {
-        // Handles normal operands, including operations with rhs_value attribute.
+        // Handles normal operands and folded constants (lhs_value/rhs_value).
         SmallVector<Value> operands; operands.reserve(op->getNumOperands());
-        
-        // Store may have only address operand; lhs_value carries the stored scalar.
-        // Keep src_operands and operation_to_operands index-aligned for rewiring.
-        if (isStore(op) && op->getNumOperands() == 1) {
-          if (auto lhs_value_attr = op->getAttr(attr::kLhsValue)) {
-            std::string lhs_literal = extractConstantLiteralFromAttr(lhs_value_attr);
-            if (!lhs_literal.empty()) {
-              inst.src_operands.emplace_back(lhs_literal, "RED");
-              operands.push_back(Value()); // placeholder for constant slot.
-            }
-          }
-        }
 
-        // Processes actual Value operands (if any).
-        for (Value v : op->getOperands()) {
+        auto appendLiteralSlot = [&](Attribute attr) -> bool {
+          std::string literal = extractConstantLiteralFromAttr(attr);
+          if (literal.empty()) return false;
+          inst.src_operands.emplace_back(literal, "RED");
+          // Keeps index alignment with operation_to_operands for rewiring.
+          operands.push_back(Value());
+          return true;
+        };
+        auto appendValueSlot = [&](Value v) {
           operands.push_back(v);
           inst.src_operands.emplace_back("UNRESOLVED", "RED");
-        }
-        
-        // Handles cases where binary operations have the RHS constant stored as an attribute.
-        if (auto rhs_value_attr = op->getAttr(attr::kRhsValue)) {
-          std::string rhs_literal = extractConstantLiteralFromAttr(rhs_value_attr);
-          if (!rhs_literal.empty()) {
-            inst.src_operands.emplace_back(rhs_literal, "RED");
+        };
+
+        // StoreIndexed has operand order: value(lhs) -> base(rhs) -> indices.
+        // rhs_value must be inserted before indices (not appended at tail).
+        if (auto store_indexed_op = dyn_cast<StoreIndexedOp>(op)) {
+          bool lhs_folded = appendLiteralSlot(op->getAttr(attr::kLhsValue));
+          if (!lhs_folded) appendValueSlot(store_indexed_op.getValue());
+
+          bool rhs_folded = appendLiteralSlot(op->getAttr(attr::kRhsValue));
+          if (!rhs_folded) {
+            Value base = store_indexed_op.getBase();
+            if (base) appendValueSlot(base);
           }
+
+          for (Value index : store_indexed_op.getIndices()) {
+            appendValueSlot(index);
+          }
+        } else {
+          // Generic handling:
+          // - lhs_value is the leading source slot.
+          // - remaining Value operands keep original order.
+          // - rhs_value is the trailing source slot.
+          appendLiteralSlot(op->getAttr(attr::kLhsValue));
+          for (Value v : op->getOperands()) appendValueSlot(v);
+          appendLiteralSlot(op->getAttr(attr::kRhsValue));
         }
         
         operation_to_operands[op] = std::move(operands);
