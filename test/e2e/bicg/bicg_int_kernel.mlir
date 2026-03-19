@@ -236,6 +236,8 @@
 // YAML-NEXT:                   time_step: 5
 // YAML-NEXT:                   invalid_iterations: 0
 // YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "arg1"
+// YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                     - operand: "$0"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                   dst_operands:
@@ -258,6 +260,8 @@
 // YAML-NEXT:                   time_step: 6
 // YAML-NEXT:                   invalid_iterations: 0
 // YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "arg3"
+// YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                     - operand: "$1"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                   dst_operands:
@@ -719,6 +723,8 @@
 // YAML-NEXT:                   time_step: 3
 // YAML-NEXT:                   invalid_iterations: 0
 // YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "arg0"
+// YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                     - operand: "$0"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                   dst_operands:
@@ -1019,6 +1025,8 @@
 // YAML-NEXT:                   time_step: 4
 // YAML-NEXT:                   invalid_iterations: 0
 // YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "arg2"
+// YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                     - operand: "$0"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                   dst_operands:
@@ -1031,6 +1039,8 @@
 // YAML-NEXT:                   time_step: 5
 // YAML-NEXT:                   invalid_iterations: 0
 // YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "arg4"
+// YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                     - operand: "$1"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                   dst_operands:
@@ -1320,6 +1330,8 @@
 // YAML-NEXT:                   time_step: 9
 // YAML-NEXT:                   invalid_iterations: 0
 // YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "#0"
+// YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                     - operand: "$0"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:     - column: 3
@@ -1357,11 +1369,11 @@
 // ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$1] (t=4, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=4)
 // ASM-NEXT: {
-// ASM-NEXT:   GEP, [$0] -> [EAST, RED] (t=5, inv_iters=0)
+// ASM-NEXT:   GEP, [arg1], [$0] -> [EAST, RED] (t=5, inv_iters=0)
 // ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [NORTH, RED] (t=5, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=5)
 // ASM-NEXT: {
-// ASM-NEXT:   GEP, [$1] -> [EAST, RED], [NORTH, RED] (t=6, inv_iters=0)
+// ASM-NEXT:   GEP, [arg3], [$1] -> [EAST, RED], [NORTH, RED] (t=6, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=6)
 // ASM-NEXT: {
 // ASM-NEXT:   PHI_START, [$2], [$3] -> [$0], [EAST, RED] (t=7, inv_iters=0)
@@ -1447,7 +1459,7 @@
 // ASM-NEXT:   SHL, [WEST, RED], [#5] -> [$0] (t=2, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=2)
 // ASM-NEXT: {
-// ASM-NEXT:   GEP, [$0] -> [NORTH, RED] (t=3, inv_iters=0)
+// ASM-NEXT:   GEP, [arg0], [$0] -> [NORTH, RED] (t=3, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=3)
 // ASM-NEXT: {
 // ASM-NEXT:   ICMP_EQ, [WEST, RED], [#8] -> [$0], [WEST, RED], [SOUTH, RED] (t=4, inv_iters=0)
@@ -1504,10 +1516,10 @@
 // ASM-NEXT:   DATA_MOV, [SOUTH, RED] -> [$1] (t=3, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=3)
 // ASM-NEXT: {
-// ASM-NEXT:   GEP, [$0] -> [EAST, RED] (t=4, inv_iters=0)
+// ASM-NEXT:   GEP, [arg2], [$0] -> [EAST, RED] (t=4, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=4)
 // ASM-NEXT: {
-// ASM-NEXT:   GEP, [$1] -> [NORTH, RED], [$0] (t=5, inv_iters=0)
+// ASM-NEXT:   GEP, [arg4], [$1] -> [NORTH, RED], [$0] (t=5, inv_iters=0)
 // ASM-NEXT:   DATA_MOV, [EAST, RED] -> [SOUTH, RED] (t=5, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=5)
 // ASM-NEXT: {
@@ -1565,7 +1577,7 @@
 // ASM-NEXT:   LOAD, [SOUTH, RED] -> [SOUTH, RED] (t=7, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=7)
 // ASM-NEXT: {
-// ASM-NEXT:   STORE, [$0] (t=9, inv_iters=0)
+// ASM-NEXT:   STORE, [#0], [$0] (t=9, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=9)
 // ASM: PE(3,3):
 // ASM-NEXT: {
