@@ -527,8 +527,16 @@ struct GenerateCodePass
         SmallVector<Value> operands; operands.reserve(op->getNumOperands());
 
         auto appendLiteralSlot = [&](Attribute attr) -> bool {
+          // If there is no attribute, there is no folded constant.
+          if (!attr) return false;
           std::string literal = extractConstantLiteralFromAttr(attr);
-          if (literal.empty()) return false;
+          if (literal.empty()) {
+            // Attribute exists but cannot be serialized to current literal form.
+            // Keep slot alignment and surface a clear diagnostic.
+            op->emitError("unsupported constant attribute in lhs_value/rhs_value")
+                << ": " << attr;
+            literal = "UNSUPPORTED_CONSTANT";
+          }
           inst.src_operands.emplace_back(literal, "RED");
           // Keeps index alignment with operation_to_operands for rewiring.
           operands.push_back(Value());
