@@ -62,8 +62,8 @@ namespace neura {
 // Used to enforce the constraint: if a bypass (MOV) and a computation read from
 // the same cluster at the same time step, they must use the identical register.
 struct RegClusterOccupyStatus {
-  int mov_count = 0;     // number of MOV ops reading from this cluster
-  int compute_count = 0; // number of compute ops reading from this cluster
+  int mov_count = 0;     // Counts MOV ops reading from this cluster.
+  int compute_count = 0; // Counts compute ops reading from this cluster.
 
   // Returns true if the cluster slot is occupied by any op (mov or compute).
   bool alreadyOccupied() const { return mov_count > 0 || compute_count > 0; }

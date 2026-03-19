@@ -213,10 +213,14 @@ bool MappingState::isAvailableAcrossTime(const MappingLoc &loc) const {
     return true;
   };
 
-  // Returns true if the cluster slot already holds both mov and compute
-  // occupants on sibling registers — an O(1) lookup via the record table.
-  auto clusterSlotHasMixedKinds = [this](RegisterFile *reg_file,
-                                          int canonical_step) -> bool {
+  // Returns true if any register in the cluster other than 'reg' is occupied.
+  // Uses the O(1) reg_file_occupy_records table.
+  auto anySiblingOccupied = [this](Register *reg, int t) -> bool {
+    RegisterFile *reg_file = reg->getRegisterFile();
+    if (!reg_file) {
+      return false;
+    }
+    int canonical_step = t % II;
     std::unordered_map<RegisterFile *,
                        std::unordered_map<int, RegClusterOccupyStatus>>::
         const_iterator reg_file_it = reg_file_occupy_records.find(reg_file);
@@ -229,7 +233,17 @@ bool MappingState::isAvailableAcrossTime(const MappingLoc &loc) const {
       return false;
     }
     const RegClusterOccupyStatus &status = slot_it->second;
-    return status.mov_count > 0 && status.compute_count > 0;
+
+    int ops_on_this_reg = 0;
+    std::map<MappingLoc, std::vector<std::pair<int, Operation *>>>::
+        const_iterator it_loc = occupied_locs.find({reg, t});
+    if (it_loc != occupied_locs.end()) {
+      ops_on_this_reg = it_loc->second.size();
+    }
+
+    // If the total cluster reads exceed what reg itself is doing, a sibling must
+    // be occupied.
+    return (status.mov_count + status.compute_count) > ops_on_this_reg;
   };
 
   if (this->is_spatial_only) {
@@ -239,17 +253,12 @@ bool MappingState::isAvailableAcrossTime(const MappingLoc &loc) const {
         return false;
       }
     }
-    // Register-cluster constraint: any cluster record at these steps belongs
-    // to sibling registers (reg itself is free).  Reject if any canonical slot
-    // already mixes mov and compute kinds.
+    // Register-cluster constraint: checks if any sibling register is occupied.
     if (loc.resource->getKind() == ResourceKind::Register) {
       Register *reg = static_cast<Register *>(loc.resource);
-      RegisterFile *reg_file = reg->getRegisterFile();
-      if (reg_file) {
-        for (int canonical_step = 0; canonical_step < II; ++canonical_step) {
-          if (clusterSlotHasMixedKinds(reg_file, canonical_step)) {
-            return false;
-          }
+      for (int t = 0; t < II * kMaxSteps; ++t) {
+        if (anySiblingOccupied(reg, t)) {
+          return false;
         }
       }
     }
@@ -261,13 +270,11 @@ bool MappingState::isAvailableAcrossTime(const MappingLoc &loc) const {
         return false;
       }
     }
-    // Register-cluster constraint: only the one canonical slot matters.
+    // Register-cluster constraint: checks if any sibling is occupied.
     if (loc.resource->getKind() == ResourceKind::Register) {
       Register *reg = static_cast<Register *>(loc.resource);
-      RegisterFile *reg_file = reg->getRegisterFile();
-      if (reg_file) {
-        int canonical_step = loc.time_step % II;
-        if (clusterSlotHasMixedKinds(reg_file, canonical_step)) {
+      for (int t = loc.time_step % II; t < II * kMaxSteps; t += II) {
+        if (anySiblingOccupied(reg, t)) {
           return false;
         }
       }
@@ -280,14 +287,16 @@ bool MappingState::isAvailableForOccupyStatus(const MappingLoc &loc,
                                               int new_occupy_status) const {
   // Helper lambda to check a single location against all existing entries
   auto checkSingleLoc = [this, new_occupy_status](const MappingLoc &check_loc) -> bool {
-    auto it = occupied_locs.find(check_loc);
+    std::map<MappingLoc,
+             std::vector<std::pair<int, Operation *>>>::const_iterator it =
+        occupied_locs.find(check_loc);
     if (it == occupied_locs.end() || it->second.empty()) {
       // Location is free, always available
       return true;
     }
 
     // Checks against all existing entries at this location
-    for (const auto &entry : it->second) {
+    for (const std::pair<int, Operation *> &entry : it->second) {
       int existing_status = entry.first;
 
       // Implements the pipeline-aware availability rules:
@@ -351,7 +360,9 @@ int MappingState::getOccupyStatusAcrossTime(const MappingLoc &loc) const {
   if (this->is_spatial_only) {
     for (int t = 0; t < II * kMaxSteps; ++t) {
       MappingLoc check_loc = {loc.resource, t};
-      auto it = occupied_locs.find(check_loc);
+      std::map<MappingLoc,
+               std::vector<std::pair<int, Operation *>>>::const_iterator it =
+          occupied_locs.find(check_loc);
       if (it != occupied_locs.end() && !it->second.empty()) {
         // Returns the first status found (most restrictive).
         return it->second[0].first;
@@ -362,7 +373,9 @@ int MappingState::getOccupyStatusAcrossTime(const MappingLoc &loc) const {
     // Checks across time domain (modulo II).
     for (int t = loc.time_step % II; t < II * kMaxSteps; t += II) {
       MappingLoc check_loc = {loc.resource, t};
-      auto it = occupied_locs.find(check_loc);
+      std::map<MappingLoc,
+               std::vector<std::pair<int, Operation *>>>::const_iterator it =
+          occupied_locs.find(check_loc);
       if (it != occupied_locs.end() && !it->second.empty()) {
         // Returns the first status found (most restrictive).
         return it->second[0].first;
@@ -387,7 +400,7 @@ bool MappingState::isAvailableAcrossTimeInRange(BasicResource *resource,
 }
 
 std::optional<Operation *> MappingState::getOpAt(MappingLoc loc) const {
-  auto it = loc_to_op.find(loc);
+  std::map<MappingLoc, Operation *>::const_iterator it = loc_to_op.find(loc);
   if (it == loc_to_op.end()) {
     return std::nullopt;
   }
@@ -398,7 +411,8 @@ std::optional<Operation *>
 MappingState::getOpAtLocAcrossTime(MappingLoc loc) const {
   for (int t = loc.time_step % II; t < II * kMaxSteps; t += II) {
     MappingLoc check_loc = {loc.resource, t};
-    auto it = loc_to_op.find(check_loc);
+    std::map<MappingLoc, Operation *>::const_iterator it =
+        loc_to_op.find(check_loc);
     if (it != loc_to_op.end()) {
       return it->second;
     }
@@ -418,7 +432,8 @@ int MappingState::countOpsAtResource(BasicResource *resource) const {
 
 const std::vector<MappingLoc> &
 MappingState::getAllLocsOfOp(Operation *op) const {
-  auto it = op_to_locs.find(op);
+  std::map<Operation *, std::vector<MappingLoc>>::const_iterator it =
+      op_to_locs.find(op);
   if (it != op_to_locs.end()) {
     return it->second;
   }
@@ -557,7 +572,7 @@ void MappingState::dumpOpToLocs(llvm::raw_ostream &os) const {
 
   for (const auto &[op, locs] : op_to_locs) {
     for (const MappingLoc &loc : locs) {
-      auto *res = loc.resource;
+      BasicResource *res = loc.resource;
       // Only shows tiles in the table.
       if (res->getType() == "tile") {
         tile_ids.insert(res->getId());
@@ -614,7 +629,9 @@ void MappingState::dumpOpToLocs(llvm::raw_ostream &os) const {
     os << " | ";
 
     for (int slot : time_slots) {
-      auto it = tile_slot_to_ops.find({tile_id, slot});
+      std::map<std::pair<int, int>,
+               std::vector<std::pair<Operation *, int>>>::const_iterator it =
+          tile_slot_to_ops.find({tile_id, slot});
       if (it != tile_slot_to_ops.end() && !it->second.empty()) {
         // Multiple operations may exist in the same slot (from different
         // iterations). Shows the first one.
@@ -691,7 +708,7 @@ void MappingState::dumpOpToLocs(llvm::raw_ostream &os) const {
 void MappingState::encodeMappingState() {
   for (const auto &[op, locs] : op_to_locs) {
     llvm::SmallVector<mlir::Attribute, 4> mapping_entries;
-    auto ctx = op->getContext();
+    mlir::MLIRContext *ctx = op->getContext();
     for (const MappingLoc &loc : locs) {
       std::string kind_str;
       if (loc.resource->getKind() == ResourceKind::Tile) {
