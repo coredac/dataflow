@@ -108,7 +108,7 @@
 // ASM-NEXT:   SEXT, [EAST, RED] -> [$0] (t=8, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=3)
 // ASM-NEXT: {
-// ASM-NEXT:   GEP, [$0] -> [$0], [$1] (t=9, inv_iters=1)
+// ASM-NEXT:   GEP, [arg1], [$0] -> [$0], [$1] (t=9, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=4)
 
 // RUN: mlir-neura-opt %t-kernel.mlir --view-op-graph 2>&1 | sed -n '/^digraph G {/,/^}$/p' > histogram_kernel_original.dot
