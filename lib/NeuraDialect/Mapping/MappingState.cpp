@@ -116,13 +116,13 @@ void MappingState::unbindOp(Operation *op) {
 }
 
 bool MappingState::isAvailableAcrossTime(const MappingLoc &loc) const {
-  // For spatial mapping, checks if the location is available across all time.
+  // For spatial mapping, checks if the location stays available at all time steps.
   if (this->is_spatial_only) {
     for (int t = 0; t < II * kMaxSteps; ++t) {
       MappingLoc check_loc = {loc.resource, t};
       auto it = occupied_locs.find(check_loc);
       if (it != occupied_locs.end()) {
-        // Check if all existing occupy statuses allow new single-cycle op
+        // Rejects the location if any non-shareable occupancy is present.
         for (const auto &entry : it->second) {
           if (entry.first != IN_PIPE_OCCUPY) {
             return false;
@@ -130,14 +130,91 @@ bool MappingState::isAvailableAcrossTime(const MappingLoc &loc) const {
         }
       }
     }
+
+    // Enforces identical intra-index when a mov read and a compute read share a register file.
+    if (loc.resource->getKind() == ResourceKind::Register) {
+      Register *reg = static_cast<Register *>(loc.resource);
+      RegisterFile *reg_file = reg->getRegisterFile();
+      if (reg_file) {
+        auto isMovOp = [](Operation *op) {
+          // Identifies bypass routing ops by name to avoid relying on generated op classes.
+          if (!op) {
+            return false;
+          }
+          auto name = op->getName().getStringRef();
+          return name == "neura.data_mov" || name == "neura.ctrl_mov";
+        };
+
+        auto violatesClusterReadConstraintAt = [&](int t) -> bool {
+          // Tracks whether sibling registers in the file are used by mov or compute in this slot.
+          bool otherRegHasMov = false;
+          bool otherRegHasCompute = false;
+
+          for (const auto &[_, sibling] : reg_file->getRegisters()) {
+            if (sibling == reg) {
+              continue;
+            }
+            auto itOcc = occupied_locs.find({sibling, t});
+            if (itOcc == occupied_locs.end()) {
+              continue;
+            }
+
+            for (const auto &entry : itOcc->second) {
+              Operation *occOp = entry.second;
+              if (isMovOp(occOp)) {
+                otherRegHasMov = true;
+              } else {
+                otherRegHasCompute = true;
+              }
+
+              // Rejects the slot once mov and compute are found on different sibling registers.
+              if (otherRegHasMov && otherRegHasCompute) {
+                return true;
+              }
+            }
+          }
+
+          auto itThis = occupied_locs.find({reg, t});
+          bool thisRegHasMov = false;
+          bool thisRegHasCompute = false;
+          if (itThis != occupied_locs.end()) {
+            for (const auto &entry : itThis->second) {
+              Operation *occOp = entry.second;
+              if (isMovOp(occOp)) {
+                thisRegHasMov = true;
+              } else {
+                thisRegHasCompute = true;
+              }
+            }
+          }
+
+          // Rejects the slot when this register mixes with a sibling of the opposite kind.
+          if (otherRegHasCompute && thisRegHasMov) {
+            return true;
+          }
+          if (otherRegHasMov && thisRegHasCompute) {
+            return true;
+          }
+
+          return false;
+        };
+
+        for (int t = 0; t < II * kMaxSteps; ++t) {
+          if (violatesClusterReadConstraintAt(t)) {
+            return false;
+          }
+        }
+      }
+    }
+
     return true;
   } else {
-    // Checks the availability across time domain.
+    // Checks the availability across the modulo-II time domain.
     for (int t = loc.time_step % II; t < II * kMaxSteps; t += II) {
       MappingLoc check_loc = {loc.resource, t};
       auto it = occupied_locs.find(check_loc);
       if (it != occupied_locs.end()) {
-        // Check if all existing occupy statuses allow new single-cycle op
+        // Rejects the location if any non-shareable occupancy is present.
         for (const auto &entry : it->second) {
           if (entry.first != IN_PIPE_OCCUPY) {
             return false;
@@ -145,6 +222,80 @@ bool MappingState::isAvailableAcrossTime(const MappingLoc &loc) const {
         }
       }
     }
+
+    // Enforces identical intra-index when a mov read and a compute read share a register file.
+    if (loc.resource->getKind() == ResourceKind::Register) {
+      Register *reg = static_cast<Register *>(loc.resource);
+      RegisterFile *reg_file = reg->getRegisterFile();
+      if (reg_file) {
+        auto isMovOp = [](Operation *op) {
+          // Identifies bypass routing ops by name to avoid relying on generated op classes.
+          if (!op) {
+            return false;
+          }
+          auto name = op->getName().getStringRef();
+          return name == "neura.data_mov" || name == "neura.ctrl_mov";
+        };
+
+        auto violatesClusterReadConstraintAt = [&](int t) -> bool {
+          // Tracks whether sibling registers in the file are used by mov or compute in this slot.
+          bool otherRegHasMov = false;
+          bool otherRegHasCompute = false;
+
+          for (const auto &[_, sibling] : reg_file->getRegisters()) {
+            if (sibling == reg) {
+              continue;
+            }
+            auto itOcc = occupied_locs.find({sibling, t});
+            if (itOcc == occupied_locs.end()) {
+              continue;
+            }
+
+            for (const auto &entry : itOcc->second) {
+              Operation *occOp = entry.second;
+              if (isMovOp(occOp)) {
+                otherRegHasMov = true;
+              } else {
+                otherRegHasCompute = true;
+              }
+              if (otherRegHasMov && otherRegHasCompute) {
+                return true;
+              }
+            }
+          }
+
+          auto itThis = occupied_locs.find({reg, t});
+          bool thisRegHasMov = false;
+          bool thisRegHasCompute = false;
+          if (itThis != occupied_locs.end()) {
+            for (const auto &entry : itThis->second) {
+              Operation *occOp = entry.second;
+              if (isMovOp(occOp)) {
+                thisRegHasMov = true;
+              } else {
+                thisRegHasCompute = true;
+              }
+            }
+          }
+
+          // Rejects the slot when this register mixes with a sibling of the opposite kind.
+          if (otherRegHasCompute && thisRegHasMov) {
+            return true;
+          }
+          if (otherRegHasMov && thisRegHasCompute) {
+            return true;
+          }
+          return false;
+        };
+
+        for (int t = loc.time_step % II; t < II * kMaxSteps; t += II) {
+          if (violatesClusterReadConstraintAt(t)) {
+            return false;
+          }
+        }
+      }
+    }
+
     return true;
   }
 }
@@ -159,11 +310,11 @@ bool MappingState::isAvailableForOccupyStatus(const MappingLoc &loc,
       return true;
     }
 
-    // Check against all existing entries at this location
+    // Checks against all existing entries at this location
     for (const auto &entry : it->second) {
       int existing_status = entry.first;
 
-      // Implement the pipeline-aware availability rules:
+      // Implements the pipeline-aware availability rules:
       // - SINGLE_OCCUPY (0): exclusive, no other op can share
       // - START_PIPE_OCCUPY (1): cannot coexist with SINGLE or another START
       // - END_PIPE_OCCUPY (2): cannot coexist with SINGLE or another END
