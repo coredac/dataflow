@@ -10,6 +10,7 @@
 #include "TaskflowDialect/TaskflowDialect.h"
 #include "TaskflowDialect/TaskflowOps.h"
 #include "TaskflowDialect/TaskflowPasses.h"
+#include "TaskflowDialect/Util/CgraPlacementUtils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/Builders.h"
@@ -76,7 +77,7 @@ struct TaskPlacement {
   size_t cgraCount() const { return cgra_positions.size(); }
 
   // Checks if any CGRA in this task is adjacent to any in other task.
-  bool hasAdjacentCGRA(const TaskPlacement &other) const {
+  bool hasTaskAdjacentCgra(const TaskPlacement &other) const {
     for (const auto &pos : cgra_positions) {
       for (const auto &other_pos : other.cgra_positions) {
         if (pos.isAdjacent(other_pos)) {
@@ -252,6 +253,12 @@ public:
     // 3. Places tasks in sorted order with heuristic scoring.
     // Iterative Refinement Loop (Coordinate Descent).
     // Alternates between Task Placement (Phase 1) and SRAM Assignment (Phase 2).
+    //
+    // How iterations interact:
+    //   - Phase 1 places tasks to minimise distance to currently-assigned SRAMs.
+    //   - Phase 2 reassigns each SRAM to the centroid of its accessing tasks.
+    //   Each phase improves locality given the other phase's fixed output, so
+    //   the loop converges when SRAM positions stop changing (sram_moved=false).
     constexpr int kMaxIterations = 10;
   
     for (int iter = 0; iter < kMaxIterations; ++iter) {
@@ -271,6 +278,12 @@ public:
 
           // If the requested cgra_count doesn't fit, fall back to cgra_count-1
           // (i.e. reject the extra CGRA and keep previous allocation).
+          //
+          // Note: even though cgra_count is computed by
+          // ResourceAwareTaskOptimizationPass to fit on a 4×4 grid globally, a
+          // fit is still not guaranteed here because earlier tasks in the
+          // placement order may already occupy conflicting positions, leaving an
+          // insufficiently large contiguous free region for this task.
           if (placement.cgra_positions.empty() && cgra_count > 1) {
             int fallback = cgra_count - 1;
             llvm::errs() << "[AllocateCgraToTask] Cannot place "
@@ -280,10 +293,9 @@ public:
             placement = findBestPlacement(task_node, fallback, graph);
           }
 
-          // Commits Placement.
-          task_node->placement.push_back(placement.primary());
-          for (size_t i = 1; i < placement.cgra_positions.size(); ++i) {
-             task_node->placement.push_back(placement.cgra_positions[i]);
+          // Commits Placement for all CGRAs assigned to this task.
+          for (const auto &pos : placement.cgra_positions) {
+            task_node->placement.push_back(pos);
           }
 
           // Marks occupied.
@@ -295,7 +307,7 @@ public:
         }
 
         // Phase 2: Assign SRAMs (assuming fixed tasks).
-        bool sram_moved = assignAllSRAMs(graph);
+        bool sram_moved = assignAllSrams(graph);
         
 
 
@@ -381,7 +393,7 @@ private:
 
   // Assigns all memory nodes to SRAMs based on centroid of accessing tasks.
   // Returns true if any SRAM assignment changed.
-  bool assignAllSRAMs(TaskMemoryGraph &graph) {
+  bool assignAllSrams(TaskMemoryGraph &graph) {
     bool changed = false;
     for (auto &mem_node : graph.memory_nodes) {
       // Computes centroid of all tasks that access this memory.

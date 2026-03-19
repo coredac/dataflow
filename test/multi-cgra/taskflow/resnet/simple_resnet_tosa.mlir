@@ -726,9 +726,9 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 
 // CGRA Tile Occupation after RESOPT (4x4 grid, col x row):
 // +---+---+---+---+
-// | 0 | 1 | 2 | 3 |   row=0: 0=Task_1_..._utilfused, 1=Task_3, 2=Task_4_..._utilfused, 3=Task_6_Task_8_utilfused
+// | 0 | 1 | 2 | 3 |   row=0: 0=Task_3, 1=Task_1_..._utilfused, 2=Task_4_..._utilfused, 3=Task_6_Task_8_utilfused
 // +---+---+---+---+
-// | 4 | 5 | . | . |   row=1: 4=Task_9, 5=Task_10_..._fused_fused
+// | 4 | 5 | . | . |   row=1: 4=Task_10_..._fused_fused, 5=Task_9
 // +---+---+---+---+
 // | . | . | . | . |
 // +---+---+---+---+
