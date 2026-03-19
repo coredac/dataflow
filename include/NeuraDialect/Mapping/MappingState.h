@@ -5,6 +5,7 @@
 #include "mlir/IR/Operation.h"
 #include "llvm/Support/raw_ostream.h"
 #include <optional>
+#include <unordered_map>
 #include <vector>
 
 namespace mlir {
@@ -56,6 +57,17 @@ template <> struct hash<mlir::neura::MappingLoc> {
 
 namespace mlir {
 namespace neura {
+
+// Tracks per-time-slot occupancy of a register cluster (RegisterFile).
+// Used to enforce the constraint: if a bypass (MOV) and a computation read from
+// the same cluster at the same time step, they must use the identical register.
+struct RegClusterOccupyStatus {
+  int mov_count = 0;     // number of MOV ops reading from this cluster
+  int compute_count = 0; // number of compute ops reading from this cluster
+
+  // Returns true if the cluster slot is occupied by any op (mov or compute).
+  bool alreadyOccupied() const { return mov_count > 0 || compute_count > 0; }
+};
 
 // Tracks placement and routing of ops on the CGRA.
 class MappingState {
@@ -152,6 +164,11 @@ public:
   const std::map<Operation *, std::vector<MappingLoc>> &getOpToLocs() const {
     return this->op_to_locs;
   }
+  const std::unordered_map<RegisterFile *,
+                           std::unordered_map<int, RegClusterOccupyStatus>> &
+  getRegFileOccupyRecords() const {
+    return this->reg_file_occupy_records;
+  }
 
   // Setters for state information.
   void setOccupiedLocs(
@@ -166,6 +183,12 @@ public:
       const std::map<Operation *, std::vector<MappingLoc>> &op_to_locs) {
     this->op_to_locs = op_to_locs;
   }
+  void setRegFileOccupyRecords(
+      const std::unordered_map<RegisterFile *,
+                               std::unordered_map<int, RegClusterOccupyStatus>>
+          &records) {
+    this->reg_file_occupy_records = records;
+  }
 
 private:
   // Initiation interval.
@@ -178,6 +201,31 @@ private:
   std::map<MappingLoc, std::vector<std::pair<int, Operation *>>> occupied_locs;
   std::map<MappingLoc, Operation *> loc_to_op;
   std::map<Operation *, std::vector<MappingLoc>> op_to_locs;
+
+  // Record table for register cluster occupancy, keyed by (RegisterFile*,
+  // time_step % II). Updated incrementally on every bind/reserve/unbind/release
+  // so that isAvailableAcrossTime() can answer cluster-conflict queries in O(1)
+  // instead of scanning all sibling registers across all time steps.
+  std::unordered_map<RegisterFile *,
+                     std::unordered_map<int, RegClusterOccupyStatus>>
+      reg_file_occupy_records;
+
+  // Returns true if op is a routing bypass (data_mov or ctrl_mov).
+  static bool isMovOp(Operation *op);
+
+  // Increments the appropriate counter in reg_file_occupy_records for a
+  // register location when op is bound/reserved there.
+  void addToRegFileRecord(Register *reg, int time_step, Operation *op);
+
+  // Decrements the appropriate counter in reg_file_occupy_records for a
+  // register location when op is unbound/released from there.
+  void removeFromRegFileRecord(Register *reg, int time_step, Operation *op);
+
+  // Returns true if placing op (mov or compute) onto reg at the given
+  // canonical time slot would violate the cluster read constraint.
+  bool violatesClusterReadConstraint(RegisterFile *reg_file, Register *reg,
+                                     int canonical_time_step,
+                                     bool is_mov) const;
 };
 
 } // namespace neura
@@ -199,6 +247,9 @@ private:
   std::map<MappingLoc, std::vector<std::pair<int, Operation *>>> occupied_locs;
   std::map<MappingLoc, Operation *> loc_to_op;
   std::map<Operation *, std::vector<MappingLoc>> op_to_locs;
+  std::unordered_map<RegisterFile *,
+                     std::unordered_map<int, RegClusterOccupyStatus>>
+      reg_file_occupy_records;
 };
 } // namespace neura
 } // namespace mlir

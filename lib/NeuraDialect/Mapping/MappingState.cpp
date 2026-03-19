@@ -3,6 +3,7 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "llvm/Support/raw_ostream.h"
+#include "NeuraDialect/NeuraOps.h"
 #include <algorithm>
 
 using namespace mlir;
@@ -30,6 +31,70 @@ MappingState::MappingState(const Architecture &arch, int II,
                            bool is_spatial_only)
     : II(II), is_spatial_only(is_spatial_only) {}
 
+// ---------------------------------------------------------------------------
+// Static helpers
+// ---------------------------------------------------------------------------
+
+bool MappingState::isMovOp(Operation *op) {
+  if (!op) {
+    return false;
+  }
+  return isa<neura::DataMovOp>(op) || isa<neura::CtrlMovOp>(op);
+}
+
+void MappingState::addToRegFileRecord(Register *reg, int time_step,
+                                      Operation *op) {
+  RegisterFile *reg_file = reg->getRegisterFile();
+  if (!reg_file) {
+    return;
+  }
+  int canonical_step = time_step % II;
+  RegClusterOccupyStatus &status =
+      reg_file_occupy_records[reg_file][canonical_step];
+  if (isMovOp(op)) {
+    ++status.mov_count;
+  } else {
+    ++status.compute_count;
+  }
+}
+
+void MappingState::removeFromRegFileRecord(Register *reg, int time_step,
+                                           Operation *op) {
+  RegisterFile *reg_file = reg->getRegisterFile();
+  if (!reg_file) {
+    return;
+  }
+  int canonical_step = time_step % II;
+  std::unordered_map<RegisterFile *,
+                     std::unordered_map<int, RegClusterOccupyStatus>>::iterator
+      reg_file_it = reg_file_occupy_records.find(reg_file);
+  if (reg_file_it == reg_file_occupy_records.end()) {
+    return;
+  }
+  std::unordered_map<int, RegClusterOccupyStatus>::iterator slot_it =
+      reg_file_it->second.find(canonical_step);
+  if (slot_it == reg_file_it->second.end()) {
+    return;
+  }
+  RegClusterOccupyStatus &status = slot_it->second;
+  if (isMovOp(op)) {
+    --status.mov_count;
+  } else {
+    --status.compute_count;
+  }
+  // Cleans up empty entries to keep the map compact.
+  if (status.mov_count == 0 && status.compute_count == 0) {
+    reg_file_it->second.erase(slot_it);
+    if (reg_file_it->second.empty()) {
+      reg_file_occupy_records.erase(reg_file_it);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// MappingState public API — bind / unbind
+// ---------------------------------------------------------------------------
+
 bool MappingState::bindOp(const MappingLoc &loc, Operation *op) {
   // Default to SINGLE_OCCUPY for backward compatibility
   return bindOp(loc, op, SINGLE_OCCUPY);
@@ -44,9 +109,15 @@ bool MappingState::bindOp(const MappingLoc &loc, Operation *op,
 
   loc_to_op[loc] = op;
   occupied_locs[loc].push_back({occupy_status, op});
-  auto it = op_to_locs.find(op);
+  std::map<Operation *, std::vector<MappingLoc>>::iterator it =
+      op_to_locs.find(op);
   assert(it == op_to_locs.end() && "Operation already has reserved locations");
   op_to_locs[op].push_back(loc);
+  // Maintains register cluster occupancy record.
+  if (loc.resource->getKind() == ResourceKind::Register) {
+    Register *reg = static_cast<Register *>(loc.resource);
+    addToRegFileRecord(reg, loc.time_step, op);
+  }
   return true;
 }
 
@@ -88,27 +159,34 @@ bool MappingState::bindMultiCycleOp(BasicResource *resource, int start_time,
 }
 
 void MappingState::unbindOp(Operation *op) {
-  auto it = op_to_locs.find(op);
+  std::map<Operation *, std::vector<MappingLoc>>::iterator it =
+      op_to_locs.find(op);
   if (it == op_to_locs.end()) {
     return;
   }
 
   for (const MappingLoc &loc : it->second) {
     loc_to_op.erase(loc);
-    // Remove entries for this op from occupied_locs
-    auto occ_it = occupied_locs.find(loc);
+    // Removes entries for this op from occupied_locs
+    std::map<MappingLoc, std::vector<std::pair<int, Operation *>>>::iterator
+        occ_it = occupied_locs.find(loc);
     if (occ_it != occupied_locs.end()) {
-      auto &entries = occ_it->second;
+      std::vector<std::pair<int, Operation *>> &entries = occ_it->second;
       entries.erase(
           std::remove_if(entries.begin(), entries.end(),
                          [op](const std::pair<int, Operation *> &entry) {
                            return entry.second == op;
                          }),
           entries.end());
-      // Remove the location entirely if no more entries
+      // Removes the location entirely if no more entries.
       if (entries.empty()) {
         occupied_locs.erase(occ_it);
       }
+    }
+    // Maintains register cluster occupancy record.
+    if (loc.resource->getKind() == ResourceKind::Register) {
+      Register *reg = static_cast<Register *>(loc.resource);
+      removeFromRegFileRecord(reg, loc.time_step, op);
     }
   }
 
@@ -116,186 +194,84 @@ void MappingState::unbindOp(Operation *op) {
 }
 
 bool MappingState::isAvailableAcrossTime(const MappingLoc &loc) const {
-  // For spatial mapping, checks if the location stays available at all time steps.
-  if (this->is_spatial_only) {
-    for (int t = 0; t < II * kMaxSteps; ++t) {
-      MappingLoc check_loc = {loc.resource, t};
-      auto it = occupied_locs.find(check_loc);
-      if (it != occupied_locs.end()) {
-        // Rejects the location if any non-shareable occupancy is present.
-        for (const auto &entry : it->second) {
-          if (entry.first != IN_PIPE_OCCUPY) {
-            return false;
-          }
-        }
+  // Checks whether the resource at the given (resource, time_step) is free,
+  // considering both occupancy state and the register-cluster read constraint.
+
+  // Returns true if the (resource, t) slot is free (or only IN_PIPE_OCCUPY).
+  auto isSlotFree = [this](BasicResource *resource, int t) -> bool {
+    std::map<MappingLoc,
+             std::vector<std::pair<int, Operation *>>>::const_iterator it =
+        occupied_locs.find({resource, t});
+    if (it == occupied_locs.end()) {
+      return true;
+    }
+    for (const std::pair<int, Operation *> &entry : it->second) {
+      if (entry.first != IN_PIPE_OCCUPY) {
+        return false;
       }
     }
+    return true;
+  };
 
-    // Enforces identical intra-index when a mov read and a compute read share a register file.
+  // Returns true if the cluster slot already holds both mov and compute
+  // occupants on sibling registers — an O(1) lookup via the record table.
+  auto clusterSlotHasMixedKinds = [this](RegisterFile *reg_file,
+                                          int canonical_step) -> bool {
+    std::unordered_map<RegisterFile *,
+                       std::unordered_map<int, RegClusterOccupyStatus>>::
+        const_iterator reg_file_it = reg_file_occupy_records.find(reg_file);
+    if (reg_file_it == reg_file_occupy_records.end()) {
+      return false;
+    }
+    std::unordered_map<int, RegClusterOccupyStatus>::const_iterator slot_it =
+        reg_file_it->second.find(canonical_step);
+    if (slot_it == reg_file_it->second.end()) {
+      return false;
+    }
+    const RegClusterOccupyStatus &status = slot_it->second;
+    return status.mov_count > 0 && status.compute_count > 0;
+  };
+
+  if (this->is_spatial_only) {
+    // Spatial-only: resource must be free at every time step.
+    for (int t = 0; t < II * kMaxSteps; ++t) {
+      if (!isSlotFree(loc.resource, t)) {
+        return false;
+      }
+    }
+    // Register-cluster constraint: any cluster record at these steps belongs
+    // to sibling registers (reg itself is free).  Reject if any canonical slot
+    // already mixes mov and compute kinds.
     if (loc.resource->getKind() == ResourceKind::Register) {
       Register *reg = static_cast<Register *>(loc.resource);
       RegisterFile *reg_file = reg->getRegisterFile();
       if (reg_file) {
-        auto isMovOp = [](Operation *op) {
-          // Identifies bypass routing ops by name to avoid relying on generated op classes.
-          if (!op) {
-            return false;
-          }
-          auto name = op->getName().getStringRef();
-          return name == "neura.data_mov" || name == "neura.ctrl_mov";
-        };
-
-        auto violatesClusterReadConstraintAt = [&](int t) -> bool {
-          // Tracks whether sibling registers in the file are used by mov or compute in this slot.
-          bool otherRegHasMov = false;
-          bool otherRegHasCompute = false;
-
-          for (const auto &[_, sibling] : reg_file->getRegisters()) {
-            if (sibling == reg) {
-              continue;
-            }
-            auto itOcc = occupied_locs.find({sibling, t});
-            if (itOcc == occupied_locs.end()) {
-              continue;
-            }
-
-            for (const auto &entry : itOcc->second) {
-              Operation *occOp = entry.second;
-              if (isMovOp(occOp)) {
-                otherRegHasMov = true;
-              } else {
-                otherRegHasCompute = true;
-              }
-
-              // Rejects the slot once mov and compute are found on different sibling registers.
-              if (otherRegHasMov && otherRegHasCompute) {
-                return true;
-              }
-            }
-          }
-
-          auto itThis = occupied_locs.find({reg, t});
-          bool thisRegHasMov = false;
-          bool thisRegHasCompute = false;
-          if (itThis != occupied_locs.end()) {
-            for (const auto &entry : itThis->second) {
-              Operation *occOp = entry.second;
-              if (isMovOp(occOp)) {
-                thisRegHasMov = true;
-              } else {
-                thisRegHasCompute = true;
-              }
-            }
-          }
-
-          // Rejects the slot when this register mixes with a sibling of the opposite kind.
-          if (otherRegHasCompute && thisRegHasMov) {
-            return true;
-          }
-          if (otherRegHasMov && thisRegHasCompute) {
-            return true;
-          }
-
-          return false;
-        };
-
-        for (int t = 0; t < II * kMaxSteps; ++t) {
-          if (violatesClusterReadConstraintAt(t)) {
+        for (int canonical_step = 0; canonical_step < II; ++canonical_step) {
+          if (clusterSlotHasMixedKinds(reg_file, canonical_step)) {
             return false;
           }
         }
       }
     }
-
     return true;
   } else {
-    // Checks the availability across the modulo-II time domain.
+    // Temporal (modulo-II): resource must be free at all congruent steps.
     for (int t = loc.time_step % II; t < II * kMaxSteps; t += II) {
-      MappingLoc check_loc = {loc.resource, t};
-      auto it = occupied_locs.find(check_loc);
-      if (it != occupied_locs.end()) {
-        // Rejects the location if any non-shareable occupancy is present.
-        for (const auto &entry : it->second) {
-          if (entry.first != IN_PIPE_OCCUPY) {
-            return false;
-          }
-        }
+      if (!isSlotFree(loc.resource, t)) {
+        return false;
       }
     }
-
-    // Enforces identical intra-index when a mov read and a compute read share a register file.
+    // Register-cluster constraint: only the one canonical slot matters.
     if (loc.resource->getKind() == ResourceKind::Register) {
       Register *reg = static_cast<Register *>(loc.resource);
       RegisterFile *reg_file = reg->getRegisterFile();
       if (reg_file) {
-        auto isMovOp = [](Operation *op) {
-          // Identifies bypass routing ops by name to avoid relying on generated op classes.
-          if (!op) {
-            return false;
-          }
-          auto name = op->getName().getStringRef();
-          return name == "neura.data_mov" || name == "neura.ctrl_mov";
-        };
-
-        auto violatesClusterReadConstraintAt = [&](int t) -> bool {
-          // Tracks whether sibling registers in the file are used by mov or compute in this slot.
-          bool otherRegHasMov = false;
-          bool otherRegHasCompute = false;
-
-          for (const auto &[_, sibling] : reg_file->getRegisters()) {
-            if (sibling == reg) {
-              continue;
-            }
-            auto itOcc = occupied_locs.find({sibling, t});
-            if (itOcc == occupied_locs.end()) {
-              continue;
-            }
-
-            for (const auto &entry : itOcc->second) {
-              Operation *occOp = entry.second;
-              if (isMovOp(occOp)) {
-                otherRegHasMov = true;
-              } else {
-                otherRegHasCompute = true;
-              }
-              if (otherRegHasMov && otherRegHasCompute) {
-                return true;
-              }
-            }
-          }
-
-          auto itThis = occupied_locs.find({reg, t});
-          bool thisRegHasMov = false;
-          bool thisRegHasCompute = false;
-          if (itThis != occupied_locs.end()) {
-            for (const auto &entry : itThis->second) {
-              Operation *occOp = entry.second;
-              if (isMovOp(occOp)) {
-                thisRegHasMov = true;
-              } else {
-                thisRegHasCompute = true;
-              }
-            }
-          }
-
-          // Rejects the slot when this register mixes with a sibling of the opposite kind.
-          if (otherRegHasCompute && thisRegHasMov) {
-            return true;
-          }
-          if (otherRegHasMov && thisRegHasCompute) {
-            return true;
-          }
+        int canonical_step = loc.time_step % II;
+        if (clusterSlotHasMixedKinds(reg_file, canonical_step)) {
           return false;
-        };
-
-        for (int t = loc.time_step % II; t < II * kMaxSteps; t += II) {
-          if (violatesClusterReadConstraintAt(t)) {
-            return false;
-          }
         }
       }
     }
-
     return true;
   }
 }
@@ -377,18 +353,18 @@ int MappingState::getOccupyStatusAcrossTime(const MappingLoc &loc) const {
       MappingLoc check_loc = {loc.resource, t};
       auto it = occupied_locs.find(check_loc);
       if (it != occupied_locs.end() && !it->second.empty()) {
-        // Return the first status found (most restrictive)
+        // Returns the first status found (most restrictive).
         return it->second[0].first;
       }
     }
     return -1;
   } else {
-    // Check across time domain (modulo II)
+    // Checks across time domain (modulo II).
     for (int t = loc.time_step % II; t < II * kMaxSteps; t += II) {
       MappingLoc check_loc = {loc.resource, t};
       auto it = occupied_locs.find(check_loc);
       if (it != occupied_locs.end() && !it->second.empty()) {
-        // Return the first status found (most restrictive)
+        // Returns the first status found (most restrictive).
         return it->second[0].first;
       }
     }
@@ -508,14 +484,11 @@ MappingState::getCurrentStepLinks(MappingLoc loc) const {
 }
 
 void MappingState::reserveRoute(Operation *op, ArrayRef<MappingLoc> path) {
-
-  // Records all mapping locations.
-
-
   llvm::errs() << "Reserving route for operation: " << *op << "\n";
   llvm::errs() << "Path: ";
   for (const MappingLoc &loc : path) {
-    llvm::errs() << loc.resource->getType() << "#" << loc.resource->getId() << " @t=" << loc.time_step << " ";
+    llvm::errs() << loc.resource->getType() << "#" << loc.resource->getId()
+                 << " @t=" << loc.time_step << " ";
   }
   llvm::errs() << "\n";
   assert(op_to_locs.find(op) == op_to_locs.end() &&
@@ -524,13 +497,19 @@ void MappingState::reserveRoute(Operation *op, ArrayRef<MappingLoc> path) {
 
   for (const MappingLoc &loc : path) {
     loc_to_op[loc] = op;
-    // Use SINGLE_OCCUPY for route reservations (links/registers)
+    // Use SINGLE_OCCUPY for route reservations (links/registers).
     occupied_locs[loc].push_back({SINGLE_OCCUPY, op});
+    // Maintain register cluster occupancy record.
+    if (loc.resource->getKind() == ResourceKind::Register) {
+      Register *reg = static_cast<Register *>(loc.resource);
+      addToRegFileRecord(reg, loc.time_step, op);
+    }
   }
 }
 
 void MappingState::releaseRoute(Operation *op) {
-  auto it = op_to_locs.find(op);
+  std::map<Operation *, std::vector<MappingLoc>>::iterator it =
+      op_to_locs.find(op);
   if (it == op_to_locs.end()) {
     return;
   }
@@ -540,19 +519,25 @@ void MappingState::releaseRoute(Operation *op) {
   for (const MappingLoc &loc : route) {
     loc_to_op.erase(loc);
     // Remove entries for this op from occupied_locs
-    auto occ_it = occupied_locs.find(loc);
+    std::map<MappingLoc, std::vector<std::pair<int, Operation *>>>::iterator
+        occ_it = occupied_locs.find(loc);
     if (occ_it != occupied_locs.end()) {
-      auto &entries = occ_it->second;
+      std::vector<std::pair<int, Operation *>> &entries = occ_it->second;
       entries.erase(
           std::remove_if(entries.begin(), entries.end(),
                          [op](const std::pair<int, Operation *> &entry) {
                            return entry.second == op;
                          }),
           entries.end());
-      // Remove the location entirely if no more entries
+      // Removes the location entirely if no more entries.
       if (entries.empty()) {
         occupied_locs.erase(occ_it);
       }
+    }
+    // Maintains register cluster occupancy record.
+    if (loc.resource->getKind() == ResourceKind::Register) {
+      Register *reg = static_cast<Register *>(loc.resource);
+      removeFromRegFileRecord(reg, loc.time_step, op);
     }
   }
 
@@ -602,8 +587,9 @@ void MappingState::dumpOpToLocs(llvm::raw_ostream &os) const {
         (II < kTwoDigitThreshold ? kHeaderPrefixLenSingleDigit
                                  : kHeaderPrefixLenDoubleDigit) -
         (slot < kTwoDigitThreshold ? kSingleDigitLen : kDoubleDigitLen);
-    for (int i = 0; i < padding; ++i)
+    for (int i = 0; i < padding; ++i) {
       os << " ";
+    }
     os << " | ";
   }
   os << "\n";
@@ -611,8 +597,9 @@ void MappingState::dumpOpToLocs(llvm::raw_ostream &os) const {
   // Prints separator line.
   os << "---------+";
   for (size_t i = 0; i < time_slots.size(); ++i) {
-    for (int j = 0; j < kKeyMaxLen + 1; ++j)
+    for (int j = 0; j < kKeyMaxLen + 1; ++j) {
       os << "-";
+    }
     os << "+";
   }
   os << "\n";
@@ -830,10 +817,12 @@ MappingStateSnapshot::MappingStateSnapshot(const MappingState &mapping_state) {
   this->occupied_locs = mapping_state.getOccupiedLocs();
   this->loc_to_op = mapping_state.getLocToOp();
   this->op_to_locs = mapping_state.getOpToLocs();
+  this->reg_file_occupy_records = mapping_state.getRegFileOccupyRecords();
 }
 
 void MappingStateSnapshot::restore(MappingState &mapping_state) {
   mapping_state.setOccupiedLocs(this->occupied_locs);
   mapping_state.setLocToOp(this->loc_to_op);
   mapping_state.setOpToLocs(this->op_to_locs);
+  mapping_state.setRegFileOccupyRecords(this->reg_file_occupy_records);
 }
