@@ -312,19 +312,10 @@ void Architecture::configureDefaultTileSettings(
 void Architecture::applyTileOverrides(
     const std::vector<TileOverride> &tile_overrides) {
   for (const auto &override : tile_overrides) {
-    if (override.tile_x < 0 || override.tile_y < 0 ||
-        override.tile_x >= getPerCgraColumns() ||
-        override.tile_y >= getPerCgraRows()) {
-      llvm::errs() << "[Architecture] Warning: skip out-of-bounds tile "
-                      "override at ("
-                   << override.tile_x << ", " << override.tile_y
-                   << ") for dimensions " << getPerCgraColumns() << "x"
-                   << getPerCgraRows() << "\n";
-      continue;
-    }
-
     Tile *tile = nullptr;
-    tile = getTile(override.tile_x, override.tile_y);
+    if (override.tile_x >= 0 && override.tile_y >= 0) {
+      tile = getTile(override.tile_x, override.tile_y);
+    }
 
     if (tile) {
       // Handles tile removal if existence is false.
@@ -502,24 +493,9 @@ void Architecture::applyLinkOverrides(
                          : link_storage_.rbegin()->first +
                                1; // Starts from the next available ID.
 
-  auto isTileCoordInBounds = [this](int x, int y) {
-    return x >= 0 && y >= 0 && x < getPerCgraColumns() && y < getPerCgraRows();
-  };
-
   for (const auto &override : link_overrides) {
     // TODO: Recognize the CGRA coordinates for multi-cgra when manipulate the
     // link: https://github.com/coredac/dataflow/issues/163.
-
-    if (!isTileCoordInBounds(override.src_tile_x, override.src_tile_y) ||
-        !isTileCoordInBounds(override.dst_tile_x, override.dst_tile_y)) {
-      llvm::errs() << "[Architecture] Warning: skip out-of-bounds link "
-                      "override ("
-                   << override.src_tile_x << ", " << override.src_tile_y
-                   << ") -> (" << override.dst_tile_x << ", "
-                   << override.dst_tile_y << ") for dimensions "
-                   << getPerCgraColumns() << "x" << getPerCgraRows() << "\n";
-      continue;
-    }
 
     // Handles existing link modifications/removals by coordinates of src/dst
     // tiles.
@@ -606,59 +582,16 @@ Architecture::Architecture(int multi_cgra_rows, int multi_cgra_columns,
 std::unique_ptr<Architecture> Architecture::cloneWithNewDimensions(
     int new_per_cgra_rows, int new_per_cgra_columns,
     const std::vector<TileOverride> &additional_overrides) const {
-  auto isTileOverrideInBounds = [new_per_cgra_columns,
-                                 new_per_cgra_rows](const TileOverride &ovr) {
-    return ovr.tile_x >= 0 && ovr.tile_y >= 0 &&
-           ovr.tile_x < new_per_cgra_columns && ovr.tile_y < new_per_cgra_rows;
-  };
-
-  auto isLinkOverrideInBounds = [new_per_cgra_columns,
-                                 new_per_cgra_rows](const LinkOverride &ovr) {
-    return ovr.src_tile_x >= 0 && ovr.src_tile_y >= 0 && ovr.dst_tile_x >= 0 &&
-           ovr.dst_tile_y >= 0 && ovr.src_tile_x < new_per_cgra_columns &&
-           ovr.dst_tile_x < new_per_cgra_columns &&
-           ovr.src_tile_y < new_per_cgra_rows &&
-           ovr.dst_tile_y < new_per_cgra_rows;
-  };
 
   std::vector<TileOverride> merged_overrides = tile_overrides_;
   merged_overrides.insert(merged_overrides.end(), additional_overrides.begin(),
                           additional_overrides.end());
 
-  std::vector<TileOverride> filtered_tile_overrides;
-  filtered_tile_overrides.reserve(merged_overrides.size());
-  for (const TileOverride &ovr : merged_overrides) {
-    if (isTileOverrideInBounds(ovr)) {
-      filtered_tile_overrides.push_back(ovr);
-      continue;
-    }
-    llvm::errs() << "[Architecture] Warning: dropping out-of-bounds tile "
-                    "override at ("
-                 << ovr.tile_x << ", " << ovr.tile_y << ") for cloned "
-                 << "dimensions " << new_per_cgra_columns << "x"
-                 << new_per_cgra_rows << "\n";
-  }
-
-  std::vector<LinkOverride> filtered_link_overrides;
-  filtered_link_overrides.reserve(link_overrides_.size());
-  for (const LinkOverride &ovr : link_overrides_) {
-    if (isLinkOverrideInBounds(ovr)) {
-      filtered_link_overrides.push_back(ovr);
-      continue;
-    }
-    llvm::errs() << "[Architecture] Warning: dropping out-of-bounds link "
-                    "override ("
-                 << ovr.src_tile_x << ", " << ovr.src_tile_y << ") -> ("
-                 << ovr.dst_tile_x << ", " << ovr.dst_tile_y
-                 << ") for cloned dimensions " << new_per_cgra_columns << "x"
-                 << new_per_cgra_rows << "\n";
-  }
-
   return std::make_unique<Architecture>(
       multi_cgra_rows_, multi_cgra_columns_, multi_cgra_base_topology_,
       new_per_cgra_rows, new_per_cgra_columns, max_ctrl_mem_items_,
-      per_cgra_base_topology_, tile_defaults_, filtered_tile_overrides,
-      link_defaults_, filtered_link_overrides);
+      per_cgra_base_topology_, tile_defaults_, merged_overrides, link_defaults_,
+      link_overrides_);
 }
 
 Tile *Architecture::getTile(int id) {
