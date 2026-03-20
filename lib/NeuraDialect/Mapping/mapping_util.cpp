@@ -1,4 +1,5 @@
 #include <deque>
+#include <optional>
 #include <queue>
 
 #include "NeuraDialect/Mapping/mapping_util.h"
@@ -477,6 +478,77 @@ mlir::Operation *mlir::neura::getMaterializedBackwardUser(Operation *op) {
 
   assert(false &&
          "No materialized backward user (i.e., phi) found for ctrl_mov");
+}
+
+// This struct represents a pending data_mov/ctrl_mov that is being routed,
+// along with its routing path.
+struct PendingRoute {
+  Operation *mov_op;
+  std::vector<MappingLoc> path;
+};
+
+// Returns the first time step where the routing path uses a register.
+// Returns std::nullopt if the path contains no register.
+std::optional<int> getFirstRegisterTime(const std::vector<MappingLoc> &path) {
+  if (path.empty()) {
+    return std::nullopt;
+  }
+
+  for (const MappingLoc &loc : path) {
+    if (isa<Register>(loc.resource)) {
+      return loc.time_step;
+    }
+  }
+
+  return std::nullopt;
+}
+
+// Returns the iteration shift between the first register hold point on the
+// path and consume_time. No register on path means no overwrite risk.
+int getIterationShiftAtConsume(const std::vector<MappingLoc> &path,
+                               int consume_time, int ii) {
+  assert(ii > 0 && consume_time > 0 &&
+         "II and consume_time should be positive");
+
+  auto first_reg_time = getFirstRegisterTime(path);
+  // No value, this means no register on the path, thus no overwrite risk, thus
+  // no iteration shift.
+  if (!first_reg_time.has_value()) {
+    return 0;
+  }
+
+  // Uses consume_time - 1 (read-before-write model) to determine the
+  // iteration shift at consume time.
+  int visible_time = consume_time - 1;
+  // If the first register hold point is after the visible time, this should not
+  // occur in a valid routing.
+  if (visible_time < *first_reg_time) {
+    return -1;
+  }
+  return (visible_time - *first_reg_time) / ii;
+}
+
+bool hasSafeOperandIterationAtConsume(
+    Operation *op, const MappingLoc &target_loc,
+    const std::vector<PendingRoute> &operand_routes, int ii) {
+  if (operand_routes.empty()) {
+    return true;
+  }
+
+  for (const PendingRoute &route : operand_routes) {
+    int shift =
+        getIterationShiftAtConsume(route.path, target_loc.time_step, ii);
+    if (shift != 0) {
+      llvm::errs() << "[DEBUG] Reject schedule due to operand iteration "
+                      "shift at consume time. op="
+                   << *op << ", target_t=" << target_loc.time_step
+                   << ", II=" << ii << ", shift=" << shift
+                   << ", mov_op=" << *route.mov_op << "\n";
+      return false;
+    }
+  }
+
+  return true;
 }
 
 llvm::SmallVector<mlir::Operation *>
@@ -1127,11 +1199,11 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
         target_loc.resource, target_loc.time_step, latency, op);
     if (bind_success) {
       llvm::errs() << "[DEBUG] Bound multi-cycle op (latency=" << latency
-                   << ") " << *op << " onto loc: "
-                   << target_loc.resource->getType() << "#"
+                   << ") " << *op
+                   << " onto loc: " << target_loc.resource->getType() << "#"
                    << target_loc.resource->getId()
-                   << " @t=" << target_loc.time_step << " to t="
-                   << (target_loc.time_step + latency - 1) << "\n";
+                   << " @t=" << target_loc.time_step
+                   << " to t=" << (target_loc.time_step + latency - 1) << "\n";
     }
   } else {
     // For single-cycle ops, use default SINGLE_OCCUPY binding
@@ -1145,6 +1217,7 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
   }
 
   if (bind_success) {
+    std::vector<PendingRoute> pending_operand_routes;
     std::vector<Operation *> routed_operands;
     std::vector<Operation *> routed_ctrl_movs;
     // Tries to route the data move operations.
@@ -1172,8 +1245,8 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
       std::vector<MappingLoc> route_path;
       if (tryRouteForwardMove(data_move, src_loc, target_loc, mapping_state,
                               route_path)) {
-        // Reserves the route for the data move operation.
         mapping_state.reserveRoute(data_move, route_path);
+        pending_operand_routes.push_back({data_move, std::move(route_path)});
         routed_operands.push_back(data_move);
         llvm::errs() << "[DEBUG] Successfully routed data move: " << *data_move
                      << " from " << src_loc.resource->getType() << "#"
@@ -1191,12 +1264,22 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
                    << " @t=" << target_loc.time_step << "; so unschedule op\n";
       mapping_state.unbindOp(op);
       for (Operation *routed_op : routed_operands) {
-        llvm::errs() << "[DEBUG] Releasing route for routed operand: "
-                     << *routed_op << "\n";
         mapping_state.releaseRoute(routed_op);
       }
       return false;
     }
+
+    if (!hasSafeOperandIterationAtConsume(
+            op, target_loc, pending_operand_routes, mapping_state.getII())) {
+      llvm::errs() << "[DEBUG] Operand iteration shift at consume time; "
+                      "unschedule op\n";
+      mapping_state.unbindOp(op);
+      for (Operation *routed_op : routed_operands) {
+        mapping_state.releaseRoute(routed_op);
+      }
+      return false;
+    }
+
     // Checks whether the operation's user is a ctrl_mov.
     for (Operation *user : getCtrlMovUsers(op)) {
       auto ctrl_mov = dyn_cast<neura::CtrlMovOp>(user);
@@ -1258,6 +1341,4 @@ int mlir::neura::getOpLatency(Operation *op) {
   return 1;
 }
 
-bool mlir::neura::isMultiCycleOp(Operation *op) {
-  return getOpLatency(op) > 1;
-}
+bool mlir::neura::isMultiCycleOp(Operation *op) { return getOpLatency(op) > 1; }
