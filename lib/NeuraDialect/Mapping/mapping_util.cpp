@@ -865,6 +865,9 @@ bool mlir::neura::isMaterializedReserveUser(Operation *user) {
   if (isa<neura::PhiStartOp>(user)) {
     return true;
   }
+  if (isa<neura::PhiOp>(user)) {
+    return true;
+  }
   return false;
 }
 
@@ -1127,11 +1130,11 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
         target_loc.resource, target_loc.time_step, latency, op);
     if (bind_success) {
       llvm::errs() << "[DEBUG] Bound multi-cycle op (latency=" << latency
-                   << ") " << *op << " onto loc: "
-                   << target_loc.resource->getType() << "#"
+                   << ") " << *op
+                   << " onto loc: " << target_loc.resource->getType() << "#"
                    << target_loc.resource->getId()
-                   << " @t=" << target_loc.time_step << " to t="
-                   << (target_loc.time_step + latency - 1) << "\n";
+                   << " @t=" << target_loc.time_step
+                   << " to t=" << (target_loc.time_step + latency - 1) << "\n";
     }
   } else {
     // For single-cycle ops, use default SINGLE_OCCUPY binding
@@ -1258,6 +1261,4 @@ int mlir::neura::getOpLatency(Operation *op) {
   return 1;
 }
 
-bool mlir::neura::isMultiCycleOp(Operation *op) {
-  return getOpLatency(op) > 1;
-}
+bool mlir::neura::isMultiCycleOp(Operation *op) { return getOpLatency(op) > 1; }
