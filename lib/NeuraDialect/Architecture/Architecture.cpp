@@ -314,7 +314,12 @@ void Architecture::applyTileOverrides(
   for (const auto &override : tile_overrides) {
     Tile *tile = nullptr;
     if (override.tile_x >= 0 && override.tile_y >= 0) {
-      // Skips overrides that reference coordinates outside the architecture.
+      // cloneWithNewDimensions() copies tile_overrides from the original
+      // (larger) architecture and replays them on a smaller cloned grid.
+      // An override may reference coordinates that exist in the original but
+      // fall outside the cloned grid's bounds.  Skips such overrides rather
+      // than asserting, so the clone only applies overrides that are relevant
+      // to its own coordinate space.
       auto it = coord_to_tile_.find({override.tile_x, override.tile_y});
       if (it != coord_to_tile_.end())
         tile = it->second;
@@ -521,7 +526,11 @@ void Architecture::applyLinkOverrides(
     }
     // Handles link removal.
     else {
-      // Skips overrides that reference coordinates outside the architecture.
+      // cloneWithNewDimensions() replays link_overrides from the original
+      // architecture on a smaller cloned grid.  Either endpoint of a link
+      // override may reference a tile that was not included in the clone.
+      // Skip the override in that case to avoid a crash; the link simply
+      // does not exist in the cloned architecture and needs no override.
       auto src_it = coord_to_tile_.find(
           {override.src_tile_x, override.src_tile_y});
       auto dst_it = coord_to_tile_.find(
