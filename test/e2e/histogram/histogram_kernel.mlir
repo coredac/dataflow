@@ -72,11 +72,11 @@
 // YAML:      array_config:
 // YAML-NEXT:   columns: 4
 // YAML-NEXT:   rows: 4
-// YAML-NEXT:   compiled_ii: 7
+// YAML-NEXT:   compiled_ii: 6
 // YAML-NEXT:   cores:
-// YAML-NEXT:     - column: 2
+// YAML-NEXT:     - column: 0
 // YAML-NEXT:       row: 0
-// YAML-NEXT:       core_id: "2"
+// YAML-NEXT:       core_id: "0"
 // YAML-NEXT:       entries:
 // YAML-NEXT:         - entry_id: "entry0"
 // YAML-NEXT:           instructions:
@@ -90,36 +90,47 @@
 // YAML-NEXT:                     - operand: "#0"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 5
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "ADD"
+// YAML-NEXT:                   id: 26
+// YAML-NEXT:                   time_step: 5
+// YAML-NEXT:                   invalid_iterations: 0
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "#-5"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
 // YAML-NEXT:                     - operand: "NORTH"
 // YAML-NEXT:                       color: "RED"
 
-// ASM:      # Compiled II: 7
-// ASM:      PE(2,0):
+// ASM:      # Compiled II: 6
+// ASM:      PE(0,0):
 // ASM-NEXT: {
-// ASM-NEXT:   GRANT_ONCE, [#0] -> [NORTH, RED] (t=0, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=0)
-// ASM:      PE(0,1):
-// ASM-NEXT: {
-// ASM-NEXT:   SEXT, [$0] -> [$0] (t=7, inv_iters=1)
+// ASM-NEXT:   GRANT_ONCE, [#0] -> [EAST, RED] (t=0, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=0)
 // ASM-NEXT: {
-// ASM-NEXT:   GEP, [$0] -> [NORTH, RED], [$0] (t=8, inv_iters=1)
+// ASM-NEXT:   ADD, [EAST, RED], [#-5] -> [NORTH, RED] (t=5, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=5)
+// ASM:      PE(1,0):
+// ASM-NEXT: {
+// ASM-NEXT:   CTRL_MOV, [NORTH, RED] -> [$0] (t=6, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=0)
+// ASM-NEXT: {
+// ASM-NEXT:   PHI_START, [WEST, RED], [$0] -> [$0], [NORTH, RED] (t=1, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=1)
 // ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [$0] -> [NORTH, RED] (t=9, inv_iters=1)
+// ASM-NEXT:   GEP, [$0] -> [$0] (t=2, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=2)
 // ASM-NEXT: {
-// ASM-NEXT:   LOAD, [EAST, RED] -> [$0] (t=3, inv_iters=0)
+// ASM-NEXT:   LOAD, [$0] -> [$0] (t=3, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=3)
 // ASM-NEXT: {
-// ASM-NEXT:   MUL, [$0], [#5] -> [$0] (t=4, inv_iters=0)
+// ASM-NEXT:   MUL, [$0], [#5] -> [WEST, RED] (t=4, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=4)
-// ASM-NEXT: {
-// ASM-NEXT:   ADD, [$0], [#-5] -> [$0] (t=5, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=5)
-// ASM-NEXT: {
-// ASM-NEXT:   DIV, [$0], [#18] -> [$0] (t=6, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=6)
 
 
 // RUN: mlir-neura-opt %t-kernel.mlir --view-op-graph 2>&1 | sed -n '/^digraph G {/,/^}$/p' > histogram_kernel_original.dot
