@@ -1,5 +1,4 @@
 #include <deque>
-#include <optional>
 #include <queue>
 
 #include "NeuraDialect/Architecture/Architecture.h"
@@ -11,7 +10,6 @@
 #include "mlir/IR/Operation.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
-#include "llvm/Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cassert>
 
@@ -491,64 +489,46 @@ struct PendingRoute {
   std::vector<MappingLoc> path;
 };
 
-// Returns the first time step where the routing path uses a register.
-// Returns std::nullopt if the path contains no register.
-std::optional<int> getFirstRegisterTime(const std::vector<MappingLoc> &path) {
-  if (path.empty()) {
-    return std::nullopt;
-  }
-
-  for (const MappingLoc &loc : path) {
-    if (isa<Register>(loc.resource)) {
-      return loc.time_step;
-    }
-  }
-
-  return std::nullopt;
-}
-
-// Returns the iteration shift between the first register hold point on the
-// path and consume_time. No register on path means no overwrite risk.
-int getIterationShiftAtConsume(const std::vector<MappingLoc> &path,
-                               int consume_time, int ii) {
-  assert(ii > 0 && consume_time > 0 &&
-         "II and consume_time should be positive");
-
-  std::optional<int> first_reg_time = getFirstRegisterTime(path);
-  // No value, this means no register on the path, thus no overwrite risk, thus
-  // no iteration shift.
-  if (!first_reg_time.has_value()) {
-    return 0;
-  }
-
-  // Uses consume_time - 1 (read-before-write model) to determine the
-  // iteration shift at consume time.
-  int visible_time = consume_time - 1;
-  // If the first register hold point is after the visible time, this should not
-  // occur in a valid routing.
-  if (visible_time < *first_reg_time) {
-    return -1;
-  }
-  return (visible_time - *first_reg_time) / ii;
-}
-
 bool hasSafeOperandIterationAtConsume(
-    Operation *op, const MappingLoc &target_loc,
-    const std::vector<PendingRoute> &operand_routes, int ii) {
+    Operation *op, const std::vector<PendingRoute> &operand_routes, int ii) {
+  assert(ii > 0 && "II should be positive");
+
   if (operand_routes.empty()) {
     return true;
   }
 
   for (const PendingRoute &route : operand_routes) {
-    int shift =
-        getIterationShiftAtConsume(route.path, target_loc.time_step, ii);
-    if (shift != 0) {
-      llvm::errs() << "[DEBUG] Reject schedule due to operand iteration "
-                      "shift at consume time. op="
-                   << *op << ", target_t=" << target_loc.time_step
-                   << ", II=" << ii << ", shift=" << shift
-                   << ", mov_op=" << *route.mov_op << "\n";
-      return false;
+    DenseMap<Register *, std::pair<int, int>> reg_time_range;
+    for (const MappingLoc &loc : route.path) {
+      Register *reg = dyn_cast<Register>(loc.resource);
+      if (!reg) {
+        continue;
+      }
+
+      auto [it, inserted] = reg_time_range.try_emplace(
+          reg, std::make_pair(loc.time_step, loc.time_step));
+      if (!inserted) {
+        it->second.first = std::min(it->second.first, loc.time_step);
+        it->second.second = std::max(it->second.second, loc.time_step);
+      }
+    }
+
+    // Register occupancy is tracked in per-cycle slots (half-open in routing
+    // builders), so max_t - min_t + 1 corresponds to the hold duration.
+    for (const auto &entry : reg_time_range) {
+      Register *reg = entry.first;
+      int min_t = entry.second.first;
+      int max_t = entry.second.second;
+      int occupancy = max_t - min_t + 1;
+      if (occupancy > ii) {
+        llvm::errs() << "[DEBUG] Reject schedule due to register hold >= next "
+                        "iteration window. op="
+                     << *op << ", II=" << ii << ", reg=#" << reg->getId()
+                     << ", hold_start=" << min_t << ", hold_end=" << max_t
+                     << ", hold_len=" << occupancy
+                     << ", mov_op=" << *route.mov_op << "\n";
+        return false;
+      }
     }
   }
 
@@ -1275,8 +1255,8 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
       return false;
     }
 
-    if (!hasSafeOperandIterationAtConsume(
-            op, target_loc, pending_operand_routes, mapping_state.getII())) {
+    if (!hasSafeOperandIterationAtConsume(op, pending_operand_routes,
+                                          mapping_state.getII())) {
       llvm::errs() << "[DEBUG] Operand iteration shift at consume time; "
                       "unschedule op\n";
       mapping_state.unbindOp(op);
