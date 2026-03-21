@@ -59,14 +59,15 @@ namespace mlir {
 namespace neura {
 
 // Tracks per-time-slot occupancy of a register cluster (RegisterFile).
-// Used to enforce the constraint: if a bypass (MOV) and a computation read from
-// the same cluster at the same time step, they must use the identical register.
+// One cluster allows at most one distinct register to be accessed per time
+// slot.  If a second operation tries to use a *different* register inside the
+// same RegisterFile at the same canonical time step the access is rejected.
 struct RegClusterOccupyStatus {
-  int mov_count = 0;     // Counts MOV ops reading from this cluster.
-  int compute_count = 0; // Counts compute ops reading from this cluster.
+  Register *occupied_reg = nullptr; // The register currently in use, or null.
+  int op_count = 0;                 // How many ops share that register.
 
-  // Returns true if the cluster slot is occupied by any op (mov or compute).
-  bool alreadyOccupied() const { return mov_count > 0 || compute_count > 0; }
+  // Returns true if at least one op occupies this cluster slot.
+  bool alreadyOccupied() const { return op_count > 0; }
 };
 
 // Tracks placement and routing of ops on the CGRA.
@@ -210,22 +211,20 @@ private:
                      std::unordered_map<int, RegClusterOccupyStatus>>
       reg_file_occupy_records;
 
-  // Returns true if op is a routing bypass (data_mov or ctrl_mov).
-  static bool isMovOp(Operation *op);
+  // Increments the op count in reg_file_occupy_records for a register location.
+  // Returns false if a *different* register in the same cluster is already
+  // occupied at this canonical time slot (constraint violation).
+  bool addToRegFileRecord(Register *reg, int time_step);
 
-  // Increments the appropriate counter in reg_file_occupy_records for a
-  // register location when op is bound/reserved there.
-  void addToRegFileRecord(Register *reg, int time_step, Operation *op);
+  // Decrements the op count in reg_file_occupy_records for a register location
+  // when op is unbound/released from there.
+  void removeFromRegFileRecord(Register *reg, int time_step);
 
-  // Decrements the appropriate counter in reg_file_occupy_records for a
-  // register location when op is unbound/released from there.
-  void removeFromRegFileRecord(Register *reg, int time_step, Operation *op);
-
-  // Returns true if placing op (mov or compute) onto reg at the given
-  // canonical time slot would violate the cluster read constraint.
-  bool violatesClusterReadConstraint(RegisterFile *reg_file, Register *reg,
-                                     int canonical_time_step,
-                                     bool is_mov) const;
+  // Checks availability of a register resource across the relevant time steps,
+  // delegating the spatial-only vs modulo-II loop to a single helper.
+  // Returns false if any congruent time slot is occupied or violates the
+  // cluster constraint.
+  bool isRegisterAvailableAcrossTime(Register *reg, int time_step) const;
 };
 
 } // namespace neura

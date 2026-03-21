@@ -3,7 +3,6 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "llvm/Support/raw_ostream.h"
-#include "NeuraDialect/NeuraOps.h"
 #include <algorithm>
 
 using namespace mlir;
@@ -32,34 +31,27 @@ MappingState::MappingState(const Architecture &arch, int II,
     : II(II), is_spatial_only(is_spatial_only) {}
 
 // ---------------------------------------------------------------------------
-// Static helpers
+// Static / private helpers
 // ---------------------------------------------------------------------------
 
-bool MappingState::isMovOp(Operation *op) {
-  if (!op) {
-    return false;
-  }
-  return isa<neura::DataMovOp>(op) || isa<neura::CtrlMovOp>(op);
-}
-
-void MappingState::addToRegFileRecord(Register *reg, int time_step,
-                                      Operation *op) {
+bool MappingState::addToRegFileRecord(Register *reg, int time_step) {
   RegisterFile *reg_file = reg->getRegisterFile();
   if (!reg_file) {
-    return;
+    return true;
   }
   int canonical_step = time_step % II;
   RegClusterOccupyStatus &status =
       reg_file_occupy_records[reg_file][canonical_step];
-  if (isMovOp(op)) {
-    ++status.mov_count;
-  } else {
-    ++status.compute_count;
+  if (status.op_count > 0 && status.occupied_reg != reg) {
+    // A different register in the same cluster is already occupied.
+    return false;
   }
+  status.occupied_reg = reg;
+  ++status.op_count;
+  return true;
 }
 
-void MappingState::removeFromRegFileRecord(Register *reg, int time_step,
-                                           Operation *op) {
+void MappingState::removeFromRegFileRecord(Register *reg, int time_step) {
   RegisterFile *reg_file = reg->getRegisterFile();
   if (!reg_file) {
     return;
@@ -77,18 +69,60 @@ void MappingState::removeFromRegFileRecord(Register *reg, int time_step,
     return;
   }
   RegClusterOccupyStatus &status = slot_it->second;
-  if (isMovOp(op)) {
-    --status.mov_count;
-  } else {
-    --status.compute_count;
-  }
+  --status.op_count;
   // Cleans up empty entries to keep the map compact.
-  if (status.mov_count == 0 && status.compute_count == 0) {
+  if (status.op_count <= 0) {
     reg_file_it->second.erase(slot_it);
     if (reg_file_it->second.empty()) {
       reg_file_occupy_records.erase(reg_file_it);
     }
   }
+}
+
+bool MappingState::isRegisterAvailableAcrossTime(Register *reg,
+                                                  int time_step) const {
+  RegisterFile *reg_file = reg->getRegisterFile();
+  if (!reg_file) {
+    return true;
+  }
+
+  // Checks whether a *different* register in the same cluster is already
+  // occupied at any congruent time slot.
+  auto checkSlot = [this, reg_file, reg](int t) -> bool {
+    int canonical_step = t % II;
+    std::unordered_map<RegisterFile *,
+                       std::unordered_map<int, RegClusterOccupyStatus>>::
+        const_iterator reg_file_it = reg_file_occupy_records.find(reg_file);
+    if (reg_file_it == reg_file_occupy_records.end()) {
+      return true;
+    }
+    std::unordered_map<int, RegClusterOccupyStatus>::const_iterator slot_it =
+        reg_file_it->second.find(canonical_step);
+    if (slot_it == reg_file_it->second.end()) {
+      return true;
+    }
+    const RegClusterOccupyStatus &status = slot_it->second;
+    // Conflict: a different register in the same cluster is occupied.
+    if (status.op_count > 0 && status.occupied_reg != reg) {
+      return false;
+    }
+    return true;
+  };
+
+  if (this->is_spatial_only) {
+    for (int t = 0; t < II * kMaxSteps; ++t) {
+      if (!checkSlot(t)) {
+        return false;
+      }
+    }
+  } else {
+    for (int t = time_step % II; t < II * kMaxSteps; t += II) {
+      if (!checkSlot(t)) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -116,7 +150,7 @@ bool MappingState::bindOp(const MappingLoc &loc, Operation *op,
   // Maintains register cluster occupancy record.
   if (loc.resource->getKind() == ResourceKind::Register) {
     Register *reg = static_cast<Register *>(loc.resource);
-    addToRegFileRecord(reg, loc.time_step, op);
+    addToRegFileRecord(reg, loc.time_step);
   }
   return true;
 }
@@ -186,7 +220,7 @@ void MappingState::unbindOp(Operation *op) {
     // Maintains register cluster occupancy record.
     if (loc.resource->getKind() == ResourceKind::Register) {
       Register *reg = static_cast<Register *>(loc.resource);
-      removeFromRegFileRecord(reg, loc.time_step, op);
+      removeFromRegFileRecord(reg, loc.time_step);
     }
   }
 
@@ -195,7 +229,7 @@ void MappingState::unbindOp(Operation *op) {
 
 bool MappingState::isAvailableAcrossTime(const MappingLoc &loc) const {
   // Checks whether the resource at the given (resource, time_step) is free,
-  // considering both occupancy state and the register-cluster read constraint.
+  // considering both occupancy state and the register-cluster constraint.
 
   // Returns true if the (resource, t) slot is free (or only IN_PIPE_OCCUPY).
   auto isSlotFree = [this](BasicResource *resource, int t) -> bool {
@@ -213,39 +247,6 @@ bool MappingState::isAvailableAcrossTime(const MappingLoc &loc) const {
     return true;
   };
 
-  // Returns true if any register in the cluster other than 'reg' is occupied.
-  // Uses the O(1) reg_file_occupy_records table.
-  auto anySiblingOccupied = [this](Register *reg, int t) -> bool {
-    RegisterFile *reg_file = reg->getRegisterFile();
-    if (!reg_file) {
-      return false;
-    }
-    int canonical_step = t % II;
-    std::unordered_map<RegisterFile *,
-                       std::unordered_map<int, RegClusterOccupyStatus>>::
-        const_iterator reg_file_it = reg_file_occupy_records.find(reg_file);
-    if (reg_file_it == reg_file_occupy_records.end()) {
-      return false;
-    }
-    std::unordered_map<int, RegClusterOccupyStatus>::const_iterator slot_it =
-        reg_file_it->second.find(canonical_step);
-    if (slot_it == reg_file_it->second.end()) {
-      return false;
-    }
-    const RegClusterOccupyStatus &status = slot_it->second;
-
-    int ops_on_this_reg = 0;
-    std::map<MappingLoc, std::vector<std::pair<int, Operation *>>>::
-        const_iterator it_loc = occupied_locs.find({reg, t});
-    if (it_loc != occupied_locs.end()) {
-      ops_on_this_reg = it_loc->second.size();
-    }
-
-    // If the total cluster reads exceed what reg itself is doing, a sibling must
-    // be occupied.
-    return (status.mov_count + status.compute_count) > ops_on_this_reg;
-  };
-
   if (this->is_spatial_only) {
     // Spatial-only: resource must be free at every time step.
     for (int t = 0; t < II * kMaxSteps; ++t) {
@@ -253,16 +254,6 @@ bool MappingState::isAvailableAcrossTime(const MappingLoc &loc) const {
         return false;
       }
     }
-    // Register-cluster constraint: checks if any sibling register is occupied.
-    if (loc.resource->getKind() == ResourceKind::Register) {
-      Register *reg = static_cast<Register *>(loc.resource);
-      for (int t = 0; t < II * kMaxSteps; ++t) {
-        if (anySiblingOccupied(reg, t)) {
-          return false;
-        }
-      }
-    }
-    return true;
   } else {
     // Temporal (modulo-II): resource must be free at all congruent steps.
     for (int t = loc.time_step % II; t < II * kMaxSteps; t += II) {
@@ -270,17 +261,18 @@ bool MappingState::isAvailableAcrossTime(const MappingLoc &loc) const {
         return false;
       }
     }
-    // Register-cluster constraint: checks if any sibling is occupied.
-    if (loc.resource->getKind() == ResourceKind::Register) {
-      Register *reg = static_cast<Register *>(loc.resource);
-      for (int t = loc.time_step % II; t < II * kMaxSteps; t += II) {
-        if (anySiblingOccupied(reg, t)) {
-          return false;
-        }
-      }
-    }
-    return true;
   }
+
+  // Register-cluster constraint: rejects when a *different* register in
+  // the same RegisterFile is already occupied at a congruent time slot.
+  if (loc.resource->getKind() == ResourceKind::Register) {
+    Register *reg = static_cast<Register *>(loc.resource);
+    if (!isRegisterAvailableAcrossTime(reg, loc.time_step)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 bool MappingState::isAvailableForOccupyStatus(const MappingLoc &loc,
@@ -517,7 +509,7 @@ void MappingState::reserveRoute(Operation *op, ArrayRef<MappingLoc> path) {
     // Maintain register cluster occupancy record.
     if (loc.resource->getKind() == ResourceKind::Register) {
       Register *reg = static_cast<Register *>(loc.resource);
-      addToRegFileRecord(reg, loc.time_step, op);
+      addToRegFileRecord(reg, loc.time_step);
     }
   }
 }
@@ -552,7 +544,7 @@ void MappingState::releaseRoute(Operation *op) {
     // Maintains register cluster occupancy record.
     if (loc.resource->getKind() == ResourceKind::Register) {
       Register *reg = static_cast<Register *>(loc.resource);
-      removeFromRegFileRecord(reg, loc.time_step, op);
+      removeFromRegFileRecord(reg, loc.time_step);
     }
   }
 
