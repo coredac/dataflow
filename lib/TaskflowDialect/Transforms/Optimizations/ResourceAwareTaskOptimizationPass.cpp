@@ -1690,7 +1690,7 @@ struct ResourceAwareTaskOptimizationPass
                  << " (estimation-mode=" << estimationMode.getValue()
                  << ") ===\n";
 
-    constexpr int kMaxOuterIterations = 2;
+    constexpr int kMaxOuterIterations = 10;
 
     for (int outer = 0; outer < kMaxOuterIterations; ++outer) {
       // Rebuilds graph from current IR state.
