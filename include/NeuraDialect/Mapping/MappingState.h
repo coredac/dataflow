@@ -5,6 +5,7 @@
 #include "mlir/IR/Operation.h"
 #include "llvm/Support/raw_ostream.h"
 #include <optional>
+#include <unordered_map>
 #include <vector>
 
 namespace mlir {
@@ -152,6 +153,11 @@ public:
   const std::map<Operation *, std::vector<MappingLoc>> &getOpToLocs() const {
     return this->op_to_locs;
   }
+  const std::unordered_map<RegisterFile *,
+                           std::unordered_map<int, Operation *>> &
+  getRegFileToOccupyOperations() const {
+    return this->reg_file_to_occupy_operations;
+  }
 
   // Setters for state information.
   void setOccupiedLocs(
@@ -166,6 +172,12 @@ public:
       const std::map<Operation *, std::vector<MappingLoc>> &op_to_locs) {
     this->op_to_locs = op_to_locs;
   }
+  void setRegFileToOccupyOperations(
+      const std::unordered_map<RegisterFile *,
+                               std::unordered_map<int, Operation *>>
+          &records) {
+    this->reg_file_to_occupy_operations = records;
+  }
 
 private:
   // Initiation interval.
@@ -178,6 +190,30 @@ private:
   std::map<MappingLoc, std::vector<std::pair<int, Operation *>>> occupied_locs;
   std::map<MappingLoc, Operation *> loc_to_op;
   std::map<Operation *, std::vector<MappingLoc>> op_to_locs;
+
+  // Record table for register cluster occupancy, keyed by (RegisterFile*,
+  // time_step % II). Maps to the Operation* that is writing to the cluster at
+  // that canonical time slot. At most one writer is allowed per cluster per
+  // slot, enforcing the hardware constraint that a register cluster supports
+  // only a single write port per cycle.
+  std::unordered_map<RegisterFile *,
+                     std::unordered_map<int, Operation *>>
+      reg_file_to_occupy_operations;
+
+  // Records the occupying operation for a register cluster slot.
+  // Returns false if the cluster slot is already occupied (constraint
+  // violation).
+  bool addToRegFileRecord(Register *reg, int time_step);
+
+  // Removes the occupying operation from a register cluster slot
+  // when the op is unbound/released.
+  void removeFromRegFileRecord(Register *reg, int time_step);
+
+  // Checks availability of a register resource across the relevant time steps,
+  // delegating the spatial-only vs modulo-II loop to a single helper.
+  // Returns false if any congruent time slot is occupied or violates the
+  // cluster constraint.
+  bool isRegisterAvailableAcrossTime(Register *reg, int time_step) const;
 };
 
 } // namespace neura
@@ -199,6 +235,9 @@ private:
   std::map<MappingLoc, std::vector<std::pair<int, Operation *>>> occupied_locs;
   std::map<MappingLoc, Operation *> loc_to_op;
   std::map<Operation *, std::vector<MappingLoc>> op_to_locs;
+  std::unordered_map<RegisterFile *,
+                     std::unordered_map<int, Operation *>>
+      reg_file_to_occupy_operations;
 };
 } // namespace neura
 } // namespace mlir

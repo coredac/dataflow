@@ -620,14 +620,12 @@ bool mlir::neura::tryRouteBackwardMove(Operation *mov_op, MappingLoc src_loc,
 Register *mlir::neura::getAvailableRegister(const MappingState &state,
                                             Tile *tile, int start_time,
                                             int exclusive_end_time) {
+  // The single-read-port constraint (only one register per RegisterFile may be
+  // used at a time) is now enforced inside isAvailableAcrossTime(), so we only
+  // need to find the first register that is free across the requested range.
   for (Register *reg : tile->getRegisters()) {
-    // FIXME: We may need constrain the register availability to the conflicting
-    // input channel (either the input channel or a register file on the same
-    // input direction could be active at one time).
-    if (state.isAvailableAcrossTimeInRange(reg, start_time,
-                                           exclusive_end_time)) {
+    if (state.isAvailableAcrossTimeInRange(reg, start_time, exclusive_end_time))
       return reg;
-    }
   }
   return nullptr;
 }
