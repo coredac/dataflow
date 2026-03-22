@@ -582,15 +582,16 @@ Architecture::Architecture(int multi_cgra_rows, int multi_cgra_columns,
 std::unique_ptr<Architecture> Architecture::cloneWithNewDimensions(
     int new_per_cgra_rows, int new_per_cgra_columns,
     const std::vector<TileOverride> &additional_overrides) const {
-  
+
   std::vector<TileOverride> merged_overrides = tile_overrides_;
-  merged_overrides.insert(merged_overrides.end(), additional_overrides.begin(), additional_overrides.end());
+  merged_overrides.insert(merged_overrides.end(), additional_overrides.begin(),
+                          additional_overrides.end());
 
   return std::make_unique<Architecture>(
       multi_cgra_rows_, multi_cgra_columns_, multi_cgra_base_topology_,
       new_per_cgra_rows, new_per_cgra_columns, max_ctrl_mem_items_,
-      per_cgra_base_topology_, tile_defaults_, merged_overrides,
-      link_defaults_, link_overrides_);
+      per_cgra_base_topology_, tile_defaults_, merged_overrides, link_defaults_,
+      link_overrides_);
 }
 
 Tile *Architecture::getTile(int id) {

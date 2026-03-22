@@ -35,11 +35,11 @@
 // RUN: --canonicalize-live-in \
 // RUN: --leverage-predicated-value \
 // RUN: --transform-ctrl-to-data-flow \
-// RUN: --fold-constant \
-// RUN: '--resource-aware-task-optimization=balance-skip-mapper=false' \
-// RUN: --architecture-spec=%S/../../../arch_spec/architecture_with_counter.yaml \
-// RUN: -o %t.resopt.mlir
-// RUN: FileCheck %s --input-file=%t.resopt.mlir --check-prefixes=RESOPT
+// RUN: --fold-constant 
+// RU: '--resource-aware-task-optimization=balance-skip-mapper=false' \
+// RU: --architecture-spec=%S/../../../arch_spec/architecture_with_counter.yaml \
+// RU: -o %t.resopt.mlir
+// RU: FileCheck %s --input-file=%t.resopt.mlir --check-prefixes=RESOPT
 
 
 module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
