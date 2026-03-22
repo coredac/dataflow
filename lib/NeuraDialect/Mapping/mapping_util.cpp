@@ -498,6 +498,9 @@ bool hasSafeOperandIterationAtConsume(
   }
 
   for (const PendingRoute &route : operand_routes) {
+    // Records the time range that each register is occupied on this route.
+    // <Register*, <min_time, max_time>>, this means the register is occupied
+    // from min_time to max_time.
     DenseMap<Register *, std::pair<int, int>> reg_time_range;
     for (const MappingLoc &loc : route.path) {
       Register *reg = dyn_cast<Register>(loc.resource);
@@ -507,10 +510,18 @@ bool hasSafeOperandIterationAtConsume(
 
       // For each register, tracks its live interval on this path by keeping
       // the earliest and latest time it appears.
+      // Inserts a new entry if the register is seen for the first time.
       auto [it, inserted] = reg_time_range.try_emplace(
           reg, std::make_pair(loc.time_step, loc.time_step));
+
+      // If this register has been seen before, updates the time range to
+      // include the new time step.
       if (!inserted) {
+        // Updates the min_time for this seen register if the new time step is
+        // earlier.
         it->second.first = std::min(it->second.first, loc.time_step);
+        // Updates the max_time for this seen register if the new time step is
+        // later.
         it->second.second = std::max(it->second.second, loc.time_step);
       }
     }
