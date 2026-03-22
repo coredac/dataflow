@@ -456,7 +456,7 @@ std::vector<std::pair<Operation *, int>> mlir::neura::flatten_level_buckets(
 
 mlir::Operation *mlir::neura::getMaterializedBackwardUser(Operation *op) {
   assert(isa<neura::CtrlMovOp>(op) && "Expected a ctrl_mov operation");
-  neura::CtrlMovOp ctrl_mov = dyn_cast<neura::CtrlMovOp>(op);
+  auto ctrl_mov = dyn_cast<neura::CtrlMovOp>(op);
   Value target = ctrl_mov.getTarget();
 
   assert(isa<neura::ReserveOp>(target.getDefiningOp()) &&
@@ -505,6 +505,8 @@ bool hasSafeOperandIterationAtConsume(
         continue;
       }
 
+      // For each register, tracks its live interval on this path by keeping
+      // the earliest and latest time it appears.
       auto [it, inserted] = reg_time_range.try_emplace(
           reg, std::make_pair(loc.time_step, loc.time_step));
       if (!inserted) {

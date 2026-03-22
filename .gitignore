@@ -16,6 +16,7 @@ lit.cfg
 *.dot
 
 # vscode config
+.clangd
 .cache
 .vscode
 
