@@ -58,18 +58,6 @@ template <> struct hash<mlir::neura::MappingLoc> {
 namespace mlir {
 namespace neura {
 
-// Tracks per-time-slot occupancy of a register cluster (RegisterFile).
-// One cluster allows at most one distinct register to be accessed per time
-// slot.  If a second operation tries to use a *different* register inside the
-// same RegisterFile at the same canonical time step the access is rejected.
-struct RegClusterOccupyStatus {
-  Register *occupied_reg = nullptr; // The register currently in use, or null.
-  int op_count = 0;                 // How many ops share that register.
-
-  // Returns true if at least one op occupies this cluster slot.
-  bool alreadyOccupied() const { return op_count > 0; }
-};
-
 // Tracks placement and routing of ops on the CGRA.
 class MappingState {
 public:
@@ -166,9 +154,9 @@ public:
     return this->op_to_locs;
   }
   const std::unordered_map<RegisterFile *,
-                           std::unordered_map<int, RegClusterOccupyStatus>> &
-  getRegFileOccupyRecords() const {
-    return this->reg_file_occupy_records;
+                           std::unordered_map<int, Operation *>> &
+  getRegFileToOccupyOperations() const {
+    return this->reg_file_to_occupy_operations;
   }
 
   // Setters for state information.
@@ -184,11 +172,11 @@ public:
       const std::map<Operation *, std::vector<MappingLoc>> &op_to_locs) {
     this->op_to_locs = op_to_locs;
   }
-  void setRegFileOccupyRecords(
+  void setRegFileToOccupyOperations(
       const std::unordered_map<RegisterFile *,
-                               std::unordered_map<int, RegClusterOccupyStatus>>
+                               std::unordered_map<int, Operation *>>
           &records) {
-    this->reg_file_occupy_records = records;
+    this->reg_file_to_occupy_operations = records;
   }
 
 private:
@@ -204,20 +192,21 @@ private:
   std::map<Operation *, std::vector<MappingLoc>> op_to_locs;
 
   // Record table for register cluster occupancy, keyed by (RegisterFile*,
-  // time_step % II). Updated incrementally on every bind/reserve/unbind/release
-  // so that isAvailableAcrossTime() can answer cluster-conflict queries in O(1)
-  // instead of scanning all sibling registers across all time steps.
+  // time_step % II). Maps to the Operation* that is writing to the cluster at
+  // that canonical time slot. At most one writer is allowed per cluster per
+  // slot, enforcing the hardware constraint that a register cluster supports
+  // only a single write port per cycle.
   std::unordered_map<RegisterFile *,
-                     std::unordered_map<int, RegClusterOccupyStatus>>
-      reg_file_occupy_records;
+                     std::unordered_map<int, Operation *>>
+      reg_file_to_occupy_operations;
 
-  // Increments the op count in reg_file_occupy_records for a register location.
-  // Returns false if a *different* register in the same cluster is already
-  // occupied at this canonical time slot (constraint violation).
+  // Records the occupying operation for a register cluster slot.
+  // Returns false if the cluster slot is already occupied (constraint
+  // violation).
   bool addToRegFileRecord(Register *reg, int time_step);
 
-  // Decrements the op count in reg_file_occupy_records for a register location
-  // when op is unbound/released from there.
+  // Removes the occupying operation from a register cluster slot
+  // when the op is unbound/released.
   void removeFromRegFileRecord(Register *reg, int time_step);
 
   // Checks availability of a register resource across the relevant time steps,
@@ -247,8 +236,8 @@ private:
   std::map<MappingLoc, Operation *> loc_to_op;
   std::map<Operation *, std::vector<MappingLoc>> op_to_locs;
   std::unordered_map<RegisterFile *,
-                     std::unordered_map<int, RegClusterOccupyStatus>>
-      reg_file_occupy_records;
+                     std::unordered_map<int, Operation *>>
+      reg_file_to_occupy_operations;
 };
 } // namespace neura
 } // namespace mlir

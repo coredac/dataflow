@@ -40,14 +40,17 @@ bool MappingState::addToRegFileRecord(Register *reg, int time_step) {
     return true;
   }
   int canonical_step = time_step % II;
-  RegClusterOccupyStatus &status =
-      reg_file_occupy_records[reg_file][canonical_step];
-  if (status.op_count > 0 && status.occupied_reg != reg) {
-    // A different register in the same cluster is already occupied.
+  auto &slot_map = reg_file_to_occupy_operations[reg_file];
+  auto it = slot_map.find(canonical_step);
+  // Enforces the one-write-per-cluster-per-slot constraint: reject any second
+  // writer, regardless of whether it targets the same register or a different
+  // one.  This disallows both:
+  //   * ADD NORTH, SOUTH -> $0, $1  (single op writing two regs in a cluster)
+  //   * ADD -> $0  +  MOV -> $1     (two ops writing different regs in a cluster)
+  if (it != slot_map.end()) {
     return false;
   }
-  status.occupied_reg = reg;
-  ++status.op_count;
+  slot_map[canonical_step] = nullptr; // Placeholder; caller identity not needed
   return true;
 }
 
@@ -57,25 +60,19 @@ void MappingState::removeFromRegFileRecord(Register *reg, int time_step) {
     return;
   }
   int canonical_step = time_step % II;
-  std::unordered_map<RegisterFile *,
-                     std::unordered_map<int, RegClusterOccupyStatus>>::iterator
-      reg_file_it = reg_file_occupy_records.find(reg_file);
-  if (reg_file_it == reg_file_occupy_records.end()) {
+  auto reg_file_it = reg_file_to_occupy_operations.find(reg_file);
+  if (reg_file_it == reg_file_to_occupy_operations.end()) {
     return;
   }
-  std::unordered_map<int, RegClusterOccupyStatus>::iterator slot_it =
-      reg_file_it->second.find(canonical_step);
+  auto slot_it = reg_file_it->second.find(canonical_step);
   if (slot_it == reg_file_it->second.end()) {
     return;
   }
-  RegClusterOccupyStatus &status = slot_it->second;
-  --status.op_count;
+  // Removes the entry to free the cluster slot.
+  reg_file_it->second.erase(slot_it);
   // Cleans up empty entries to keep the map compact.
-  if (status.op_count <= 0) {
-    reg_file_it->second.erase(slot_it);
-    if (reg_file_it->second.empty()) {
-      reg_file_occupy_records.erase(reg_file_it);
-    }
+  if (reg_file_it->second.empty()) {
+    reg_file_to_occupy_operations.erase(reg_file_it);
   }
 }
 
@@ -86,27 +83,19 @@ bool MappingState::isRegisterAvailableAcrossTime(Register *reg,
     return true;
   }
 
-  // Checks whether a *different* register in the same cluster is already
-  // occupied at any congruent time slot.
-  auto checkSlot = [this, reg_file, reg](int t) -> bool {
+  // Checks whether the cluster already has a writer at any congruent time slot.
+  auto checkSlot = [this, reg_file](int t) -> bool {
     int canonical_step = t % II;
-    std::unordered_map<RegisterFile *,
-                       std::unordered_map<int, RegClusterOccupyStatus>>::
-        const_iterator reg_file_it = reg_file_occupy_records.find(reg_file);
-    if (reg_file_it == reg_file_occupy_records.end()) {
+    auto reg_file_it = reg_file_to_occupy_operations.find(reg_file);
+    if (reg_file_it == reg_file_to_occupy_operations.end()) {
       return true;
     }
-    std::unordered_map<int, RegClusterOccupyStatus>::const_iterator slot_it =
-        reg_file_it->second.find(canonical_step);
+    auto slot_it = reg_file_it->second.find(canonical_step);
     if (slot_it == reg_file_it->second.end()) {
       return true;
     }
-    const RegClusterOccupyStatus &status = slot_it->second;
-    // Conflict: a different register in the same cluster is occupied.
-    if (status.op_count > 0 && status.occupied_reg != reg) {
-      return false;
-    }
-    return true;
+    // Conflict: an existing writer in the cluster blocks a new write.
+    return false;
   };
 
   if (this->is_spatial_only) {
@@ -826,12 +815,12 @@ MappingStateSnapshot::MappingStateSnapshot(const MappingState &mapping_state) {
   this->occupied_locs = mapping_state.getOccupiedLocs();
   this->loc_to_op = mapping_state.getLocToOp();
   this->op_to_locs = mapping_state.getOpToLocs();
-  this->reg_file_occupy_records = mapping_state.getRegFileOccupyRecords();
+  this->reg_file_to_occupy_operations = mapping_state.getRegFileToOccupyOperations();
 }
 
 void MappingStateSnapshot::restore(MappingState &mapping_state) {
   mapping_state.setOccupiedLocs(this->occupied_locs);
   mapping_state.setLocToOp(this->loc_to_op);
   mapping_state.setOpToLocs(this->op_to_locs);
-  mapping_state.setRegFileOccupyRecords(this->reg_file_occupy_records);
+  mapping_state.setRegFileToOccupyOperations(this->reg_file_to_occupy_operations);
 }
