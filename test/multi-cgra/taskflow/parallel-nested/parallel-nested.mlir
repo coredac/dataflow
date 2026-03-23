@@ -161,6 +161,6 @@ module {
 // PLACEMENT-SAME: task_mapping_info = {cgra_positions = [{col = 1 : i32, row = 0 : i32}], read_sram_locations = [{col = 1 : i32, row = 0 : i32}, {col = 1 : i32, row = 0 : i32}], write_sram_locations = [{col = 1 : i32, row = 0 : i32}]}
 
 // RESOPT:      taskflow.task @Task_0_Task_1_utilfused
-// RESOPT:      cgra_count = 2 : i32, compiled_ii = 4 : i32, steps = 4 : i32, tile_shape = "1x2", trip_count = 64 : i32
+// RESOPT:      cgra_count = 2 : i32, compiled_ii = 2 : i32, steps = 4 : i32, tile_shape = "1x2", trip_count = 64 : i32
 // RESOPT:      return
 
