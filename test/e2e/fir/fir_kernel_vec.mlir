@@ -223,6 +223,8 @@
 // YAML-NEXT:                   time_step: 2
 // YAML-NEXT:                   invalid_iterations: 0
 // YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "arg0"
+// YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                     - operand: "NORTH"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                   dst_operands:
@@ -463,6 +465,8 @@
 // YAML-NEXT:                   time_step: 2
 // YAML-NEXT:                   invalid_iterations: 0
 // YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "arg2"
+// YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                     - operand: "WEST"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                   dst_operands:
@@ -517,7 +521,7 @@
 // ASM-NEXT: } (idx_per_ii=2)
 // ASM: PE(2,1):
 // ASM-NEXT: {
-// ASM-NEXT:   GEP, [NORTH, RED] -> [SOUTH, RED] (t=2, inv_iters=0)
+// ASM-NEXT:   GEP, [arg0], [NORTH, RED] -> [SOUTH, RED] (t=2, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=2)
 // ASM: PE(3,1):
 // ASM-NEXT: {
@@ -566,7 +570,7 @@
 // ASM-NEXT:   GRANT_ONCE, [#0] -> [WEST, RED] (t=0, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=0)
 // ASM-NEXT: {
-// ASM-NEXT:   GEP, [WEST, RED] -> [SOUTH, RED] (t=2, inv_iters=0)
+// ASM-NEXT:   GEP, [arg2], [WEST, RED] -> [SOUTH, RED] (t=2, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=2)
 // ASM: PE(1,3):
 // ASM-NEXT: {

@@ -406,71 +406,59 @@
 // MAPPING-NEXT:     neura.yield {dfg_id = 18 : i32}
 // MAPPING-NEXT:   }
 
-// YAML:      array_config:
-// YAML-NEXT:   columns: 4
-// YAML-NEXT:   rows: 4
-// YAML-NEXT:   compiled_ii: 12
-// YAML-NEXT:   cores:
-// YAML-NEXT:     - column: 0
-// YAML-NEXT:       row: 0
-// YAML-NEXT:       core_id: "0"
-// YAML-NEXT:       entries:
-// YAML-NEXT:         - entry_id: "entry0"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - index_per_ii: 0
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "CONSTANT"
-// YAML-NEXT:                   id: 1
-// YAML-NEXT:                   time_step: 0
-// YAML-NEXT:                   invalid_iterations: 0
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "arg0"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "$0"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 740001
-// YAML-NEXT:                   time_step: 12
-// YAML-NEXT:                   invalid_iterations: 1
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "EAST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "NORTH"
-// YAML-NEXT:                       color: "RED"
+// YAML:     - column: 0
+// YAML:       row: 1
+// YAML:       core_id: "4"
+// YAML:       entries:
+// YAML:         - entry_id: "entry0"
+// YAML:           instructions:
+// YAML:             - index_per_ii: 0
+// YAML:               operations:
+// YAML:                 - opcode: "GEP"
+// YAML:                   id: 137
+// YAML:                   time_step: 12
+// YAML:                   invalid_iterations: 1
+// YAML:                   src_operands:
+// YAML:                     - operand: "arg5"
+// YAML:                       color: "RED"
+// YAML:                     - operand: "$0"
+// YAML:                       color: "RED"
+// YAML:                   dst_operands:
+// YAML:                     - operand: "$0"
+// YAML:                       color: "RED"
+// YAML:     - column: 3
+// YAML:       row: 2
+// YAML:       core_id: "11"
+// YAML:       entries:
+// YAML:         - entry_id: "entry0"
+// YAML:           instructions:
+// YAML:             - index_per_ii: 0
+// YAML:               operations:
+// YAML:                 - opcode: "GEP"
+// YAML:                   id: 138
+// YAML:                   time_step: 12
+// YAML:                   invalid_iterations: 1
+// YAML:                   src_operands:
+// YAML:                     - operand: "arg2"
+// YAML:                       color: "RED"
+// YAML:                     - operand: "$0"
+// YAML:                       color: "RED"
+// YAML:                     - operand: "$1"
+// YAML:                       color: "RED"
+// YAML:                   dst_operands:
+// YAML:                     - operand: "SOUTH"
+// YAML:                       color: "RED"
+// YAML:                     - operand: "WEST"
+// YAML:                       color: "RED"
 
-
-// ASM:      # Compiled II: 12
-// ASM:      PE(0,0):
-// ASM-NEXT: {
-// ASM-NEXT:   CONSTANT, [arg0] -> [$0] (t=0, inv_iters=0)
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [NORTH, RED] (t=12, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=0)
-// ASM-NEXT: {
-// ASM-NEXT:   ICMP_SGT, [$0], [#0] -> [$0] (t=1, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=1)
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_ONCE, [$0] -> [NORTH, RED], [$0], [$2], [EAST, RED], [$1] (t=2, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=2)
-// ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [$2] -> [NORTH, RED] (t=3, inv_iters=0)
-// ASM-NEXT:   DATA_MOV, [$0] -> [EAST, RED] (t=3, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=3)
-// ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [$0] -> [EAST, RED] (t=4, inv_iters=0)
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$0] (t=16, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=4)
-// ASM-NEXT: {
-// ASM-NEXT:   RETURN_VOID, [$0] (t=17, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=5)
-// ASM-NEXT: {
-// ASM-NEXT:   NOT, [$1] -> [EAST, RED], [$0], [NORTH, RED] (t=9, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=9)
-// ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [$0] -> [NORTH, RED] (t=10, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=10)
-
+// ASM: PE(0,1):
+// ASM: {
+// ASM:   GEP, [arg5], [$0] -> [$0] (t=12, inv_iters=1)
+// ASM: } (idx_per_ii=0)
+// ASM: PE(3,2):
+// ASM: {
+// ASM:   GEP, [arg2], [$0], [$1] -> [SOUTH, RED], [WEST, RED] (t=12, inv_iters=1)
+// ASM: } (idx_per_ii=0)
 
 // RUN: mlir-neura-opt %t-kernel.mlir --view-op-graph 2>&1 | sed -n '/^digraph G {/,/^}$/p' > bicg_kernel_original.dot
 // RUN: dot -Tpng bicg_kernel_original.dot -o bicg_kernel_original.png
