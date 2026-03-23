@@ -298,47 +298,302 @@
 // YAML-NEXT:   columns: 4
 // YAML-NEXT:   rows: 4
 // YAML-NEXT:   compiled_ii: 17
-// YAML:       core_id: "0"
-// YAML:       entries:
-// YAML:         - entry_id: "entry0"
-// YAML:           instructions:
-// YAML:             - index_per_ii: 0
-// YAML:               operations:
-// YAML:                 - opcode: "GRANT_PREDICATE"
-// YAML:             - index_per_ii: 1
-// YAML:               operations:
-// YAML:                 - opcode: "MUL"
-// YAML:             - index_per_ii: 2
-// YAML:               operations:
-// YAML:                 - opcode: "GRANT_PREDICATE"
-// YAML:             - index_per_ii: 4
-// YAML:               operations:
-// YAML:                 - opcode: "GRANT_ONCE"
-// YAML:                 - opcode: "DATA_MOV"
-// YAML:             - index_per_ii: 5
-// YAML:               operations:
-// YAML:                 - opcode: "DATA_MOV"
-// YAML:             - index_per_ii: 8
-// YAML:               operations:
-// YAML:                 - opcode: "GRANT_ONCE"
-// YAML:             - index_per_ii: 9
-// YAML:               operations:
-// YAML:                 - opcode: "GRANT_PREDICATE"
-// YAML:             - index_per_ii: 10
-// YAML:               operations:
-// YAML:                 - opcode: "ZEXT"
-// YAML:             - index_per_ii: 13
-// YAML:               operations:
-// YAML:                 - opcode: "DATA_MOV"
-// YAML:             - index_per_ii: 14
-// YAML:               operations:
-// YAML:                 - opcode: "DATA_MOV"
-// YAML:             - index_per_ii: 15
-// YAML:               operations:
-// YAML:                 - opcode: "NOT"
-// YAML:             - index_per_ii: 16
-// YAML:               operations:
-// YAML:                 - opcode: "GRANT_ONCE"
+// YAML-NEXT:   cores:
+// YAML-NEXT:     - column: 0
+// YAML-NEXT:       row: 0
+// YAML-NEXT:       core_id: "0"
+// YAML-NEXT:       entries:
+// YAML-NEXT:         - entry_id: "entry0"
+// YAML-NEXT:           instructions:
+// YAML-NEXT:             - index_per_ii: 0
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "GRANT_PREDICATE"
+// YAML-NEXT:                   id: 66
+// YAML-NEXT:                   time_step: 17
+// YAML-NEXT:                   invalid_iterations: 1
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 1
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "MUL"
+// YAML-NEXT:                   id: 152
+// YAML-NEXT:                   time_step: 18
+// YAML-NEXT:                   invalid_iterations: 1
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 2
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "GRANT_PREDICATE"
+// YAML-NEXT:                   id: 184
+// YAML-NEXT:                   time_step: 19
+// YAML-NEXT:                   invalid_iterations: 1
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "$1"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "$3"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 4
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "GRANT_ONCE"
+// YAML-NEXT:                   id: 6
+// YAML-NEXT:                   time_step: 4
+// YAML-NEXT:                   invalid_iterations: 0
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "#0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                 - opcode: "DATA_MOV"
+// YAML-NEXT:                   id: 43
+// YAML-NEXT:                   time_step: 4
+// YAML-NEXT:                   invalid_iterations: 0
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$2"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 5
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "DATA_MOV"
+// YAML-NEXT:                   id: 52
+// YAML-NEXT:                   time_step: 5
+// YAML-NEXT:                   invalid_iterations: 0
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$1"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 8
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "GRANT_ONCE"
+// YAML-NEXT:                   id: 0
+// YAML-NEXT:                   time_step: 8
+// YAML-NEXT:                   invalid_iterations: 0
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "arg0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 9
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "GRANT_PREDICATE"
+// YAML-NEXT:                   id: 58
+// YAML-NEXT:                   time_step: 9
+// YAML-NEXT:                   invalid_iterations: 0
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "$1"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 10
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "ZEXT"
+// YAML-NEXT:                   id: 71
+// YAML-NEXT:                   time_step: 10
+// YAML-NEXT:                   invalid_iterations: 0
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 13
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "DATA_MOV"
+// YAML-NEXT:                   id: 174
+// YAML-NEXT:                   time_step: 13
+// YAML-NEXT:                   invalid_iterations: 0
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$3"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 14
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "DATA_MOV"
+// YAML-NEXT:                   id: 137
+// YAML-NEXT:                   time_step: 14
+// YAML-NEXT:                   invalid_iterations: 0
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$1"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 15
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "NOT"
+// YAML-NEXT:                   id: 45
+// YAML-NEXT:                   time_step: 15
+// YAML-NEXT:                   invalid_iterations: 0
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "$2"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 16
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "GRANT_ONCE"
+// YAML-NEXT:                   id: 53
+// YAML-NEXT:                   time_step: 16
+// YAML-NEXT:                   invalid_iterations: 0
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:     - column: 1
+// YAML-NEXT:       row: 0
+// YAML-NEXT:       core_id: "1"
+// YAML-NEXT:       entries:
+// YAML-NEXT:         - entry_id: "entry0"
+// YAML-NEXT:           instructions:
+// YAML-NEXT:             - index_per_ii: 0
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "DATA_MOV"
+// YAML-NEXT:                   id: 1420001
+// YAML-NEXT:                   time_step: 17
+// YAML-NEXT:                   invalid_iterations: 1
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "WEST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 1
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "DATA_MOV"
+// YAML-NEXT:                   id: 72
+// YAML-NEXT:                   time_step: 18
+// YAML-NEXT:                   invalid_iterations: 1
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "WEST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 2
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "ADD"
+// YAML-NEXT:                   id: 181
+// YAML-NEXT:                   time_step: 19
+// YAML-NEXT:                   invalid_iterations: 1
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "WEST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 4
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "PHI"
+// YAML-NEXT:                   id: 255
+// YAML-NEXT:                   time_step: 21
+// YAML-NEXT:                   invalid_iterations: 1
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 5
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "RETURN_VOID"
+// YAML-NEXT:                   id: 267
+// YAML-NEXT:                   time_step: 22
+// YAML-NEXT:                   invalid_iterations: 1
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 11
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "DATA_MOV"
+// YAML-NEXT:                   id: 880002
+// YAML-NEXT:                   time_step: 11
+// YAML-NEXT:                   invalid_iterations: 0
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 12
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "DATA_MOV"
+// YAML-NEXT:                   id: 1740001
+// YAML-NEXT:                   time_step: 12
+// YAML-NEXT:                   invalid_iterations: 0
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "WEST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 13
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "DATA_MOV"
+// YAML-NEXT:                   id: 1770001
+// YAML-NEXT:                   time_step: 13
+// YAML-NEXT:                   invalid_iterations: 0
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:     - column: 2
+// YAML-NEXT:       row: 0
+// YAML-NEXT:       core_id: "2"
+// YAML-NEXT:       entries:
+// YAML-NEXT:         - entry_id: "entry0"
+// YAML-NEXT:           instructions:
+// YAML-NEXT:             - index_per_ii: 1
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "LOAD"
+// YAML-NEXT:                   id: 139
+// YAML-NEXT:                   time_step: 18
+// YAML-NEXT:                   invalid_iterations: 1
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "NORTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "WEST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 2
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "GRANT_PREDICATE"
+// YAML-NEXT:                   id: 187
+// YAML-NEXT:                   time_step: 19
+// YAML-NEXT:                   invalid_iterations: 1
 //
 // ASM: # Compiled II: 17
 // ASM: PE(0,0):
@@ -380,3 +635,255 @@
 // ASM-NEXT:   GRANT_ONCE, [$0] -> [$0] (t=16, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=16)
 // ASM: PE(1,0):
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [WEST, RED] (t=17, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=0)
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$0] (t=18, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=1)
+// ASM-NEXT: {
+// ASM-NEXT:   ADD, [EAST, RED], [WEST, RED] -> [EAST, RED] (t=19, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=2)
+// ASM-NEXT: {
+// ASM-NEXT:   PHI, [$0], [NORTH, RED] -> [$0] (t=21, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=4)
+// ASM-NEXT: {
+// ASM-NEXT:   RETURN_VOID, [$0] (t=22, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=5)
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [EAST, RED] (t=11, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=11)
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [WEST, RED] (t=12, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=12)
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [EAST, RED] (t=13, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=13)
+// ASM: PE(2,0):
+// ASM-NEXT: {
+// ASM-NEXT:   LOAD, [NORTH, RED] -> [WEST, RED] (t=18, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=1)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [NORTH, RED] (t=19, inv_iters=1)
+// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$0] (t=19, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=2)
+// ASM-NEXT: {
+// ASM-NEXT:   STORE, [WEST, RED], [$0] (t=20, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=3)
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [NORTH, RED] (t=12, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=12)
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$0] (t=13, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=13)
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$1] (t=14, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=14)
+// ASM-NEXT: {
+// ASM-NEXT:   LOAD, [NORTH, RED] -> [WEST, RED] (t=16, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=16)
+// ASM: PE(0,1):
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [SOUTH, RED] (t=17, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=0)
+// ASM-NEXT: {
+// ASM-NEXT:   CONSTANT, [arg1] -> [$0] (t=1, inv_iters=0)
+// ASM-NEXT:   CTRL_MOV, [EAST, RED] -> [$1] (t=18, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=1)
+// ASM-NEXT: {
+// ASM-NEXT:   ICMP_SGT, [$0], [#0] -> [$0] (t=2, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=2)
+// ASM-NEXT: {
+// ASM-NEXT:   AND, [NORTH, RED], [$0] -> [$0], [SOUTH, RED] (t=3, inv_iters=0)
+// ASM-NEXT:   CTRL_MOV, [SOUTH, RED] -> [$6] (t=20, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=3)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_ONCE, [$0] -> [SOUTH, RED], [NORTH, RED], [EAST, RED], [$0], [$4] (t=4, inv_iters=0)
+// ASM-NEXT:   CTRL_MOV, [NORTH, RED] -> [$2] (t=21, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=4)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [SOUTH, RED], [$0] -> [$0], [EAST, RED] (t=5, inv_iters=0)
+// ASM-NEXT:   CTRL_MOV, [EAST, RED] -> [$3] (t=22, inv_iters=1)
+// ASM-NEXT:   CTRL_MOV, [NORTH, RED] -> [$5] (t=22, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=5)
+// ASM-NEXT: {
+// ASM-NEXT:   PHI_START, [$0], [$3] -> [EAST, RED], [$0] (t=6, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=6)
+// ASM-NEXT: {
+// ASM-NEXT:   CTRL_MOV, [NORTH, RED] -> [$7] (t=24, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=7)
+// ASM-NEXT: {
+// ASM-NEXT:   PHI_START, [$0], [$1] -> [EAST, RED], [$0] (t=9, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$3] (t=9, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=9)
+// ASM-NEXT: {
+// ASM-NEXT:   PHI_START, [$0], [$2] -> [$2], [NORTH, RED], [EAST, RED] (t=10, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=10)
+// ASM-NEXT: {
+// ASM-NEXT:   PHI_START, [SOUTH, RED], [$5] -> [$0] (t=11, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$1] (t=11, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=11)
+// ASM-NEXT: {
+// ASM-NEXT:   PHI_START, [$0], [$7] -> [$0] (t=12, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [EAST, RED] (t=12, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=12)
+// ASM-NEXT: {
+// ASM-NEXT:   PHI_START, [$0], [$6] -> [SOUTH, RED], [$0] (t=13, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [NORTH, RED] (t=13, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=13)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [EAST, RED], [NORTH, RED] (t=14, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=14)
+// ASM-NEXT: {
+// ASM-NEXT:   GEP, [$2], [$3] -> [NORTH, RED] (t=15, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=15)
+// ASM-NEXT: {
+// ASM-NEXT:   NOT, [$4] -> [SOUTH, RED] (t=16, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=16)
+// ASM: PE(1,1):
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [$4], [$0] -> [WEST, RED] (t=17, inv_iters=1)
+// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$0] (t=17, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=0)
+// ASM-NEXT: {
+// ASM-NEXT:   ICMP_EQ, [$2], [$0] -> [$0], [$2], [$3] (t=18, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=1)
+// ASM-NEXT: {
+// ASM-NEXT:   NOT, [$0] -> [$4], [$5], [$0], [EAST, RED], [NORTH, RED] (t=19, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=2)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [$2], [$3] -> [SOUTH, RED] (t=20, inv_iters=1)
+// ASM-NEXT:   DATA_MOV, [$4] -> [EAST, RED] (t=20, inv_iters=1)
+// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$0] (t=20, inv_iters=1)
+// ASM-NEXT:   DATA_MOV, [$0] -> [NORTH, RED] (t=20, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=3)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [$0], [$5] -> [WEST, RED] (t=21, inv_iters=1)
+// ASM-NEXT:   CTRL_MOV, [NORTH, RED] -> [$2] (t=21, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=4)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [EAST, RED], [WEST, RED] -> [$0] (t=5, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=5)
+// ASM-NEXT: {
+// ASM-NEXT:   ZEXT, [$0] -> [NORTH, RED] (t=6, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [EAST, RED] (t=6, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=6)
+// ASM-NEXT: {
+// ASM-NEXT:   PHI_START, [WEST, RED], [$2] -> [EAST, RED], [$0] (t=7, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=7)
+// ASM-NEXT: {
+// ASM-NEXT:   PHI_START, [$0], [$1] -> [WEST, RED], [EAST, RED], [$0] (t=8, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=8)
+// ASM-NEXT: {
+// ASM-NEXT:   ADD, [$0], [#1] -> [$0], [$2] (t=9, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=9)
+// ASM-NEXT: {
+// ASM-NEXT:   ICMP_EQ, [$0], [NORTH, RED] -> [$0], [$1], [EAST, RED], [$3], [WEST, RED], [$4], [NORTH, RED] (t=10, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [SOUTH, RED] (t=10, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=10)
+// ASM-NEXT: {
+// ASM-NEXT:   NOT, [$0] -> [$3], [$0], [$7], [$6], [NORTH, RED], [$5], [SOUTH, RED], [WEST, RED] (t=11, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$0] (t=11, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [$3] -> [EAST, RED] (t=11, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=11)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [$0] (t=12, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [$7] -> [WEST, RED] (t=12, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [$6] -> [SOUTH, RED] (t=12, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [$5] -> [NORTH, RED] (t=12, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [$4] -> [EAST, RED] (t=12, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=12)
+// ASM-NEXT: {
+// ASM-NEXT:   ADD, [$0], [#1] -> [NORTH, RED], [$4] (t=13, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [EAST, RED] (t=13, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=13)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [$2], [$3] -> [$1] (t=14, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [$0] -> [EAST, RED] (t=14, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$0] (t=14, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=14)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [$0], [NORTH, RED] -> [$0] (t=15, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [NORTH, RED] (t=15, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=15)
+// ASM-NEXT: {
+// ASM-NEXT:   ADD, [$0], [#1] -> [$2], [EAST, RED] (t=16, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$0] (t=16, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=16)
+// ASM: PE(2,1):
+// ASM-NEXT: {
+// ASM-NEXT:   GEP, [$4], [$5] -> [SOUTH, RED], [$4] (t=17, inv_iters=1)
+// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$3] (t=17, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=0)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [NORTH, RED], [$0] (t=18, inv_iters=1)
+// ASM-NEXT:   DATA_MOV, [$4] -> [SOUTH, RED] (t=18, inv_iters=1)
+// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$1] (t=18, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=1)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [WEST, RED] (t=19, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=2)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [$2], [WEST, RED] -> [NORTH, RED] (t=20, inv_iters=1)
+// ASM-NEXT:   CTRL_MOV, [SOUTH, RED] -> [$4] (t=20, inv_iters=1)
+// ASM-NEXT:   CTRL_MOV, [EAST, RED] -> [$6] (t=20, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=3)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_ONCE, [arg1] -> [WEST, RED] (t=4, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$0] (t=21, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=4)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [$3], [$0] -> [$1] (t=22, inv_iters=1)
+// ASM-NEXT:   CTRL_MOV, [NORTH, RED] -> [$2] (t=22, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=5)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [$7], [$8] -> [$7] (t=23, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=6)
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$0] (t=7, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=7)
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$3] (t=8, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=8)
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$5] (t=9, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=9)
+// ASM-NEXT: {
+// ASM-NEXT:   PHI_START, [$0], [$1] -> [$0] (t=10, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=10)
+// ASM-NEXT: {
+// ASM-NEXT:   PHI_START, [$0], [$2] -> [$2], [$0] (t=11, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [NORTH, RED] (t=11, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=11)
+// ASM-NEXT: {
+// ASM-NEXT:   PHI_START, [$0], [$4] -> [$4], [SOUTH, RED], [$0] (t=12, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$1] (t=12, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=12)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [NORTH, RED], [WEST, RED] (t=13, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [SOUTH, RED] -> [$0] (t=13, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$1] (t=13, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=13)
+// ASM-NEXT: {
+// ASM-NEXT:   GEP, [$2], [$0] -> [$0] (t=14, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [EAST, RED] (t=14, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=14)
+// ASM-NEXT: {
+// ASM-NEXT:   PHI_START, [$0], [$7] -> [SOUTH, RED], [$7] (t=15, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$8] (t=15, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=15)
+// ASM-NEXT: {
+// ASM-NEXT:   PHI_START, [$3], [$6] -> [EAST, RED], [$0] (t=16, inv_iters=0)
+// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$2] (t=16, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=16)
+// ASM: PE(3,1):
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$0] (t=17, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=0)
+// ASM-NEXT: {
+// ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [WEST, RED] (t=19, inv_iters=1)
+// ASM-NEXT: } (idx_per_ii=2)
+// ASM-NEXT: {
+// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$1] (t=15, inv_iters=0)
+// ASM-NEXT: } (idx_per_ii=15)
+// ASM: PE(0,2):
