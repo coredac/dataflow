@@ -314,7 +314,15 @@ void Architecture::applyTileOverrides(
   for (const auto &override : tile_overrides) {
     Tile *tile = nullptr;
     if (override.tile_x >= 0 && override.tile_y >= 0) {
-      tile = getTile(override.tile_x, override.tile_y);
+      // cloneWithNewDimensions() copies tile_overrides from the original
+      // (larger) architecture and replays them on a smaller cloned grid.
+      // An override may reference coordinates that exist in the original but
+      // fall outside the cloned grid's bounds.  Skips such overrides rather
+      // than asserting, so the clone only applies overrides that are relevant
+      // to its own coordinate space.
+      auto it = coord_to_tile_.find({override.tile_x, override.tile_y});
+      if (it != coord_to_tile_.end())
+        tile = it->second;
     }
 
     if (tile) {
@@ -518,8 +526,19 @@ void Architecture::applyLinkOverrides(
     }
     // Handles link removal.
     else {
-      Tile *src_tile = getTile(override.src_tile_x, override.src_tile_y);
-      Tile *dst_tile = getTile(override.dst_tile_x, override.dst_tile_y);
+      // cloneWithNewDimensions() replays link_overrides from the original
+      // architecture on a smaller cloned grid.  Either endpoint of a link
+      // override may reference a tile that was not included in the clone.
+      // Skip the override in that case to avoid a crash; the link simply
+      // does not exist in the cloned architecture and needs no override.
+      auto src_it = coord_to_tile_.find(
+          {override.src_tile_x, override.src_tile_y});
+      auto dst_it = coord_to_tile_.find(
+          {override.dst_tile_x, override.dst_tile_y});
+      if (src_it == coord_to_tile_.end() || dst_it == coord_to_tile_.end())
+        continue; // One or both tiles do not exist in this architecture.
+      Tile *src_tile = src_it->second;
+      Tile *dst_tile = dst_it->second;
 
       if (src_tile && dst_tile) {
         bool link_already_exists = linkExists(src_tile, dst_tile);
@@ -653,11 +672,12 @@ void Architecture::removeTile(int tile_id) {
 
 Link *Architecture::getLink(int src_tile_x, int src_tile_y, int dst_tile_x,
                             int dst_tile_y) {
-  Tile *src_tile = getTile(src_tile_x, src_tile_y);
-  Tile *dst_tile = getTile(dst_tile_x, dst_tile_y);
-  if (!src_tile || !dst_tile) {
+  auto src_it = coord_to_tile_.find({src_tile_x, src_tile_y});
+  auto dst_it = coord_to_tile_.find({dst_tile_x, dst_tile_y});
+  if (src_it == coord_to_tile_.end() || dst_it == coord_to_tile_.end())
     return nullptr; // One of the tiles does not exist.
-  }
+  Tile *src_tile = src_it->second;
+  Tile *dst_tile = dst_it->second;
 
   for (const auto &[id, link] : link_storage_) {
     if (link && link->getSrcTile() == src_tile &&
@@ -718,12 +738,11 @@ void Architecture::removeLink(Tile *src_tile, Tile *dst_tile) {
 
 void Architecture::removeLink(int src_tile_x, int src_tile_y, int dst_tile_x,
                               int dst_tile_y) {
-  Tile *src_tile = getTile(src_tile_x, src_tile_y);
-  Tile *dst_tile = getTile(dst_tile_x, dst_tile_y);
-  if (!src_tile || !dst_tile) {
+  auto src_it = coord_to_tile_.find({src_tile_x, src_tile_y});
+  auto dst_it = coord_to_tile_.find({dst_tile_x, dst_tile_y});
+  if (src_it == coord_to_tile_.end() || dst_it == coord_to_tile_.end())
     return; // One of the tiles does not exist.
-  }
-  removeLink(src_tile, dst_tile);
+  removeLink(src_it->second, dst_it->second);
 }
 
 bool Architecture::canSupportCounter() const {

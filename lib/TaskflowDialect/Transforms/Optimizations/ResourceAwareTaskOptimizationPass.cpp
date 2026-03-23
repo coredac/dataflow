@@ -347,30 +347,12 @@ public:
     return total;
   }
 
-  // Public wrapper for profileTask: used by UtilizationFuser to re-profile
-  // fused tasks with the real downstream Neura pipeline.
-  // When skip_mapper=true, only ResMII/RecMII analytical estimates are used
-  // (no MapToAcceleratorPass). This is safe for speculative balance checks
-  // where the mapper may backtrack indefinitely on larger tile arrays.
-  void profileTaskPublic(TaskGraphNode *node, TaskflowTaskOp task,
-                         bool skip_mapper = false) {
-    profileTask(node, task, skip_mapper);
-  }
-
-private:
-  llvm::DenseSet<std::pair<TaskGraphNode *, TaskGraphNode *>> edge_set;
-
-  void addEdge(TaskGraphNode *from, TaskGraphNode *to) {
-    auto key = std::make_pair(from, to);
-    if (edge_set.insert(key).second) {
-      from->successors.push_back(to);
-      to->predecessors.push_back(from);
-    }
-  }
-
   // Profiles a single TaskflowTaskOp: clones the task, wraps the kernel in a
   // standalone func, and runs InsertDataMov + MapToAcceleratorPass to obtain
   // ii.  skip_mapper: use only ResMII/RecMII analytical estimates.
+  // When skip_mapper=true, only ResMII/RecMII analytical estimates are used
+  // (no MapToAcceleratorPass). This is safe for speculative balance checks
+  // where the mapper may backtrack indefinitely on larger tile arrays.
   void profileTask(TaskGraphNode *node, TaskflowTaskOp task,
                    bool skip_mapper = false) {
     MLIRContext *ctx = task.getContext();
@@ -454,6 +436,17 @@ private:
 
     // Erases the temporary module.
     tmp_mod.erase();
+  }
+
+private:
+  llvm::DenseSet<std::pair<TaskGraphNode *, TaskGraphNode *>> edge_set;
+
+  void addEdge(TaskGraphNode *from, TaskGraphNode *to) {
+    auto key = std::make_pair(from, to);
+    if (edge_set.insert(key).second) {
+      from->successors.push_back(to);
+      to->predecessors.push_back(from);
+    }
   }
 
   // Wraps a neura.kernel into a standalone func in dst_module, runs
@@ -1725,7 +1718,7 @@ struct ResourceAwareTaskOptimizationPass
       // mapper is skipped entirely (only ResMII/RecMII estimates are used).
       auto profile_fn = [&graph, use_analytical](TaskGraphNode *node,
                                                  TaskflowTaskOp task) {
-        graph.profileTaskPublic(node, task, /*skip_mapper=*/use_analytical);
+        graph.profileTask(node, task, /*skip_mapper=*/use_analytical);
       };
       bool fuse_changed = fuser.fuse(func, graph, profile_fn);
 
@@ -1739,11 +1732,13 @@ struct ResourceAwareTaskOptimizationPass
       }
 
       // Phase 2: Latency-Aware Pipeline Balance.
-      // Balance probes use analytical-only profiling by default.
-      bool balance_skip = use_analytical || balanceSkipMapper.getValue();
-      auto balance_profile_fn = [&graph, balance_skip](TaskGraphNode *node,
+      // Balance probes always use analytical-only profiling (skip_mapper=true)
+      // to avoid exponential backtracking blowup during speculative probing.
+      // The balance-skip-mapper flag now only controls whether a final
+      // verification mapper run is performed after convergence (see below).
+      auto balance_profile_fn = [&graph](TaskGraphNode *node,
                                                        TaskflowTaskOp task) {
-        graph.profileTaskPublic(node, task, /*skip_mapper=*/balance_skip);
+        graph.profileTask(node, task, /*skip_mapper=*/true);
       };
       PipelineBalancer balancer;
       bool balance_changed = balancer.balance(graph, balance_profile_fn);
@@ -1777,19 +1772,22 @@ struct ResourceAwareTaskOptimizationPass
                    << graph.getTotalAllocatedCGRAs() << "\n";
 
       if (!balance_changed && !fuse_changed) {
-        // Converged — writes ALL attributes (cgra_count, ii, steps) to IR
-        // for every task. Non-fused tasks only got cgra_count written during
-        // intermediate iterations; ii, steps, and trip_count live only in the
-        // graph node and must be persisted here.
-        //
-        // Note: no re-profiling is done here.  When balance-skip-mapper=true
-        // (the default), the balance phase uses analytical estimates; those
-        // are the values written to the final IR.  When
-        // balance-skip-mapper=false, the balance phase already ran the real
-        // mapper for each speculative probe, so the graph already contains
-        // accurate compiled_ii / steps values.  Either way, the converged
-        // graph state is authoritative and written directly to IR.
+        // Converged — optionally re-profile with the real mapper for accuracy.
+        // When balance-skip-mapper=false, runs the mapper once per task that
+        // had its cgra_count changed, to get authoritative compiled_ii/steps.
+        bool balance_skip_mapper = use_analytical || balanceSkipMapper.getValue();
+        if (!balance_skip_mapper) {
+          llvm::errs() << "[ResourceAware] Running final mapper verification "
+                       << "for converged allocation...\n";
+          for (auto &node : graph.nodes) {
+            // Re-profile with the real mapper to get accurate II/steps.
+            node->shape = pickBestShape(node->cgra_count);
+            graph.profileTask(node.get(), node->op,
+                                    /*skip_mapper=*/false);
+          }
+        }
 
+        // Writes ALL attributes (cgra_count, ii, steps) to IR for every task.
         for (auto &node : graph.nodes) {
           OpBuilder b(node->op);
           node->shape = pickBestShape(node->cgra_count);
