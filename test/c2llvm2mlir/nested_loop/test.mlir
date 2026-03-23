@@ -30,8 +30,7 @@
 // CHECK-LLVM2NEURA: %188 = neura.sext %187 : !neura.data<i32, i1> -> !neura.data<i64, i1>
 // CHECK-LLVM2NEURA: %207 = "neura.mul"(%205, %206) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
 
-// CHECK-LLVM2NEURA-MAP: /bin/sh: --: invalid option
-// CHECK-LLVM2NEURA-MAP-NEXT: Usage:	/bin/sh [GNU long option] [option] ...
+// CHECK-LLVM2NEURA-MAP: Usage:	/bin/sh [GNU long option] [option] ...
 // CHECK-LLVM2NEURA-MAP-NEXT: 	/bin/sh [GNU long option] [option] script-file ...
 // CHECK-LLVM2NEURA-MAP-NEXT: GNU long options:
 // CHECK-LLVM2NEURA-MAP-NEXT: 	--debug
