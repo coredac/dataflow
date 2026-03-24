@@ -52,7 +52,7 @@
 // MAPPING-NEXT:     %25 = "neura.icmp"(%24) <{cmpType = "eq"}> {dfg_id = 20 : i32, mapping_locs = [{id = 10 : i32, index_per_ii = 3 : i32, invalid_iterations = 0 : i32, resource = "tile", time_step = 3 : i32, x = 2 : i32, y = 2 : i32}], rhs_value = 32 : i64} : (!neura.data<i64, i1>) -> !neura.data<i1, i1>
 // MAPPING-NEXT:     %26 = "neura.data_mov"(%25) {dfg_id = 24 : i32, mapping_locs = [{id = 320 : i32, index_per_ii = 3 : i32, invalid_iterations = 0 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 3 : i32}]} : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
 // MAPPING-NEXT:     %27 = "neura.not"(%26) {dfg_id = 27 : i32, mapping_locs = [{id = 10 : i32, index_per_ii = 4 : i32, invalid_iterations = 0 : i32, resource = "tile", time_step = 4 : i32, x = 2 : i32, y = 2 : i32}]} : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
-// MAPPING-NEXT:     %28 = "neura.data_mov"(%23) {dfg_id = 16 : i32, mapping_locs = [{id = 321 : i32, index_per_ii = 2 : i32, invalid_iterations = 0 : i32, per_tile_register_id = 1 : i32, resource = "register", time_step = 2 : i32}, {id = 321 : i32, index_per_ii = 3 : i32, invalid_iterations = 0 : i32, per_tile_register_id = 1 : i32, resource = "register", time_step = 3 : i32}, {id = 321 : i32, index_per_ii = 4 : i32, invalid_iterations = 0 : i32, per_tile_register_id = 1 : i32, resource = "register", time_step = 4 : i32}]} : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
+// MAPPING-NEXT:     %28 = "neura.data_mov"(%23) {dfg_id = 16 : i32, mapping_locs = [{id = 328 : i32, index_per_ii = 2 : i32, invalid_iterations = 0 : i32, per_tile_register_id = 8 : i32, resource = "register", time_step = 2 : i32}, {id = 328 : i32, index_per_ii = 3 : i32, invalid_iterations = 0 : i32, per_tile_register_id = 8 : i32, resource = "register", time_step = 3 : i32}, {id = 328 : i32, index_per_ii = 4 : i32, invalid_iterations = 0 : i32, per_tile_register_id = 8 : i32, resource = "register", time_step = 4 : i32}]} : (!neura.data<i64, i1>) -> !neura.data<i64, i1>
 // MAPPING-NEXT:     %29 = "neura.data_mov"(%27) {dfg_id = 30 : i32, mapping_locs = [{id = 320 : i32, index_per_ii = 4 : i32, invalid_iterations = 0 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 4 : i32}]} : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
 // MAPPING-NEXT:     %30 = neura.grant_predicate %28, %29 {dfg_id = 32 : i32, mapping_locs = [{id = 10 : i32, index_per_ii = 0 : i32, invalid_iterations = 1 : i32, resource = "tile", time_step = 5 : i32, x = 2 : i32, y = 2 : i32}]} : !neura.data<i64, i1>, !neura.data<i1, i1> -> !neura.data<i64, i1>
 // MAPPING-NEXT:     neura.ctrl_mov %30 -> %5 {dfg_id = 34 : i32, mapping_locs = [{id = 320 : i32, index_per_ii = 0 : i32, invalid_iterations = 1 : i32, per_tile_register_id = 0 : i32, resource = "register", time_step = 5 : i32}]} : !neura.data<i64, i1> !neura.data<i64, i1>
@@ -69,6 +69,7 @@
 // MAPPING-NEXT:     neura.return_value %39 : !neura.data<i32, i1> {dfg_id = 43 : i32, mapping_locs = [{id = 13 : i32, index_per_ii = 0 : i32, invalid_iterations = 2 : i32, resource = "tile", time_step = 10 : i32, x = 1 : i32, y = 3 : i32}]}
 // MAPPING-NEXT:     neura.yield {dfg_id = 4 : i32}
 // MAPPING-NEXT:   }
+// MAPPING-NEXT: }
 
 
 // YAML: array_config:
@@ -369,123 +370,7 @@
 // YAML-NEXT:                   time_step: 5
 // YAML-NEXT:                   invalid_iterations: 1
 // YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "$1"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                     - operand: "$0"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "$0"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:             - index_per_ii: 1
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "PHI_START"
-// YAML-NEXT:                   id: 7
-// YAML-NEXT:                   time_step: 1
-// YAML-NEXT:                   invalid_iterations: 0
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "EAST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                     - operand: "$0"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "SOUTH"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                     - operand: "EAST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                     - operand: "$0"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:             - index_per_ii: 2
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "ADD"
-// YAML-NEXT:                   id: 13
-// YAML-NEXT:                   time_step: 2
-// YAML-NEXT:                   invalid_iterations: 0
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "$0"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                     - operand: "#4"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "$0"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                     - operand: "$1"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:             - index_per_ii: 3
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "ICMP_EQ"
-// YAML-NEXT:                   id: 20
-// YAML-NEXT:                   time_step: 3
-// YAML-NEXT:                   invalid_iterations: 0
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "$0"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                     - operand: "#32"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "$0"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                     - operand: "WEST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:             - index_per_ii: 4
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "NOT"
-// YAML-NEXT:                   id: 27
-// YAML-NEXT:                   time_step: 4
-// YAML-NEXT:                   invalid_iterations: 0
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "$0"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "$0"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                     - operand: "WEST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:     - column: 3
-// YAML-NEXT:       row: 2
-// YAML-NEXT:       core_id: "11"
-// YAML-NEXT:       entries:
-// YAML-NEXT:         - entry_id: "entry0"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - index_per_ii: 0
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "GRANT_ONCE"
-// YAML-NEXT:                   id: 0
-// YAML-NEXT:                   time_step: 0
-// YAML-NEXT:                   invalid_iterations: 0
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "#0"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "WEST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:             - index_per_ii: 2
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "GEP"
-// YAML-NEXT:                   id: 14
-// YAML-NEXT:                   time_step: 2
-// YAML-NEXT:                   invalid_iterations: 0
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "arg2"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                     - operand: "WEST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "SOUTH"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:     - column: 1
-// YAML-NEXT:       row: 3
-// YAML-NEXT:       core_id: "13"
-// YAML-NEXT:       entries:
-// YAML-NEXT:         - entry_id: "entry0"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - index_per_ii: 0
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "RETURN_VALUE"
-// YAML-NEXT:                   id: 43
-// YAML-NEXT:                   time_step: 10
-// YAML-NEXT:                   invalid_iterations: 2
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "SOUTH"
+// YAML-NEXT:                     - operand: "$8"
 // YAML-NEXT:                       color: "RED"
 
 
@@ -551,13 +436,13 @@
 // ASM-NEXT: } (idx_per_ii=4)
 // ASM: PE(2,2):
 // ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [$1], [$0] -> [$0] (t=5, inv_iters=1)
+// ASM-NEXT:   GRANT_PREDICATE, [$8], [$0] -> [$0] (t=5, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=0)
 // ASM-NEXT: {
 // ASM-NEXT:   PHI_START, [EAST, RED], [$0] -> [SOUTH, RED], [EAST, RED], [$0] (t=1, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=1)
 // ASM-NEXT: {
-// ASM-NEXT:   ADD, [$0], [#4] -> [$0], [$1] (t=2, inv_iters=0)
+// ASM-NEXT:   ADD, [$0], [#4] -> [$0], [$8] (t=2, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=2)
 // ASM-NEXT: {
 // ASM-NEXT:   ICMP_EQ, [$0], [#32] -> [$0], [WEST, RED] (t=3, inv_iters=0)

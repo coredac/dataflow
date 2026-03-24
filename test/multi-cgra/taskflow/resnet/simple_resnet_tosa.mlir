@@ -64,7 +64,7 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
   }
 }
 
-// AFFINE:      module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
+// AFFINE: module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // AFFINE-NEXT:   memref.global "private" constant @__constant_64xf32 : memref<64xf32> = dense<0.000000e+00> {alignment = 64 : i64}
 // AFFINE-NEXT:   memref.global "private" constant @__constant_64x3x3x64xf32_0 : memref<64x3x3x64xf32> = dense<-0.0151730878> {alignment = 64 : i64}
 // AFFINE-NEXT:   memref.global "private" constant @__constant_64x3x3x64xf32 : memref<64x3x3x64xf32> = dense<0.0197670367> {alignment = 64 : i64}
@@ -239,7 +239,7 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // AFFINE-NEXT: }
 
 
-// KERNEL:      module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
+// KERNEL: module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // KERNEL-NEXT:   memref.global "private" constant @__constant_64xf32 : memref<64xf32> = dense<0.000000e+00> {alignment = 64 : i64}
 // KERNEL-NEXT:   memref.global "private" constant @__constant_64x3x3x64xf32_0 : memref<64x3x3x64xf32> = dense<-0.0151730878> {alignment = 64 : i64}
 // KERNEL-NEXT:   memref.global "private" constant @__constant_64x3x3x64xf32 : memref<64x3x3x64xf32> = dense<0.0197670367> {alignment = 64 : i64}
@@ -523,7 +523,7 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 
 
 
-// STREAM:      module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
+// STREAM: module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // STREAM-NEXT:   memref.global "private" constant @__constant_64xf32 : memref<64xf32> = dense<0.000000e+00> {alignment = 64 : i64}
 // STREAM-NEXT:   memref.global "private" constant @__constant_64x3x3x64xf32_0 : memref<64x3x3x64xf32> = dense<-0.0151730878> {alignment = 64 : i64}
 // STREAM-NEXT:   memref.global "private" constant @__constant_64x3x3x64xf32 : memref<64x3x3x64xf32> = dense<0.0197670367> {alignment = 64 : i64}
@@ -705,16 +705,207 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // STREAM-NEXT: }
 
 
-// RESOPT:      taskflow.task @Task_1_Task_0_Task_2_utilfused_utilfused
-// RESOPT-SAME: {cgra_count = 2 : i32, compiled_ii = 5 : i32, steps = 3 : i32, tile_shape = "1x2", trip_count = 6400 : i32}
-// RESOPT:      taskflow.task @Task_3
-// RESOPT-SAME: {cgra_count = 2 : i32, compiled_ii = 3 : i32, steps = 6 : i32, tile_shape = "1x2", trip_count = 2359296 : i32}
-// RESOPT:      taskflow.task @Task_4_Task_5_fused_Task_7_utilfused
-// RESOPT-SAME: {cgra_count = 2 : i32, compiled_ii = 4 : i32, steps = 7 : i32, tile_shape = "1x2", trip_count = 6400 : i32}
-// RESOPT:      taskflow.task @Task_6_Task_8_utilfused
-// RESOPT-SAME: {cgra_count = 2 : i32, compiled_ii = 3 : i32, steps = 3 : i32, tile_shape = "1x2", trip_count = 4096 : i32}
-// RESOPT:      taskflow.task @Task_9
-// RESOPT-SAME: {cgra_count = 2 : i32, compiled_ii = 3 : i32, steps = 6 : i32, tile_shape = "1x2", trip_count = 2359296 : i32}
-// RESOPT:      taskflow.task @Task_10_Task_11_Task_12_fused_fused
-// RESOPT-SAME: {cgra_count = 2 : i32, compiled_ii = 7 : i32, steps = 8 : i32, tile_shape = "1x2", trip_count = 4096 : i32}
-// RESOPT:      return
+// RESOPT: module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
+// RESOPT-NEXT:   memref.global "private" constant @__constant_64xf32 : memref<64xf32> = dense<0.000000e+00> {alignment = 64 : i64}
+// RESOPT-NEXT:   memref.global "private" constant @__constant_64x3x3x64xf32_0 : memref<64x3x3x64xf32> = dense<-0.0151730878> {alignment = 64 : i64}
+// RESOPT-NEXT:   memref.global "private" constant @__constant_64x3x3x64xf32 : memref<64x3x3x64xf32> = dense<0.0197670367> {alignment = 64 : i64}
+// RESOPT-NEXT:   func.func @forward(%arg0: memref<1x64x8x8xf32>) -> memref<1x64x8x8xf32> {
+// RESOPT-NEXT:     %cst = arith.constant 0.0197670367 : f32
+// RESOPT-NEXT:     %cst_0 = arith.constant -0.0151730878 : f32
+// RESOPT-NEXT:     %cst_1 = arith.constant 3.40282347E+38 : f32
+// RESOPT-NEXT:     %cst_2 = arith.constant 0.000000e+00 : f32
+// RESOPT-NEXT:     %alloc = memref.alloc() {alignment = 64 : i64} : memref<1x8x8x64xf32>
+// RESOPT-NEXT:     %alloc_3 = memref.alloc() {alignment = 64 : i64} : memref<1x10x10x64xf32>
+// RESOPT-NEXT:     %alloc_4 = memref.alloc() {alignment = 64 : i64} : memref<1x8x8x64xf32>
+// RESOPT-NEXT:     %dependency_read_out, %dependency_write_out:3 = taskflow.task @Task_1_Task_0_Task_2_utilfused_utilfused dependency_read_in(%arg0 : memref<1x64x8x8xf32>) dependency_write_in(%alloc_3, %alloc, %alloc_4 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>) value_inputs(%cst_2 : f32) [original_read_memrefs(%arg0 : memref<1x64x8x8xf32>), original_write_memrefs(%alloc_3, %alloc, %alloc_4 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>)] {cgra_count = 2 : i32, compiled_ii = 5 : i32, steps = 3 : i32, tile_shape = "1x2", trip_count = 6400 : i32} : (memref<1x64x8x8xf32>, memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>, f32) -> (memref<1x64x8x8xf32>, memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>) {
+// RESOPT-NEXT:     ^bb0(%arg1: memref<1x64x8x8xf32>, %arg2: memref<1x10x10x64xf32>, %arg3: memref<1x8x8x64xf32>, %arg4: memref<1x8x8x64xf32>, %arg5: f32):
+// RESOPT-NEXT:       %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// RESOPT-NEXT:       %1 = taskflow.counter parent(%0 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 10 : index} : index
+// RESOPT-NEXT:       %2 = taskflow.counter parent(%1 : index) attributes {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 10 : index} : index
+// RESOPT-NEXT:       %3 = taskflow.counter parent(%2 : index) attributes {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// RESOPT-NEXT:       neura.kernel inputs(%arg5, %arg2, %arg1, %arg3, %arg4 : f32, memref<1x10x10x64xf32>, memref<1x64x8x8xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>) attributes {accelerator = "neura", dataflow_mode = "predicate"} {
+// RESOPT-NEXT:       ^bb0(%arg6: f32, %arg7: memref<1x10x10x64xf32>, %arg8: memref<1x64x8x8xf32>, %arg9: memref<1x8x8x64xf32>, %arg10: memref<1x8x8x64xf32>):
+// RESOPT-NEXT:         %12 = "neura.constant"() <{value = "%input1"}> : () -> !neura.data<memref<1x10x10x64xf32>, i1>
+// RESOPT-NEXT:         %13 = neura.counter {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %14 = neura.counter {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 10 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %15 = neura.counter {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 10 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %16 = neura.counter {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         neura.store_indexed %12 to %12[%13, %14, %15, %16 : !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>] !neura.data<memref<1x10x10x64xf32>, i1> {lhs_value = "%input0"} : !neura.data<memref<1x10x10x64xf32>, i1>
+// RESOPT-NEXT:         %17 = neura.counter {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %18 = neura.counter {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %19 = neura.counter {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %20 = neura.counter {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %21 = neura.load_indexed [%17, %20, %18, %19 : !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>]  {lhs_value = "%input0"} : !neura.data<f32, i1>
+// RESOPT-NEXT:         neura.store_indexed %21 to [%17, %18, %19, %20 : !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>]  {rhs_value = "%input1"} : !neura.data<f32, i1>
+// RESOPT-NEXT:         %22 = "neura.constant"() <{value = "%input1"}> : () -> !neura.data<memref<1x8x8x64xf32>, i1>
+// RESOPT-NEXT:         %23 = neura.counter {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %24 = neura.counter {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %25 = neura.counter {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %26 = neura.counter {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         neura.store_indexed %22 to %22[%23, %24, %25, %26 : !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>] !neura.data<memref<1x8x8x64xf32>, i1> {lhs_value = "%input0"} : !neura.data<memref<1x8x8x64xf32>, i1>
+// RESOPT-NEXT:         neura.yield {yield_type = "void"}
+// RESOPT-NEXT:       }
+// RESOPT-NEXT:       %4 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// RESOPT-NEXT:       %5 = taskflow.counter parent(%4 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// RESOPT-NEXT:       %6 = taskflow.counter parent(%5 : index) attributes {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// RESOPT-NEXT:       %7 = taskflow.counter parent(%6 : index) attributes {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// RESOPT-NEXT:       %8 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// RESOPT-NEXT:       %9 = taskflow.counter parent(%8 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// RESOPT-NEXT:       %10 = taskflow.counter parent(%9 : index) attributes {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// RESOPT-NEXT:       %11 = taskflow.counter parent(%10 : index) attributes {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// RESOPT-NEXT:       taskflow.yield reads(%arg1 : memref<1x64x8x8xf32>) writes(%arg2, %arg3, %arg4 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>)
+// RESOPT-NEXT:     }
+// RESOPT-NEXT:     %dependency_read_out_5:2, %dependency_write_out_6 = taskflow.task @Task_3 dependency_read_in(%dependency_write_out#0, %dependency_write_out#2 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>) dependency_write_in(%dependency_write_out#2 : memref<1x8x8x64xf32>) value_inputs(%cst_0 : f32) [original_read_memrefs(%alloc_3, %alloc_4 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>), original_write_memrefs(%alloc_4 : memref<1x8x8x64xf32>)] {cgra_count = 2 : i32, compiled_ii = 3 : i32, steps = 6 : i32, tile_shape = "1x2", trip_count = 2359296 : i32} : (memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>, f32) -> (memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>) {
+// RESOPT-NEXT:     ^bb0(%arg1: memref<1x10x10x64xf32>, %arg2: memref<1x8x8x64xf32>, %arg3: memref<1x8x8x64xf32>, %arg4: f32):
+// RESOPT-NEXT:       %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// RESOPT-NEXT:       %1 = taskflow.counter parent(%0 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// RESOPT-NEXT:       %2 = taskflow.counter parent(%1 : index) attributes {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// RESOPT-NEXT:       %3 = taskflow.counter parent(%2 : index) attributes {counter_id = 3 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// RESOPT-NEXT:       %4 = taskflow.counter parent(%3 : index) attributes {counter_id = 4 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 3 : index} : index
+// RESOPT-NEXT:       %5 = taskflow.counter parent(%4 : index) attributes {counter_id = 5 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 3 : index} : index
+// RESOPT-NEXT:       %6 = taskflow.counter parent(%5 : index) attributes {counter_id = 6 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// RESOPT-NEXT:       neura.kernel inputs(%arg1, %arg3, %arg4 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, f32) attributes {accelerator = "neura", dataflow_mode = "predicate"} {
+// RESOPT-NEXT:       ^bb0(%arg5: memref<1x10x10x64xf32>, %arg6: memref<1x8x8x64xf32>, %arg7: f32):
+// RESOPT-NEXT:         %7 = neura.counter {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %8 = neura.counter {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %9 = neura.counter {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %10 = neura.counter {counter_id = 3 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %11 = neura.counter {counter_id = 4 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 3 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %12 = neura.counter {counter_id = 5 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 3 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %13 = neura.counter {counter_id = 6 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %14 = "neura.add"(%8, %11) : (!neura.data<index, i1>, !neura.data<index, i1>) -> !neura.data<index, i1>
+// RESOPT-NEXT:         %15 = "neura.add"(%9, %12) : (!neura.data<index, i1>, !neura.data<index, i1>) -> !neura.data<index, i1>
+// RESOPT-NEXT:         %16 = neura.load_indexed [%7, %14, %15, %13 : !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>]  {lhs_value = "%input0"} : !neura.data<f32, i1>
+// RESOPT-NEXT:         %17 = neura.load_indexed [%7, %8, %9, %10 : !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>]  {lhs_value = "%input1"} : !neura.data<f32, i1>
+// RESOPT-NEXT:         %18 = "neura.fmul"(%16) {rhs_value = "%input2"} : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
+// RESOPT-NEXT:         %19 = "neura.fadd"(%17, %18) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// RESOPT-NEXT:         neura.store_indexed %19 to [%7, %8, %9, %10 : !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>]  {rhs_value = "%input1"} : !neura.data<f32, i1>
+// RESOPT-NEXT:         neura.yield {yield_type = "void"}
+// RESOPT-NEXT:       }
+// RESOPT-NEXT:       taskflow.yield reads(%arg1, %arg3 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>) writes(%arg3 : memref<1x8x8x64xf32>)
+// RESOPT-NEXT:     }
+// RESOPT-NEXT:     %alloc_7 = memref.alloc() {alignment = 64 : i64} : memref<1x64x8x8xf32>
+// RESOPT-NEXT:     %alloc_8 = memref.alloc() {alignment = 64 : i64} : memref<1x8x8x64xf32>
+// RESOPT-NEXT:     %alloc_9 = memref.alloc() {alignment = 64 : i64} : memref<1x10x10x64xf32>
+// RESOPT-NEXT:     %dependency_read_out_10, %dependency_write_out_11:2 = taskflow.task @Task_4_Task_5_fused_Task_7_utilfused dependency_read_in(%dependency_write_out_6 : memref<1x8x8x64xf32>) dependency_write_in(%alloc_7, %alloc_9 : memref<1x64x8x8xf32>, memref<1x10x10x64xf32>) value_inputs(%cst_1, %cst_2 : f32, f32) [original_read_memrefs(%alloc_4 : memref<1x8x8x64xf32>), original_write_memrefs(%alloc_7, %alloc_9 : memref<1x64x8x8xf32>, memref<1x10x10x64xf32>)] {cgra_count = 2 : i32, compiled_ii = 4 : i32, steps = 7 : i32, tile_shape = "1x2", trip_count = 6400 : i32} : (memref<1x8x8x64xf32>, memref<1x64x8x8xf32>, memref<1x10x10x64xf32>, f32, f32) -> (memref<1x8x8x64xf32>, memref<1x64x8x8xf32>, memref<1x10x10x64xf32>) {
+// RESOPT-NEXT:     ^bb0(%arg1: memref<1x8x8x64xf32>, %arg2: memref<1x64x8x8xf32>, %arg3: memref<1x10x10x64xf32>, %arg4: f32, %arg5: f32):
+// RESOPT-NEXT:       %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// RESOPT-NEXT:       %1 = taskflow.counter parent(%0 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// RESOPT-NEXT:       %2 = taskflow.counter parent(%1 : index) attributes {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// RESOPT-NEXT:       %3 = taskflow.counter parent(%2 : index) attributes {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// RESOPT-NEXT:       neura.kernel inputs(%arg1, %arg4, %arg5, %arg2, %arg3 : memref<1x8x8x64xf32>, f32, f32, memref<1x64x8x8xf32>, memref<1x10x10x64xf32>) attributes {accelerator = "neura", dataflow_mode = "predicate"} {
+// RESOPT-NEXT:       ^bb0(%arg6: memref<1x8x8x64xf32>, %arg7: f32, %arg8: f32, %arg9: memref<1x64x8x8xf32>, %arg10: memref<1x10x10x64xf32>):
+// RESOPT-NEXT:         %8 = "neura.constant"() <{value = "%input1"}> : () -> !neura.data<f32, i1>
+// RESOPT-NEXT:         %9 = "neura.constant"() <{value = "%input2"}> : () -> !neura.data<f32, i1>
+// RESOPT-NEXT:         %10 = neura.counter {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %11 = neura.counter {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %12 = neura.counter {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %13 = neura.counter {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %14 = neura.load_indexed [%10, %12, %13, %11 : !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>]  {lhs_value = "%input0"} : !neura.data<f32, i1>
+// RESOPT-NEXT:         %15 = "neura.fcmp"(%14, %8) <{cmpType = "olt"}> : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// RESOPT-NEXT:         %16 = "neura.sel"(%15, %14, %8) : (!neura.data<f32, i1>, !neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// RESOPT-NEXT:         %17 = "neura.fcmp"(%16, %9) <{cmpType = "ogt"}> : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// RESOPT-NEXT:         %18 = "neura.sel"(%17, %16, %9) : (!neura.data<f32, i1>, !neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// RESOPT-NEXT:         neura.store_indexed %18 to [%10, %11, %12, %13 : !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>]  {rhs_value = "%input3"} : !neura.data<f32, i1>
+// RESOPT-NEXT:         %19 = "neura.constant"() <{value = "%input1"}> : () -> !neura.data<memref<1x10x10x64xf32>, i1>
+// RESOPT-NEXT:         %20 = neura.counter {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %21 = neura.counter {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 10 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %22 = neura.counter {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 10 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %23 = neura.counter {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         neura.store_indexed %19 to %19[%20, %21, %22, %23 : !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>] !neura.data<memref<1x10x10x64xf32>, i1> {lhs_value = "%input0"} : !neura.data<memref<1x10x10x64xf32>, i1>
+// RESOPT-NEXT:         neura.yield {yield_type = "void"}
+// RESOPT-NEXT:       }
+// RESOPT-NEXT:       %4 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// RESOPT-NEXT:       %5 = taskflow.counter parent(%4 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 10 : index} : index
+// RESOPT-NEXT:       %6 = taskflow.counter parent(%5 : index) attributes {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 10 : index} : index
+// RESOPT-NEXT:       %7 = taskflow.counter parent(%6 : index) attributes {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// RESOPT-NEXT:       taskflow.yield reads(%arg1 : memref<1x8x8x64xf32>) writes(%arg2, %arg3 : memref<1x64x8x8xf32>, memref<1x10x10x64xf32>)
+// RESOPT-NEXT:     }
+// RESOPT-NEXT:     %alloc_12 = memref.alloc() {alignment = 64 : i64} : memref<1x8x8x64xf32>
+// RESOPT-NEXT:     %dependency_read_out_13, %dependency_write_out_14:2 = taskflow.task @Task_6_Task_8_utilfused dependency_read_in(%dependency_write_out_11#0 : memref<1x64x8x8xf32>) dependency_write_in(%alloc_8, %alloc_12 : memref<1x8x8x64xf32>, memref<1x8x8x64xf32>) value_inputs(%cst_2 : f32) [original_read_memrefs(%alloc_7 : memref<1x64x8x8xf32>), original_write_memrefs(%alloc_8, %alloc_12 : memref<1x8x8x64xf32>, memref<1x8x8x64xf32>)] {cgra_count = 2 : i32, compiled_ii = 3 : i32, steps = 3 : i32, tile_shape = "1x2", trip_count = 4096 : i32} : (memref<1x64x8x8xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>, f32) -> (memref<1x64x8x8xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>) {
+// RESOPT-NEXT:     ^bb0(%arg1: memref<1x64x8x8xf32>, %arg2: memref<1x8x8x64xf32>, %arg3: memref<1x8x8x64xf32>, %arg4: f32):
+// RESOPT-NEXT:       %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// RESOPT-NEXT:       %1 = taskflow.counter parent(%0 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// RESOPT-NEXT:       %2 = taskflow.counter parent(%1 : index) attributes {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// RESOPT-NEXT:       %3 = taskflow.counter parent(%2 : index) attributes {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// RESOPT-NEXT:       neura.kernel inputs(%arg1, %arg2, %arg4, %arg3 : memref<1x64x8x8xf32>, memref<1x8x8x64xf32>, f32, memref<1x8x8x64xf32>) attributes {accelerator = "neura", dataflow_mode = "predicate"} {
+// RESOPT-NEXT:       ^bb0(%arg5: memref<1x64x8x8xf32>, %arg6: memref<1x8x8x64xf32>, %arg7: f32, %arg8: memref<1x8x8x64xf32>):
+// RESOPT-NEXT:         %8 = neura.counter {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %9 = neura.counter {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %10 = neura.counter {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %11 = neura.counter {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %12 = neura.load_indexed [%8, %11, %9, %10 : !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>]  {lhs_value = "%input0"} : !neura.data<f32, i1>
+// RESOPT-NEXT:         neura.store_indexed %12 to [%8, %9, %10, %11 : !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>]  {rhs_value = "%input1"} : !neura.data<f32, i1>
+// RESOPT-NEXT:         %13 = "neura.constant"() <{value = "%input1"}> : () -> !neura.data<memref<1x8x8x64xf32>, i1>
+// RESOPT-NEXT:         %14 = neura.counter {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %15 = neura.counter {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %16 = neura.counter {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %17 = neura.counter {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         neura.store_indexed %13 to %13[%14, %15, %16, %17 : !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>] !neura.data<memref<1x8x8x64xf32>, i1> {lhs_value = "%input0"} : !neura.data<memref<1x8x8x64xf32>, i1>
+// RESOPT-NEXT:         neura.yield {yield_type = "void"}
+// RESOPT-NEXT:       }
+// RESOPT-NEXT:       %4 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// RESOPT-NEXT:       %5 = taskflow.counter parent(%4 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// RESOPT-NEXT:       %6 = taskflow.counter parent(%5 : index) attributes {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// RESOPT-NEXT:       %7 = taskflow.counter parent(%6 : index) attributes {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// RESOPT-NEXT:       taskflow.yield reads(%arg1 : memref<1x64x8x8xf32>) writes(%arg2, %arg3 : memref<1x8x8x64xf32>, memref<1x8x8x64xf32>)
+// RESOPT-NEXT:     }
+// RESOPT-NEXT:     %dependency_read_out_15:2, %dependency_write_out_16 = taskflow.task @Task_9 dependency_read_in(%dependency_write_out_11#1, %dependency_write_out_14#1 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>) dependency_write_in(%dependency_write_out_14#1 : memref<1x8x8x64xf32>) value_inputs(%cst : f32) [original_read_memrefs(%alloc_9, %alloc_12 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>), original_write_memrefs(%alloc_12 : memref<1x8x8x64xf32>)] {cgra_count = 2 : i32, compiled_ii = 3 : i32, steps = 6 : i32, tile_shape = "1x2", trip_count = 2359296 : i32} : (memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>, f32) -> (memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>) {
+// RESOPT-NEXT:     ^bb0(%arg1: memref<1x10x10x64xf32>, %arg2: memref<1x8x8x64xf32>, %arg3: memref<1x8x8x64xf32>, %arg4: f32):
+// RESOPT-NEXT:       %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// RESOPT-NEXT:       %1 = taskflow.counter parent(%0 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// RESOPT-NEXT:       %2 = taskflow.counter parent(%1 : index) attributes {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// RESOPT-NEXT:       %3 = taskflow.counter parent(%2 : index) attributes {counter_id = 3 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// RESOPT-NEXT:       %4 = taskflow.counter parent(%3 : index) attributes {counter_id = 4 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 3 : index} : index
+// RESOPT-NEXT:       %5 = taskflow.counter parent(%4 : index) attributes {counter_id = 5 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 3 : index} : index
+// RESOPT-NEXT:       %6 = taskflow.counter parent(%5 : index) attributes {counter_id = 6 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// RESOPT-NEXT:       neura.kernel inputs(%arg1, %arg3, %arg4 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, f32) attributes {accelerator = "neura", dataflow_mode = "predicate"} {
+// RESOPT-NEXT:       ^bb0(%arg5: memref<1x10x10x64xf32>, %arg6: memref<1x8x8x64xf32>, %arg7: f32):
+// RESOPT-NEXT:         %7 = neura.counter {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %8 = neura.counter {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %9 = neura.counter {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %10 = neura.counter {counter_id = 3 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %11 = neura.counter {counter_id = 4 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 3 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %12 = neura.counter {counter_id = 5 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 3 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %13 = neura.counter {counter_id = 6 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %14 = "neura.add"(%8, %11) : (!neura.data<index, i1>, !neura.data<index, i1>) -> !neura.data<index, i1>
+// RESOPT-NEXT:         %15 = "neura.add"(%9, %12) : (!neura.data<index, i1>, !neura.data<index, i1>) -> !neura.data<index, i1>
+// RESOPT-NEXT:         %16 = neura.load_indexed [%7, %14, %15, %13 : !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>]  {lhs_value = "%input0"} : !neura.data<f32, i1>
+// RESOPT-NEXT:         %17 = neura.load_indexed [%7, %8, %9, %10 : !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>]  {lhs_value = "%input1"} : !neura.data<f32, i1>
+// RESOPT-NEXT:         %18 = "neura.fmul"(%16) {rhs_value = "%input2"} : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
+// RESOPT-NEXT:         %19 = "neura.fadd"(%17, %18) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// RESOPT-NEXT:         neura.store_indexed %19 to [%7, %8, %9, %10 : !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>]  {rhs_value = "%input1"} : !neura.data<f32, i1>
+// RESOPT-NEXT:         neura.yield {yield_type = "void"}
+// RESOPT-NEXT:       }
+// RESOPT-NEXT:       taskflow.yield reads(%arg1, %arg3 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>) writes(%arg3 : memref<1x8x8x64xf32>)
+// RESOPT-NEXT:     }
+// RESOPT-NEXT:     %alloc_17 = memref.alloc() {alignment = 64 : i64} : memref<1x64x8x8xf32>
+// RESOPT-NEXT:     %dependency_read_out_18:2, %dependency_write_out_19 = taskflow.task @Task_10_Task_11_Task_12_fused_fused dependency_read_in(%dependency_write_out_16, %dependency_read_out : memref<1x8x8x64xf32>, memref<1x64x8x8xf32>) dependency_write_in(%alloc_17 : memref<1x64x8x8xf32>) value_inputs(%cst_1, %cst_2 : f32, f32) [original_read_memrefs(%alloc_12, %arg0 : memref<1x8x8x64xf32>, memref<1x64x8x8xf32>), original_write_memrefs(%alloc_17 : memref<1x64x8x8xf32>)] {cgra_count = 2 : i32, compiled_ii = 3 : i32, steps = 8 : i32, tile_shape = "1x2", trip_count = 4096 : i32} : (memref<1x8x8x64xf32>, memref<1x64x8x8xf32>, memref<1x64x8x8xf32>, f32, f32) -> (memref<1x8x8x64xf32>, memref<1x64x8x8xf32>, memref<1x64x8x8xf32>) {
+// RESOPT-NEXT:     ^bb0(%arg1: memref<1x8x8x64xf32>, %arg2: memref<1x64x8x8xf32>, %arg3: memref<1x64x8x8xf32>, %arg4: f32, %arg5: f32):
+// RESOPT-NEXT:       %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// RESOPT-NEXT:       %1 = taskflow.counter parent(%0 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// RESOPT-NEXT:       %2 = taskflow.counter parent(%1 : index) attributes {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// RESOPT-NEXT:       %3 = taskflow.counter parent(%2 : index) attributes {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// RESOPT-NEXT:       neura.kernel inputs(%arg1, %arg2, %arg4, %arg5, %arg3 : memref<1x8x8x64xf32>, memref<1x64x8x8xf32>, f32, f32, memref<1x64x8x8xf32>) attributes {accelerator = "neura", dataflow_mode = "predicate"} {
+// RESOPT-NEXT:       ^bb0(%arg6: memref<1x8x8x64xf32>, %arg7: memref<1x64x8x8xf32>, %arg8: f32, %arg9: f32, %arg10: memref<1x64x8x8xf32>):
+// RESOPT-NEXT:         %4 = "neura.constant"() <{value = "%input2"}> : () -> !neura.data<f32, i1>
+// RESOPT-NEXT:         %5 = "neura.constant"() <{value = "%input3"}> : () -> !neura.data<f32, i1>
+// RESOPT-NEXT:         %6 = neura.counter {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %7 = neura.counter {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %8 = neura.counter {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %9 = neura.counter {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %10 = neura.load_indexed [%6, %8, %9, %7 : !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>]  {lhs_value = "%input0"} : !neura.data<f32, i1>
+// RESOPT-NEXT:         %11 = neura.load_indexed [%6, %7, %8, %9 : !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>]  {lhs_value = "%input1"} : !neura.data<f32, i1>
+// RESOPT-NEXT:         %12 = "neura.fadd"(%10, %11) : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// RESOPT-NEXT:         %13 = "neura.fcmp"(%12, %4) <{cmpType = "olt"}> : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// RESOPT-NEXT:         %14 = "neura.sel"(%13, %12, %4) : (!neura.data<f32, i1>, !neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// RESOPT-NEXT:         %15 = "neura.fcmp"(%14, %5) <{cmpType = "ogt"}> : (!neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// RESOPT-NEXT:         %16 = "neura.sel"(%15, %14, %5) : (!neura.data<f32, i1>, !neura.data<f32, i1>, !neura.data<f32, i1>) -> !neura.data<f32, i1>
+// RESOPT-NEXT:         neura.store_indexed %16 to [%6, %7, %8, %9 : !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>, !neura.data<index, i1>]  {rhs_value = "%input4"} : !neura.data<f32, i1>
+// RESOPT-NEXT:         neura.yield {yield_type = "void"}
+// RESOPT-NEXT:       }
+// RESOPT-NEXT:       taskflow.yield reads(%arg1, %arg2 : memref<1x8x8x64xf32>, memref<1x64x8x8xf32>) writes(%arg3 : memref<1x64x8x8xf32>)
+// RESOPT-NEXT:     }
+// RESOPT-NEXT:     return %dependency_write_out_19 : memref<1x64x8x8xf32>
+// RESOPT-NEXT:   }
+// RESOPT-NEXT: }

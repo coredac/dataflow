@@ -394,7 +394,7 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:                     - operand: "SOUTH"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "$8"
+// YAML-NEXT:                     - operand: "$1"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:             - index_per_ii: 2
 // YAML-NEXT:               operations:
@@ -405,7 +405,7 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:                   src_operands:
 // YAML-NEXT:                     - operand: "$0"
 // YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                     - operand: "$8"
+// YAML-NEXT:                     - operand: "$1"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                   dst_operands:
 // YAML-NEXT:                     - operand: "SOUTH"
@@ -487,10 +487,10 @@ func.func @loop_test() -> f32 {
 // ASM-NEXT:   FADD, [SOUTH, RED], [#3.000000] -> [$0], [EAST, RED] (t=4, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=0)
 // ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [SOUTH, RED] -> [$8] (t=5, inv_iters=1)
+// ASM-NEXT:   DATA_MOV, [SOUTH, RED] -> [$1] (t=5, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=1)
 // ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [$0], [$8] -> [SOUTH, RED] (t=6, inv_iters=1)
+// ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [SOUTH, RED] (t=6, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=2)
 // ASM: PE(1,1):
 // ASM-NEXT: {

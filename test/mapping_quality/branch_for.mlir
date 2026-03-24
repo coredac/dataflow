@@ -365,7 +365,7 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:                   src_operands:
 // YAML-NEXT:                     - operand: "$0"
 // YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                     - operand: "$8"
+// YAML-NEXT:                     - operand: "$1"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                   dst_operands:
 // YAML-NEXT:                     - operand: "WEST"
@@ -375,7 +375,7 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:                   time_step: 4
 // YAML-NEXT:                   invalid_iterations: 1
 // YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "$16"
+// YAML-NEXT:                     - operand: "$8"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                   dst_operands:
 // YAML-NEXT:                     - operand: "NORTH"
@@ -408,9 +408,9 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                     - operand: "WEST"
 // YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                     - operand: "$16"
-// YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                     - operand: "$8"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "$1"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                     - operand: "EAST"
 // YAML-NEXT:                       color: "RED"
@@ -531,14 +531,14 @@ func.func @loop_test() -> f32 {
 // ASM-NEXT: } (idx_per_ii=2)
 // ASM: PE(2,1):
 // ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [$0], [$8] -> [WEST, RED] (t=4, inv_iters=1)
-// ASM-NEXT:   DATA_MOV, [$16] -> [NORTH, RED] (t=4, inv_iters=1)
+// ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [WEST, RED] (t=4, inv_iters=1)
+// ASM-NEXT:   DATA_MOV, [$8] -> [NORTH, RED] (t=4, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=0)
 // ASM-NEXT: {
 // ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$0] (t=2, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=2)
 // ASM-NEXT: {
-// ASM-NEXT:   ICMP_SLT, [WEST, RED], [EAST, RED] -> [SOUTH, RED], [WEST, RED], [$16], [$8], [EAST, RED], [NORTH, RED] (t=3, inv_iters=0)
+// ASM-NEXT:   ICMP_SLT, [WEST, RED], [EAST, RED] -> [SOUTH, RED], [WEST, RED], [$8], [$1], [EAST, RED], [NORTH, RED] (t=3, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=3)
 // ASM: PE(3,1):
 // ASM-NEXT: {
@@ -560,10 +560,10 @@ func.func @loop_test() -> f32 {
 // ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$0] (t=4, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=0)
 // ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [SOUTH, RED] -> [$8] (t=5, inv_iters=1)
+// ASM-NEXT:   DATA_MOV, [SOUTH, RED] -> [$1] (t=5, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=1)
 // ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [$0], [$8] -> [NORTH, RED] (t=6, inv_iters=1)
+// ASM-NEXT:   GRANT_PREDICATE, [$0], [$1] -> [NORTH, RED] (t=6, inv_iters=1)
 // ASM-NEXT: } (idx_per_ii=2)
 // ASM: PE(1,3):
 // ASM-NEXT: {

@@ -105,6 +105,18 @@ public:
   bool isAvailableAcrossTimeInRange(BasicResource *resource, int start_time,
                                     int exclusive_end_time) const;
 
+  // Checks availability of a register's cluster write port across the relevant
+  // time steps.  Returns false if a DIFFERENT register in the same
+  // RegisterFile is already writing at a congruent time slot.  Multiple writes
+  // to the SAME register are allowed (idempotent).
+  bool isRegisterWriteAvailableAcrossTime(Register *reg, int time_step) const;
+
+  // Checks availability of a register's cluster read port across the relevant
+  // time steps.  Returns false if a DIFFERENT register in the same
+  // RegisterFile is already reading at a congruent time slot.  Multiple reads
+  // from the SAME register are allowed (shared read).
+  bool isRegisterReadAvailableAcrossTime(Register *reg, int time_step) const;
+
   // Gets the operation at a specific (tile/link, time_step) location.
   std::optional<Operation *> getOpAt(MappingLoc loc) const;
 
@@ -154,13 +166,13 @@ public:
     return this->op_to_locs;
   }
   const std::unordered_map<RegisterFile *,
-                           std::unordered_map<int, Operation *>> &
+                           std::unordered_map<int, Register *>> &
   getRegFileWriteToOccupyOperations() const {
     return this->reg_file_write_to_occupy_operations;
   }
 
   const std::unordered_map<RegisterFile *,
-                           std::unordered_map<int, Operation *>> &
+                           std::unordered_map<int, Register *>> &
   getRegFileReadToOccupyOperations() const {
     return this->reg_file_read_to_occupy_operations;
   }
@@ -180,14 +192,14 @@ public:
   }
   void setRegFileWriteToOccupyOperations(
       const std::unordered_map<RegisterFile *,
-                               std::unordered_map<int, Operation *>>
+                               std::unordered_map<int, Register *>>
           &records) {
     this->reg_file_write_to_occupy_operations = records;
   }
 
   void setRegFileReadToOccupyOperations(
       const std::unordered_map<RegisterFile *,
-                               std::unordered_map<int, Operation *>>
+                               std::unordered_map<int, Register *>>
           &records) {
     this->reg_file_read_to_occupy_operations = records;
   }
@@ -205,21 +217,22 @@ private:
   std::map<Operation *, std::vector<MappingLoc>> op_to_locs;
 
   // Record table for register cluster write occupancy, keyed by (RegisterFile*,
-  // time_step % II). Maps to the Operation* that is writing to the cluster at
+  // time_step % II). Maps to the Register* that is writing to the cluster at
   // that canonical time slot. At most one writer is allowed per cluster per
   // slot, enforcing the hardware constraint that a register cluster supports
-  // only a single write port per cycle.
+  // only a single write port per cycle.  However, multiple writes to the SAME
+  // register are allowed (idempotent).
   std::unordered_map<RegisterFile *,
-                     std::unordered_map<int, Operation *>>
+                     std::unordered_map<int, Register *>>
       reg_file_write_to_occupy_operations;
 
   // Record table for register cluster read occupancy, keyed by (RegisterFile*,
-  // time_step % II). Maps to the Operation* that is reading from the cluster at
-  // that canonical time slot. At most one reader is allowed per cluster per
-  // slot, enforcing the hardware constraint that a register cluster supports
-  // only a single read port per cycle.
+  // time_step % II). Maps to the Register* that is reading from the cluster at
+  // that canonical time slot. Multiple reads from the SAME register are allowed
+  // (shared read), but reads from DIFFERENT registers in the same cluster are
+  // rejected (only one read port).
   std::unordered_map<RegisterFile *,
-                     std::unordered_map<int, Operation *>>
+                     std::unordered_map<int, Register *>>
       reg_file_read_to_occupy_operations;
 
   // Records the write operation for a register cluster slot.
@@ -237,18 +250,6 @@ private:
   // Removes the read operation from a register cluster slot
   // when the op is unbound/released.
   void removeReadFromRegFileRecord(Register *reg, int time_step);
-
-  // Checks availability of a register resource for writing across the relevant
-  // time steps, delegating the spatial-only vs modulo-II loop to a single helper.
-  // Returns false if any congruent time slot is occupied or violates the
-  // cluster constraint.
-  bool isRegisterWriteAvailableAcrossTime(Register *reg, int time_step) const;
-
-  // Checks availability of a register resource for reading across the relevant
-  // time steps, delegating the spatial-only vs modulo-II loop to a single helper.
-  // Returns false if any congruent time slot is occupied or violates the
-  // cluster constraint.
-  bool isRegisterReadAvailableAcrossTime(Register *reg, int time_step) const;
 };
 
 } // namespace neura
@@ -271,10 +272,10 @@ private:
   std::map<MappingLoc, Operation *> loc_to_op;
   std::map<Operation *, std::vector<MappingLoc>> op_to_locs;
   std::unordered_map<RegisterFile *,
-                     std::unordered_map<int, Operation *>>
+                     std::unordered_map<int, Register *>>
       reg_file_write_to_occupy_operations;
   std::unordered_map<RegisterFile *,
-                     std::unordered_map<int, Operation *>>
+                     std::unordered_map<int, Register *>>
       reg_file_read_to_occupy_operations;
 };
 } // namespace neura

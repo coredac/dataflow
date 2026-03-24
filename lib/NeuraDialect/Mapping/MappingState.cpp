@@ -47,10 +47,19 @@ bool MappingState::addWriteToRegFileRecord(Register *reg, int time_step) {
   // one.  This disallows both:
   //   * ADD NORTH, SOUTH -> $0, $1  (single op writing two regs in a cluster)
   //   * ADD -> $0  +  MOV -> $1     (two ops writing different regs in a cluster)
+  //
+  // However, multiple writes to the SAME register are allowed (idempotent):
+  //   * Route A writes $0 @t=4, Route B also writes $0 @t=4
+  //     -> same register, same port address, no conflict.
   if (it != slot_map.end()) {
+    // Same register -> OK (idempotent).
+    if (it->second == reg) {
+      return true;
+    }
+    // Different register -> conflict (only one write port).
     return false;
   }
-  slot_map[canonical_step] = nullptr; // Placeholder; caller identity not needed
+  slot_map[canonical_step] = reg;
   return true;
 }
 
@@ -62,13 +71,26 @@ bool MappingState::addReadToRegFileRecord(Register *reg, int time_step) {
   int canonical_step = time_step % II;
   auto &slot_map = reg_file_read_to_occupy_operations[reg_file];
   auto it = slot_map.find(canonical_step);
-  // Enforces the one-read-per-cluster-per-slot constraint: reject any second
-  // reader, regardless of whether it targets the same register or a different
-  // one.
+  // Multiple reads from the SAME register are allowed (shared read port).
+  // Reads from a DIFFERENT register in the same cluster are rejected
+  // (only one read port, so only one register address can be driven).
+  //
+  // Example 1 (allowed – shared read from same register):
+  //   Route A reads $0 @t=7, Route B also reads $0 @t=7
+  //   -> same register, read port is shared (broadcast to both consumers).
+  //
+  // Example 2 (rejected – two different registers in the same cluster):
+  //   Route A reads $0 @t=7, Route B reads $1 @t=7 ($0,$1 in same RegFile)
+  //   -> only one read port, cannot drive two different addresses.
   if (it != slot_map.end()) {
+    // Same register -> OK (shared read).
+    if (it->second == reg) {
+      return true;
+    }
+    // Different register -> conflict (only one read port).
     return false;
   }
-  slot_map[canonical_step] = nullptr; // Placeholder; caller identity not needed
+  slot_map[canonical_step] = reg;
   return true;
 }
 
@@ -123,8 +145,9 @@ bool MappingState::isRegisterWriteAvailableAcrossTime(Register *reg,
     return true;
   }
 
-  // Checks whether the cluster already has a writer at any congruent time slot.
-  auto checkSlot = [this, reg_file](int t) -> bool {
+  // Checks whether the cluster already has a writer at any congruent time slot
+  // targeting a different register.  Same-register writes are allowed.
+  auto checkSlot = [this, reg_file, reg](int t) -> bool {
     int canonical_step = t % II;
     auto reg_file_it = reg_file_write_to_occupy_operations.find(reg_file);
     if (reg_file_it == reg_file_write_to_occupy_operations.end()) {
@@ -134,7 +157,11 @@ bool MappingState::isRegisterWriteAvailableAcrossTime(Register *reg,
     if (slot_it == reg_file_it->second.end()) {
       return true;
     }
-    // Conflict: an existing writer in the cluster blocks a new write.
+    // Same register -> no conflict.
+    if (slot_it->second == reg) {
+      return true;
+    }
+    // Different register -> conflict (only one write port).
     return false;
   };
 
@@ -161,8 +188,9 @@ bool MappingState::isRegisterReadAvailableAcrossTime(Register *reg,
     return true;
   }
 
-  // Checks whether the cluster already has a reader at any congruent time slot.
-  auto checkSlot = [this, reg_file](int t) -> bool {
+  // Checks whether the cluster already has a reader at any congruent time slot
+  // targeting a different register.  Same-register reads are allowed (shared).
+  auto checkSlot = [this, reg_file, reg](int t) -> bool {
     int canonical_step = t % II;
     auto reg_file_it = reg_file_read_to_occupy_operations.find(reg_file);
     if (reg_file_it == reg_file_read_to_occupy_operations.end()) {
@@ -172,7 +200,11 @@ bool MappingState::isRegisterReadAvailableAcrossTime(Register *reg,
     if (slot_it == reg_file_it->second.end()) {
       return true;
     }
-    // Conflict: an existing reader in the cluster blocks a new read.
+    // Same register -> no conflict (shared read).
+    if (slot_it->second == reg) {
+      return true;
+    }
+    // Different register -> conflict (only one read port).
     return false;
   };
 
@@ -331,14 +363,22 @@ bool MappingState::isAvailableAcrossTime(const MappingLoc &loc) const {
     }
   }
 
-  // Register-cluster constraint: rejects when a *different* register in
-  // the same RegisterFile is already occupied at a congruent time slot.
-  if (loc.resource->getKind() == ResourceKind::Register) {
-    Register *reg = static_cast<Register *>(loc.resource);
-    if (!isRegisterWriteAvailableAcrossTime(reg, loc.time_step)) {
-      return false;
-    }
-  }
+  // NOTE: Register-file (cluster) port constraints (both write-vs-write AND
+  // read-vs-read) are enforced inside getAvailableRegister() in
+  // mapping_util.cpp, NOT here.  That function knows which time step is a
+  // write (start_time) and which is a read (exclusive_end_time - 1), so it
+  // calls:
+  //   - isRegisterWriteAvailableAcrossTime(reg, start_time)
+  //   - isRegisterReadAvailableAcrossTime(reg, exclusive_end_time - 1)
+  //
+  // We cannot check them here because isAvailableAcrossTime is called for
+  // every time step in a register's holding range (e.g., t=4 through t=16).
+  // Only t=4 actually uses the write port and only t=16 uses the read port;
+  // intermediate steps t=5..t=15 are "hold" steps that use neither port.
+  // Applying port constraints here would wrongly reject valid hold steps.
+  //
+  // Read and write ports are independent — one read AND one write can happen
+  // simultaneously on the same RegisterFile (they are separate ports).
 
   return true;
 }
