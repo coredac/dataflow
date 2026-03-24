@@ -152,7 +152,7 @@ module {
 // MAPPED-NEXT:     %c0_i32 = arith.constant 0 : i32
 // MAPPED-NEXT:     %dependency_read_out:2, %value_outputs = taskflow.task @Task_o dependency_read_in(%arg0, %arg2 : memref<?xi32>, memref<?xi32>) value_inputs(%c0_i32 : i32) : (memref<?xi32>, memref<?xi32>, i32) -> (memref<?xi32>, memref<?xi32>, i32) {
 // MAPPED-NEXT:     ^bb0(%arg3: memref<?xi32>, %arg4: memref<?xi32>, %arg5: i32):
-// MAPPED-NEXT:       %0 = neura.kernel inputs(%arg3, %arg4, %arg5 : memref<?xi32>, memref<?xi32>, i32) attributes {accelerator = "neura", dataflow_mode = "predicate", mapping_info = {compiled_ii = {{.*}} : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 4 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {
+// MAPPED-NEXT:       %0 = neura.kernel inputs(%arg3, %arg4, %arg5 : memref<?xi32>, memref<?xi32>, i32) attributes {accelerator = "neura", dataflow_mode = "predicate", mapping_info = {compiled_ii = 6 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 4 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}} {
 // MAPPED-NEXT:       ^bb0(%arg6: memref<?xi32>, %arg7: memref<?xi32>, %arg8: i32):
 // MAPPED-NEXT:         %1 = "neura.grant_once"() <{constant_value = "%input2"}> {dfg_id = 0 : i32, mapping_locs = [{id = 6 : i32, index_per_ii = 3 : i32, invalid_iterations = 0 : i32, resource = "tile", time_step = 3 : i32, x = 2 : i32, y = 1 : i32}]} : () -> !neura.data<i32, i1>
 // MAPPED-NEXT:         %2 = "neura.grant_once"() <{constant_value = 0 : i64}> {dfg_id = 1 : i32, mapping_locs = [{id = 0 : i32, index_per_ii = 0 : i32, invalid_iterations = 0 : i32, resource = "tile", time_step = 0 : i32, x = 0 : i32, y = 0 : i32}]} : () -> !neura.data<i64, i1>

@@ -209,4 +209,4 @@ module attributes {} {
 // FUSE-MAPPING:  func.func @_Z11simple_loopPiS_
 // FUSE-MAPPING-SAME: accelerator = "neura"
 // FUSE-MAPPING-SAME: dataflow_mode = "predicate"
-// FUSE-MAPPING-SAME: mapping_info = {compiled_ii = {{.*}} : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 1 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}
+// FUSE-MAPPING-SAME: mapping_info = {compiled_ii = 2 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 1 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}

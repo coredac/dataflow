@@ -14,7 +14,7 @@ func.func @test_print_op_graph(%a: f32, %b: f32) -> f32 {
 }
 
 // MAPPING:    module
-// MAPPING:    func.func @test_print_op_graph(%arg0: f32, %arg1: f32) -> f32 attributes {accelerator = "neura", dataflow_mode = "predicate", mapping_info = {compiled_ii = {{.*}} : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 1 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}}
+// MAPPING:    func.func @test_print_op_graph(%arg0: f32, %arg1: f32) -> f32 attributes {accelerator = "neura", dataflow_mode = "predicate", mapping_info = {compiled_ii = 1 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 1 : i32, res_mii = 1 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}}
 // MAPPING:    %0 = "neura.constant"() <{value = "%arg0"}> {dfg_id = 0 : i32, mapping_locs = [{id = 0 : i32, index_per_ii = 0 : i32, invalid_iterations = 0 : i32, resource = "tile", time_step = 0 : i32, x = 0 : i32, y = 0 : i32}]} : () -> !neura.data<f32, i1>
 // MAPPING:    %1 = "neura.data_mov"(%0) {dfg_id = 2 : i32, mapping_locs = [{id = 0 : i32, index_per_ii = 0 : i32, invalid_iterations = 0 : i32, resource = "link", time_step = 0 : i32}]} : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
 // MAPPING:    %2 = "neura.fadd"(%1) {dfg_id = 3 : i32, mapping_locs = [{id = 1 : i32, index_per_ii = 0 : i32, invalid_iterations = 1 : i32, resource = "tile", time_step = 1 : i32, x = 1 : i32, y = 0 : i32}], rhs_value = "%arg1"} : (!neura.data<f32, i1>) -> !neura.data<f32, i1>
