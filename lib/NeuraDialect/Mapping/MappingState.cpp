@@ -1,4 +1,6 @@
 #include "NeuraDialect/Mapping/MappingState.h"
+#include "NeuraDialect/Mapping/mapping_util.h"
+#include "NeuraDialect/NeuraOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -53,13 +55,14 @@ bool MappingState::addWriteToRegFileRecord(Register *reg, int time_step) {
   //     -> same register, same port address, no conflict.
   if (it != slot_map.end()) {
     // Same register -> OK (idempotent).
-    if (it->second == reg) {
+    if (it->second.first == reg) {
+      it->second.second++;
       return true;
     }
     // Different register -> conflict (only one write port).
     return false;
   }
-  slot_map[canonical_step] = reg;
+  slot_map[canonical_step] = {reg, 1};
   return true;
 }
 
@@ -84,13 +87,14 @@ bool MappingState::addReadToRegFileRecord(Register *reg, int time_step) {
   //   -> only one read port, cannot drive two different addresses.
   if (it != slot_map.end()) {
     // Same register -> OK (shared read).
-    if (it->second == reg) {
+    if (it->second.first == reg) {
+      it->second.second++;
       return true;
     }
     // Different register -> conflict (only one read port).
     return false;
   }
-  slot_map[canonical_step] = reg;
+  slot_map[canonical_step] = {reg, 1};
   return true;
 }
 
@@ -108,11 +112,14 @@ void MappingState::removeWriteFromRegFileRecord(Register *reg, int time_step) {
   if (slot_it == reg_file_it->second.end()) {
     return;
   }
-  // Removes the entry to free the cluster slot.
-  reg_file_it->second.erase(slot_it);
-  // Cleans up empty entries to keep the map compact.
-  if (reg_file_it->second.empty()) {
-    reg_file_write_to_occupy_operations.erase(reg_file_it);
+  slot_it->second.second--;
+  if (slot_it->second.second == 0) {
+    // Removes the entry to free the cluster slot.
+    reg_file_it->second.erase(slot_it);
+    // Cleans up empty entries to keep the map compact.
+    if (reg_file_it->second.empty()) {
+      reg_file_write_to_occupy_operations.erase(reg_file_it);
+    }
   }
 }
 
@@ -130,11 +137,14 @@ void MappingState::removeReadFromRegFileRecord(Register *reg, int time_step) {
   if (slot_it == reg_file_it->second.end()) {
     return;
   }
-  // Removes the entry to free the cluster slot.
-  reg_file_it->second.erase(slot_it);
-  // Cleans up empty entries to keep the map compact.
-  if (reg_file_it->second.empty()) {
-    reg_file_read_to_occupy_operations.erase(reg_file_it);
+  slot_it->second.second--;
+  if (slot_it->second.second == 0) {
+    // Removes the entry to free the cluster slot.
+    reg_file_it->second.erase(slot_it);
+    // Cleans up empty entries to keep the map compact.
+    if (reg_file_it->second.empty()) {
+      reg_file_read_to_occupy_operations.erase(reg_file_it);
+    }
   }
 }
 
@@ -158,7 +168,7 @@ bool MappingState::isRegisterWriteAvailableAcrossTime(Register *reg,
       return true;
     }
     // Same register -> no conflict.
-    if (slot_it->second == reg) {
+    if (slot_it->second.first == reg) {
       return true;
     }
     // Different register -> conflict (only one write port).
@@ -201,7 +211,7 @@ bool MappingState::isRegisterReadAvailableAcrossTime(Register *reg,
       return true;
     }
     // Same register -> no conflict (shared read).
-    if (slot_it->second == reg) {
+    if (slot_it->second.first == reg) {
       return true;
     }
     // Different register -> conflict (only one read port).
@@ -327,12 +337,12 @@ void MappingState::unbindOp(Operation *op) {
   op_to_locs.erase(it);
 }
 
-bool MappingState::isAvailableAcrossTime(const MappingLoc &loc) const {
+bool MappingState::isAvailableAcrossTime(const MappingLoc &loc, Operation *op) const {
   // Checks whether the resource at the given (resource, time_step) is free,
   // considering both occupancy state and the register-cluster constraint.
 
   // Returns true if the (resource, t) slot is free (or only IN_PIPE_OCCUPY).
-  auto isSlotFree = [this](BasicResource *resource, int t) -> bool {
+  auto isSlotFree = [this, op](BasicResource *resource, int t) -> bool {
     std::map<MappingLoc,
              std::vector<std::pair<int, Operation *>>>::const_iterator it =
         occupied_locs.find({resource, t});
@@ -341,6 +351,15 @@ bool MappingState::isAvailableAcrossTime(const MappingLoc &loc) const {
     }
     for (const std::pair<int, Operation *> &entry : it->second) {
       if (entry.first != IN_PIPE_OCCUPY) {
+        if (op && entry.second) {
+          if (auto mov1 = dyn_cast<neura::DataMovOp>(op)) {
+            if (auto mov2 = dyn_cast<neura::DataMovOp>(entry.second)) {
+              if (mov1.getOperand() == mov2.getOperand()) {
+                continue;
+              }
+            }
+          }
+        }
         return false;
       }
     }
@@ -384,9 +403,9 @@ bool MappingState::isAvailableAcrossTime(const MappingLoc &loc) const {
 }
 
 bool MappingState::isAvailableForOccupyStatus(const MappingLoc &loc,
-                                              int new_occupy_status) const {
+                                              int new_occupy_status, Operation *op) const {
   // Helper lambda to check a single location against all existing entries
-  auto checkSingleLoc = [this, new_occupy_status](const MappingLoc &check_loc) -> bool {
+  auto checkSingleLoc = [this, new_occupy_status, op](const MappingLoc &check_loc) -> bool {
     std::map<MappingLoc,
              std::vector<std::pair<int, Operation *>>>::const_iterator it =
         occupied_locs.find(check_loc);
@@ -398,6 +417,17 @@ bool MappingState::isAvailableForOccupyStatus(const MappingLoc &loc,
     // Checks against all existing entries at this location
     for (const std::pair<int, Operation *> &entry : it->second) {
       int existing_status = entry.first;
+      Operation *existing_op = entry.second;
+
+      if (op && existing_op) {
+        if (auto mov1 = dyn_cast<neura::DataMovOp>(op)) {
+          if (auto mov2 = dyn_cast<neura::DataMovOp>(existing_op)) {
+            if (mov1.getOperand() == mov2.getOperand()) {
+              continue;
+            }
+          }
+        }
+      }
 
       // Implements the pipeline-aware availability rules:
       // - SINGLE_OCCUPY (0): exclusive, no other op can share
@@ -487,12 +517,12 @@ int MappingState::getOccupyStatusAcrossTime(const MappingLoc &loc) const {
 
 bool MappingState::isAvailableAcrossTimeInRange(BasicResource *resource,
                                                 int start_time,
-                                                int exclusive_end_time) const {
+                                                int exclusive_end_time, Operation *op) const {
   // Checks the availability for each time step across time domain.
   for (int t = start_time; t < exclusive_end_time; ++t) {
     MappingLoc check_loc = {resource, t};
     // Checks the availability across time domain.
-    if (!isAvailableAcrossTime(check_loc)) {
+    if (!isAvailableAcrossTime(check_loc, op)) {
       return false;
     }
   }

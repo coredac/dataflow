@@ -84,7 +84,7 @@ public:
   // Note that the check is performed in II granularity.
   // For example, if II is 4, and we want to check (tile 2, step 5), then
   // it will check (tile 2, step 1), (tile 2, step 5), (tile 2, step 9), etc.
-  bool isAvailableAcrossTime(const MappingLoc &loc) const;
+  bool isAvailableAcrossTime(const MappingLoc &loc, Operation *op = nullptr) const;
 
   // Checks if a location is available for a specific occupy status.
   // This implements the pipeline-aware availability checking:
@@ -93,7 +93,7 @@ public:
   // - END_PIPE_OCCUPY: available if free or IN_PIPE_OCCUPY or START_PIPE_OCCUPY
   // - IN_PIPE_OCCUPY: always available (can pipeline with any status)
   bool isAvailableForOccupyStatus(const MappingLoc &loc,
-                                  int new_occupy_status) const;
+                                  int new_occupy_status, Operation *op = nullptr) const;
 
   // Gets the occupy status at a specific location across time domain.
   // Returns -1 if the location is not occupied.
@@ -103,7 +103,7 @@ public:
   // This function leverages the isAvailableAcrossTime function in each
   // time step.
   bool isAvailableAcrossTimeInRange(BasicResource *resource, int start_time,
-                                    int exclusive_end_time) const;
+                                    int exclusive_end_time, Operation *op = nullptr) const;
 
   // Checks availability of a register's cluster write port across the relevant
   // time steps.  Returns false if a DIFFERENT register in the same
@@ -166,13 +166,13 @@ public:
     return this->op_to_locs;
   }
   const std::unordered_map<RegisterFile *,
-                           std::unordered_map<int, Register *>> &
+                           std::unordered_map<int, std::pair<Register *, int>>> &
   getRegFileWriteToOccupyOperations() const {
     return this->reg_file_write_to_occupy_operations;
   }
 
   const std::unordered_map<RegisterFile *,
-                           std::unordered_map<int, Register *>> &
+                           std::unordered_map<int, std::pair<Register *, int>>> &
   getRegFileReadToOccupyOperations() const {
     return this->reg_file_read_to_occupy_operations;
   }
@@ -192,14 +192,14 @@ public:
   }
   void setRegFileWriteToOccupyOperations(
       const std::unordered_map<RegisterFile *,
-                               std::unordered_map<int, Register *>>
+                               std::unordered_map<int, std::pair<Register *, int>>>
           &records) {
     this->reg_file_write_to_occupy_operations = records;
   }
 
   void setRegFileReadToOccupyOperations(
       const std::unordered_map<RegisterFile *,
-                               std::unordered_map<int, Register *>>
+                               std::unordered_map<int, std::pair<Register *, int>>>
           &records) {
     this->reg_file_read_to_occupy_operations = records;
   }
@@ -221,9 +221,10 @@ private:
   // that canonical time slot. At most one writer is allowed per cluster per
   // slot, enforcing the hardware constraint that a register cluster supports
   // only a single write port per cycle.  However, multiple writes to the SAME
-  // register are allowed (idempotent).
+  // register are allowed (idempotent). Storing the reference count as the pair
+  // value ensures proper tracking during overlaps or backtracking.
   std::unordered_map<RegisterFile *,
-                     std::unordered_map<int, Register *>>
+                     std::unordered_map<int, std::pair<Register *, int>>>
       reg_file_write_to_occupy_operations;
 
   // Record table for register cluster read occupancy, keyed by (RegisterFile*,
@@ -232,7 +233,7 @@ private:
   // (shared read), but reads from DIFFERENT registers in the same cluster are
   // rejected (only one read port).
   std::unordered_map<RegisterFile *,
-                     std::unordered_map<int, Register *>>
+                     std::unordered_map<int, std::pair<Register *, int>>>
       reg_file_read_to_occupy_operations;
 
   // Records the write operation for a register cluster slot.
@@ -272,10 +273,10 @@ private:
   std::map<MappingLoc, Operation *> loc_to_op;
   std::map<Operation *, std::vector<MappingLoc>> op_to_locs;
   std::unordered_map<RegisterFile *,
-                     std::unordered_map<int, Register *>>
+                     std::unordered_map<int, std::pair<Register *, int>>>
       reg_file_write_to_occupy_operations;
   std::unordered_map<RegisterFile *,
-                     std::unordered_map<int, Register *>>
+                     std::unordered_map<int, std::pair<Register *, int>>>
       reg_file_read_to_occupy_operations;
 };
 } // namespace neura

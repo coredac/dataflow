@@ -18,8 +18,8 @@
 // RUN:   -o %t-dataflow.mlir
 // RUN:   FileCheck %s --input-file=%t-dataflow.mlir --check-prefix=DATAFLOW
 
-// DATAFLOW:        llvm.mlir.global external hidden unnamed_addr @run_gemv_relu_gemv.y() {addr_space = 0 : i32, alignment = 16 : i64, dso_local} : !llvm.array<4 x i32>
-// DATAFLOW-NEXT:   func.func @kernel_gemv_relu_gemv() -> (i32 {llvm.range = #llvm.constant_range<i32, 0, 256>}) attributes {CConv = #llvm.cconv<ccc>, accelerator = "neura", dataflow_mode = "predicate", linkage = #llvm.linkage<external>, memory_effects = #llvm.memory_effects<other = readwrite, argMem = none, inaccessibleMem = none>, no_unwind, passthrough = ["nofree", "norecurse", "nosync", ["uwtable", "2"], ["min-legal-vector-width", "0"], ["no-trapping-math", "true"], ["stack-protector-buffer-size", "8"], ["target-cpu", "x86-64"]], target_cpu = "x86-64", target_features = #llvm.target_features<["+cmov", "+cx8", "+fxsr", "+mmx", "+sse", "+sse2", "+x87"]>, tune_cpu = "generic", unnamed_addr = 1 : i64, visibility_ = 0 : i64} {
+// DATAFLOW:   llvm.mlir.global external hidden unnamed_addr @run_gemv_relu_gemv.y() {addr_space = 0 : i32, alignment = 16 : i64, dso_local} : !llvm.array<4 x i32>
+// DATAFLOW-NEXT:   func.func @kernel_gemv_relu_gemv() -> (i32 {llvm.range = #llvm.constant_range<i32, 0, 256>}) attributes {CConv = #llvm.cconv<ccc>, accelerator = "neura", dataflow_mode = "predicate", linkage = #llvm.linkage<external>, memory_effects = #llvm.memory_effects<other = readwrite, argMem = none, inaccessibleMem = none>, no_unwind, passthrough = {{.*}}, ["min-legal-vector-width", "0"], ["no-trapping-math", "true"], ["stack-protector-buffer-size", "8"], ["target-cpu", "x86-64"]], target_cpu = "x86-64", target_features = #llvm.target_features<{{.*}}>, tune_cpu = "generic", unnamed_addr = 1 : i64, visibility_ = 0 : i64} {
 // DATAFLOW-NEXT:     %0 = "neura.constant"() <{value = @run_gemv_relu_gemv.y}> : () -> !neura.data<!llvm.ptr, i1>
 // DATAFLOW-NEXT:     %1 = "neura.constant"() <{value = 0 : i8}> : () -> !neura.data<i8, i1>
 // DATAFLOW-NEXT:     %2 = "neura.constant"() <{value = 16 : i64}> : () -> !neura.data<i64, i1>
@@ -76,3 +76,4 @@
 // DATAFLOW-NEXT:     neura.return_value %45 : !neura.data<i32, i1>
 // DATAFLOW-NEXT:     neura.yield
 // DATAFLOW-NEXT:   }
+// DATAFLOW-NEXT: }

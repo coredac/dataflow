@@ -550,7 +550,7 @@ bool mlir::neura::tryRouteBackwardMove(Operation *mov_op, MappingLoc src_loc,
 
 Register *mlir::neura::getAvailableRegister(const MappingState &state,
                                             Tile *tile, int start_time,
-                                            int exclusive_end_time) {
+                                            int exclusive_end_time, Operation *op) {
   // Finds the first register that is free across the requested range AND
   // satisfies the single-port cluster constraints:
   //   - Write port: at start_time, only one register per RegisterFile may be
@@ -561,7 +561,7 @@ Register *mlir::neura::getAvailableRegister(const MappingState &state,
   // simultaneously on the same RegisterFile.
   for (Register *reg : tile->getRegisters()) {
     if (!state.isAvailableAcrossTimeInRange(reg, start_time,
-                                            exclusive_end_time)) {
+                                            exclusive_end_time, op)) {
       continue;
     }
     // Check cluster write-port constraint at the write time step.
@@ -606,7 +606,7 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
     // Uses register as routing resource within the same tile.
     // Finds an available register to store the data.
     Register *available_reg = getAvailableRegister(
-        state, src_tile, src_loc.time_step, exclusive_deadline_step);
+        state, src_tile, src_loc.time_step, exclusive_deadline_step, mov_op);
     if (!available_reg) {
       llvm::outs()
           << "[tryRouteDataMove] Cannot find available register on Tile#"
@@ -661,7 +661,7 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
           // Arrives early, needs register on destination tile to wait.
           Register *wait_reg =
               getAvailableRegister(state, dst_tile, current_state.current_time,
-                                   exclusive_deadline_step);
+                                   exclusive_deadline_step, mov_op);
           if (!wait_reg) {
             llvm::outs() << "[tryRouteDataMove] Cannot find available waiting"
                             "register on destination Tile#"
@@ -693,7 +693,7 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
       MappingLoc link_loc = {out_link, current_state.current_time};
 
       // Checks if link is available at current time step.
-      if (!state.isAvailableAcrossTime(link_loc)) {
+      if (!state.isAvailableAcrossTime(link_loc, mov_op)) {
         continue;
       }
 
@@ -712,7 +712,7 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
     // Option 2: Uses register on current tile to wait one time step.
     Register *wait_register = getAvailableRegister(
         state, current_state.current_tile, current_state.current_time,
-        current_state.current_time + 1);
+        current_state.current_time + 1, mov_op);
     if (wait_register) {
       int next_time = current_state.current_time + 1;
       // Checks if this(tile, time) combination has been visited.

@@ -114,7 +114,7 @@ bool canReachLocInTime(const std::vector<Operation *> &producers,
 // The end_time is exclusive, meaning the register should be available
 // until end_time - 1. Returns nullptr if no available register found.
 Register *getAvailableRegister(const MappingState &mapping_state, Tile *tile,
-                               int start_time, int exclusive_end_time);
+                               int start_time, int exclusive_end_time, Operation *op = nullptr);
 
 // Gets the execution latency of an operation from its "latency" attribute.
 // Returns 1 (single-cycle) if the attribute is not present.
