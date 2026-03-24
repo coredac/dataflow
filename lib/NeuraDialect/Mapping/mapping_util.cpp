@@ -1,6 +1,8 @@
 #include <deque>
 #include <queue>
 
+#include "NeuraDialect/Architecture/Architecture.h"
+#include "NeuraDialect/Mapping/MappingState.h"
 #include "NeuraDialect/Mapping/mapping_util.h"
 #include "NeuraDialect/NeuraOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -8,7 +10,6 @@
 #include "mlir/IR/Operation.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
-#include "llvm/Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cassert>
 
@@ -197,7 +198,7 @@ mlir::neura::collectRecurrenceCycles(Region &region) {
 
   region.walk([&](neura::CtrlMovOp ctrl_mov_op) {
     Value target = ctrl_mov_op.getTarget();
-    auto reserve_op = target.getDefiningOp<neura::ReserveOp>();
+    neura::ReserveOp reserve_op = target.getDefiningOp<neura::ReserveOp>();
     if (!reserve_op) {
       return;
     }
@@ -218,7 +219,7 @@ mlir::neura::collectRecurrenceCycles(Region &region) {
     traverseAlongPath(parent_op, reserve_value, current_path, visited_in_path,
                       collected_paths);
 
-    for (auto &cycle : collected_paths) {
+    for (RecurrenceCycle &cycle : collected_paths) {
       cycle.operations.push_back(ctrl_mov_op);
       recurrence_cycles.push_back(std::move(cycle));
     }
@@ -261,9 +262,10 @@ mlir::neura::getTopologicallySortedOps(Region &region) {
   std::deque<Operation *> ready_queue;
 
   // Collects recurrence cycle ops.
-  auto recurrence_cycles = collectRecurrenceCycles(region);
+  SmallVector<RecurrenceCycle> recurrence_cycles =
+      collectRecurrenceCycles(region);
   llvm::DenseSet<Operation *> recurrence_ops;
-  for (const auto &cycle : recurrence_cycles) {
+  for (const RecurrenceCycle &cycle : recurrence_cycles) {
     for (Operation *op : cycle.operations) {
       recurrence_ops.insert(op);
     }
@@ -459,7 +461,8 @@ mlir::Operation *mlir::neura::getMaterializedBackwardUser(Operation *op) {
 
   assert(isa<neura::ReserveOp>(target.getDefiningOp()) &&
          "Expected the user of ctrl_mov target to be a reserve operation");
-  auto reserve_op = dyn_cast<neura::ReserveOp>(target.getDefiningOp());
+  neura::ReserveOp reserve_op =
+      dyn_cast<neura::ReserveOp>(target.getDefiningOp());
 
   // Skip ctrl_mov users of reserve; return the first materialized user.
   for (Operation *user : reserve_op.getResult().getUsers()) {
@@ -477,6 +480,72 @@ mlir::Operation *mlir::neura::getMaterializedBackwardUser(Operation *op) {
 
   assert(false &&
          "No materialized backward user (i.e., phi) found for ctrl_mov");
+}
+
+// This struct represents a pending data_mov/ctrl_mov that is being routed,
+// along with its routing path.
+struct PendingRoute {
+  Operation *mov_op;
+  std::vector<MappingLoc> path;
+};
+
+bool hasSafeOperandIterationAtConsume(
+    Operation *op, const std::vector<PendingRoute> &operand_routes, int ii) {
+  assert(ii > 0 && "II should be positive");
+
+  if (operand_routes.empty()) {
+    return true;
+  }
+
+  for (const PendingRoute &route : operand_routes) {
+    // Records the time range that each register is occupied on this route.
+    // <Register*, <min_time, max_time>>, this means the register is occupied
+    // from min_time to max_time.
+    DenseMap<Register *, std::pair<int, int>> reg_time_range;
+    for (const MappingLoc &loc : route.path) {
+      Register *reg = dyn_cast<Register>(loc.resource);
+      if (!reg) {
+        continue;
+      }
+
+      // For each register, tracks its live interval on this path by keeping
+      // the earliest and latest time it appears.
+      // Inserts a new entry if the register is seen for the first time.
+      auto [it, inserted] = reg_time_range.try_emplace(
+          reg, std::make_pair(loc.time_step, loc.time_step));
+
+      // If this register has been seen before, updates the time range to
+      // include the new time step.
+      if (!inserted) {
+        // Updates the min_time for this seen register if the new time step is
+        // earlier.
+        it->second.first = std::min(it->second.first, loc.time_step);
+        // Updates the max_time for this seen register if the new time step is
+        // later.
+        it->second.second = std::max(it->second.second, loc.time_step);
+      }
+    }
+
+    // Register occupancy is tracked in per-cycle slots (half-open in routing
+    // builders), so max_t - min_t + 1 corresponds to the hold duration.
+    for (const auto &entry : reg_time_range) {
+      Register *reg = entry.first;
+      int min_t = entry.second.first;
+      int max_t = entry.second.second;
+      int occupancy = max_t - min_t + 1;
+      if (occupancy > ii) {
+        llvm::errs() << "[DEBUG] Reject schedule due to register hold >= next "
+                        "iteration window. op="
+                     << *op << ", II=" << ii << ", reg=#" << reg->getId()
+                     << ", hold_start=" << min_t << ", hold_end=" << max_t
+                     << ", hold_len=" << occupancy
+                     << ", mov_op=" << *route.mov_op << "\n";
+        return false;
+      }
+    }
+  }
+
+  return true;
 }
 
 llvm::SmallVector<mlir::Operation *>
@@ -508,7 +577,7 @@ mlir::neura::getMaterializedUserOps(Operation *op) {
 
     // Specially handles the ctrl_mov, i.e., the second operand of ctrl_mov is
     // treated as a target/destination/user in terms of dataflow.
-    if (auto ctrl_mov = dyn_cast<neura::CtrlMovOp>(curr)) {
+    if (neura::CtrlMovOp ctrl_mov = dyn_cast<neura::CtrlMovOp>(curr)) {
       Value target = ctrl_mov.getTarget();
       for (Operation *user : target.getUsers()) {
         if (visited.insert(user).second) {
@@ -735,8 +804,8 @@ Operation *mlir::neura::getMaterializedProducer(Value operand) {
   assert(
       isa<neura::DataMovOp>(producer) &&
       "Expected a DataMovOp as operand producer for non-ReserveOp operations");
-  auto mov_op = dyn_cast<neura::DataMovOp>(producer);
-  auto materialized_producer = mov_op.getOperand().getDefiningOp();
+  neura::DataMovOp mov_op = dyn_cast<neura::DataMovOp>(producer);
+  Operation *materialized_producer = mov_op.getOperand().getDefiningOp();
   return materialized_producer;
 }
 
@@ -749,7 +818,8 @@ int mlir::neura::getPhysicalHops(const std::vector<Operation *> &producers,
 
   for (Operation *producer : producers) {
     // Get the last location of the producer.
-    auto producer_locs = mapping_state.getAllLocsOfOp(producer);
+    std::vector<MappingLoc> producer_locs =
+        mapping_state.getAllLocsOfOp(producer);
     assert(!producer_locs.empty() && "No locations found for producer");
 
     MappingLoc producer_loc = producer_locs.back();
@@ -768,7 +838,8 @@ bool mlir::neura::canReachLocInTime(const std::vector<Operation *> &producers,
 
   for (Operation *producer : producers) {
     // Get the last location of the producer.
-    auto producer_locs = mapping_state.getAllLocsOfOp(producer);
+    std::vector<MappingLoc> producer_locs =
+        mapping_state.getAllLocsOfOp(producer);
     assert(!producer_locs.empty() && "No locations found for producer");
 
     MappingLoc producer_loc = producer_locs.back();
@@ -912,7 +983,7 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
   // Assembles all the backward users if exist.
   std::vector<Operation *> backward_users;
   for (Operation *user : getCtrlMovUsers(op)) {
-    auto ctrl_mov = dyn_cast<neura::CtrlMovOp>(user);
+    neura::CtrlMovOp ctrl_mov = dyn_cast<neura::CtrlMovOp>(user);
     assert(ctrl_mov && "Expected user to be a CtrlMovOp");
     mlir::Operation *materialized_backward_op =
         getMaterializedBackwardUser(ctrl_mov);
@@ -970,7 +1041,7 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
 
     // Computes proximity bonus to backward users. Closer is better for
     // recurrence routing.
-    for (auto &backward_user_loc : backward_users_locs) {
+    for (MappingLoc &backward_user_loc : backward_users_locs) {
       Tile *backward_tile = dyn_cast<Tile>(backward_user_loc.resource);
       if (backward_tile) {
         int backward_hops = std::abs(backward_tile->getX() - tile->getX()) +
@@ -1000,7 +1071,7 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
             producers.empty() ||
             canReachLocInTime(producers, tile_loc_candidate, t, mapping_state);
         bool meet_backward_user_constraint = true;
-        for (auto &backward_user_loc : backward_users_locs) {
+        for (MappingLoc &backward_user_loc : backward_users_locs) {
           // Checks if the location can reach all backward users.
           if (!canReachLocInTime(tile_loc_candidate, backward_user_loc,
                                  backward_user_loc.time_step +
@@ -1023,12 +1094,12 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
           int occupied_in = 0;
           int occupied_out = 0;
 
-          for (auto *link : tile->getInLinks()) {
+          for (Link *link : tile->getInLinks()) {
             if (!mapping_state.isAvailableAcrossTime({link, t})) {
               occupied_in++;
             }
           }
-          for (auto *link : tile->getOutLinks()) {
+          for (Link *link : tile->getOutLinks()) {
             if (!mapping_state.isAvailableAcrossTime({link, t})) {
               occupied_out++;
             }
@@ -1125,11 +1196,11 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
         target_loc.resource, target_loc.time_step, latency, op);
     if (bind_success) {
       llvm::errs() << "[DEBUG] Bound multi-cycle op (latency=" << latency
-                   << ") " << *op << " onto loc: "
-                   << target_loc.resource->getType() << "#"
+                   << ") " << *op
+                   << " onto loc: " << target_loc.resource->getType() << "#"
                    << target_loc.resource->getId()
-                   << " @t=" << target_loc.time_step << " to t="
-                   << (target_loc.time_step + latency - 1) << "\n";
+                   << " @t=" << target_loc.time_step
+                   << " to t=" << (target_loc.time_step + latency - 1) << "\n";
     }
   } else {
     // For single-cycle ops, use default SINGLE_OCCUPY binding
@@ -1143,6 +1214,7 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
   }
 
   if (bind_success) {
+    std::vector<PendingRoute> pending_operand_routes;
     std::vector<Operation *> routed_operands;
     std::vector<Operation *> routed_ctrl_movs;
     // Tries to route the data move operations.
@@ -1170,8 +1242,8 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
       std::vector<MappingLoc> route_path;
       if (tryRouteForwardMove(data_move, src_loc, target_loc, mapping_state,
                               route_path)) {
-        // Reserves the route for the data move operation.
         mapping_state.reserveRoute(data_move, route_path);
+        pending_operand_routes.push_back({data_move, std::move(route_path)});
         routed_operands.push_back(data_move);
         llvm::errs() << "[DEBUG] Successfully routed data move: " << *data_move
                      << " from " << src_loc.resource->getType() << "#"
@@ -1189,15 +1261,25 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
                    << " @t=" << target_loc.time_step << "; so unschedule op\n";
       mapping_state.unbindOp(op);
       for (Operation *routed_op : routed_operands) {
-        llvm::errs() << "[DEBUG] Releasing route for routed operand: "
-                     << *routed_op << "\n";
         mapping_state.releaseRoute(routed_op);
       }
       return false;
     }
+
+    if (!hasSafeOperandIterationAtConsume(op, pending_operand_routes,
+                                          mapping_state.getII())) {
+      llvm::errs() << "[DEBUG] Operand iteration shift at consume time; "
+                      "unschedule op\n";
+      mapping_state.unbindOp(op);
+      for (Operation *routed_op : routed_operands) {
+        mapping_state.releaseRoute(routed_op);
+      }
+      return false;
+    }
+
     // Checks whether the operation's user is a ctrl_mov.
     for (Operation *user : getCtrlMovUsers(op)) {
-      auto ctrl_mov = dyn_cast<neura::CtrlMovOp>(user);
+      neura::CtrlMovOp ctrl_mov = dyn_cast<neura::CtrlMovOp>(user);
       llvm::errs() << "[DEBUG] Found ctrl_mov user: " << *ctrl_mov << "\n";
       assert(ctrl_mov && "Expected user to be a CtrlMovOp");
       mlir::Operation *materialized_backward_op =
@@ -1249,13 +1331,11 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
 
 int mlir::neura::getOpLatency(Operation *op) {
   // Try to get the latency attribute from the operation
-  if (auto latency_attr = op->getAttrOfType<IntegerAttr>("latency")) {
+  if (IntegerAttr latency_attr = op->getAttrOfType<IntegerAttr>("latency")) {
     return latency_attr.getInt();
   }
   // Default to single-cycle if no latency attribute is present
   return 1;
 }
 
-bool mlir::neura::isMultiCycleOp(Operation *op) {
-  return getOpLatency(op) > 1;
-}
+bool mlir::neura::isMultiCycleOp(Operation *op) { return getOpLatency(op) > 1; }

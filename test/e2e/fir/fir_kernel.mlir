@@ -233,6 +233,8 @@
 // YAML-NEXT:                   time_step: 2
 // YAML-NEXT:                   invalid_iterations: 0
 // YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "arg0"
+// YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                     - operand: "NORTH"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                   dst_operands:
@@ -372,6 +374,104 @@
 // YAML-NEXT:                     - operand: "$0"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 1
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "PHI_START"
+// YAML-NEXT:                   id: 7
+// YAML-NEXT:                   time_step: 1
+// YAML-NEXT:                   invalid_iterations: 0
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "SOUTH"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "EAST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 2
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "ADD"
+// YAML-NEXT:                   id: 13
+// YAML-NEXT:                   time_step: 2
+// YAML-NEXT:                   invalid_iterations: 0
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "#1"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "$1"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 3
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "ICMP_EQ"
+// YAML-NEXT:                   id: 20
+// YAML-NEXT:                   time_step: 3
+// YAML-NEXT:                   invalid_iterations: 0
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "#32"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "WEST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 4
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "NOT"
+// YAML-NEXT:                   id: 27
+// YAML-NEXT:                   time_step: 4
+// YAML-NEXT:                   invalid_iterations: 0
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "$0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "WEST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:     - column: 3
+// YAML-NEXT:       row: 2
+// YAML-NEXT:       core_id: "11"
+// YAML-NEXT:       entries:
+// YAML-NEXT:         - entry_id: "entry0"
+// YAML-NEXT:           instructions:
+// YAML-NEXT:             - index_per_ii: 0
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "GRANT_ONCE"
+// YAML-NEXT:                   id: 0
+// YAML-NEXT:                   time_step: 0
+// YAML-NEXT:                   invalid_iterations: 0
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "#0"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "WEST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:             - index_per_ii: 2
+// YAML-NEXT:               operations:
+// YAML-NEXT:                 - opcode: "GEP"
+// YAML-NEXT:                   id: 14
+// YAML-NEXT:                   time_step: 2
+// YAML-NEXT:                   invalid_iterations: 0
+// YAML-NEXT:                   src_operands:
+// YAML-NEXT:                     - operand: "arg2"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                     - operand: "WEST"
+// YAML-NEXT:                       color: "RED"
+// YAML-NEXT:                   dst_operands:
+// YAML-NEXT:                     - operand: "SOUTH"
+// YAML-NEXT:                       color: "RED"
 
 
 // ASM: # Compiled II: 5
@@ -409,7 +509,7 @@
 // ASM-NEXT: } (idx_per_ii=4)
 // ASM: PE(2,1):
 // ASM-NEXT: {
-// ASM-NEXT:   GEP, [NORTH, RED] -> [SOUTH, RED] (t=2, inv_iters=0)
+// ASM-NEXT:   GEP, [arg0], [NORTH, RED] -> [SOUTH, RED] (t=2, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=2)
 // ASM: PE(3,1):
 // ASM-NEXT: {
@@ -457,7 +557,7 @@
 // ASM-NEXT:   GRANT_ONCE, [#0] -> [WEST, RED] (t=0, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=0)
 // ASM-NEXT: {
-// ASM-NEXT:   GEP, [WEST, RED] -> [SOUTH, RED] (t=2, inv_iters=0)
+// ASM-NEXT:   GEP, [arg2], [WEST, RED] -> [SOUTH, RED] (t=2, inv_iters=0)
 // ASM-NEXT: } (idx_per_ii=2)
 
 
@@ -480,72 +580,3 @@
 // RUN: FileCheck %s --input-file=fir_kernel.dot -check-prefix=DOT
 
 // DOT: digraph G {
-// DOT-NEXT:   compound = true;
-// DOT-NEXT:   subgraph cluster_1 {
-// DOT-NEXT:     v2 [label = " ", shape = plain];
-// DOT-NEXT:     label = "builtin.module : ()\n\ndlti.dl_spec: #dlti.dl_spec<!llvm....\nllvm.ident: \"clang version 20.1....";
-// DOT-NEXT:     subgraph cluster_3 {
-// DOT-NEXT:       v4 [label = " ", shape = plain];
-// DOT-NEXT:       label = "";
-// DOT-NEXT:       subgraph cluster_5 {
-// DOT-NEXT:         v6 [label = " ", shape = plain];
-// DOT-NEXT:         label = "func.func : ()\n\nCConv: #llvm.cconv<ccc>\naccelerator: \"neura\"\narg_attrs: [{llvm.nocapture, ll...\ndataflow_mode: \"predicate\"\nfunction_type: (!llvm.ptr, !llvm.pt...\nlinkage: #llvm.linkage<extern...\nmemory_effects: #llvm.memory_effects...\nno_unwind: unit\npassthrough: [\"mustprogress\", \"no...\nres_attrs: [{llvm.noundef}]\nsym_name: \"_Z6kernelPiS_S_\"\ntarget_cpu: \"x86-64\"\ntarget_features: #llvm.target_feature...\ntune_cpu: \"generic\"\nunnamed_addr: 1 : i64\nvisibility_: 0 : i64\nwill_return: unit";
-// DOT-NEXT:         subgraph cluster_7 {
-// DOT-NEXT:           v8 [label = " ", shape = plain];
-// DOT-NEXT:           label = "";
-// DOT-NEXT:           v9 [label = "arg0", shape = ellipse];
-// DOT-NEXT:           v10 [label = "arg1", shape = ellipse];
-// DOT-NEXT:           v11 [label = "arg2", shape = ellipse];
-// DOT-NEXT:           v12 [fillcolor = "0.000000 1.0 1.0", label = "neura.grant_once : (!neura.data<i64, i1>)\n\nconstant_value: 0 : i64", shape = ellipse, style = filled];
-// DOT-NEXT:           v13 [fillcolor = "0.000000 1.0 1.0", label = "neura.grant_once : (!neura.data<i32, i1>)\n\nconstant_value: 0 : i32", shape = ellipse, style = filled];
-// DOT-NEXT:           v14 [fillcolor = "0.066667 1.0 1.0", label = "neura.reserve : (!neura.data<i32, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v15 [fillcolor = "0.133333 1.0 1.0", label = "neura.phi_start : (!neura.data<i32, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v16 [fillcolor = "0.066667 1.0 1.0", label = "neura.reserve : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v17 [fillcolor = "0.133333 1.0 1.0", label = "neura.phi_start : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v18 [fillcolor = "0.200000 1.0 1.0", label = "neura.gep : (!neura.data<!llvm.pt...)\n\nlhs_value: \"%arg0\"\noperandSegmentSizes: array<i32: 0, 1>", shape = ellipse, style = filled];
-// DOT-NEXT:           v19 [fillcolor = "0.266667 1.0 1.0", label = "neura.load : (!neura.data<i32, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v20 [fillcolor = "0.200000 1.0 1.0", label = "neura.gep : (!neura.data<!llvm.pt...)\n\nlhs_value: \"%arg2\"\noperandSegmentSizes: array<i32: 0, 1>", shape = ellipse, style = filled];
-// DOT-NEXT:           v21 [fillcolor = "0.266667 1.0 1.0", label = "neura.load : (!neura.data<i32, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v22 [fillcolor = "0.333333 1.0 1.0", label = "neura.mul : (!neura.data<i32, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v23 [fillcolor = "0.400000 1.0 1.0", label = "neura.add : (!neura.data<i32, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v24 [fillcolor = "0.400000 1.0 1.0", label = "neura.add : (!neura.data<i64, i1>)\n\nrhs_value: 1 : i64", shape = ellipse, style = filled];
-// DOT-NEXT:           v25 [fillcolor = "0.466667 1.0 1.0", label = "neura.icmp : (!neura.data<i1, i1>)\n\ncmpType: \"eq\"\nrhs_value: 32 : i64", shape = ellipse, style = filled];
-// DOT-NEXT:           v26 [fillcolor = "0.533333 1.0 1.0", label = "neura.not : (!neura.data<i1, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v27 [fillcolor = "0.600000 1.0 1.0", label = "neura.grant_predicate : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v28 [fillcolor = "0.666667 1.0 1.0", label = "neura.ctrl_mov : ()\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v29 [fillcolor = "0.600000 1.0 1.0", label = "neura.grant_predicate : (!neura.data<i32, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v30 [fillcolor = "0.666667 1.0 1.0", label = "neura.ctrl_mov : ()\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v31 [fillcolor = "0.600000 1.0 1.0", label = "neura.grant_predicate : (!neura.data<i32, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v32 [fillcolor = "0.733333 1.0 1.0", label = "neura.return_value : ()\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v33 [fillcolor = "0.800000 1.0 1.0", label = "neura.yield : ()\n\noperandSegmentSizes: array<i32: 0, 0>", shape = ellipse, style = filled];
-// DOT-NEXT:         }
-// DOT-NEXT:       }
-// DOT-NEXT:     }
-// DOT-NEXT:   }
-// DOT-NEXT:   v13 -> v15 [label = "0", style = solid];
-// DOT-NEXT:   v14 -> v15 [label = "1", style = solid];
-// DOT-NEXT:   v12 -> v17 [label = "0", style = solid];
-// DOT-NEXT:   v16 -> v17 [label = "1", style = solid];
-// DOT-NEXT:   v17 -> v18 [label = "", style = solid];
-// DOT-NEXT:   v18 -> v19 [label = "", style = solid];
-// DOT-NEXT:   v17 -> v20 [label = "", style = solid];
-// DOT-NEXT:   v20 -> v21 [label = "", style = solid];
-// DOT-NEXT:   v21 -> v22 [label = "0", style = solid];
-// DOT-NEXT:   v19 -> v22 [label = "1", style = solid];
-// DOT-NEXT:   v22 -> v23 [label = "0", style = solid];
-// DOT-NEXT:   v15 -> v23 [label = "1", style = solid];
-// DOT-NEXT:   v17 -> v24 [label = "", style = solid];
-// DOT-NEXT:   v24 -> v25 [label = "", style = solid];
-// DOT-NEXT:   v25 -> v26 [label = "", style = solid];
-// DOT-NEXT:   v24 -> v27 [label = "0", style = solid];
-// DOT-NEXT:   v26 -> v27 [label = "1", style = solid];
-// DOT-NEXT:   v27 -> v28 [label = "0", style = solid];
-// DOT-NEXT:   v16 -> v28 [label = "1", style = solid];
-// DOT-NEXT:   v23 -> v29 [label = "0", style = solid];
-// DOT-NEXT:   v26 -> v29 [label = "1", style = solid];
-// DOT-NEXT:   v29 -> v30 [label = "0", style = solid];
-// DOT-NEXT:   v14 -> v30 [label = "1", style = solid];
-// DOT-NEXT:   v23 -> v31 [label = "0", style = solid];
-// DOT-NEXT:   v25 -> v31 [label = "1", style = solid];
-// DOT-NEXT:   v31 -> v32 [label = "", style = solid];
-// DOT-NEXT: }

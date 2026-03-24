@@ -436,10 +436,11 @@ identifyDirectDominatingLiveIns(Region &region, DominanceInfo &dom_info,
         continue;
       }
 
-      // If the using block is a loop header (has a back-edge), we must NOT treat
-      // any live-in as a direct dominating live-in. This is because:
+      // If the using block is a loop header (has a back-edge), we must NOT
+      // treat any live-in as a direct dominating live-in. This is because:
       // 1. Live-ins from outer scopes have rate mismatch and need PHI_START
-      // 2. Live-ins from inner blocks are loop-carried dependencies that need PHI
+      // 2. Live-ins from inner blocks are loop-carried dependencies that need
+      // PHI
       bool using_block_is_loop_header = false;
       for (Block *pred : block.getPredecessors()) {
         if (dom_info.dominates(&block, pred)) {

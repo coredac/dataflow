@@ -661,6 +661,29 @@ struct LlvmConstantToNeuraConstant : public OpRewritePattern<LLVM::ConstantOp> {
   }
 };
 
+struct LlvmAddressOfToNeuraConstant
+    : public OpRewritePattern<LLVM::AddressOfOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LLVM::AddressOfOp op,
+                                PatternRewriter &rewriter) const override {
+    // Represents address-of as a Neura constant carrying the referenced
+    // global symbol.
+    Attribute global_symbol_attr = op->getAttr("global_name");
+    if (!global_symbol_attr) {
+      return op.emitOpError("expects global_name attribute");
+    }
+
+    OperationState state(op.getLoc(), neura::ConstantOp::getOperationName());
+    state.addAttribute("value", global_symbol_attr);
+    state.addTypes(op.getType());
+
+    Operation *new_op = rewriter.create(state);
+    rewriter.replaceOp(op, new_op->getResults());
+    return success();
+  }
+};
+
 struct LlvmAllocaToNeuraAlloca : public OpRewritePattern<LLVM::AllocaOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -880,6 +903,7 @@ struct LowerLlvmToNeuraPass
   RewritePatternSet populateLlvmToNeuraPatterns(MLIRContext *context) {
     RewritePatternSet patterns(context);
     patterns.add<LlvmConstantToNeuraConstant>(&getContext());
+    patterns.add<LlvmAddressOfToNeuraConstant>(&getContext());
     // Vector operations must be registered before scalar operations
     // to ensure vector types are matched first.
     patterns.add<LlvmVMulToNeuraVMul>(&getContext());

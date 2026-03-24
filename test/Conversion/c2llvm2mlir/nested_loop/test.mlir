@@ -22,7 +22,9 @@
 // RUN:   --fold-constant \
 // RUN:   --insert-data-mov \
 // RUN:   --map-to-accelerator="mapping-strategy=heuristic backtrack-config=simple" \
-// RUN:   --architecture-spec=../../arch_spec/architecture.yaml %t-kernel.mlir | FileCheck %s --check-prefix=CHECK-LLVM2NEURA-MAP
+// RUN:   --architecture-spec=../../../arch_spec/architecture.yaml %t-kernel.mlir \
+// RUN:   -o %t-kernel-mapped.mlir
+// RUN:   FileCheck %s --input-file=%t-kernel-mapped.mlir --check-prefix=CHECK-LLVM2NEURA-MAP
 
 // CHECK-LLVM2NEURA: accelerator = "neura"
 // CHECK-LLVM2NEURA: %25 = neura.alloca %24 : !neura.data<i32, i1> -> !neura.data<!llvm.ptr, i1>
@@ -30,25 +32,4 @@
 // CHECK-LLVM2NEURA: %188 = neura.sext %187 : !neura.data<i32, i1> -> !neura.data<i64, i1>
 // CHECK-LLVM2NEURA: %207 = "neura.mul"(%205, %206) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
 
-// CHECK-LLVM2NEURA-MAP: Usage:	/bin/sh [GNU long option] [option] ...
-// CHECK-LLVM2NEURA-MAP-NEXT: 	/bin/sh [GNU long option] [option] script-file ...
-// CHECK-LLVM2NEURA-MAP-NEXT: GNU long options:
-// CHECK-LLVM2NEURA-MAP-NEXT: 	--debug
-// CHECK-LLVM2NEURA-MAP-NEXT: 	--debugger
-// CHECK-LLVM2NEURA-MAP-NEXT: 	--dump-po-strings
-// CHECK-LLVM2NEURA-MAP-NEXT: 	--dump-strings
-// CHECK-LLVM2NEURA-MAP-NEXT: 	--help
-// CHECK-LLVM2NEURA-MAP-NEXT: 	--init-file
-// CHECK-LLVM2NEURA-MAP-NEXT: 	--login
-// CHECK-LLVM2NEURA-MAP-NEXT: 	--noediting
-// CHECK-LLVM2NEURA-MAP-NEXT: 	--noprofile
-// CHECK-LLVM2NEURA-MAP-NEXT: 	--norc
-// CHECK-LLVM2NEURA-MAP-NEXT: 	--posix
-// CHECK-LLVM2NEURA-MAP-NEXT: 	--pretty-print
-// CHECK-LLVM2NEURA-MAP-NEXT: 	--rcfile
-// CHECK-LLVM2NEURA-MAP-NEXT: 	--restricted
-// CHECK-LLVM2NEURA-MAP-NEXT: 	--verbose
-// CHECK-LLVM2NEURA-MAP-NEXT: 	--version
-// CHECK-LLVM2NEURA-MAP-NEXT: Shell options:
-// CHECK-LLVM2NEURA-MAP-NEXT: 	-ilrsD or -c command or -O shopt_option		(invocation only)
-// CHECK-LLVM2NEURA-MAP-NEXT: 	-abefhkmnptuvxBCHP or -o option
+// CHECK-LLVM2NEURA-MAP: func.func @_Z6kernelPiS_S_(%arg0: !llvm.ptr {llvm.noundef}, %arg1: !llvm.ptr {llvm.noundef}, %arg2: !llvm.ptr {llvm.noundef}) -> !llvm.void attributes {CConv = #llvm.cconv<ccc>, accelerator = "neura", dataflow_mode = "predicate", frame_pointer = #llvm.framePointerKind<all>, linkage = #llvm.linkage<external>, mapping_info = {compiled_ii = 14 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 9 : i32, res_mii = 6 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}, no_inline, no_unwind, optimize_none, passthrough = ["mustprogress", ["uwtable", "2"], ["min-legal-vector-width", "0"], ["no-trapping-math", "true"], ["stack-protector-buffer-size", "8"], ["target-cpu", "x86-64"]], target_cpu = "x86-64", target_features = #llvm.target_features<["+cmov", "+cx8", "+fxsr", "+mmx", "+sse", "+sse2", "+x87"]>, tune_cpu = "generic", unnamed_addr = 0 : i64, visibility_ = 0 : i64} {
