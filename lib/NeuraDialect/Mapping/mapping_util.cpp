@@ -218,7 +218,7 @@ mlir::neura::collectRecurrenceCycles(Region &region) {
     traverseAlongPath(parent_op, reserve_value, current_path, visited_in_path,
                       collected_paths);
 
-    for (auto &cycle : collected_paths) {
+    for (RecurrenceCycle &cycle : collected_paths) {
       cycle.operations.push_back(ctrl_mov_op);
       recurrence_cycles.push_back(std::move(cycle));
     }
@@ -261,9 +261,10 @@ mlir::neura::getTopologicallySortedOps(Region &region) {
   std::deque<Operation *> ready_queue;
 
   // Collects recurrence cycle ops.
-  auto recurrence_cycles = collectRecurrenceCycles(region);
+  SmallVector<RecurrenceCycle, 4> recurrence_cycles =
+      collectRecurrenceCycles(region);
   llvm::DenseSet<Operation *> recurrence_ops;
-  for (const auto &cycle : recurrence_cycles) {
+  for (const RecurrenceCycle &cycle : recurrence_cycles) {
     for (Operation *op : cycle.operations) {
       recurrence_ops.insert(op);
     }
@@ -550,7 +551,8 @@ bool mlir::neura::tryRouteBackwardMove(Operation *mov_op, MappingLoc src_loc,
 
 Register *mlir::neura::getAvailableRegister(const MappingState &state,
                                             Tile *tile, int start_time,
-                                            int exclusive_end_time, Operation *op) {
+                                            int exclusive_end_time,
+                                            Operation *op) {
   // Finds the first register that is free across the requested range AND
   // satisfies the single-port cluster constraints:
   //   - Write port: at start_time, only one register per RegisterFile may be
@@ -559,9 +561,17 @@ Register *mlir::neura::getAvailableRegister(const MappingState &state,
   //     RegisterFile may be read (same-register reads are shared/allowed).
   // Read and write ports are independent — one read AND one write can happen
   // simultaneously on the same RegisterFile.
+  //
+  // TODO: The same-source DataMovOp register-sharing mechanism
+  // implemented in MappingState::isAvailableAcrossTime() and
+  // isAvailableForOccupyStatus() is a short-term workaround for routing
+  // congestion caused by high-fanout values (e.g., predicate values with many
+  // consumers on the same tile). The long-term fix is to deduplicate DataMovOps
+  // with the same materialized source in InsertDataMovPass, emitting a single
+  // DataMovOp per (source, destination-tile) pair instead of one per consumer.
   for (Register *reg : tile->getRegisters()) {
-    if (!state.isAvailableAcrossTimeInRange(reg, start_time,
-                                            exclusive_end_time, op)) {
+    if (!state.isAvailableAcrossTimeInRange(reg, start_time, exclusive_end_time,
+                                            op)) {
       continue;
     }
     // Check cluster write-port constraint at the write time step.
@@ -752,7 +762,7 @@ Operation *mlir::neura::getMaterializedProducer(Value operand) {
       isa<neura::DataMovOp>(producer) &&
       "Expected a DataMovOp as operand producer for non-ReserveOp operations");
   auto mov_op = dyn_cast<neura::DataMovOp>(producer);
-  auto materialized_producer = mov_op.getOperand().getDefiningOp();
+  Operation *materialized_producer = mov_op.getOperand().getDefiningOp();
   return materialized_producer;
 }
 
@@ -765,7 +775,8 @@ int mlir::neura::getPhysicalHops(const std::vector<Operation *> &producers,
 
   for (Operation *producer : producers) {
     // Get the last location of the producer.
-    auto producer_locs = mapping_state.getAllLocsOfOp(producer);
+    const std::vector<MappingLoc> &producer_locs =
+        mapping_state.getAllLocsOfOp(producer);
     assert(!producer_locs.empty() && "No locations found for producer");
 
     MappingLoc producer_loc = producer_locs.back();
@@ -784,7 +795,8 @@ bool mlir::neura::canReachLocInTime(const std::vector<Operation *> &producers,
 
   for (Operation *producer : producers) {
     // Get the last location of the producer.
-    auto producer_locs = mapping_state.getAllLocsOfOp(producer);
+    const std::vector<MappingLoc> &producer_locs =
+        mapping_state.getAllLocsOfOp(producer);
     assert(!producer_locs.empty() && "No locations found for producer");
 
     MappingLoc producer_loc = producer_locs.back();
@@ -1039,12 +1051,12 @@ mlir::neura::calculateAward(Operation *op, std::set<Operation *> &critical_ops,
           int occupied_in = 0;
           int occupied_out = 0;
 
-          for (auto *link : tile->getInLinks()) {
+          for (Link *link : tile->getInLinks()) {
             if (!mapping_state.isAvailableAcrossTime({link, t})) {
               occupied_in++;
             }
           }
-          for (auto *link : tile->getOutLinks()) {
+          for (Link *link : tile->getOutLinks()) {
             if (!mapping_state.isAvailableAcrossTime({link, t})) {
               occupied_out++;
             }
@@ -1141,11 +1153,11 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
         target_loc.resource, target_loc.time_step, latency, op);
     if (bind_success) {
       llvm::errs() << "[DEBUG] Bound multi-cycle op (latency=" << latency
-                   << ") " << *op << " onto loc: "
-                   << target_loc.resource->getType() << "#"
+                   << ") " << *op
+                   << " onto loc: " << target_loc.resource->getType() << "#"
                    << target_loc.resource->getId()
-                   << " @t=" << target_loc.time_step << " to t="
-                   << (target_loc.time_step + latency - 1) << "\n";
+                   << " @t=" << target_loc.time_step
+                   << " to t=" << (target_loc.time_step + latency - 1) << "\n";
     }
   } else {
     // For single-cycle ops, use default SINGLE_OCCUPY binding
@@ -1272,6 +1284,4 @@ int mlir::neura::getOpLatency(Operation *op) {
   return 1;
 }
 
-bool mlir::neura::isMultiCycleOp(Operation *op) {
-  return getOpLatency(op) > 1;
-}
+bool mlir::neura::isMultiCycleOp(Operation *op) { return getOpLatency(op) > 1; }
