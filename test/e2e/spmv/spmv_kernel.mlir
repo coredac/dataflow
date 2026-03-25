@@ -547,7 +547,7 @@
 // YAML-NEXT:             - index_per_ii: 11
 // YAML-NEXT:               operations:
 // YAML-NEXT:                 - opcode: "CTRL_MOV"
-// YAML-NEXT:                   id: 2000004
+// YAML-NEXT:                   id: 2000003
 // YAML-NEXT:                   time_step: 25
 // YAML-NEXT:                   invalid_iterations: 1
 // YAML-NEXT:                   src_operands:
@@ -627,7 +627,7 @@
 // YAML-NEXT:                     - operand: "$0"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 150001
+// YAML-NEXT:                   id: 150000
 // YAML-NEXT:                   time_step: 2
 // YAML-NEXT:                   invalid_iterations: 0
 // YAML-NEXT:                   src_operands:
@@ -697,7 +697,7 @@
 // YAML-NEXT:             - index_per_ii: 6
 // YAML-NEXT:               operations:
 // YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 390002
+// YAML-NEXT:                   id: 390001
 // YAML-NEXT:                   time_step: 6
 // YAML-NEXT:                   invalid_iterations: 0
 // YAML-NEXT:                   src_operands:
@@ -733,7 +733,7 @@
 // YAML-NEXT:             - index_per_ii: 8
 // YAML-NEXT:               operations:
 // YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 2390001
+// YAML-NEXT:                   id: 2390000
 // YAML-NEXT:                   time_step: 22
 // YAML-NEXT:                   invalid_iterations: 1
 // YAML-NEXT:                   src_operands:
@@ -769,7 +769,7 @@
 // YAML-NEXT:                     - operand: "WEST"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 740001
+// YAML-NEXT:                   id: 740000
 // YAML-NEXT:                   time_step: 9
 // YAML-NEXT:                   invalid_iterations: 0
 // YAML-NEXT:                   src_operands:
@@ -817,7 +817,7 @@
 // YAML-NEXT:                     - operand: "$1"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                 - opcode: "CTRL_MOV"
-// YAML-NEXT:                   id: 2000003
+// YAML-NEXT:                   id: 2000002
 // YAML-NEXT:                   time_step: 24
 // YAML-NEXT:                   invalid_iterations: 1
 // YAML-NEXT:                   src_operands:
@@ -843,7 +843,7 @@
 // YAML-NEXT:                     - operand: "WEST"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 1740001
+// YAML-NEXT:                   id: 1740000
 // YAML-NEXT:                   time_step: 11
 // YAML-NEXT:                   invalid_iterations: 0
 // YAML-NEXT:                   src_operands:
@@ -865,7 +865,7 @@
 // YAML-NEXT:                     - operand: "NORTH"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 2200005
+// YAML-NEXT:                   id: 2200004
 // YAML-NEXT:                   time_step: 26
 // YAML-NEXT:                   invalid_iterations: 1
 // YAML-NEXT:                   src_operands:
@@ -918,7 +918,7 @@
 // YAML-NEXT:             - index_per_ii: 3
 // YAML-NEXT:               operations:
 // YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 150002
+// YAML-NEXT:                   id: 150001
 // YAML-NEXT:                   time_step: 3
 // YAML-NEXT:                   invalid_iterations: 0
 // YAML-NEXT:                   src_operands:
@@ -952,7 +952,7 @@
 // YAML-NEXT:             - index_per_ii: 5
 // YAML-NEXT:               operations:
 // YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 390001
+// YAML-NEXT:                   id: 390000
 // YAML-NEXT:                   time_step: 5
 // YAML-NEXT:                   invalid_iterations: 0
 // YAML-NEXT:                   src_operands:
@@ -1006,7 +1006,7 @@
 // YAML-NEXT:                     - operand: "WEST"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 830001
+// YAML-NEXT:                   id: 830000
 // YAML-NEXT:                   time_step: 21
 // YAML-NEXT:                   invalid_iterations: 1
 // YAML-NEXT:                   src_operands:
@@ -1062,7 +1062,7 @@
 // YAML-NEXT:                     - operand: "$1"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                 - opcode: "CTRL_MOV"
-// YAML-NEXT:                   id: 2000002
+// YAML-NEXT:                   id: 2000001
 // YAML-NEXT:                   time_step: 23
 // YAML-NEXT:                   invalid_iterations: 1
 // YAML-NEXT:                   src_operands:
@@ -1102,7 +1102,7 @@
 // YAML-NEXT:             - index_per_ii: 12
 // YAML-NEXT:               operations:
 // YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 1740002
+// YAML-NEXT:                   id: 1740001
 // YAML-NEXT:                   time_step: 12
 // YAML-NEXT:                   invalid_iterations: 0
 // YAML-NEXT:                   src_operands:
@@ -1123,7 +1123,7 @@
 // YAML-NEXT:                     - operand: "$1"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 2200006
+// YAML-NEXT:                   id: 2200005
 // YAML-NEXT:                   time_step: 27
 // YAML-NEXT:                   invalid_iterations: 1
 // YAML-NEXT:                   src_operands:
