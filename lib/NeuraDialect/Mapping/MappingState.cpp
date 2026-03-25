@@ -48,7 +48,8 @@ bool MappingState::addWriteToRegFileRecord(Register *reg, int time_step) {
   // writer, regardless of whether it targets the same register or a different
   // one.  This disallows both:
   //   * ADD NORTH, SOUTH -> $0, $1  (single op writing two regs in a cluster)
-  //   * ADD -> $0  +  MOV -> $1     (two ops writing different regs in a cluster)
+  //   * ADD -> $0  +  MOV -> $1     (two ops writing different regs in a
+  //   cluster)
   //
   // However, multiple writes to the SAME register are allowed (idempotent):
   //   * Route A writes $0 @t=4, Route B also writes $0 @t=4
@@ -149,7 +150,7 @@ void MappingState::removeReadFromRegFileRecord(Register *reg, int time_step) {
 }
 
 bool MappingState::isRegisterWriteAvailableAcrossTime(Register *reg,
-                                                       int time_step) const {
+                                                      int time_step) const {
   RegisterFile *reg_file = reg->getRegisterFile();
   if (!reg_file) {
     return true;
@@ -192,7 +193,7 @@ bool MappingState::isRegisterWriteAvailableAcrossTime(Register *reg,
 }
 
 bool MappingState::isRegisterReadAvailableAcrossTime(Register *reg,
-                                                      int time_step) const {
+                                                     int time_step) const {
   RegisterFile *reg_file = reg->getRegisterFile();
   if (!reg_file) {
     return true;
@@ -337,7 +338,8 @@ void MappingState::unbindOp(Operation *op) {
   op_to_locs.erase(it);
 }
 
-bool MappingState::isAvailableAcrossTime(const MappingLoc &loc, Operation *op) const {
+bool MappingState::isAvailableAcrossTime(const MappingLoc &loc,
+                                         Operation *op) const {
   // Checks whether the resource at the given (resource, time_step) is free,
   // considering both occupancy state and the register-cluster constraint.
 
@@ -403,9 +405,11 @@ bool MappingState::isAvailableAcrossTime(const MappingLoc &loc, Operation *op) c
 }
 
 bool MappingState::isAvailableForOccupyStatus(const MappingLoc &loc,
-                                              int new_occupy_status, Operation *op) const {
+                                              int new_occupy_status,
+                                              Operation *op) const {
   // Helper lambda to check a single location against all existing entries
-  auto checkSingleLoc = [this, new_occupy_status, op](const MappingLoc &check_loc) -> bool {
+  auto checkSingleLoc = [this, new_occupy_status,
+                         op](const MappingLoc &check_loc) -> bool {
     std::map<MappingLoc,
              std::vector<std::pair<int, Operation *>>>::const_iterator it =
         occupied_locs.find(check_loc);
@@ -517,7 +521,8 @@ int MappingState::getOccupyStatusAcrossTime(const MappingLoc &loc) const {
 
 bool MappingState::isAvailableAcrossTimeInRange(BasicResource *resource,
                                                 int start_time,
-                                                int exclusive_end_time, Operation *op) const {
+                                                int exclusive_end_time,
+                                                Operation *op) const {
   // Checks the availability for each time step across time domain.
   for (int t = start_time; t < exclusive_end_time; ++t) {
     MappingLoc check_loc = {resource, t};
@@ -985,14 +990,18 @@ MappingStateSnapshot::MappingStateSnapshot(const MappingState &mapping_state) {
   this->occupied_locs = mapping_state.getOccupiedLocs();
   this->loc_to_op = mapping_state.getLocToOp();
   this->op_to_locs = mapping_state.getOpToLocs();
-  this->reg_file_write_to_occupy_operations = mapping_state.getRegFileWriteToOccupyOperations();
-  this->reg_file_read_to_occupy_operations = mapping_state.getRegFileReadToOccupyOperations();
+  this->reg_file_write_to_occupy_operations =
+      mapping_state.getRegFileWriteToOccupyOperations();
+  this->reg_file_read_to_occupy_operations =
+      mapping_state.getRegFileReadToOccupyOperations();
 }
 
 void MappingStateSnapshot::restore(MappingState &mapping_state) {
   mapping_state.setOccupiedLocs(this->occupied_locs);
   mapping_state.setLocToOp(this->loc_to_op);
   mapping_state.setOpToLocs(this->op_to_locs);
-  mapping_state.setRegFileWriteToOccupyOperations(this->reg_file_write_to_occupy_operations);
-  mapping_state.setRegFileReadToOccupyOperations(this->reg_file_read_to_occupy_operations);
+  mapping_state.setRegFileWriteToOccupyOperations(
+      this->reg_file_write_to_occupy_operations);
+  mapping_state.setRegFileReadToOccupyOperations(
+      this->reg_file_read_to_occupy_operations);
 }

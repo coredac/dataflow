@@ -13,10 +13,10 @@ namespace neura {
 
 // Occupy status for multi-cycle pipeline support.
 // These states define how a tile/FU is occupied at a given time step.
-#define SINGLE_OCCUPY     0 // A single-cycle op is in the FU (exclusive)
+#define SINGLE_OCCUPY 0     // A single-cycle op is in the FU (exclusive)
 #define START_PIPE_OCCUPY 1 // A multi-cycle op starts in the FU
-#define END_PIPE_OCCUPY   2 // A multi-cycle op ends in the FU
-#define IN_PIPE_OCCUPY    3 // A multi-cycle op is occupying the FU (pipelined)
+#define END_PIPE_OCCUPY 2   // A multi-cycle op ends in the FU
+#define IN_PIPE_OCCUPY 3    // A multi-cycle op is occupying the FU (pipelined)
 
 // Represents a spatial-temporal location: (resource, time_step)
 struct MappingLoc {
@@ -84,7 +84,8 @@ public:
   // Note that the check is performed in II granularity.
   // For example, if II is 4, and we want to check (tile 2, step 5), then
   // it will check (tile 2, step 1), (tile 2, step 5), (tile 2, step 9), etc.
-  bool isAvailableAcrossTime(const MappingLoc &loc, Operation *op = nullptr) const;
+  bool isAvailableAcrossTime(const MappingLoc &loc,
+                             Operation *op = nullptr) const;
 
   // Checks if a location is available for a specific occupy status.
   // This implements the pipeline-aware availability checking:
@@ -92,8 +93,8 @@ public:
   // - START_PIPE_OCCUPY: available if free or IN_PIPE_OCCUPY or END_PIPE_OCCUPY
   // - END_PIPE_OCCUPY: available if free or IN_PIPE_OCCUPY or START_PIPE_OCCUPY
   // - IN_PIPE_OCCUPY: always available (can pipeline with any status)
-  bool isAvailableForOccupyStatus(const MappingLoc &loc,
-                                  int new_occupy_status, Operation *op = nullptr) const;
+  bool isAvailableForOccupyStatus(const MappingLoc &loc, int new_occupy_status,
+                                  Operation *op = nullptr) const;
 
   // Gets the occupy status at a specific location across time domain.
   // Returns -1 if the location is not occupied.
@@ -103,7 +104,8 @@ public:
   // This function leverages the isAvailableAcrossTime function in each
   // time step.
   bool isAvailableAcrossTimeInRange(BasicResource *resource, int start_time,
-                                    int exclusive_end_time, Operation *op = nullptr) const;
+                                    int exclusive_end_time,
+                                    Operation *op = nullptr) const;
 
   // Checks availability of a register's cluster write port across the relevant
   // time steps.  Returns false if a DIFFERENT register in the same
@@ -165,14 +167,14 @@ public:
   const std::map<Operation *, std::vector<MappingLoc>> &getOpToLocs() const {
     return this->op_to_locs;
   }
-  const std::unordered_map<RegisterFile *,
-                           std::unordered_map<int, std::pair<Register *, int>>> &
+  const std::unordered_map<
+      RegisterFile *, std::unordered_map<int, std::pair<Register *, int>>> &
   getRegFileWriteToOccupyOperations() const {
     return this->reg_file_write_to_occupy_operations;
   }
 
-  const std::unordered_map<RegisterFile *,
-                           std::unordered_map<int, std::pair<Register *, int>>> &
+  const std::unordered_map<
+      RegisterFile *, std::unordered_map<int, std::pair<Register *, int>>> &
   getRegFileReadToOccupyOperations() const {
     return this->reg_file_read_to_occupy_operations;
   }
@@ -191,15 +193,15 @@ public:
     this->op_to_locs = op_to_locs;
   }
   void setRegFileWriteToOccupyOperations(
-      const std::unordered_map<RegisterFile *,
-                               std::unordered_map<int, std::pair<Register *, int>>>
+      const std::unordered_map<
+          RegisterFile *, std::unordered_map<int, std::pair<Register *, int>>>
           &records) {
     this->reg_file_write_to_occupy_operations = records;
   }
 
   void setRegFileReadToOccupyOperations(
-      const std::unordered_map<RegisterFile *,
-                               std::unordered_map<int, std::pair<Register *, int>>>
+      const std::unordered_map<
+          RegisterFile *, std::unordered_map<int, std::pair<Register *, int>>>
           &records) {
     this->reg_file_read_to_occupy_operations = records;
   }
