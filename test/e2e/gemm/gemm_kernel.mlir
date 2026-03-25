@@ -458,145 +458,6 @@
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:             - index_per_ii: 16
 // YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "GRANT_ONCE"
-// YAML-NEXT:                   id: 53
-// YAML-NEXT:                   time_step: 16
-// YAML-NEXT:                   invalid_iterations: 0
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "$0"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "$0"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:     - column: 1
-// YAML-NEXT:       row: 0
-// YAML-NEXT:       core_id: "1"
-// YAML-NEXT:       entries:
-// YAML-NEXT:         - entry_id: "entry0"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - index_per_ii: 1
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 72
-// YAML-NEXT:                   time_step: 18
-// YAML-NEXT:                   invalid_iterations: 1
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "WEST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "$0"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:             - index_per_ii: 2
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "GRANT_PREDICATE"
-// YAML-NEXT:                   id: 188
-// YAML-NEXT:                   time_step: 19
-// YAML-NEXT:                   invalid_iterations: 1
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "$1"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                     - operand: "$8"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "WEST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:             - index_per_ii: 4
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "PHI"
-// YAML-NEXT:                   id: 255
-// YAML-NEXT:                   time_step: 21
-// YAML-NEXT:                   invalid_iterations: 1
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "$0"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                     - operand: "NORTH"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "$0"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:             - index_per_ii: 5
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "RETURN_VOID"
-// YAML-NEXT:                   id: 267
-// YAML-NEXT:                   time_step: 22
-// YAML-NEXT:                   invalid_iterations: 1
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "$0"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:             - index_per_ii: 12
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 106
-// YAML-NEXT:                   time_step: 12
-// YAML-NEXT:                   invalid_iterations: 0
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "NORTH"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "$1"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:             - index_per_ii: 13
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 178
-// YAML-NEXT:                   time_step: 13
-// YAML-NEXT:                   invalid_iterations: 0
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "NORTH"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "$8"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:     - column: 2
-// YAML-NEXT:       row: 0
-// YAML-NEXT:       core_id: "2"
-// YAML-NEXT:       entries:
-// YAML-NEXT:         - entry_id: "entry0"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - index_per_ii: 1
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "LOAD"
-// YAML-NEXT:                   id: 139
-// YAML-NEXT:                   time_step: 18
-// YAML-NEXT:                   invalid_iterations: 1
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "NORTH"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "$0"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 128
-// YAML-NEXT:                   time_step: 18
-// YAML-NEXT:                   invalid_iterations: 1
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "NORTH"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "$9"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:             - index_per_ii: 2
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "GRANT_PREDICATE"
-// YAML-NEXT:                   id: 189
-// YAML-NEXT:                   time_step: 19
-// YAML-NEXT:                   invalid_iterations: 1
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "$1"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                     - operand: "$8"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "NORTH"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:             - index_per_ii: 3
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "ADD"
-// YAML-NEXT:                   id: 181
-// YAML-NEXT:                   time_step: 20
-// YAML-NEXT:                   invalid_iterations: 1
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "$0"
 //
 // ASM: # Compiled II: 17
 // ASM: PE(0,0):
@@ -640,115 +501,259 @@
 // ASM: PE(1,0):
 
 // CHAIN-YAML-LABEL:      core_id: "5"
-// CHAIN-YAML:            - index_per_ii: 11
-// CHAIN-YAML:              operations:
-// CHAIN-YAML:                - opcode: "NOT"
-// CHAIN-YAML:                  id: 159
-// CHAIN-YAML:                  dst_operands:
-// CHAIN-YAML:                    - operand: "$3"
-// CHAIN-YAML:                      color: "RED"
-// CHAIN-YAML:                    - operand: "$8"
-// CHAIN-YAML:            - index_per_ii: 12
-// CHAIN-YAML:              operations:
-// CHAIN-YAML:                - opcode: "DATA_MOV"
-// CHAIN-YAML:                  id: 1790000
-// CHAIN-YAML:                  src_operands:
-// CHAIN-YAML:                    - operand: "$8"
-// CHAIN-YAML:                      color: "RED"
-// CHAIN-YAML:                  dst_operands:
-// CHAIN-YAML:                    - operand: "$1"
-// CHAIN-YAML:                      color: "RED"
-// CHAIN-YAML:            - index_per_ii: 13
-// CHAIN-YAML:              operations:
-// CHAIN-YAML:                - opcode: "DATA_MOV"
-// CHAIN-YAML:                  id: 1790001
-// CHAIN-YAML:                  src_operands:
-// CHAIN-YAML:                    - operand: "$1"
-// CHAIN-YAML:                      color: "RED"
-// CHAIN-YAML:                  dst_operands:
-// CHAIN-YAML:                    - operand: "$0"
-// CHAIN-YAML:                      color: "RED"
-// CHAIN-YAML:            - index_per_ii: 14
-// CHAIN-YAML:              operations:
-// CHAIN-YAML:                - opcode: "GRANT_PREDICATE"
-// CHAIN-YAML:                  id: 190
-// CHAIN-YAML:                - opcode: "DATA_MOV"
-// CHAIN-YAML:                  id: 1790002
-// CHAIN-YAML:                  src_operands:
-// CHAIN-YAML:                    - operand: "$0"
-// CHAIN-YAML:                      color: "RED"
-// CHAIN-YAML:                  dst_operands:
-// CHAIN-YAML:                    - operand: "EAST"
-// CHAIN-YAML:                      color: "RED"
+// CHAIN-YAML            - index_per_ii: 12
+// CHAIN-YAML:               operations:
+// CHAIN-YAML:                 - opcode: "GRANT_PREDICATE"
+// CHAIN-YAML:                   id: 158
+// CHAIN-YAML:                   time_step: 12
+// CHAIN-YAML:                   invalid_iterations: 0
+// CHAIN-YAML:                   src_operands:
+// CHAIN-YAML:                     - operand: "$0"
+// CHAIN-YAML:                       color: "RED"
+// CHAIN-YAML:                     - operand: "$8"
+// CHAIN-YAML:                       color: "RED"
+// CHAIN-YAML:                   dst_operands:
+// CHAIN-YAML:                     - operand: "$0"
+// CHAIN-YAML:                       color: "RED"
+// CHAIN-YAML:                 - opcode: "DATA_MOV"
+// CHAIN-YAML:                   id: 1790000
+// CHAIN-YAML:                   time_step: 12
+// CHAIN-YAML:                   invalid_iterations: 0
+// CHAIN-YAML:                   src_operands:
+// CHAIN-YAML:                     - operand: "$16"
+// CHAIN-YAML:                       color: "RED"
+// CHAIN-YAML:                   dst_operands:
+// CHAIN-YAML:                     - operand: "EAST"
+// CHAIN-YAML:                       color: "RED"
+// CHAIN-YAML:                 - opcode: "DATA_MOV"
+// CHAIN-YAML:                   id: 1780000
+// CHAIN-YAML:                   time_step: 12
+// CHAIN-YAML:                   invalid_iterations: 0
+// CHAIN-YAML:                   src_operands:
+// CHAIN-YAML:                     - operand: "$16"
+// CHAIN-YAML:                       color: "RED"
+// CHAIN-YAML:                   dst_operands:
+// CHAIN-YAML:                     - operand: "SOUTH"
+// CHAIN-YAML:                       color: "RED"
+// CHAIN-YAML:             - index_per_ii: 13
+// CHAIN-YAML:               operations:
+// CHAIN-YAML:                 - opcode: "ADD"
+// CHAIN-YAML:                   id: 182
+// CHAIN-YAML:                   time_step: 13
+// CHAIN-YAML:                   invalid_iterations: 0
+// CHAIN-YAML:                   src_operands:
+// CHAIN-YAML:                     - operand: "$0"
+// CHAIN-YAML:                       color: "RED"
+// CHAIN-YAML:                     - operand: "#1"
+// CHAIN-YAML:                       color: "RED"
+// CHAIN-YAML:                   dst_operands:
+// CHAIN-YAML:                     - operand: "NORTH"
+// CHAIN-YAML:                       color: "RED"
+// CHAIN-YAML:                     - operand: "$1"
+// CHAIN-YAML:                       color: "RED"
+// CHAIN-YAML:             - index_per_ii: 14
+// CHAIN-YAML:               operations:
+// CHAIN-YAML:                 - opcode: "GRANT_PREDICATE"
+// CHAIN-YAML:                   id: 190
+// CHAIN-YAML:                   time_step: 14
+// CHAIN-YAML:                   invalid_iterations: 0
+// CHAIN-YAML:                   src_operands:
+// CHAIN-YAML:                     - operand: "$9"
+// CHAIN-YAML:                       color: "RED"
+// CHAIN-YAML:                     - operand: "$16"
+// CHAIN-YAML:                       color: "RED"
+// CHAIN-YAML:                   dst_operands:
+// CHAIN-YAML:                     - operand: "$8"
+// CHAIN-YAML:                       color: "RED"
+// CHAIN-YAML:                 - opcode: "DATA_MOV"
+// CHAIN-YAML:                   id: 167
+// CHAIN-YAML:                   time_step: 14
+// CHAIN-YAML:                   invalid_iterations: 0
+// CHAIN-YAML:                   src_operands:
+// CHAIN-YAML:                     - operand: "EAST"
+// CHAIN-YAML:                       color: "RED"
+// CHAIN-YAML:                   dst_operands:
+// CHAIN-YAML:                     - operand: "$0"
+// CHAIN-YAML:                       color: "RED"
 // CHAIN-YAML-LABEL:      core_id: "6"
-// CHAIN-YAML:            - index_per_ii: 6
-// CHAIN-YAML:              operations:
-// CHAIN-YAML:                - opcode: "GRANT_PREDICATE"
-// CHAIN-YAML:                  id: 189
-// CHAIN-YAML:                  src_operands:
-// CHAIN-YAML:                    - operand: "$7"
-// CHAIN-YAML:                      color: "RED"
-// CHAIN-YAML:                    - operand: "$8"
-// CHAIN-YAML:                      color: "RED"
-// CHAIN-YAML:            - index_per_ii: 15
-// CHAIN-YAML:              operations:
-// CHAIN-YAML:                - opcode: "DATA_MOV"
-// CHAIN-YAML:                  id: 179
-// CHAIN-YAML:                  src_operands:
-// CHAIN-YAML:                    - operand: "WEST"
-// CHAIN-YAML:                      color: "RED"
-// CHAIN-YAML:                  dst_operands:
-// CHAIN-YAML:                    - operand: "$8"
-// CHAIN-YAML:                      color: "RED"
+// CHAIN-YAML:             - index_per_ii: 16
+// CHAIN-YAML:               operations:
+// CHAIN-YAML:                 - opcode: "PHI_START"
+// CHAIN-YAML:                   id: 98
+// CHAIN-YAML:                   time_step: 16
+// CHAIN-YAML:                   invalid_iterations: 0
+// CHAIN-YAML:                   src_operands:
+// CHAIN-YAML:                     - operand: "$1"
+// CHAIN-YAML:                       color: "RED"
+// CHAIN-YAML:                     - operand: "$11"
+// CHAIN-YAML:                       color: "RED"
+// CHAIN-YAML:                   dst_operands:
+// CHAIN-YAML:                     - operand: "EAST"
+// CHAIN-YAML:                       color: "RED"
+// CHAIN-YAML:                     - operand: "$0"
+// CHAIN-YAML:                       color: "RED"
+// CHAIN-YAML:                 - opcode: "DATA_MOV"
+// CHAIN-YAML:                   id: 206
+// CHAIN-YAML:                   time_step: 16
+// CHAIN-YAML:                   invalid_iterations: 0
+// CHAIN-YAML:                   src_operands:
+// CHAIN-YAML:                     - operand: "NORTH"
+// CHAIN-YAML:                       color: "RED"
+// CHAIN-YAML:                   dst_operands:
+// CHAIN-YAML:                     - operand: "$9"
+// CHAIN-YAML:                       color: "RED"
+// CHAIN-YAML:     - column: 3
+// CHAIN-YAML:       row: 1
+// CHAIN-YAML:       core_id: "7"
+// CHAIN-YAML:       entries:
+// CHAIN-YAML:         - entry_id: "entry0"
+// CHAIN-YAML:           instructions:
+// CHAIN-YAML:             - index_per_ii: 0
+// CHAIN-YAML:               operations:
+// CHAIN-YAML:                 - opcode: "DATA_MOV"
+// CHAIN-YAML:                   id: 113
+// CHAIN-YAML:                   time_step: 17
+// CHAIN-YAML:                   invalid_iterations: 1
+// CHAIN-YAML:                   src_operands:
+// CHAIN-YAML:                     - operand: "WEST"
+// CHAIN-YAML:                       color: "RED"
+// CHAIN-YAML:                   dst_operands:
+// CHAIN-YAML:                     - operand: "$0"
+// CHAIN-YAML:                       color: "RED"
+// CHAIN-YAML:             - index_per_ii: 2
+// CHAIN-YAML:               operations:
+// CHAIN-YAML:                 - opcode: "GRANT_PREDICATE"
+// CHAIN-YAML:                   id: 183
+// CHAIN-YAML:                   time_step: 19
+// CHAIN-YAML:                   invalid_iterations: 1
+// CHAIN-YAML:                   src_operands:
+// CHAIN-YAML:                     - operand: "$0"
+// CHAIN-YAML:                       color: "RED"
+// CHAIN-YAML:                     - operand: "$8"
+// CHAIN-YAML:                       color: "RED"
+// CHAIN-YAML:                   dst_operands:
+// CHAIN-YAML:                     - operand: "WEST"
+// CHAIN-YAML:                       color: "RED"
+// CHAIN-YAML:             - index_per_ii: 14
+// CHAIN-YAML:               operations:
+// CHAIN-YAML:                 - opcode: "DATA_MOV"
+// CHAIN-YAML:                   id: 173
+// CHAIN-YAML:                   time_step: 14
+// CHAIN-YAML:                   invalid_iterations: 0
+
 
 // CHAIN-ASM-LABEL: PE(1,1):
-// CHAIN-ASM: NOT, [$0] -> [$3], [$8], [$7], [$6], [NORTH, RED], [$5], [SOUTH, RED], [WEST, RED] (t=11, inv_iters=0)
-// CHAIN-ASM: DATA_MOV, [$8] -> [$1] (t=12, inv_iters=0)
-// CHAIN-ASM: DATA_MOV, [$1] -> [$0] (t=13, inv_iters=0)
-// CHAIN-ASM: GRANT_PREDICATE, [$2], [$3] -> [$1] (t=14, inv_iters=0)
-// CHAIN-ASM: DATA_MOV, [$0] -> [EAST, RED] (t=14, inv_iters=0)
+// CHAIN-ASM: GRANT_PREDICATE, [$1], [$9] -> [WEST, RED] (t=17, inv_iters=1)
+// CHAIN-ASM: DATA_MOV, [NORTH, RED] -> [$9] (t=17, inv_iters=1)
+// CHAIN-ASM: ICMP_EQ, [$0], [$9] -> [$0] (t=18, inv_iters=1)
+// CHAIN-ASM: NOT, [$0] -> [EAST, RED], [$9], [NORTH, RED] (t=19, inv_iters=1)
+// CHAIN-ASM: GRANT_PREDICATE, [$0], [$0] -> [SOUTH, RED] (t=20, inv_iters=1)
 // CHAIN-ASM-LABEL: PE(2,1):
-// CHAIN-ASM: GRANT_PREDICATE, [$7], [$8] -> [$7] (t=23, inv_iters=1)
-// CHAIN-ASM: DATA_MOV, [WEST, RED] -> [$8] (t=15, inv_iters=0)
+// CHAIN-ASM: GEP, [arg3], [$17], [$2] -> [SOUTH, RED] (t=17, inv_iters=1)
+// CHAIN-ASM: DATA_MOV, [SOUTH, RED] -> [NORTH, RED] (t=17, inv_iters=1)
 
 // CHAIN-DFG:  - id: 179
 // CHAIN-DFG:    opcode: "DATA_MOV"
 // CHAIN-DFG:    tile_x: 2
-// CHAIN-DFG:    tile_y: 1
-// CHAIN-DFG:    time_step: 15
+// CHAIN-DFG:    tile_y: 0
+// CHAIN-DFG:    time_step: 18
 // CHAIN-DFG:  - id: 189
 // CHAIN-DFG:    opcode: "GRANT_PREDICATE"
 // CHAIN-DFG:    tile_x: 2
-// CHAIN-DFG:    tile_y: 1
-// CHAIN-DFG:    time_step: 23
+// CHAIN-DFG:    tile_y: 0
+// CHAIN-DFG:    time_step: 19
 // CHAIN-DFG:  - id: 190
 // CHAIN-DFG:    opcode: "GRANT_PREDICATE"
 // CHAIN-DFG:    tile_x: 1
 // CHAIN-DFG:    tile_y: 1
 // CHAIN-DFG:    time_step: 14
-// CHAIN-DFG:  - id: 1790000
+// CHAIN-DFG:  - id: 2170000
+// CHAIN-DFG:    opcode: "DATA_MOV"
+// CHAIN-DFG:    tile_x: 2
+// CHAIN-DFG:    tile_y: 2
+// CHAIN-DFG:    time_step: 16
+// CHAIN-DFG:  - id: 2200001
 // CHAIN-DFG:    opcode: "DATA_MOV"
 // CHAIN-DFG:    tile_x: 1
-// CHAIN-DFG:    tile_y: 1
-// CHAIN-DFG:    time_step: 12
-// CHAIN-DFG:  - id: 1790001
-// CHAIN-DFG:    opcode: "DATA_MOV"
+// CHAIN-DFG:    tile_y: 2
+// CHAIN-DFG:    time_step: 16
+// CHAIN-DFG:  - id: 2400001
+// CHAIN-DFG:    opcode: "CTRL_MOV"
 // CHAIN-DFG:    tile_x: 1
-// CHAIN-DFG:    tile_y: 1
-// CHAIN-DFG:    time_step: 13
-// CHAIN-DFG:  - id: 1790002
-// CHAIN-DFG:    opcode: "DATA_MOV"
-// CHAIN-DFG:    tile_x: 1
-// CHAIN-DFG:    tile_y: 1
-// CHAIN-DFG:    time_step: 14
-// CHAIN-DFG: edges:
-// CHAIN-DFG:   - from: 159
-// CHAIN-DFG-NEXT:     to: 1790000
-// CHAIN-DFG-NEXT:   - from: 1790000
-// CHAIN-DFG-NEXT:     to: 1790001
-// CHAIN-DFG-NEXT:   - from: 1790001
-// CHAIN-DFG-NEXT:     to: 1790002
-// CHAIN-DFG-NEXT:   - from: 1790002
-// CHAIN-DFG-NEXT:     to: 179
-// CHAIN-DFG-NEXT:   - from: 179
-// CHAIN-DFG-NEXT:     to: 189
+// CHAIN-DFG:    tile_y: 2
+// CHAIN-DFG:    time_step: 20
+// CHAIN-DFG:  - id: 2620001
+// CHAIN-DFG:    opcode: "CTRL_MOV"
+// CHAIN-DFG:    tile_x: 0
+// CHAIN-DFG-NEXT:    tile_y: 2
+// CHAIN-DFG-NEXT:    time_step: 21
+// CHAIN-DFG-NEXT:  - id: 2640001
+// CHAIN-DFG-NEXT:    opcode: "CTRL_MOV"
+// CHAIN-DFG-NEXT:    tile_x: 1
+// CHAIN-DFG-NEXT:    tile_y: 1
+// CHAIN-DFG-NEXT:    time_step: 21
+// CHAIN-DFG-NEXT:edges:
+// CHAIN-DFG-NEXT:  - from: 42
+// CHAIN-DFG-NEXT:    to: 43
+// CHAIN-DFG-NEXT:  - from: 43
+// CHAIN-DFG-NEXT:    to: 45
+// CHAIN-DFG-NEXT:  - from: 46
+// CHAIN-DFG-NEXT:    to: 52
+// CHAIN-DFG-NEXT:  - from: 52
+// CHAIN-DFG-NEXT:    to: 58
+// CHAIN-DFG-NEXT:  - from: 262
+// CHAIN-DFG-NEXT:    to: 84
+// CHAIN-DFG-NEXT:  - from: 263
+// CHAIN-DFG-NEXT:    to: 83
+// CHAIN-DFG-NEXT:  - from: 264
+// CHAIN-DFG-NEXT:    to: 82
+// CHAIN-DFG-NEXT:  - from: 265
+// CHAIN-DFG-NEXT:    to: 68
+// CHAIN-DFG-NEXT:  - from: 237
+// CHAIN-DFG-NEXT:    to: 101
+// CHAIN-DFG-NEXT:  - from: 240
+// CHAIN-DFG-NEXT:    to: 81
+// CHAIN-DFG-NEXT:  - from: 241
+// CHAIN-DFG-NEXT:    to: 79
+// CHAIN-DFG-NEXT:  - from: 242
+// CHAIN-DFG-NEXT:    to: 80
+// CHAIN-DFG-NEXT:  - from: 81
+// CHAIN-DFG-NEXT:    to: 90
+// CHAIN-DFG-NEXT:  - from: 90
+// CHAIN-DFG-NEXT:    to: 98
+// CHAIN-DFG-NEXT:  - from: 194
+// CHAIN-DFG-NEXT:    to: 98
+// CHAIN-DFG-NEXT:  - from: 195
+// CHAIN-DFG-NEXT:    to: 123
+// CHAIN-DFG-NEXT:  - from: 199
+// CHAIN-DFG-NEXT:    to: 95
+// CHAIN-DFG-NEXT:  - from: 200
+// CHAIN-DFG-NEXT:    to: 117
+// CHAIN-DFG-NEXT:  - from: 97
+// CHAIN-DFG-NEXT:    to: 111
+// CHAIN-DFG-NEXT:  - from: 111
+// CHAIN-DFG-NEXT:    to: 120
+// CHAIN-DFG-NEXT:  - from: 97
+// CHAIN-DFG-NEXT:    to: 110
+// CHAIN-DFG-NEXT:  - from: 110
+// CHAIN-DFG-NEXT:    to: 119
+// CHAIN-DFG-NEXT:  - from: 119
+// CHAIN-DFG-NEXT:    to: 128
+// CHAIN-DFG-NEXT:  - from: 128
+// CHAIN-DFG-NEXT:    to: 202
+// CHAIN-DFG-NEXT:  - from: 117
+// CHAIN-DFG-NEXT:    to: 124
+// CHAIN-DFG-NEXT:  - from: 124
+// CHAIN-DFG-NEXT:    to: 189
+// CHAIN-DFG-NEXT:  - from: 189
+// CHAIN-DFG-NEXT:    to: 200
+// CHAIN-DFG-NEXT:  - from: 159
+// CHAIN-DFG-NEXT:    to: 176
+// CHAIN-DFG-NEXT:  - from: 176
+// CHAIN-DFG-NEXT:    to: 186
+// CHAIN-DFG-NEXT:  - from: 123
+// CHAIN-DFG-NEXT:    to: 137
+// CHAIN-DFG-NEXT:  - from: 137
+// CHAIN-DFG-NEXT:    to: 184
+// CHAIN-DFG-NEXT:  - from: 184
+// CHAIN-DFG-NEXT:    to: 195

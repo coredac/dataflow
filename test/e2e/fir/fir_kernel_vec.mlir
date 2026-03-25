@@ -86,7 +86,7 @@
 // YAML-NEXT:             - index_per_ii: 1
 // YAML-NEXT:               operations:
 // YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 310000
+// YAML-NEXT:                   id: 310001
 // YAML-NEXT:                   time_step: 6
 // YAML-NEXT:                   invalid_iterations: 1
 // YAML-NEXT:                   src_operands:
@@ -240,7 +240,7 @@
 // YAML-NEXT:             - index_per_ii: 3
 // YAML-NEXT:               operations:
 // YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 180000
+// YAML-NEXT:                   id: 180001
 // YAML-NEXT:                   time_step: 3
 // YAML-NEXT:                   invalid_iterations: 0
 // YAML-NEXT:                   src_operands:
@@ -258,7 +258,7 @@
 // YAML-NEXT:             - index_per_ii: 1
 // YAML-NEXT:               operations:
 // YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 290001
+// YAML-NEXT:                   id: 290002
 // YAML-NEXT:                   time_step: 6
 // YAML-NEXT:                   invalid_iterations: 1
 // YAML-NEXT:                   src_operands:
@@ -301,77 +301,6 @@
 // YAML-NEXT:           instructions:
 // YAML-NEXT:             - index_per_ii: 0
 // YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 120000
-// YAML-NEXT:                   time_step: 5
-// YAML-NEXT:                   invalid_iterations: 1
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "WEST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "SOUTH"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 290000
-// YAML-NEXT:                   time_step: 5
-// YAML-NEXT:                   invalid_iterations: 1
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "EAST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "WEST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:             - index_per_ii: 3
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "GRANT_PREDICATE"
-// YAML-NEXT:                   id: 37
-// YAML-NEXT:                   time_step: 8
-// YAML-NEXT:                   invalid_iterations: 1
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "SOUTH"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                     - operand: "$0"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "$0"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:             - index_per_ii: 4
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 23
-// YAML-NEXT:                   time_step: 4
-// YAML-NEXT:                   invalid_iterations: 0
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "EAST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "$0"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                 - opcode: "VECTOR.REDUCE.ADD"
-// YAML-NEXT:                   id: 41
-// YAML-NEXT:                   time_step: 9
-// YAML-NEXT:                   invalid_iterations: 1
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "$0"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "NORTH"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:     - column: 2
-// YAML-NEXT:       row: 2
-// YAML-NEXT:       core_id: "10"
-// YAML-NEXT:       entries:
-// YAML-NEXT:         - entry_id: "entry0"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - index_per_ii: 0
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "GRANT_PREDICATE"
-// YAML-NEXT:                   id: 32
-// YAML-NEXT:                   time_step: 5
-// YAML-NEXT:                   invalid_iterations: 1
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "$8"
-// YAML-NEXT:                       color: "RED"
 
 
 // ASM: # Compiled II: 5
