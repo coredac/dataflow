@@ -662,14 +662,14 @@ void MappingState::reserveRoute(Operation *op, ArrayRef<MappingLoc> path) {
     loc_to_op[loc] = op;
     // Use SINGLE_OCCUPY for route reservations (links/registers).
     occupied_locs[loc].push_back({SINGLE_OCCUPY, op});
-    // Maintain register cluster occupancy records.
+    // Maintains register cluster occupancy records.
     if (loc.resource->getKind() == ResourceKind::Register) {
       Register *reg = static_cast<Register *>(loc.resource);
-      // Record write at first occurrence of this register in the path
+      // Records write at first occurrence of this register in the path
       if (loc.time_step == resource_first_time[loc.resource]) {
         addWriteToRegFileRecord(reg, loc.time_step);
       }
-      // Record read at last occurrence of this register in the path
+      // Records read at last occurrence of this register in the path
       if (loc.time_step == resource_last_time[loc.resource]) {
         addReadToRegFileRecord(reg, loc.time_step);
       }
