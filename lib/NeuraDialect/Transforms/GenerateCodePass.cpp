@@ -803,9 +803,9 @@ struct GenerateCodePass
       StringRef out = topo.dirFromLink(cur_link);
 
       uint64_t sig = static_cast<uint64_t>(llvm::hash_combine(mid_tile, time_step, cur_link));
+      int hop_id = base_mov_id >= 0 ? base_mov_id * 10000 + static_cast<int>(hop_counter) : -1;
+      ++hop_counter;
       if (hop_signatures.insert(sig).second) {
-        int hop_id = base_mov_id >= 0 ? base_mov_id * 10000 + static_cast<int>(hop_counter) : -1;
-        ++hop_counter;
         placeRouterHop(topo, mid_tile, time_step, in, out, /*asCtrlMov=*/IsCtrl, hop_id);
       }
     }
@@ -832,8 +832,10 @@ struct GenerateCodePass
     return consumers;
   }
 
-  // Try register-based rewiring. If cross-tile, emit deposits [incoming_dir]->[$reg] at earliest reg time_step.
-  // Returns true if rewiring to $reg was applied to consumers.
+  // Try register-based rewiring.
+  // For cross-tile movs, destination deposits/register transfers have already been materialized
+  // during routing instruction generation; this helper only decides which local register a
+  // consumer should read, if any.
   template<bool IsCtrl>
   bool handleRegisterRewiring(Operation *consumer_operation, Value value_at_consumer,
                               const SmallVector<RegStep, 4> &regs,
