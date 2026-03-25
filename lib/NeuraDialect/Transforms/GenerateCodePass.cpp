@@ -618,17 +618,19 @@ struct GenerateCodePass
   }
 
   // Adds producer endpoints:
-  // - If src_reg_step exists: producer writes ONLY to $src_reg (directional port is emitted by egress at first_link_ts).
+  // - If pre-link registers exist: producer writes ONLY to the earliest pre-link register.
+  //   Later source-side register transfers and egress are emitted as synthetic instructions.
   // - Else: producer writes to producer_direction if link-based, or $reg for reg-only paths.
   void setProducerDestination(Operation *producer, StringRef producer_direction,
                               const SmallVector<RegStep, 4> &regs,
-                              std::optional<RegStep> src_reg_step) {
+                              ArrayRef<RegStep> src_reg_steps) {
     if (auto *pi = getInstructionPointer(producer)) {
-      if (src_reg_step) {
-        // This mov uses src_reg + egress to send on link.time_step. We still must NOT
+      if (!src_reg_steps.empty()) {
+        // This mov uses source-side register transfers + egress to send on link.time_step.
+        // We still must NOT
         // delete existing directional outputs, because the same producer may
         // fan-out to other consumers via other mov paths.
-        setUniqueDestination(pi, "$" + std::to_string(src_reg_step->regId));
+        setUniqueDestination(pi, "$" + std::to_string(src_reg_steps.front().regId));
         return;
       }
 
@@ -660,9 +662,24 @@ struct GenerateCodePass
   }
 
   struct MovRegSplit {
-    std::optional<RegStep> src_reg_step; // last reg with time_step < first_link_time_step
-    std::optional<RegStep> dst_reg_step; // first reg with time_step > last_link_time_step
+    SmallVector<RegStep, 4> src_reg_steps; // all regs with time_step < first_link_time_step
+    SmallVector<RegStep, 4> dst_reg_steps; // all regs with time_step > last_link_time_step
   };
+
+  SmallVector<std::pair<RegStep, RegStep>, 4>
+  collectRegisterTransfers(ArrayRef<RegStep> reg_steps) const {
+    SmallVector<std::pair<RegStep, RegStep>, 4> transfers;
+    if (reg_steps.size() < 2) return transfers;
+
+    for (size_t i = 1; i < reg_steps.size(); ++i) {
+      const RegStep &prev = reg_steps[i - 1];
+      const RegStep &cur = reg_steps[i];
+      // Consecutive uses of the same physical register are a hold, not a move.
+      if (prev.regId == cur.regId) continue;
+      transfers.emplace_back(prev, cur);
+    }
+    return transfers;
+  }
 
   MovRegSplit splitMovRegs(const SmallVector<RegStep, 4> &regs,
                            const SmallVector<LinkStep, 8> &links) const {
@@ -671,10 +688,105 @@ struct GenerateCodePass
     int first_link_time_step = links.front().time_step;
     int last_link_time_step = links.back().time_step;
     for (const RegStep &r : regs) {
-      if (r.time_step < first_link_time_step) out.src_reg_step = r;
-      if (!out.dst_reg_step && r.time_step > last_link_time_step) out.dst_reg_step = r;
+      if (r.time_step < first_link_time_step) {
+        out.src_reg_steps.push_back(r);
+        continue;
+      }
+      if (r.time_step > last_link_time_step) out.dst_reg_steps.push_back(r);
     }
     return out;
+  }
+
+  template<bool IsCtrl>
+  void placeRegisterTransfer(const Topology &topology, int tile_id, int time_step,
+                             int src_reg_id, int dst_reg_id, int assigned_id = -1) {
+    auto [tile_x, tile_y] = topology.tile_location.lookup(tile_id);
+    Instruction inst(IsCtrl ? "CTRL_MOV" : "DATA_MOV");
+    inst.id = assigned_id;
+    inst.time_step = time_step;
+    inst.index_per_ii = indexPerIiFromTimeStep(time_step);
+    inst.invalid_iterations = syntheticInvalidIterations(time_step);
+    inst.src_operands.emplace_back("$" + std::to_string(src_reg_id), "RED");
+    inst.dst_operands.emplace_back("$" + std::to_string(dst_reg_id), "RED");
+    tile_time_instructions[{tile_x, tile_y}][inst.index_per_ii].push_back(std::move(inst));
+  }
+
+  template<bool IsCtrl>
+  size_t emitSourceSyntheticChain(const MovRegSplit &reg_split,
+                                  const SmallVector<LinkStep, 8> &links,
+                                  const Topology &topo,
+                                  int base_mov_id) {
+    if (links.empty() || reg_split.src_reg_steps.empty()) return 0;
+
+    int src_tile_id = topo.srcTileOfLink(links.front().link_id);
+    int next_synthetic_offset = 0;
+    SmallVector<std::pair<RegStep, RegStep>, 4> transfers =
+        collectRegisterTransfers(reg_split.src_reg_steps);
+
+    for (const auto &[prev, cur] : transfers) {
+      int synthetic_id =
+          base_mov_id >= 0 ? base_mov_id * 10000 + next_synthetic_offset : -1;
+      ++next_synthetic_offset;
+      placeRegisterTransfer<IsCtrl>(topo, src_tile_id, cur.time_step,
+                                    prev.regId, cur.regId, synthetic_id);
+    }
+
+    int egress_instruction_id =
+        base_mov_id >= 0 ? base_mov_id * 10000 + next_synthetic_offset : -1;
+    placeSrcEgress(topo, src_tile_id, links.front().time_step,
+                   topo.dirFromLink(links.front().link_id),
+                   reg_split.src_reg_steps.back().regId,
+                   /*asCtrlMov=*/IsCtrl, egress_instruction_id);
+    ++next_synthetic_offset;
+    return next_synthetic_offset;
+  }
+
+  template<bool IsCtrl>
+  size_t emitDestinationSyntheticChain(const MovRegSplit &reg_split,
+                                       const SmallVector<LinkStep, 8> &links,
+                                       const Topology &topo,
+                                       int base_mov_id,
+                                       size_t next_synthetic_offset) {
+    if (links.empty() || reg_split.dst_reg_steps.empty()) return next_synthetic_offset;
+
+    int dst_tile_id = topo.dstTileOfLink(links.back().link_id);
+    StringRef incoming_dir = topo.invertDir(topo.dirFromLink(links.back().link_id));
+
+    // The IR-backed mov_id materializes the deposit onto the first post-link register.
+    placeDstDeposit(topo, dst_tile_id, reg_split.dst_reg_steps.front().time_step,
+                    incoming_dir, reg_split.dst_reg_steps.front().regId,
+                    /*asCtrlMov=*/IsCtrl, base_mov_id);
+
+    SmallVector<std::pair<RegStep, RegStep>, 4> transfers =
+        collectRegisterTransfers(reg_split.dst_reg_steps);
+    for (const auto &[prev, cur] : transfers) {
+      int synthetic_id =
+          base_mov_id >= 0 ? base_mov_id * 10000 + static_cast<int>(next_synthetic_offset) : -1;
+      ++next_synthetic_offset;
+      placeRegisterTransfer<IsCtrl>(topo, dst_tile_id, cur.time_step,
+                                    prev.regId, cur.regId, synthetic_id);
+    }
+    return next_synthetic_offset;
+  }
+
+  std::optional<int>
+  selectRegisterForConsumer(ArrayRef<RegStep> reg_steps,
+                            const TileLocation &consumer_placement,
+                            bool allow_prearrival_register) const {
+    if (reg_steps.empty()) return std::nullopt;
+    if (!consumer_placement.has_tile || consumer_placement.time_step < 0) {
+      if (allow_prearrival_register) return reg_steps.front().regId;
+      return std::nullopt;
+    }
+
+    std::optional<int> selected_reg;
+    for (const RegStep &step : reg_steps) {
+      if (step.time_step >= consumer_placement.time_step) break;
+      selected_reg = step.regId;
+    }
+    if (selected_reg) return selected_reg;
+    if (allow_prearrival_register) return reg_steps.front().regId;
+    return std::nullopt;
   }
 
   // Emits router hops for multi-hop paths (from the second hop onwards). CTRL_MOV emits CTRL_MOV hops.
@@ -691,9 +803,9 @@ struct GenerateCodePass
       StringRef out = topo.dirFromLink(cur_link);
 
       uint64_t sig = static_cast<uint64_t>(llvm::hash_combine(mid_tile, time_step, cur_link));
+      int hop_id = base_mov_id >= 0 ? base_mov_id * 10000 + static_cast<int>(hop_counter) : -1;
+      ++hop_counter;
       if (hop_signatures.insert(sig).second) {
-        int hop_id = base_mov_id >= 0 ? base_mov_id * 10000 + static_cast<int>(hop_counter) : -1;
-        ++hop_counter;
         placeRouterHop(topo, mid_tile, time_step, in, out, /*asCtrlMov=*/IsCtrl, hop_id);
       }
     }
@@ -720,43 +832,44 @@ struct GenerateCodePass
     return consumers;
   }
 
-  // Try register-based rewiring. If cross-tile, emit deposits [incoming_dir]->[$reg] at earliest reg time_step.
-  // Returns true if rewiring to $reg was applied to consumers.
+  // Try register-based rewiring.
+  // For cross-tile movs, destination deposits/register transfers have already been materialized
+  // during routing instruction generation; this helper only decides which local register a
+  // consumer should read, if any.
   template<bool IsCtrl>
   bool handleRegisterRewiring(Operation *consumer_operation, Value value_at_consumer,
                               const SmallVector<RegStep, 4> &regs,
-                              std::optional<RegStep> dst_reg_step,
+                              ArrayRef<RegStep> dst_reg_steps,
                               const SmallVector<LinkStep, 8> &links, const Topology &topo, int mov_dfg_id) {
+    (void)mov_dfg_id;
     if (!links.empty()) {
-      // Cross-tile: deposit on destination tile at dst_reg_step (post-link register).
-      if (!dst_reg_step) return false;
-      int deposit_time_step = dst_reg_step->time_step;
-      int register_id = dst_reg_step->regId;
+      if (dst_reg_steps.empty()) return false;
 
       int dst_tile = topo.dstTileOfLink(links.back().link_id);
-      // Computes incoming direction from destination tile's perspective.
-      StringRef incoming_dir = topo.invertDir(topo.dirFromLink(links.back().link_id));
-      placeDstDeposit(topo, dst_tile, deposit_time_step, incoming_dir, register_id,
-                      /*asCtrlMov=*/IsCtrl, mov_dfg_id);
-
       TileLocation consumer_placement = operation_placements.lookup(consumer_operation);
       if (consumer_placement.has_tile) {
-        // For CTRL_MOV, the destination register often represents a stateful value (reserve/control)
-        // that must be consumed via a local register even if the consumer's time_step is earlier
-        // (e.g., prologue reads default, later iterations read updated).
-        const bool should_rewire_to_register =
-            IsCtrl || (consumer_placement.time_step > deposit_time_step);
-        if (should_rewire_to_register) {
+        int consumer_tile_id =
+            topo.tileIdAt(consumer_placement.col_idx, consumer_placement.row_idx);
+        if (consumer_tile_id != dst_tile) return false;
+
+        if (std::optional<int> register_id =
+                selectRegisterForConsumer(dst_reg_steps, consumer_placement,
+                                          /*allow_prearrival_register=*/IsCtrl)) {
           setConsumerSourceExact(consumer_operation, value_at_consumer,
-                                 "$" + std::to_string(register_id));
+                                 "$" + std::to_string(*register_id));
           return true;
         }
       }
     } else {
       // Same-tile: must go via register.
       if (regs.empty()) return false;
-      int register_id = regs.back().regId;
-      setConsumerSourceExact(consumer_operation, value_at_consumer, "$" + std::to_string(register_id));
+      TileLocation consumer_placement = operation_placements.lookup(consumer_operation);
+      std::optional<int> register_id =
+          selectRegisterForConsumer(regs, consumer_placement,
+                                    /*allow_prearrival_register=*/IsCtrl);
+      if (!register_id) register_id = regs.back().regId;
+      setConsumerSourceExact(consumer_operation, value_at_consumer,
+                             "$" + std::to_string(*register_id));
       return true;
     }
     return false;
@@ -824,18 +937,16 @@ struct GenerateCodePass
   template<bool IsCtrl>
   void emitMovRoutingInstructions(Operation *forwarder, const MovBasics<IsCtrl> &basics,
                                  const Topology &topo) {
+    (void)forwarder;
     // Producer endpoints & intermediate hops.
-    setProducerDestination(basics.producer, basics.producer_direction, basics.regs, basics.reg_split.src_reg_step);
-    if (!basics.links.empty() && basics.reg_split.src_reg_step) {
-      int src_tile = topo.srcTileOfLink(basics.links.front().link_id);
-      int first_link_time_step = basics.links.front().time_step;
-      int egress_instruction_id = basics.mov_dfg_id >= 0 ? basics.mov_dfg_id * 10000 : -1;
-      placeSrcEgress(topo, src_tile, first_link_time_step, basics.producer_direction,
-                     basics.reg_split.src_reg_step->regId,
-                     /*asCtrlMov=*/IsCtrl, egress_instruction_id);
-    }
-    size_t hop_counter = 1;
-    generateIntermediateHops<IsCtrl>(basics.links, topo, basics.mov_dfg_id, hop_counter);
+    setProducerDestination(basics.producer, basics.producer_direction, basics.regs,
+                           basics.reg_split.src_reg_steps);
+    size_t next_synthetic_offset =
+        emitSourceSyntheticChain<IsCtrl>(basics.reg_split, basics.links, topo,
+                                         basics.mov_dfg_id);
+    generateIntermediateHops<IsCtrl>(basics.links, topo, basics.mov_dfg_id, next_synthetic_offset);
+    emitDestinationSyntheticChain<IsCtrl>(basics.reg_split, basics.links, topo,
+                                          basics.mov_dfg_id, next_synthetic_offset);
   }
 
   template<bool IsCtrl>
@@ -858,7 +969,7 @@ struct GenerateCodePass
       Operation *consumer_operation = consumer_pair.first;
       Value value_at_consumer = consumer_pair.second;
       if (!handleRegisterRewiring<IsCtrl>(consumer_operation, value_at_consumer, basics.regs,
-                                          basics.reg_split.dst_reg_step,
+                                          basics.reg_split.dst_reg_steps,
                                           basics.links, topo, basics.mov_dfg_id))
         handleDirectionRewiring<IsCtrl>(consumer_operation, value_at_consumer, basics.consumer_direction,
                                         basics.links, topo, forwarder);
@@ -1063,8 +1174,8 @@ struct GenerateCodePass
     int mov_id = -1;
     int producer_id = -1;
     SmallVector<int, 4> consumer_ids;
-    SmallVector<std::pair<int, int>, 8> hop_tiles;
-    SmallVector<int, 8> hop_time_steps;
+    SmallVector<DfgNodeInfo, 8> pre_mov_nodes;
+    SmallVector<DfgNodeInfo, 8> post_mov_nodes;
   };
 
   void collectCtrlMovReserves(func::FuncOp func,
@@ -1177,55 +1288,74 @@ struct GenerateCodePass
       }
 
       SmallVector<LinkStep, 8> link_steps = collectLinkSteps(operation);
-      SmallVector<std::pair<int,int>, 8> hop_tiles;
-      SmallVector<int, 8> hop_time_steps;
-      // Detect whether this mov has a src_reg_step (reg.time_step < first_link_time_step). If so,
-      // an egress instruction exists with id=mov_id*10000 and must participate in edges.
-      bool has_src_reg_step = false;
+      SmallVector<DfgNodeInfo, 8> pre_mov_nodes;
+      SmallVector<DfgNodeInfo, 8> post_mov_nodes;
       if (!link_steps.empty()) {
         SmallVector<RegStep, 4> regs = collectRegSteps(operation);
         MovRegSplit reg_split = splitMovRegs(regs, link_steps);
-        has_src_reg_step = reg_split.src_reg_step.has_value();
-        if (has_src_reg_step) {
-          int base = mov_dfg_id * 10000;
-          int egress_id = base;
+
+        if (!reg_split.src_reg_steps.empty()) {
           int src_tile_id = topology.srcTileOfLink(link_steps.front().link_id);
           auto coord = topology.tile_location.lookup(src_tile_id);
-          // Add placeholder node now (will be filled/confirmed by injectMaterializedInstructionNodes).
-          if (!nodes.count(egress_id)) {
-            nodes[egress_id] = DfgNodeInfo{
-                isCtrlMov(operation) ? "CTRL_MOV" : "DATA_MOV",
-                coord.first, coord.second, link_steps.front().time_step};
+          StringRef opcode = isCtrlMov(operation) ? "CTRL_MOV" : "DATA_MOV";
+          SmallVector<std::pair<RegStep, RegStep>, 4> transfers =
+              collectRegisterTransfers(reg_split.src_reg_steps);
+
+          for (const auto &[prev, cur] : transfers) {
+            (void)prev;
+            pre_mov_nodes.push_back(
+                DfgNodeInfo{opcode.str(), coord.first, coord.second,
+                            cur.time_step});
+          }
+          pre_mov_nodes.push_back(
+              DfgNodeInfo{opcode.str(), coord.first, coord.second,
+                          link_steps.front().time_step});
+        }
+
+        // Build hop nodes directly from link steps (mirrors router hop emission).
+        if (link_steps.size() > 1) {
+          StringRef opcode = isCtrlMov(operation) ? "CTRL_MOV" : "DATA_MOV";
+          for (size_t i = 1; i < link_steps.size(); ++i) {
+            int middle_tile_id = topology.srcTileOfLink(link_steps[i].link_id);
+            auto coord = topology.tile_location.lookup(middle_tile_id);
+            pre_mov_nodes.push_back(
+                DfgNodeInfo{opcode.str(), coord.first, coord.second,
+                            link_steps[i].time_step});
+          }
+        }
+
+        if (reg_split.dst_reg_steps.size() > 1) {
+          int dst_tile_id = topology.dstTileOfLink(link_steps.back().link_id);
+          auto coord = topology.tile_location.lookup(dst_tile_id);
+          StringRef opcode = isCtrlMov(operation) ? "CTRL_MOV" : "DATA_MOV";
+          SmallVector<std::pair<RegStep, RegStep>, 4> transfers =
+              collectRegisterTransfers(reg_split.dst_reg_steps);
+
+          for (const auto &[prev, cur] : transfers) {
+            (void)prev;
+            post_mov_nodes.push_back(
+                DfgNodeInfo{opcode.str(), coord.first, coord.second,
+                            cur.time_step});
           }
         }
       }
 
-      // Build hop tiles directly from link steps (mirrors router hop emission).
-      if (link_steps.size() > 1) {
-        for (size_t i = 1; i < link_steps.size(); ++i) {
-          int middle_tile_id = topology.srcTileOfLink(link_steps[i].link_id);
-          auto coord = topology.tile_location.lookup(middle_tile_id);
-          hop_tiles.push_back(coord);
-          hop_time_steps.push_back(link_steps[i].time_step);
-        }
-      }
-
-      if (hop_tiles.empty()) {
+      if (!pre_mov_nodes.empty() || !post_mov_nodes.empty()) {
         auto it = nodes.find(mov_dfg_id);
         if (it != nodes.end()) {
           it->second.tile_x = -1;
           it->second.tile_y = -1;
+          it->second.time_step = -1;
         }
-      } else {
+
         int base = mov_dfg_id * 10000;
-        for (size_t i = 0; i < hop_tiles.size(); ++i) {
-          int node_id = base + static_cast<int>(i) + 1;
-          DfgNodeInfo hop_node;
-          hop_node.opcode = isCtrlMov(operation) ? "CTRL_MOV" : "DATA_MOV";
-          hop_node.tile_x = hop_tiles[i].first;
-          hop_node.tile_y = hop_tiles[i].second;
-          hop_node.time_step = (i < hop_time_steps.size()) ? hop_time_steps[i] : -1;
-          nodes[node_id] = hop_node;
+        for (size_t i = 0; i < pre_mov_nodes.size(); ++i) {
+          int node_id = base + static_cast<int>(i);
+          nodes[node_id] = pre_mov_nodes[i];
+        }
+        for (size_t i = 0; i < post_mov_nodes.size(); ++i) {
+          int node_id = base + static_cast<int>(pre_mov_nodes.size() + i);
+          nodes[node_id] = post_mov_nodes[i];
         }
 
         if (producer_id >= 0)
@@ -1234,19 +1364,8 @@ struct GenerateCodePass
           skip_edges.insert({mov_dfg_id, consumer_id});
 
         rewrites.push_back(
-            HopRewriteInfo{mov_dfg_id, producer_id, consumer_ids, hop_tiles, hop_time_steps});
-      }
-
-      // Also rewrite edges for single-hop (no intermediate hop nodes) when egress exists:
-      // producer -> egress(base) -> mov_id -> consumers
-      // so that DFG edges align with instruction ids.
-      if (has_src_reg_step && hop_tiles.empty()) {
-        if (producer_id >= 0)
-          skip_edges.insert({producer_id, mov_dfg_id});
-        for (int consumer_id : consumer_ids)
-          skip_edges.insert({mov_dfg_id, consumer_id});
-        // Store a rewrite with empty hop list; later we will special-case it.
-        rewrites.push_back(HopRewriteInfo{mov_dfg_id, producer_id, consumer_ids, /*hop_tiles*/{}, /*hop_time_steps*/{}});
+            HopRewriteInfo{mov_dfg_id, producer_id, consumer_ids,
+                           pre_mov_nodes, post_mov_nodes});
       }
     });
 
@@ -1257,26 +1376,22 @@ struct GenerateCodePass
 
     for (const HopRewriteInfo &rewrite : rewrites) {
       int base = rewrite.mov_id * 10000;
-      int egress_id = base;
       int previous = rewrite.producer_id;
 
-      // If an egress instruction exists (id=mov_id*10000), route through it.
-      // This keeps DFG edges aligned with instruction ids for reg-before-link paths.
-      if (nodes.count(egress_id)) {
-        if (previous >= 0) edges.emplace_back(previous, egress_id);
-        previous = egress_id;
-      }
-
-      for (size_t i = 0; i < rewrite.hop_tiles.size(); ++i) {
-        int node_id = base + static_cast<int>(i) + 1;
+      for (size_t i = 0; i < rewrite.pre_mov_nodes.size(); ++i) {
+        int node_id = base + static_cast<int>(i);
         if (previous >= 0) edges.emplace_back(previous, node_id);
         previous = node_id;
       }
-      // Always connect the chain to mov_id; if mov_id is later pruned (non-materialized),
-      // pruneMovNodesWithoutCoords will bypass it and connect previous directly to consumers.
       if (previous >= 0) edges.emplace_back(previous, rewrite.mov_id);
+      previous = rewrite.mov_id;
+      for (size_t i = 0; i < rewrite.post_mov_nodes.size(); ++i) {
+        int node_id = base + static_cast<int>(rewrite.pre_mov_nodes.size() + i);
+        edges.emplace_back(previous, node_id);
+        previous = node_id;
+      }
       for (int consumer_id : rewrite.consumer_ids)
-        edges.emplace_back(rewrite.mov_id, consumer_id);
+        edges.emplace_back(previous, consumer_id);
     }
   }
 

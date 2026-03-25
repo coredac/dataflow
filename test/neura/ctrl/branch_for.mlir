@@ -231,7 +231,7 @@ func.func @loop_test() -> f32 {
 // YAML-NEXT:                     - operand: "EAST"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 190001
+// YAML-NEXT:                   id: 190000
 // YAML-NEXT:                   time_step: 4
 // YAML-NEXT:                   invalid_iterations: 1
 // YAML-NEXT:                   src_operands:
