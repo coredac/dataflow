@@ -68,3 +68,18 @@ $ ./tools/sync_e2e_outputs_to_zeonica_testbench.sh
 Mapping (per kernel `K`):
 - `test/e2e/K/tmp-generated-dfg.{dot,yaml}` -> `test/benchmark/Zeonica_Testbench/kernel/K/K-dfg.{dot,yaml}`
 - `test/e2e/K/tmp-generated-instructions.{asm,yaml}` -> `test/benchmark/Zeonica_Testbench/kernel/K/K-instructions.{asm,yaml}`
+
+Code Formatting
+--------------------------------------------------------
+Neura uses LLVM-style formatting via `.clang-format`.
+
+```sh
+# LLVM-style: format changed lines against main
+$ git clang-format main
+
+# Show formatting patch only (non-destructive)
+$ git clang-format --diff main
+
+# Restrict formatting to selected paths
+$ git clang-format main -- lib/ tools/
+```

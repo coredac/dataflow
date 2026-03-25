@@ -11,12 +11,23 @@ Please follow the steps below:
   4. Merge into the `main` branch.
 
 ## Code Format Style
-We take the LLVM style as the code format.
+We follow LLVM style and use `git clang-format` for formatting.
 
-To follow this style, you can use `clang-format` to generate the format configuration file.
+Please keep `.clang-format` simple and close to upstream LLVM style.
 
 ```sh
-$ clang-format -style=LLVM -dump-config > .clang-format
+$ git clang-format main
 ```
 
-Then use some format extentions in your editor to enable automatic code formatting (e.g., `clangd` in VS Code).
+Common usage:
+
+```sh
+# Format changed lines against main in working tree.
+$ git clang-format main
+
+# Preview formatting diff only.
+$ git clang-format --diff main
+
+# Restrict to selected files.
+$ git clang-format main -- lib/ tools/
+```
