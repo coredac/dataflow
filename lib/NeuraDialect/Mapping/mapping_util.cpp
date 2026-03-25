@@ -529,6 +529,72 @@ mlir::neura::getMaterializedUserOps(Operation *op) {
   return result;
 }
 
+// This struct represents a pending data_mov/ctrl_mov that is being routed,
+// along with its routing path.
+struct PendingRoute {
+  Operation *mov_op;
+  std::vector<MappingLoc> path;
+};
+
+bool hasSafeOperandIterationAtConsume(
+    Operation *op, const std::vector<PendingRoute> &operand_routes, int ii) {
+  assert(ii > 0 && "II should be positive");
+
+  if (operand_routes.empty()) {
+    return true;
+  }
+
+  for (const PendingRoute &route : operand_routes) {
+    // Records the time range that each register is occupied on this route.
+    // <Register*, <min_time, max_time>>, this means the register is occupied
+    // from min_time to max_time.
+    DenseMap<Register *, std::pair<int, int>> reg_time_range;
+    for (const MappingLoc &loc : route.path) {
+      Register *reg = dyn_cast<Register>(loc.resource);
+      if (!reg) {
+        continue;
+      }
+
+      // For each register, tracks its live interval on this path by keeping
+      // the earliest and latest time it appears.
+      // Inserts a new entry if the register is seen for the first time.
+      auto [it, inserted] = reg_time_range.try_emplace(
+          reg, std::make_pair(loc.time_step, loc.time_step));
+
+      // If this register has been seen before, updates the time range to
+      // include the new time step.
+      if (!inserted) {
+        // Updates the min_time for this seen register if the new time step is
+        // earlier.
+        it->second.first = std::min(it->second.first, loc.time_step);
+        // Updates the max_time for this seen register if the new time step is
+        // later.
+        it->second.second = std::max(it->second.second, loc.time_step);
+      }
+    }
+
+    // Register occupancy is tracked in per-cycle slots (half-open in routing
+    // builders), so max_t - min_t + 1 corresponds to the hold duration.
+    for (const auto &entry : reg_time_range) {
+      Register *reg = entry.first;
+      int min_t = entry.second.first;
+      int max_t = entry.second.second;
+      int occupancy = max_t - min_t + 1;
+      if (occupancy > ii) {
+        llvm::errs() << "[DEBUG] Reject schedule due to register hold >= next "
+                        "iteration window. op="
+                     << *op << ", II=" << ii << ", reg=#" << reg->getId()
+                     << ", hold_start=" << min_t << ", hold_end=" << max_t
+                     << ", hold_len=" << occupancy
+                     << ", mov_op=" << *route.mov_op << "\n";
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
 bool mlir::neura::tryRouteForwardMove(Operation *mov_op, MappingLoc src_loc,
                                       MappingLoc dst_loc,
                                       const MappingState &state,
@@ -562,13 +628,11 @@ Register *mlir::neura::getAvailableRegister(const MappingState &state,
   // Read and write ports are independent — one read AND one write can happen
   // simultaneously on the same RegisterFile.
   //
-  // TODO: The same-source DataMovOp register-sharing mechanism
-  // implemented in MappingState::isAvailableAcrossTime() and
-  // isAvailableForOccupyStatus() is a short-term workaround for routing
-  // congestion caused by high-fanout values (e.g., predicate values with many
-  // consumers on the same tile). The long-term fix is to deduplicate DataMovOps
-  // with the same materialized source in InsertDataMovPass, emitting a single
-  // DataMovOp per (source, destination-tile) pair instead of one per consumer.
+  // NOTE: Multiple DataMovOps carrying the same materialized source value are
+  // allowed to share the same physical register (see
+  // MappingState::isAvailableAcrossTime() and isAvailableForOccupyStatus()).
+  // This is correct because all such DataMovOps read the identical value from
+  // the register, so the single register read port broadcasts to all consumers.
   for (Register *reg : tile->getRegisters()) {
     if (!state.isAvailableAcrossTimeInRange(reg, start_time, exclusive_end_time,
                                             op)) {
@@ -1173,6 +1237,7 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
   if (bind_success) {
     std::vector<Operation *> routed_operands;
     std::vector<Operation *> routed_ctrl_movs;
+    std::vector<PendingRoute> pending_operand_routes;
     // Tries to route the data move operations.
     for (Value operand : op->getOperands()) {
       llvm::errs() << "Processing operand: " << operand << "\n";
@@ -1200,6 +1265,7 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
                               route_path)) {
         // Reserves the route for the data move operation.
         mapping_state.reserveRoute(data_move, route_path);
+        pending_operand_routes.push_back({data_move, route_path});
         routed_operands.push_back(data_move);
         llvm::errs() << "[DEBUG] Successfully routed data move: " << *data_move
                      << " from " << src_loc.resource->getType() << "#"
@@ -1219,6 +1285,17 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
       for (Operation *routed_op : routed_operands) {
         llvm::errs() << "[DEBUG] Releasing route for routed operand: "
                      << *routed_op << "\n";
+        mapping_state.releaseRoute(routed_op);
+      }
+      return false;
+    }
+
+    if (!hasSafeOperandIterationAtConsume(op, pending_operand_routes,
+                                          mapping_state.getII())) {
+      llvm::errs() << "[DEBUG] Operand iteration shift at consume time; "
+                      "unschedule op\n";
+      mapping_state.unbindOp(op);
+      for (Operation *routed_op : routed_operands) {
         mapping_state.releaseRoute(routed_op);
       }
       return false;
