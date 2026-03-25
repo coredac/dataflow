@@ -534,21 +534,10 @@ module attributes {} {
 // PLACEMENT-SAME: task_mapping_info = {cgra_positions = [{col = 1 : i32, row = 1 : i32}], read_sram_locations = [{col = 1 : i32, row = 1 : i32}, {col = 2 : i32, row = 1 : i32}], write_sram_locations = [{col = 1 : i32, row = 1 : i32}]}
 
 // RESOPT:      taskflow.task @Task_1
-// RESOPT:      cgra_count = 1 : i32, compiled_ii = 2 : i32, steps = 4 : i32, tile_shape = "1x1", trip_count = 160 : i32
+// RESOPT:      cgra_count = 2 : i32, compiled_ii = 2 : i32, steps = 4 : i32, tile_shape = "1x2", trip_count = 160 : i32
 // RESOPT:      taskflow.task @Task_0_Task_2_fused_Task_3_utilfused
-// RESOPT:      cgra_count = 1 : i32, compiled_ii = 2 : i32, steps = 5 : i32, tile_shape = "1x1", trip_count = 192 : i32
+// RESOPT:      cgra_count = 2 : i32, compiled_ii = 2 : i32, steps = 5 : i32, tile_shape = "1x2", trip_count = 192 : i32
 // RESOPT:      taskflow.task @Task_4
-// RESOPT:      cgra_count = 1 : i32, compiled_ii = 2 : i32, steps = 4 : i32, tile_shape = "1x1", trip_count = 36 : i32
+// RESOPT:      cgra_count = 2 : i32, compiled_ii = 2 : i32, steps = 4 : i32, tile_shape = "1x2", trip_count = 36 : i32
 // RESOPT:      return
 
-// CGRA Tile Occupation after RESOPT (4x4 grid, col x row):
-// +---+---+---+---+
-// | 0 | 1 | 2 | . |   Task_1 (1x1, cgra_count=1)
-// +---+---+---+---+   Task_0_Task_2_fused_Task_3_utilfused (1x1, cgra_count=1)
-// | . | . | . | . |   Task_4 (1x1, cgra_count=1)
-// +---+---+---+---+
-// | . | . | . | . |
-// +---+---+---+---+
-// | . | . | . | . |
-// +---+---+---+---+
-// 0=Task_1, 1=Task_0_Task_2_fused_Task_3_utilfused, 2=Task_4; 3/16 CGRAs used
