@@ -85,7 +85,7 @@
 // YAML-NEXT:             - index_per_ii: 1
 // YAML-NEXT:               operations:
 // YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 310001
+// YAML-NEXT:                   id: 310000
 // YAML-NEXT:                   time_step: 6
 // YAML-NEXT:                   invalid_iterations: 1
 // YAML-NEXT:                   src_operands:
@@ -239,7 +239,7 @@
 // YAML-NEXT:             - index_per_ii: 3
 // YAML-NEXT:               operations:
 // YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 180001
+// YAML-NEXT:                   id: 180000
 // YAML-NEXT:                   time_step: 3
 // YAML-NEXT:                   invalid_iterations: 0
 // YAML-NEXT:                   src_operands:
@@ -257,7 +257,7 @@
 // YAML-NEXT:             - index_per_ii: 1
 // YAML-NEXT:               operations:
 // YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 290002
+// YAML-NEXT:                   id: 290001
 // YAML-NEXT:                   time_step: 6
 // YAML-NEXT:                   invalid_iterations: 1
 // YAML-NEXT:                   src_operands:
@@ -301,7 +301,7 @@
 // YAML-NEXT:             - index_per_ii: 0
 // YAML-NEXT:               operations:
 // YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 120001
+// YAML-NEXT:                   id: 120000
 // YAML-NEXT:                   time_step: 5
 // YAML-NEXT:                   invalid_iterations: 1
 // YAML-NEXT:                   src_operands:
@@ -311,7 +311,7 @@
 // YAML-NEXT:                     - operand: "SOUTH"
 // YAML-NEXT:                       color: "RED"
 // YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 290001
+// YAML-NEXT:                   id: 290000
 // YAML-NEXT:                   time_step: 5
 // YAML-NEXT:                   invalid_iterations: 1
 // YAML-NEXT:                   src_operands:
@@ -576,5 +576,4 @@
 // ASM-NEXT: {
 // ASM-NEXT:   RETURN_VALUE, [SOUTH, RED] (t=10, inv_iters=2)
 // ASM-NEXT: } (idx_per_ii=0)
-
 
