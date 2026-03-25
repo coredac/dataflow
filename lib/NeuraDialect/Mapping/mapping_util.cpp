@@ -261,7 +261,7 @@ mlir::neura::getTopologicallySortedOps(Region &region) {
   std::deque<Operation *> ready_queue;
 
   // Collects recurrence cycle ops.
-  SmallVector<RecurrenceCycle, 4> recurrence_cycles =
+  SmallVector<RecurrenceCycle> recurrence_cycles =
       collectRecurrenceCycles(region);
   llvm::DenseSet<Operation *> recurrence_ops;
   for (const RecurrenceCycle &cycle : recurrence_cycles) {
@@ -576,7 +576,7 @@ mlir::neura::getMaterializedUserOps(Operation *op) {
 
     // Specially handles the ctrl_mov, i.e., the second operand of ctrl_mov is
     // treated as a target/destination/user in terms of dataflow.
-    if (auto ctrl_mov = dyn_cast<neura::CtrlMovOp>(curr)) {
+    if (neura::CtrlMovOp ctrl_mov = dyn_cast<neura::CtrlMovOp>(curr)) {
       Value target = ctrl_mov.getTarget();
       for (Operation *user : target.getUsers()) {
         if (visited.insert(user).second) {
@@ -860,7 +860,7 @@ bool mlir::neura::canReachLocInTime(const std::vector<Operation *> &producers,
 
   for (Operation *producer : producers) {
     // Get the last location of the producer.
-    const std::vector<MappingLoc> &producer_locs =
+    std::vector<MappingLoc> producer_locs =
         mapping_state.getAllLocsOfOp(producer);
     assert(!producer_locs.empty() && "No locations found for producer");
 
@@ -1264,7 +1264,6 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
       std::vector<MappingLoc> route_path;
       if (tryRouteForwardMove(data_move, src_loc, target_loc, mapping_state,
                               route_path)) {
-        // Reserves the route for the data move operation.
         mapping_state.reserveRoute(data_move, route_path);
         pending_operand_routes.push_back({data_move, std::move(route_path)});
         routed_operands.push_back(data_move);
@@ -1284,8 +1283,6 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
                    << " @t=" << target_loc.time_step << "; so unschedule op\n";
       mapping_state.unbindOp(op);
       for (Operation *routed_op : routed_operands) {
-        llvm::errs() << "[DEBUG] Releasing route for routed operand: "
-                     << *routed_op << "\n";
         mapping_state.releaseRoute(routed_op);
       }
       return false;

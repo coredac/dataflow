@@ -84,7 +84,8 @@ public:
   // Note that the check is performed in II granularity.
   // For example, if II is 4, and we want to check (tile 2, step 5), then
   // it will check (tile 2, step 1), (tile 2, step 5), (tile 2, step 9), etc.
-  bool isAvailableAcrossTime(const MappingLoc &loc) const;
+  bool isAvailableAcrossTime(const MappingLoc &loc,
+                             Operation *op = nullptr) const;
 
   // Checks if a location is available for a specific occupy status.
   // This implements the pipeline-aware availability checking:
