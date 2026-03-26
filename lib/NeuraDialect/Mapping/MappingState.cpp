@@ -386,7 +386,7 @@ bool MappingState::isAvailableAcrossTime(const MappingLoc &loc,
 
   // NOTE: Register-file (cluster) port constraints (both write-vs-write AND
   // read-vs-read) are enforced inside getAvailableRegister() in
-  // mapping_util.cpp, NOT here.  That function knows which time step is a
+  // mapping_util.cpp, NOT here. That function knows which time step is a
   // write (start_time) and which is a read (exclusive_end_time - 1), so it
   // calls:
   //   - isRegisterWriteAvailableAcrossTime(reg, start_time)
