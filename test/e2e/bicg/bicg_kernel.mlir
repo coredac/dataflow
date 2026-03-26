@@ -46,66 +46,65 @@
 // RUN: FileCheck %s --input-file=tmp-generated-instructions.asm --check-prefix=ASM
 
 
-// BEFORE_CANONICALIZE:   func.func @kernel(%arg0: i32 {llvm.noundef}, %arg1: i32 {llvm.noundef}, %arg2: !llvm.ptr {llvm.nocapture, llvm.noundef, llvm.readonly}, %arg3: !llvm.ptr {llvm.nocapture, llvm.noundef}, %arg4: !llvm.ptr {llvm.nocapture, llvm.noundef}, %arg5: !llvm.ptr {llvm.nocapture, llvm.noundef, llvm.readonly}, %arg6: !llvm.ptr {llvm.nocapture, llvm.noundef, llvm.readonly}) -> !llvm.void attributes {CConv = #llvm.cconv<ccc>, accelerator = "neura", linkage = #llvm.linkage<external>, memory_effects = #llvm.memory_effects<other = none, argMem = readwrite, inaccessibleMem = none>, no_unwind, passthrough = ["nofree", "norecurse", "nosync", ["uwtable", "2"], ["min-legal-vector-width", "0"], ["no-trapping-math", "true"], ["stack-protector-buffer-size", "8"], ["target-cpu", "x86-64"]], target_cpu = "x86-64", target_features = #llvm.target_features<["+cmov", "+cx8", "+fxsr", "+mmx", "+sse", "+sse2", "+x87"]>, tune_cpu = "generic", unnamed_addr = 1 : i64, visibility_ = 0 : i64} {
-// BEFORE_CANONICALIZE-NEXT:     %0 = "neura.constant"() <{value = "%arg0"}> : () -> i32
-// BEFORE_CANONICALIZE-NEXT:     %1 = "neura.constant"() <{value = "%arg1"}> : () -> i32
-// BEFORE_CANONICALIZE-NEXT:     %2 = "neura.constant"() <{value = "%arg3"}> : () -> !llvm.ptr
-// BEFORE_CANONICALIZE-NEXT:     %3 = "neura.constant"() <{value = "%arg4"}> : () -> !llvm.ptr
-// BEFORE_CANONICALIZE-NEXT:     %4 = "neura.constant"() <{value = 0 : i8}> : () -> i8
-// BEFORE_CANONICALIZE-NEXT:     %5 = "neura.constant"() <{value = 0 : i64}> : () -> i64
-// BEFORE_CANONICALIZE-NEXT:     %6 = "neura.icmp"(%0) <{cmpType = "sgt"}> {rhs_value = 0 : i32} : (i32) -> i1
-// BEFORE_CANONICALIZE-NEXT:     neura.cond_br %6 : i1 then to ^bb1 else to ^bb2
-// BEFORE_CANONICALIZE-NEXT:   ^bb1:  // pred: ^bb0
-// BEFORE_CANONICALIZE-NEXT:     %7 = neura.zext %0 : i32 -> i64
-// BEFORE_CANONICALIZE-NEXT:     %8 = "neura.shl"(%7) {rhs_value = 3 : i64} : (i64) -> i64
-// BEFORE_CANONICALIZE-NEXT:     "neura.memset"(%2, %4, %8) <{is_volatile = false}> : (!llvm.ptr, i8, i64) -> ()
-// BEFORE_CANONICALIZE-NEXT:     %9 = "neura.icmp"(%1) <{cmpType = "sgt"}> {rhs_value = 0 : i32} : (i32) -> i1
-// BEFORE_CANONICALIZE-NEXT:     neura.cond_br %9 : i1 then to ^bb4 else to ^bb8
-// BEFORE_CANONICALIZE-NEXT:   ^bb2:  // pred: ^bb0
-// BEFORE_CANONICALIZE-NEXT:     %10 = "neura.icmp"(%1) <{cmpType = "sgt"}> {rhs_value = 0 : i32} : (i32) -> i1
-// BEFORE_CANONICALIZE-NEXT:     neura.cond_br %10 : i1 then to ^bb3 else to ^bb8
-// BEFORE_CANONICALIZE-NEXT:   ^bb3:  // pred: ^bb2
-// BEFORE_CANONICALIZE-NEXT:     %11 = neura.zext %1 : i32 -> i64
-// BEFORE_CANONICALIZE-NEXT:     %12 = "neura.shl"(%11) {rhs_value = 3 : i64} : (i64) -> i64
-// BEFORE_CANONICALIZE-NEXT:     "neura.memset"(%3, %4, %12) <{is_volatile = false}> : (!llvm.ptr, i8, i64) -> ()
-// BEFORE_CANONICALIZE-NEXT:     neura.br to ^bb8
-// BEFORE_CANONICALIZE-NEXT:   ^bb4:  // pred: ^bb1
-// BEFORE_CANONICALIZE-NEXT:     %13 = neura.zext %1 : i32 -> i64
-// BEFORE_CANONICALIZE-NEXT:     %14 = neura.zext %0 : i32 -> i64
-// BEFORE_CANONICALIZE-NEXT:     neura.br %5 : i64 to ^bb5
-// BEFORE_CANONICALIZE-NEXT:   ^bb5(%15: i64):  // 2 preds: ^bb4, ^bb7
-// BEFORE_CANONICALIZE-NEXT:     %16 = "neura.gep"(%15) <{operandSegmentSizes = array<i32: 0, 1>}> {lhs_value = "%arg4"} : (i64) -> !llvm.ptr
-// BEFORE_CANONICALIZE-NEXT:     "neura.store"(%16) {lhs_value = 0.000000e+00 : f64} : (!llvm.ptr) -> ()
-// BEFORE_CANONICALIZE-NEXT:     %17 = "neura.gep"(%15) <{operandSegmentSizes = array<i32: 0, 1>}> {lhs_value = "%arg6"} : (i64) -> !llvm.ptr
-// BEFORE_CANONICALIZE-NEXT:     neura.br %5 : i64 to ^bb6
-// BEFORE_CANONICALIZE-NEXT:   ^bb6(%18: i64):  // 2 preds: ^bb5, ^bb6
-// BEFORE_CANONICALIZE-NEXT:     %19 = "neura.gep"(%18) <{operandSegmentSizes = array<i32: 0, 1>}> {lhs_value = "%arg3"} : (i64) -> !llvm.ptr
-// BEFORE_CANONICALIZE-NEXT:     %20 = "neura.load"(%19) : (!llvm.ptr) -> f64
-// BEFORE_CANONICALIZE-NEXT:     %21 = "neura.load"(%17) : (!llvm.ptr) -> f64
-// BEFORE_CANONICALIZE-NEXT:     %22 = "neura.gep"(%15, %18) <{operandSegmentSizes = array<i32: 0, 2>}> {lhs_value = "%arg2"} : (i64, i64) -> !llvm.ptr
-// BEFORE_CANONICALIZE-NEXT:     %23 = "neura.load"(%22) : (!llvm.ptr) -> f64
-// BEFORE_CANONICALIZE-NEXT:     %24 = "neura.fmul_fadd"(%21, %23, %20) : (f64, f64, f64) -> f64
-// BEFORE_CANONICALIZE-NEXT:     "neura.store"(%24, %19) : (f64, !llvm.ptr) -> ()
-// BEFORE_CANONICALIZE-NEXT:     %25 = "neura.load"(%16) : (!llvm.ptr) -> f64
-// BEFORE_CANONICALIZE-NEXT:     %26 = "neura.load"(%22) : (!llvm.ptr) -> f64
-// BEFORE_CANONICALIZE-NEXT:     %27 = "neura.gep"(%18) <{operandSegmentSizes = array<i32: 0, 1>}> {lhs_value = "%arg5"} : (i64) -> !llvm.ptr
-// BEFORE_CANONICALIZE-NEXT:     %28 = "neura.load"(%27) : (!llvm.ptr) -> f64
-// BEFORE_CANONICALIZE-NEXT:     %29 = "neura.fmul_fadd"(%26, %28, %25) : (f64, f64, f64) -> f64
-// BEFORE_CANONICALIZE-NEXT:     "neura.store"(%29, %16) : (f64, !llvm.ptr) -> ()
-// BEFORE_CANONICALIZE-NEXT:     %30 = "neura.add"(%18) {rhs_value = 1 : i64} : (i64) -> i64
-// BEFORE_CANONICALIZE-NEXT:     %31 = "neura.icmp"(%30, %14) <{cmpType = "eq"}> : (i64, i64) -> i1
-// BEFORE_CANONICALIZE-NEXT:     neura.cond_br %31 : i1 then to ^bb7 else %30 : i64 to ^bb6
-// BEFORE_CANONICALIZE-NEXT:   ^bb7:  // pred: ^bb6
-// BEFORE_CANONICALIZE-NEXT:     %32 = "neura.add"(%15) {rhs_value = 1 : i64} : (i64) -> i64
-// BEFORE_CANONICALIZE-NEXT:     %33 = "neura.icmp"(%32, %13) <{cmpType = "eq"}> : (i64, i64) -> i1
-// BEFORE_CANONICALIZE-NEXT:     neura.cond_br %33 : i1 then to ^bb8 else %32 : i64 to ^bb5
-// BEFORE_CANONICALIZE-NEXT:   ^bb8:  // 4 preds: ^bb1, ^bb2, ^bb3, ^bb7
-// BEFORE_CANONICALIZE-NEXT:     "neura.return"() : () -> ()
-// BEFORE_CANONICALIZE-NEXT:   }
-// BEFORE_CANONICALIZE-NEXT: }
+// BEFORE_CANONICALIZE: module attributes
+// BEFORE_CANONICALIZE: func.func @kernel
+// BEFORE_CANONICALIZE: %0 = "neura.constant"() <{value = "%arg0"}> : () -> i32
+// BEFORE_CANONICALIZE: %1 = "neura.constant"() <{value = "%arg1"}> : () -> i32
+// BEFORE_CANONICALIZE: %2 = "neura.constant"() <{value = "%arg3"}> : () -> !llvm.ptr
+// BEFORE_CANONICALIZE: %3 = "neura.constant"() <{value = "%arg4"}> : () -> !llvm.ptr
+// BEFORE_CANONICALIZE: %4 = "neura.constant"() <{value = 0 : i8}> : () -> i8
+// BEFORE_CANONICALIZE: %5 = "neura.constant"() <{value = 0 : i64}> : () -> i64
+// BEFORE_CANONICALIZE: %6 = "neura.icmp"(%0) <{cmpType = "sgt"}> {rhs_value = 0 : i32} : (i32) -> i1
+// BEFORE_CANONICALIZE: neura.cond_br %6 : i1 then to ^bb1 else to ^bb2
+// BEFORE_CANONICALIZE: ^bb1:  // pred: ^bb0
+// BEFORE_CANONICALIZE: %7 = neura.zext %0 : i32 -> i64
+// BEFORE_CANONICALIZE: %8 = "neura.shl"(%7) {rhs_value = 3 : i64} : (i64) -> i64
+// BEFORE_CANONICALIZE: "neura.memset"(%2, %4, %8) <{is_volatile = false}> : (!llvm.ptr, i8, i64) -> ()
+// BEFORE_CANONICALIZE: %9 = "neura.icmp"(%1) <{cmpType = "sgt"}> {rhs_value = 0 : i32} : (i32) -> i1
+// BEFORE_CANONICALIZE: neura.cond_br %9 : i1 then to ^bb4 else to ^bb8
+// BEFORE_CANONICALIZE: ^bb2:  // pred: ^bb0
+// BEFORE_CANONICALIZE: %10 = "neura.icmp"(%1) <{cmpType = "sgt"}> {rhs_value = 0 : i32} : (i32) -> i1
+// BEFORE_CANONICALIZE: neura.cond_br %10 : i1 then to ^bb3 else to ^bb8
+// BEFORE_CANONICALIZE: ^bb3:  // pred: ^bb2
+// BEFORE_CANONICALIZE: %11 = neura.zext %1 : i32 -> i64
+// BEFORE_CANONICALIZE: %12 = "neura.shl"(%11) {rhs_value = 3 : i64} : (i64) -> i64
+// BEFORE_CANONICALIZE: "neura.memset"(%3, %4, %12) <{is_volatile = false}> : (!llvm.ptr, i8, i64) -> ()
+// BEFORE_CANONICALIZE: neura.br to ^bb8
+// BEFORE_CANONICALIZE: ^bb4:  // pred: ^bb1
+// BEFORE_CANONICALIZE: %13 = neura.zext %1 : i32 -> i64
+// BEFORE_CANONICALIZE: %14 = neura.zext %0 : i32 -> i64
+// BEFORE_CANONICALIZE: neura.br %5 : i64 to ^bb5
+// BEFORE_CANONICALIZE: ^bb5(%15: i64):  // 2 preds: ^bb4, ^bb7
+// BEFORE_CANONICALIZE: %16 = "neura.gep"(%15) <{operandSegmentSizes = array<i32: 0, 1>}> {lhs_value = "%arg4"} : (i64) -> !llvm.ptr
+// BEFORE_CANONICALIZE: "neura.store"(%16) {lhs_value = 0.000000e+00 : f64} : (!llvm.ptr) -> ()
+// BEFORE_CANONICALIZE: %17 = "neura.gep"(%15) <{operandSegmentSizes = array<i32: 0, 1>}> {lhs_value = "%arg6"} : (i64) -> !llvm.ptr
+// BEFORE_CANONICALIZE: neura.br %5 : i64 to ^bb6
+// BEFORE_CANONICALIZE: ^bb6(%18: i64):  // 2 preds: ^bb5, ^bb6
+// BEFORE_CANONICALIZE: %19 = "neura.gep"(%18) <{operandSegmentSizes = array<i32: 0, 1>}> {lhs_value = "%arg3"} : (i64) -> !llvm.ptr
+// BEFORE_CANONICALIZE: %20 = "neura.load"(%19) : (!llvm.ptr) -> f64
+// BEFORE_CANONICALIZE: %21 = "neura.load"(%17) : (!llvm.ptr) -> f64
+// BEFORE_CANONICALIZE: %22 = "neura.gep"(%15, %18) <{operandSegmentSizes = array<i32: 0, 2>}> {lhs_value = "%arg2"} : (i64, i64) -> !llvm.ptr
+// BEFORE_CANONICALIZE: %23 = "neura.load"(%22) : (!llvm.ptr) -> f64
+// BEFORE_CANONICALIZE: %24 = "neura.fmul_fadd"(%21, %23, %20) : (f64, f64, f64) -> f64
+// BEFORE_CANONICALIZE: "neura.store"(%24, %19) : (f64, !llvm.ptr) -> ()
+// BEFORE_CANONICALIZE: %25 = "neura.load"(%16) : (!llvm.ptr) -> f64
+// BEFORE_CANONICALIZE: %26 = "neura.load"(%22) : (!llvm.ptr) -> f64
+// BEFORE_CANONICALIZE: %27 = "neura.gep"(%18) <{operandSegmentSizes = array<i32: 0, 1>}> {lhs_value = "%arg5"} : (i64) -> !llvm.ptr
+// BEFORE_CANONICALIZE: %28 = "neura.load"(%27) : (!llvm.ptr) -> f64
+// BEFORE_CANONICALIZE: %29 = "neura.fmul_fadd"(%26, %28, %25) : (f64, f64, f64) -> f64
+// BEFORE_CANONICALIZE: "neura.store"(%29, %16) : (f64, !llvm.ptr) -> ()
+// BEFORE_CANONICALIZE: %30 = "neura.add"(%18) {rhs_value = 1 : i64} : (i64) -> i64
+// BEFORE_CANONICALIZE: %31 = "neura.icmp"(%30, %14) <{cmpType = "eq"}> : (i64, i64) -> i1
+// BEFORE_CANONICALIZE: neura.cond_br %31 : i1 then to ^bb7 else %30 : i64 to ^bb6
+// BEFORE_CANONICALIZE: ^bb7:  // pred: ^bb6
+// BEFORE_CANONICALIZE: %32 = "neura.add"(%15) {rhs_value = 1 : i64} : (i64) -> i64
+// BEFORE_CANONICALIZE: %33 = "neura.icmp"(%32, %13) <{cmpType = "eq"}> : (i64, i64) -> i1
+// BEFORE_CANONICALIZE: neura.cond_br %33 : i1 then to ^bb8 else %32 : i64 to ^bb5
+// BEFORE_CANONICALIZE: ^bb8:  // 4 preds: ^bb1, ^bb2, ^bb3, ^bb7
+// BEFORE_CANONICALIZE: "neura.return"() : () -> ()
 
-// AFTER_CANONICALIZE:   func.func @kernel(%arg0: i32 {llvm.noundef}, %arg1: i32 {llvm.noundef}, %arg2: !llvm.ptr {llvm.nocapture, llvm.noundef, llvm.readonly}, %arg3: !llvm.ptr {llvm.nocapture, llvm.noundef}, %arg4: !llvm.ptr {llvm.nocapture, llvm.noundef}, %arg5: !llvm.ptr {llvm.nocapture, llvm.noundef, llvm.readonly}, %arg6: !llvm.ptr {llvm.nocapture, llvm.noundef, llvm.readonly}) -> !llvm.void attributes {CConv = #llvm.cconv<ccc>, accelerator = "neura", linkage = #llvm.linkage<external>, memory_effects = #llvm.memory_effects<other = none, argMem = readwrite, inaccessibleMem = none>, no_unwind, passthrough = ["nofree", "norecurse", "nosync", ["uwtable", "2"], ["min-legal-vector-width", "0"], ["no-trapping-math", "true"], ["stack-protector-buffer-size", "8"], ["target-cpu", "x86-64"]], target_cpu = "x86-64", target_features = #llvm.target_features<["+cmov", "+cx8", "+fxsr", "+mmx", "+sse", "+sse2", "+x87"]>, tune_cpu = "generic", unnamed_addr = 1 : i64, visibility_ = 0 : i64} {
-// AFTER_CANONICALIZE-NEXT:     %0 = "neura.constant"() <{value = "%arg0"}> : () -> i32
+// AFTER_CANONICALIZE:        func.func @kernel
+// AFTER_CANONICALIZE-NEXT: %0 = "neura.constant"() <{value = "%arg0"}> : () -> i32
 // AFTER_CANONICALIZE-NEXT:     %1 = "neura.constant"() <{value = "%arg1"}> : () -> i32
 // AFTER_CANONICALIZE-NEXT:     %2 = "neura.constant"() <{value = "%arg3"}> : () -> !llvm.ptr
 // AFTER_CANONICALIZE-NEXT:     %3 = "neura.constant"() <{value = "%arg4"}> : () -> !llvm.ptr
@@ -159,11 +158,9 @@
 // AFTER_CANONICALIZE-NEXT:     neura.cond_br %60 : i1 then to ^bb8 else %59, %57, %58, %56 : i64, i64, i64, i64 to ^bb5
 // AFTER_CANONICALIZE-NEXT:   ^bb8:  // 4 preds: ^bb1, ^bb2, ^bb3, ^bb7
 // AFTER_CANONICALIZE-NEXT:     "neura.return"() : () -> ()
-// AFTER_CANONICALIZE-NEXT:   }
-// AFTER_CANONICALIZE-NEXT: }
 
 
-// MAPPING:   func.func @kernel(%arg0: i32 {llvm.noundef}, %arg1: i32 {llvm.noundef}, %arg2: !llvm.ptr {llvm.nocapture, llvm.noundef, llvm.readonly}, %arg3: !llvm.ptr {llvm.nocapture, llvm.noundef}, %arg4: !llvm.ptr {llvm.nocapture, llvm.noundef}, %arg5: !llvm.ptr {llvm.nocapture, llvm.noundef, llvm.readonly}, %arg6: !llvm.ptr {llvm.nocapture, llvm.noundef, llvm.readonly}) -> !llvm.void attributes {CConv = #llvm.cconv<ccc>, accelerator = "neura", dataflow_mode = "predicate", linkage = #llvm.linkage<external>, mapping_info = {compiled_ii = 12 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 9 : i32, res_mii = 6 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}, memory_effects = #llvm.memory_effects<other = none, argMem = readwrite, inaccessibleMem = none>, no_unwind, passthrough = ["nofree", "norecurse", "nosync", ["uwtable", "2"], ["min-legal-vector-width", "0"], ["no-trapping-math", "true"], ["stack-protector-buffer-size", "8"], ["target-cpu", "x86-64"]], target_cpu = "x86-64", target_features = #llvm.target_features<["+cmov", "+cx8", "+fxsr", "+mmx", "+sse", "+sse2", "+x87"]>, tune_cpu = "generic", unnamed_addr = 1 : i64, visibility_ = 0 : i64} {
+// MAPPING:        func.func @kernel(%arg0: i32 {llvm.noundef}, %arg1: i32 {llvm.noundef}, %arg2: !llvm.ptr {llvm.nocapture, llvm.noundef, llvm.readonly}, %arg3: !llvm.ptr {llvm.nocapture, llvm.noundef}, %arg4: !llvm.ptr {llvm.nocapture, llvm.noundef}, %arg5: !llvm.ptr {llvm.nocapture, llvm.noundef, llvm.readonly}, %arg6: !llvm.ptr {llvm.nocapture, llvm.noundef, llvm.readonly}) -> !llvm.void attributes {CConv = #llvm.cconv<ccc>, accelerator = "neura", dataflow_mode = "predicate", linkage = #llvm.linkage<external>, mapping_info = {compiled_ii = 12 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 9 : i32, res_mii = 6 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}, memory_effects = #llvm.memory_effects<other = none, argMem = readwrite, inaccessibleMem = none>, no_unwind, passthrough = ["nofree", "norecurse", "nosync", ["uwtable", "2"], ["min-legal-vector-width", "0"], ["no-trapping-math", "true"], ["stack-protector-buffer-size", "8"], ["target-cpu", "x86-64"]], target_cpu = "x86-64", target_features = #llvm.target_features<["+cmov", "+cx8", "+fxsr", "+mmx", "+sse", "+sse2", "+x87"]>, tune_cpu = "generic", unnamed_addr = 1 : i64, visibility_ = 0 : i64} {
 // MAPPING-NEXT:     %0 = "neura.grant_once"() <{constant_value = "%arg0"}> {dfg_id = 0 : i32, mapping_locs = [{id = 4 : i32, index_per_ii = 3 : i32, invalid_iterations = 0 : i32, resource = "tile", time_step = 3 : i32, x = 0 : i32, y = 1 : i32}]} : () -> !neura.data<i32, i1>
 // MAPPING-NEXT:     %1 = "neura.constant"() <{value = "%arg0"}> {dfg_id = 1 : i32, mapping_locs = [{id = 0 : i32, index_per_ii = 0 : i32, invalid_iterations = 0 : i32, resource = "tile", time_step = 0 : i32, x = 0 : i32, y = 0 : i32}]} : () -> !neura.data<i32, i1>
 // MAPPING-NEXT:     %2 = "neura.grant_once"() <{constant_value = "%arg1"}> {dfg_id = 2 : i32, mapping_locs = [{id = 3 : i32, index_per_ii = 2 : i32, invalid_iterations = 0 : i32, resource = "tile", time_step = 2 : i32, x = 3 : i32, y = 0 : i32}]} : () -> !neura.data<i32, i1>
@@ -410,7 +407,7 @@
 // MAPPING-NEXT:   }
 // MAPPING-NEXT: }
 
-// YAML: array_config:
+// YAML:  array_config:
 // YAML-NEXT:   columns: 4
 // YAML-NEXT:   rows: 4
 // YAML-NEXT:   compiled_ii: 12
@@ -548,460 +545,38 @@
 // YAML-NEXT:                 - opcode: "ICMP_SGT"
 // YAML-NEXT:                   id: 67
 // YAML-NEXT:                   time_step: 11
-// YAML-NEXT:                   invalid_iterations: 0
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "$0"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                     - operand: "#0"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "NORTH"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                     - operand: "EAST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:     - column: 1
-// YAML-NEXT:       row: 0
-// YAML-NEXT:       core_id: "1"
-// YAML-NEXT:       entries:
-// YAML-NEXT:         - entry_id: "entry0"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - index_per_ii: 0
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "GRANT_PREDICATE"
-// YAML-NEXT:                   id: 185
-// YAML-NEXT:                   time_step: 12
-// YAML-NEXT:                   invalid_iterations: 1
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "$0"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                     - operand: "NORTH"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "EAST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 740001
-// YAML-NEXT:                   time_step: 12
-// YAML-NEXT:                   invalid_iterations: 1
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "WEST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "NORTH"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:             - index_per_ii: 3
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 350001
-// YAML-NEXT:                   time_step: 3
-// YAML-NEXT:                   invalid_iterations: 0
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "WEST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "NORTH"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 330001
-// YAML-NEXT:                   time_step: 3
-// YAML-NEXT:                   invalid_iterations: 0
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "WEST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "EAST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 1710001
-// YAML-NEXT:                   time_step: 15
-// YAML-NEXT:                   invalid_iterations: 1
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "EAST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "WEST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:             - index_per_ii: 4
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 220002
-// YAML-NEXT:                   time_step: 4
-// YAML-NEXT:                   invalid_iterations: 0
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "EAST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "WEST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:             - index_per_ii: 5
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 1720002
-// YAML-NEXT:                   time_step: 17
-// YAML-NEXT:                   invalid_iterations: 1
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "EAST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "WEST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:             - index_per_ii: 6
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "GRANT_PREDICATE"
-// YAML-NEXT:                   id: 69
-// YAML-NEXT:                   time_step: 6
-// YAML-NEXT:                   invalid_iterations: 0
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "NORTH"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                     - operand: "EAST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "$0"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:             - index_per_ii: 7
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "ZEXT"
-// YAML-NEXT:                   id: 90
-// YAML-NEXT:                   time_step: 7
-// YAML-NEXT:                   invalid_iterations: 0
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "$0"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "NORTH"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:             - index_per_ii: 11
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 159
-// YAML-NEXT:                   time_step: 11
-// YAML-NEXT:                   invalid_iterations: 0
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "EAST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "$0"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:     - column: 2
-// YAML-NEXT:       row: 0
-// YAML-NEXT:       core_id: "2"
-// YAML-NEXT:       entries:
-// YAML-NEXT:         - entry_id: "entry0"
-// YAML-NEXT:           instructions:
-// YAML-NEXT:             - index_per_ii: 1
-// YAML-NEXT:               operations:
-// YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 1930001
-// YAML-NEXT:                   time_step: 13
-// YAML-NEXT:                   invalid_iterations: 1
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "WEST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "NORTH"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                 - opcode: "DATA_MOV"
-// YAML-NEXT:                   id: 192
-// YAML-NEXT:                   time_step: 13
-// YAML-NEXT:                   invalid_iterations: 1
-// YAML-NEXT:                   src_operands:
-// YAML-NEXT:                     - operand: "WEST"
-// YAML-NEXT:                       color: "RED"
-// YAML-NEXT:                   dst_operands:
-// YAML-NEXT:                     - operand: "$1"
+// YAML-NEXT:                   invalid_iterations
 
 // ASM: # Compiled II: 12
-// ASM: PE(0,0):
-// ASM-NEXT: {
-// ASM-NEXT:   CONSTANT, [arg0] -> [$0] (t=0, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=0)
-// ASM-NEXT: {
-// ASM-NEXT:   ICMP_SGT, [$0], [#0] -> [$0] (t=1, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=1)
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_ONCE, [$0] -> [NORTH, RED], [EAST, RED], [$0] (t=2, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=2)
-// ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$2] (t=16, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=4)
-// ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$1] (t=5, inv_iters=0)
-// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$8] (t=17, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=5)
-// ASM-NEXT: {
-// ASM-NEXT:   FMUL_FADD, [$8], [EAST, RED], [$2] -> [NORTH, RED] (t=18, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=6)
-// ASM-NEXT: {
-// ASM-NEXT:   NOT, [$0] -> [$8], [NORTH, RED] (t=9, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=9)
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [$1], [$8] -> [$0], [NORTH, RED] (t=10, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=10)
-// ASM-NEXT: {
-// ASM-NEXT:   ICMP_SGT, [$0], [#0] -> [NORTH, RED], [EAST, RED] (t=11, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=11)
-// ASM: PE(1,0):
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [$0], [NORTH, RED] -> [EAST, RED] (t=12, inv_iters=1)
-// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [NORTH, RED] (t=12, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=0)
-// ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [NORTH, RED] (t=3, inv_iters=0)
-// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [EAST, RED] (t=3, inv_iters=0)
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [WEST, RED] (t=15, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=3)
-// ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [WEST, RED] (t=4, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=4)
-// ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [WEST, RED] (t=17, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=5)
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [NORTH, RED], [EAST, RED] -> [$0] (t=6, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=6)
-// ASM-NEXT: {
-// ASM-NEXT:   ZEXT, [$0] -> [NORTH, RED] (t=7, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=7)
-// ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$0] (t=11, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=11)
-// ASM: PE(2,0):
-// ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [NORTH, RED] (t=13, inv_iters=1)
-// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$1] (t=13, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=1)
-// ASM-NEXT: {
-// ASM-NEXT:   LOAD, [NORTH, RED] -> [WEST, RED] (t=14, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=2)
-// ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$0] (t=3, inv_iters=0)
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [WEST, RED] (t=3, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=3)
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [$0], [WEST, RED] -> [$0] (t=4, inv_iters=0)
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [WEST, RED] (t=16, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=4)
-// ASM-NEXT: {
-// ASM-NEXT:   ICMP_SGT, [$0], [#0] -> [EAST, RED], [$8], [WEST, RED], [NORTH, RED] (t=5, inv_iters=0)
-// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$16] (t=17, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=5)
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [$1], [$16] -> [$9] (t=18, inv_iters=1)
-// ASM-NEXT:   CTRL_MOV, [NORTH, RED] -> [$16] (t=18, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=6)
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [$0], [$8] -> [$0] (t=7, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=7)
-// ASM-NEXT: {
-// ASM-NEXT:   ZEXT, [$0] -> [$0] (t=8, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=8)
-// ASM-NEXT: {
-// ASM-NEXT:   PHI_START, [$0], [$9] -> [$0] (t=9, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=9)
-// ASM-NEXT: {
-// ASM-NEXT:   PHI_START, [$0], [$16] -> [NORTH, RED], [WEST, RED] (t=10, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=10)
-// ASM: PE(3,0):
-// ASM-NEXT: {
-// ASM-NEXT:   NOT, [$0] -> [$0] (t=12, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=0)
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [$0], [$0] -> [NORTH, RED] (t=13, inv_iters=1)
-// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$1] (t=13, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=1)
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_ONCE, [arg1] -> [WEST, RED] (t=2, inv_iters=0)
-// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$0] (t=14, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=2)
-// ASM-NEXT: {
-// ASM-NEXT:   LOAD, [$0] -> [WEST, RED] (t=15, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=3)
-// ASM-NEXT: {
-// ASM-NEXT:   LOAD, [$1] -> [NORTH, RED] (t=16, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=4)
-// ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$0] (t=6, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=6)
-// ASM: PE(0,1):
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [$0], [SOUTH, RED] -> [NORTH, RED] (t=12, inv_iters=1)
-// ASM-NEXT:   DATA_MOV, [SOUTH, RED] -> [$0] (t=12, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=0)
-// ASM-NEXT: {
-// ASM-NEXT:   NOT, [$0] -> [$0] (t=13, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=1)
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [$0], [$0] -> [EAST, RED] (t=14, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=2)
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_ONCE, [arg0] -> [$0] (t=3, inv_iters=0)
-// ASM-NEXT:   DATA_MOV, [SOUTH, RED] -> [$8] (t=3, inv_iters=0)
-// ASM-NEXT:   DATA_MOV, [SOUTH, RED] -> [NORTH, RED] (t=3, inv_iters=0)
-// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$16] (t=15, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=3)
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [$0], [$8] -> [EAST, RED] (t=4, inv_iters=0)
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [NORTH, RED] (t=16, inv_iters=1)
-// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [SOUTH, RED] (t=16, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=4)
-// ASM-NEXT: {
-// ASM-NEXT:   STORE, [SOUTH, RED], [$16] (t=19, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=7)
-// ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [SOUTH, RED] -> [NORTH, RED] (t=10, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=10)
-// ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [SOUTH, RED] -> [$0] (t=11, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=11)
-// ASM: PE(1,1):
-// ASM-NEXT: {
-// ASM-NEXT:   NOT, [$0] -> [EAST, RED], [NORTH, RED], [$1], [$9] (t=12, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=0)
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [$8], [$0] -> [EAST, RED] (t=13, inv_iters=1)
-// ASM-NEXT:   DATA_MOV, [SOUTH, RED] -> [NORTH, RED] (t=13, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=1)
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [$8], [$1] -> [$8] (t=14, inv_iters=1)
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [WEST, RED] (t=14, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=2)
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [EAST, RED], [$0] -> [$10] (t=15, inv_iters=1)
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$0] (t=15, inv_iters=1)
-// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [EAST, RED] (t=15, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=3)
-// ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [SOUTH, RED] -> [NORTH, RED] (t=4, inv_iters=0)
-// ASM-NEXT:   DATA_MOV, [SOUTH, RED] -> [$0] (t=4, inv_iters=0)
-// ASM-NEXT:   GRANT_PREDICATE, [$0], [$9] -> [EAST, RED] (t=16, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=4)
-// ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [NORTH, RED] (t=5, inv_iters=0)
-// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [SOUTH, RED] (t=5, inv_iters=0)
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$1] (t=17, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=5)
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [NORTH, RED], [$0] -> [EAST, RED] (t=6, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=6)
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [$10], [$1] -> [EAST, RED] (t=19, inv_iters=1)
-// ASM-NEXT:   CTRL_MOV, [EAST, RED] -> [$0] (t=19, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=7)
-// ASM-NEXT: {
-// ASM-NEXT:   PHI_START, [SOUTH, RED], [$0] -> [$0] (t=8, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=8)
-// ASM-NEXT: {
-// ASM-NEXT:   PHI_START, [$0], [$8] -> [$0], [$8] (t=9, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=9)
-// ASM-NEXT: {
-// ASM-NEXT:   ICMP_EQ, [EAST, RED], [$0] -> [$0], [EAST, RED], [SOUTH, RED] (t=11, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=11)
-// ASM: PE(2,1):
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [$0], [WEST, RED] -> [$0] (t=12, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=0)
-// ASM-NEXT: {
-// ASM-NEXT:   ADD, [$0], [#1] -> [$9], [NORTH, RED] (t=13, inv_iters=1)
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [WEST, RED] (t=13, inv_iters=1)
-// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [SOUTH, RED] (t=13, inv_iters=1)
-// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$0] (t=13, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=1)
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [$8], [$0] -> [$8] (t=14, inv_iters=1)
-// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [NORTH, RED] (t=14, inv_iters=1)
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [WEST, RED] (t=14, inv_iters=1)
-// ASM-NEXT:   DATA_MOV, [SOUTH, RED] -> [$0] (t=14, inv_iters=1)
-// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$16] (t=14, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=2)
-// ASM-NEXT: {
-// ASM-NEXT:   ICMP_EQ, [$9], [$0] -> [$0] (t=15, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=3)
-// ASM-NEXT: {
-// ASM-NEXT:   NOT, [$0] -> [NORTH, RED], [WEST, RED], [$1], [SOUTH, RED] (t=16, inv_iters=1)
-// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [EAST, RED] (t=16, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=4)
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [$0], [$0] -> [EAST, RED] (t=17, inv_iters=1)
-// ASM-NEXT:   CTRL_MOV, [NORTH, RED] -> [SOUTH, RED] (t=17, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=5)
-// ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [SOUTH, RED] -> [$0] (t=6, inv_iters=0)
-// ASM-NEXT:   GRANT_PREDICATE, [$16], [$1] -> [WEST, RED] (t=18, inv_iters=1)
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [NORTH, RED] (t=18, inv_iters=1)
-// ASM-NEXT:   CTRL_MOV, [WEST, RED] -> [EAST, RED] (t=18, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=6)
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [WEST, RED], [$0] -> [$0], [NORTH, RED] (t=7, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=7)
-// ASM-NEXT: {
-// ASM-NEXT:   PHI_START, [$0], [WEST, RED] -> [EAST, RED], [$0] (t=8, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=8)
-// ASM-NEXT: {
-// ASM-NEXT:   PHI_START, [$0], [$8] -> [EAST, RED], [NORTH, RED], [$0] (t=9, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=9)
-// ASM-NEXT: {
-// ASM-NEXT:   ADD, [$0], [#1] -> [WEST, RED], [$8] (t=10, inv_iters=0)
-// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$0] (t=10, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=10)
-// ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [SOUTH, RED] -> [NORTH, RED] (t=11, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=11)
-// ASM: PE(3,1):
-// ASM-NEXT: {
-// ASM-NEXT:   GEP, [arg3], [$0] -> [SOUTH, RED], [WEST, RED] (t=12, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=0)
-// ASM-NEXT: {
-// ASM-NEXT:   PHI_START, [$1], [$8] -> [WEST, RED] (t=13, inv_iters=1)
-// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [SOUTH, RED] (t=13, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=1)
-// ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [SOUTH, RED] -> [$0] (t=14, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=2)
-// ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [SOUTH, RED] -> [WEST, RED] (t=17, inv_iters=1)
-// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$8] (t=17, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=5)
-// ASM-NEXT: {
-// ASM-NEXT:   PHI, [$0], [$8], [WEST, RED] -> [$0] (t=18, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=6)
-// ASM-NEXT: {
-// ASM-NEXT:   RETURN_VOID, [$0] (t=19, inv_iters=1)
-// ASM-NEXT:   CTRL_MOV, [WEST, RED] -> [$8] (t=19, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=7)
-// ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$1] (t=9, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=9)
-// ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [$0] (t=10, inv_iters=0)
-// ASM-NEXT:   DATA_MOV, [WEST, RED] -> [NORTH, RED] (t=10, inv_iters=0)
-// ASM-NEXT: } (idx_per_ii=10)
-// ASM: PE(0,2):
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_ONCE, [arg4] -> [$0] (t=12, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=0)
-// ASM-NEXT: {
-// ASM-NEXT:   GRANT_PREDICATE, [$0], [$8] -> [EAST, RED] (t=13, inv_iters=1)
-// ASM-NEXT:   DATA_MOV, [SOUTH, RED] -> [$0] (t=13, inv_iters=1)
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [NORTH, RED] (t=13, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=1)
-// ASM-NEXT: {
-// ASM-NEXT:   ZEXT, [$0] -> [$1] (t=14, inv_iters=1)
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [SOUTH, RED] (t=14, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=2)
-// ASM-NEXT: {
-// ASM-NEXT:   LOAD, [EAST, RED] -> [SOUTH, RED] (t=15, inv_iters=1)
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$0] (t=15, inv_iters=1)
-// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$8] (t=15, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=3)
-// ASM-NEXT: {
-// ASM-NEXT:   DATA_MOV, [SOUTH, RED] -> [NORTH, RED] (t=4, inv_iters=0)
-// ASM-NEXT:   LOAD, [$0] -> [$0] (t=16, inv_iters=1)
-// ASM-NEXT:   DATA_MOV, [EAST, RED] -> [$9] (t=16, inv_iters=1)
-// ASM-NEXT: } (idx_per_ii=4)
-// ASM-NEXT: {
-// ASM-NEXT:   SHL, [$1], [#3] -> [$16], [NORTH, RED] (t=17, inv_iters=1)
-// ASM-NEXT:   DATA_MOV, [NORTH, RED] -> [$1] (t=17, inv_iters=1)
+// ASM:  PE(0,0):
+// ASM-NEXT:  {
+// ASM-NEXT:    CONSTANT, [arg0] -> [$0] (t=0, inv_iters=0)
+// ASM-NEXT:  } (idx_per_ii=0)
+// ASM-NEXT:  {
+// ASM-NEXT:    ICMP_SGT, [$0], [#0] -> [$0] (t=1, inv_iters=0)
+// ASM-NEXT:  } (idx_per_ii=1)
+// ASM-NEXT:  {
+// ASM-NEXT:    GRANT_ONCE, [$0] -> [NORTH, RED], [EAST, RED], [$0] (t=2, inv_iters=0)
+// ASM-NEXT:  } (idx_per_ii=2)
+// ASM-NEXT:  {
+// ASM-NEXT:    DATA_MOV, [EAST, RED] -> [$2] (t=16, inv_iters=1)
+// ASM-NEXT:  } (idx_per_ii=4)
+// ASM-NEXT:  {
+// ASM-NEXT:    DATA_MOV, [EAST, RED] -> [$1] (t=5, inv_iters=0)
+// ASM-NEXT:    DATA_MOV, [NORTH, RED] -> [$8] (t=17, inv_iters=1)
+// ASM-NEXT:  } (idx_per_ii=5)
+// ASM-NEXT:  {
+// ASM-NEXT:    FMUL_FADD, [$8], [EAST, RED], [$2] -> [NORTH, RED] (t=18, inv_iters=1)
+// ASM-NEXT:  } (idx_per_ii=6)
+// ASM-NEXT:  {
+// ASM-NEXT:    NOT, [$0] -> [$8], [NORTH, RED] (t=9, inv_iters=0)
+// ASM-NEXT:  } (idx_per_ii=9)
+// ASM-NEXT:  {
+// ASM-NEXT:    GRANT_PREDICATE, [$1], [$8] -> [$0], [NORTH, RED] (t=10, inv_iters=0)
+// ASM-NEXT:  } (idx_per_ii=10)
+// ASM-NEXT:  {
+// ASM-NEXT:    ICMP_SGT, [$0], [#0] -> [NORTH, RED], [EAST, RED] (t=11, inv_iters=0)
+// ASM-NEXT:  } (idx_per_ii=11)
 
 // RUN: mlir-neura-opt %t-kernel.mlir --view-op-graph 2>&1 | sed -n '/^digraph G {/,/^}$/p' > bicg_kernel_original.dot
 // RUN: dot -Tpng bicg_kernel_original.dot -o bicg_kernel_original.png
@@ -1022,301 +597,3 @@
 // RUN: FileCheck %s --input-file=bicg_kernel.dot -check-prefix=DOT
 
 // DOT: digraph G {
-// DOT-NEXT:   compound = true;
-// DOT-NEXT:   subgraph cluster_1 {
-// DOT-NEXT:     v2 [label = " ", shape = plain];
-// DOT:     subgraph cluster_3 {
-// DOT-NEXT:       v4 [label = " ", shape = plain];
-// DOT-NEXT:       label = "";
-// DOT-NEXT:       subgraph cluster_5 {
-// DOT-NEXT:         v6 [label = " ", shape = plain];
-// DOT-NEXT:         label = "func.func : ()\n\nCConv: #llvm.cconv<ccc>\naccelerator: \"neura\"\narg_attrs: [{llvm.noundef}, {ll...\ndataflow_mode: \"predicate\"\nfunction_type: (i32, i32, !llvm.ptr...\nlinkage: #llvm.linkage<extern...\nmemory_effects: #llvm.memory_effects...\nno_unwind: unit\npassthrough: [\"nofree\", \"norecurs...\nsym_name: \"kernel\"\ntarget_cpu: \"x86-64\"\ntarget_features: #llvm.target_feature...\ntune_cpu: \"generic\"\nunnamed_addr: 1 : i64\nvisibility_: 0 : i64";
-// DOT-NEXT:         subgraph cluster_7 {
-// DOT-NEXT:           v8 [label = " ", shape = plain];
-// DOT-NEXT:           label = "";
-// DOT-NEXT:           v9 [label = "arg0", shape = ellipse];
-// DOT-NEXT:           v10 [label = "arg1", shape = ellipse];
-// DOT-NEXT:           v11 [label = "arg2", shape = ellipse];
-// DOT-NEXT:           v12 [label = "arg3", shape = ellipse];
-// DOT-NEXT:           v13 [label = "arg4", shape = ellipse];
-// DOT-NEXT:           v14 [label = "arg5", shape = ellipse];
-// DOT-NEXT:           v15 [label = "arg6", shape = ellipse];
-// DOT-NEXT:           v16 [fillcolor = "0.000000 1.0 1.0", label = "neura.grant_once : (!neura.data<i32, i1>)\n\nconstant_value: \"%arg0\"", shape = ellipse, style = filled];
-// DOT-NEXT:           v17 [fillcolor = "0.047619 1.0 1.0", label = "neura.constant : (!neura.data<i32, i1>)\n\nvalue: \"%arg0\"", shape = ellipse, style = filled];
-// DOT-NEXT:           v18 [fillcolor = "0.000000 1.0 1.0", label = "neura.grant_once : (!neura.data<i32, i1>)\n\nconstant_value: \"%arg1\"", shape = ellipse, style = filled];
-// DOT-NEXT:           v19 [fillcolor = "0.000000 1.0 1.0", label = "neura.grant_once : (!neura.data<!llvm.pt...)\n\nconstant_value: \"%arg3\"", shape = ellipse, style = filled];
-// DOT-NEXT:           v20 [fillcolor = "0.000000 1.0 1.0", label = "neura.grant_once : (!neura.data<!llvm.pt...)\n\nconstant_value: \"%arg4\"", shape = ellipse, style = filled];
-// DOT-NEXT:           v21 [fillcolor = "0.000000 1.0 1.0", label = "neura.grant_once : (!neura.data<i8, i1>)\n\nconstant_value: 0 : i8", shape = ellipse, style = filled];
-// DOT-NEXT:           v22 [fillcolor = "0.000000 1.0 1.0", label = "neura.grant_once : (!neura.data<i64, i1>)\n\nconstant_value: 0 : i64", shape = ellipse, style = filled];
-// DOT-NEXT:           v23 [fillcolor = "0.095238 1.0 1.0", label = "neura.icmp : (!neura.data<i1, i1>)\n\ncmpType: \"sgt\"\nrhs_value: 0 : i32", shape = ellipse, style = filled];
-// DOT-NEXT:           v24 [fillcolor = "0.000000 1.0 1.0", label = "neura.grant_once : (!neura.data<i1, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v25 [fillcolor = "0.142857 1.0 1.0", label = "neura.grant_predicate : (!neura.data<i32, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v26 [fillcolor = "0.142857 1.0 1.0", label = "neura.grant_predicate : (!neura.data<!llvm.pt...)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v27 [fillcolor = "0.142857 1.0 1.0", label = "neura.grant_predicate : (!neura.data<i8, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v28 [fillcolor = "0.142857 1.0 1.0", label = "neura.grant_predicate : (!neura.data<i32, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v29 [fillcolor = "0.142857 1.0 1.0", label = "neura.grant_predicate : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v30 [fillcolor = "0.190476 1.0 1.0", label = "neura.not : (!neura.data<i1, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v31 [fillcolor = "0.142857 1.0 1.0", label = "neura.grant_predicate : (!neura.data<i32, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v32 [fillcolor = "0.142857 1.0 1.0", label = "neura.grant_predicate : (!neura.data<!llvm.pt...)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v33 [fillcolor = "0.142857 1.0 1.0", label = "neura.grant_predicate : (!neura.data<i8, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v34 [fillcolor = "0.095238 1.0 1.0", label = "neura.icmp : (!neura.data<i1, i1>)\n\ncmpType: \"sgt\"\nrhs_value: 0 : i32", shape = ellipse, style = filled];
-// DOT-NEXT:           v35 [fillcolor = "0.190476 1.0 1.0", label = "neura.not : (!neura.data<i1, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v36 [fillcolor = "0.142857 1.0 1.0", label = "neura.grant_predicate : (!neura.data<i1, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v37 [fillcolor = "0.142857 1.0 1.0", label = "neura.grant_predicate : (!neura.data<i32, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v38 [fillcolor = "0.142857 1.0 1.0", label = "neura.grant_predicate : (!neura.data<!llvm.pt...)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v39 [fillcolor = "0.142857 1.0 1.0", label = "neura.grant_predicate : (!neura.data<i8, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v40 [fillcolor = "0.238095 1.0 1.0", label = "neura.zext : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v41 [fillcolor = "0.285714 1.0 1.0", label = "neura.shl : (!neura.data<i64, i1>)\n\nrhs_value: 3 : i64", shape = ellipse, style = filled];
-// DOT-NEXT:           v42 [fillcolor = "0.333333 1.0 1.0", label = "neura.memset : ()\n\nis_volatile: false", shape = ellipse, style = filled];
-// DOT-NEXT:           v43 [fillcolor = "0.380952 1.0 1.0", label = "neura.return_void : ()\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v44 [fillcolor = "0.238095 1.0 1.0", label = "neura.zext : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v45 [fillcolor = "0.285714 1.0 1.0", label = "neura.shl : (!neura.data<i64, i1>)\n\nrhs_value: 3 : i64", shape = ellipse, style = filled];
-// DOT-NEXT:           v46 [fillcolor = "0.333333 1.0 1.0", label = "neura.memset : ()\n\nis_volatile: false", shape = ellipse, style = filled];
-// DOT-NEXT:           v47 [fillcolor = "0.095238 1.0 1.0", label = "neura.icmp : (!neura.data<i1, i1>)\n\ncmpType: \"sgt\"\nrhs_value: 0 : i32", shape = ellipse, style = filled];
-// DOT-NEXT:           v48 [fillcolor = "0.190476 1.0 1.0", label = "neura.not : (!neura.data<i1, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v49 [fillcolor = "0.142857 1.0 1.0", label = "neura.grant_predicate : (!neura.data<i32, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v50 [fillcolor = "0.142857 1.0 1.0", label = "neura.grant_predicate : (!neura.data<i32, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v51 [fillcolor = "0.142857 1.0 1.0", label = "neura.grant_predicate : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v52 [fillcolor = "0.142857 1.0 1.0", label = "neura.grant_predicate : (!neura.data<i1, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v53 [fillcolor = "0.238095 1.0 1.0", label = "neura.zext : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v54 [fillcolor = "0.238095 1.0 1.0", label = "neura.zext : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v55 [fillcolor = "0.428571 1.0 1.0", label = "neura.reserve : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v56 [fillcolor = "0.476190 1.0 1.0", label = "neura.phi_start : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v57 [fillcolor = "0.428571 1.0 1.0", label = "neura.reserve : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v58 [fillcolor = "0.476190 1.0 1.0", label = "neura.phi_start : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v59 [fillcolor = "0.428571 1.0 1.0", label = "neura.reserve : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v60 [fillcolor = "0.476190 1.0 1.0", label = "neura.phi_start : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v61 [fillcolor = "0.428571 1.0 1.0", label = "neura.reserve : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v62 [fillcolor = "0.476190 1.0 1.0", label = "neura.phi_start : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v63 [fillcolor = "0.523810 1.0 1.0", label = "neura.gep : (!neura.data<!llvm.pt...)\n\nlhs_value: \"%arg4\"\noperandSegmentSizes: array<i32: 0, 1>", shape = ellipse, style = filled];
-// DOT-NEXT:           v64 [fillcolor = "0.571429 1.0 1.0", label = "neura.store : ()\n\nlhs_value: 0.000000e+00 : f64", shape = ellipse, style = filled];
-// DOT-NEXT:           v65 [fillcolor = "0.523810 1.0 1.0", label = "neura.gep : (!neura.data<!llvm.pt...)\n\nlhs_value: \"%arg6\"\noperandSegmentSizes: array<i32: 0, 1>", shape = ellipse, style = filled];
-// DOT-NEXT:           v66 [fillcolor = "0.428571 1.0 1.0", label = "neura.reserve : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v67 [fillcolor = "0.476190 1.0 1.0", label = "neura.phi_start : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v68 [fillcolor = "0.428571 1.0 1.0", label = "neura.reserve : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v69 [fillcolor = "0.476190 1.0 1.0", label = "neura.phi_start : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v70 [fillcolor = "0.428571 1.0 1.0", label = "neura.reserve : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v71 [fillcolor = "0.476190 1.0 1.0", label = "neura.phi_start : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v72 [fillcolor = "0.428571 1.0 1.0", label = "neura.reserve : (!neura.data<!llvm.pt...)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v73 [fillcolor = "0.476190 1.0 1.0", label = "neura.phi_start : (!neura.data<!llvm.pt...)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v74 [fillcolor = "0.428571 1.0 1.0", label = "neura.reserve : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v75 [fillcolor = "0.476190 1.0 1.0", label = "neura.phi_start : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v76 [fillcolor = "0.428571 1.0 1.0", label = "neura.reserve : (!neura.data<!llvm.pt...)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v77 [fillcolor = "0.476190 1.0 1.0", label = "neura.phi_start : (!neura.data<!llvm.pt...)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v78 [fillcolor = "0.428571 1.0 1.0", label = "neura.reserve : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v79 [fillcolor = "0.476190 1.0 1.0", label = "neura.phi_start : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v80 [fillcolor = "0.523810 1.0 1.0", label = "neura.gep : (!neura.data<!llvm.pt...)\n\nlhs_value: \"%arg3\"\noperandSegmentSizes: array<i32: 0, 1>", shape = ellipse, style = filled];
-// DOT-NEXT:           v81 [fillcolor = "0.619048 1.0 1.0", label = "neura.load : (!neura.data<f64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v82 [fillcolor = "0.619048 1.0 1.0", label = "neura.load : (!neura.data<f64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v83 [fillcolor = "0.523810 1.0 1.0", label = "neura.gep : (!neura.data<!llvm.pt...)\n\nlhs_value: \"%arg2\"\noperandSegmentSizes: array<i32: 0, 2>", shape = ellipse, style = filled];
-// DOT-NEXT:           v84 [fillcolor = "0.619048 1.0 1.0", label = "neura.load : (!neura.data<f64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v85 [fillcolor = "0.666667 1.0 1.0", label = "neura.fmul_fadd : (!neura.data<f64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v86 [fillcolor = "0.571429 1.0 1.0", label = "neura.store : ()\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v87 [fillcolor = "0.619048 1.0 1.0", label = "neura.load : (!neura.data<f64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v88 [fillcolor = "0.619048 1.0 1.0", label = "neura.load : (!neura.data<f64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v89 [fillcolor = "0.523810 1.0 1.0", label = "neura.gep : (!neura.data<!llvm.pt...)\n\nlhs_value: \"%arg5\"\noperandSegmentSizes: array<i32: 0, 1>", shape = ellipse, style = filled];
-// DOT-NEXT:           v90 [fillcolor = "0.619048 1.0 1.0", label = "neura.load : (!neura.data<f64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v91 [fillcolor = "0.666667 1.0 1.0", label = "neura.fmul_fadd : (!neura.data<f64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v92 [fillcolor = "0.571429 1.0 1.0", label = "neura.store : ()\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v93 [fillcolor = "0.714286 1.0 1.0", label = "neura.add : (!neura.data<i64, i1>)\n\nrhs_value: 1 : i64", shape = ellipse, style = filled];
-// DOT-NEXT:           v94 [fillcolor = "0.095238 1.0 1.0", label = "neura.icmp : (!neura.data<i1, i1>)\n\ncmpType: \"eq\"", shape = ellipse, style = filled];
-// DOT-NEXT:           v95 [fillcolor = "0.190476 1.0 1.0", label = "neura.not : (!neura.data<i1, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v96 [fillcolor = "0.142857 1.0 1.0", label = "neura.grant_predicate : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v97 [fillcolor = "0.761905 1.0 1.0", label = "neura.ctrl_mov : ()\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v98 [fillcolor = "0.142857 1.0 1.0", label = "neura.grant_predicate : (!neura.data<!llvm.pt...)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v99 [fillcolor = "0.761905 1.0 1.0", label = "neura.ctrl_mov : ()\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v100 [fillcolor = "0.142857 1.0 1.0", label = "neura.grant_predicate : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v101 [fillcolor = "0.761905 1.0 1.0", label = "neura.ctrl_mov : ()\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v102 [fillcolor = "0.142857 1.0 1.0", label = "neura.grant_predicate : (!neura.data<!llvm.pt...)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v103 [fillcolor = "0.761905 1.0 1.0", label = "neura.ctrl_mov : ()\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v104 [fillcolor = "0.142857 1.0 1.0", label = "neura.grant_predicate : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v105 [fillcolor = "0.761905 1.0 1.0", label = "neura.ctrl_mov : ()\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v106 [fillcolor = "0.142857 1.0 1.0", label = "neura.grant_predicate : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v107 [fillcolor = "0.761905 1.0 1.0", label = "neura.ctrl_mov : ()\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v108 [fillcolor = "0.142857 1.0 1.0", label = "neura.grant_predicate : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v109 [fillcolor = "0.761905 1.0 1.0", label = "neura.ctrl_mov : ()\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v110 [fillcolor = "0.142857 1.0 1.0", label = "neura.grant_predicate : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v111 [fillcolor = "0.142857 1.0 1.0", label = "neura.grant_predicate : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v112 [fillcolor = "0.142857 1.0 1.0", label = "neura.grant_predicate : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v113 [fillcolor = "0.142857 1.0 1.0", label = "neura.grant_predicate : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v114 [fillcolor = "0.714286 1.0 1.0", label = "neura.add : (!neura.data<i64, i1>)\n\nrhs_value: 1 : i64", shape = ellipse, style = filled];
-// DOT-NEXT:           v115 [fillcolor = "0.095238 1.0 1.0", label = "neura.icmp : (!neura.data<i1, i1>)\n\ncmpType: \"eq\"", shape = ellipse, style = filled];
-// DOT-NEXT:           v116 [fillcolor = "0.190476 1.0 1.0", label = "neura.not : (!neura.data<i1, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v117 [fillcolor = "0.142857 1.0 1.0", label = "neura.grant_predicate : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v118 [fillcolor = "0.761905 1.0 1.0", label = "neura.ctrl_mov : ()\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v119 [fillcolor = "0.142857 1.0 1.0", label = "neura.grant_predicate : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v120 [fillcolor = "0.761905 1.0 1.0", label = "neura.ctrl_mov : ()\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v121 [fillcolor = "0.142857 1.0 1.0", label = "neura.grant_predicate : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v122 [fillcolor = "0.761905 1.0 1.0", label = "neura.ctrl_mov : ()\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v123 [fillcolor = "0.142857 1.0 1.0", label = "neura.grant_predicate : (!neura.data<i64, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v124 [fillcolor = "0.761905 1.0 1.0", label = "neura.ctrl_mov : ()\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v125 [fillcolor = "0.142857 1.0 1.0", label = "neura.grant_predicate : (!neura.data<i1, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v126 [fillcolor = "0.809524 1.0 1.0", label = "neura.phi : (!neura.data<i1, i1>)\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v127 [fillcolor = "0.380952 1.0 1.0", label = "neura.return_void : ()\n", shape = ellipse, style = filled];
-// DOT-NEXT:           v128 [fillcolor = "0.857143 1.0 1.0", label = "neura.yield : ()\n\noperandSegmentSizes: array<i32: 0, 0>", shape = ellipse, style = filled];
-// DOT-NEXT:         }
-// DOT-NEXT:       }
-// DOT-NEXT:     }
-// DOT-NEXT:   }
-// DOT-NEXT:   v17 -> v23 [label = "", style = solid];
-// DOT-NEXT:   v23 -> v24 [label = "", style = solid];
-// DOT-NEXT:   v16 -> v25 [label = "0", style = solid];
-// DOT-NEXT:   v24 -> v25 [label = "1", style = solid];
-// DOT-NEXT:   v19 -> v26 [label = "0", style = solid];
-// DOT-NEXT:   v24 -> v26 [label = "1", style = solid];
-// DOT-NEXT:   v21 -> v27 [label = "0", style = solid];
-// DOT-NEXT:   v24 -> v27 [label = "1", style = solid];
-// DOT-NEXT:   v18 -> v28 [label = "0", style = solid];
-// DOT-NEXT:   v24 -> v28 [label = "1", style = solid];
-// DOT-NEXT:   v22 -> v29 [label = "0", style = solid];
-// DOT-NEXT:   v24 -> v29 [label = "1", style = solid];
-// DOT-NEXT:   v24 -> v30 [label = "", style = solid];
-// DOT-NEXT:   v18 -> v31 [label = "0", style = solid];
-// DOT-NEXT:   v30 -> v31 [label = "1", style = solid];
-// DOT-NEXT:   v20 -> v32 [label = "0", style = solid];
-// DOT-NEXT:   v30 -> v32 [label = "1", style = solid];
-// DOT-NEXT:   v21 -> v33 [label = "0", style = solid];
-// DOT-NEXT:   v30 -> v33 [label = "1", style = solid];
-// DOT-NEXT:   v31 -> v34 [label = "", style = solid];
-// DOT-NEXT:   v34 -> v35 [label = "", style = solid];
-// DOT-NEXT:   v35 -> v36 [label = "0", style = solid];
-// DOT-NEXT:   v35 -> v36 [label = "1", style = solid];
-// DOT-NEXT:   v31 -> v37 [label = "0", style = solid];
-// DOT-NEXT:   v34 -> v37 [label = "1", style = solid];
-// DOT-NEXT:   v32 -> v38 [label = "0", style = solid];
-// DOT-NEXT:   v34 -> v38 [label = "1", style = solid];
-// DOT-NEXT:   v33 -> v39 [label = "0", style = solid];
-// DOT-NEXT:   v34 -> v39 [label = "1", style = solid];
-// DOT-NEXT:   v37 -> v40 [label = "", style = solid];
-// DOT-NEXT:   v40 -> v41 [label = "", style = solid];
-// DOT-NEXT:   v38 -> v42 [label = "0", style = solid];
-// DOT-NEXT:   v39 -> v42 [label = "1", style = solid];
-// DOT-NEXT:   v41 -> v42 [label = "2", style = solid];
-// DOT-NEXT:   v41 -> v43 [label = "", style = solid];
-// DOT-NEXT:   v25 -> v44 [label = "", style = solid];
-// DOT-NEXT:   v44 -> v45 [label = "", style = solid];
-// DOT-NEXT:   v26 -> v46 [label = "0", style = solid];
-// DOT-NEXT:   v27 -> v46 [label = "1", style = solid];
-// DOT-NEXT:   v45 -> v46 [label = "2", style = solid];
-// DOT-NEXT:   v28 -> v47 [label = "", style = solid];
-// DOT-NEXT:   v47 -> v48 [label = "", style = solid];
-// DOT-NEXT:   v28 -> v49 [label = "0", style = solid];
-// DOT-NEXT:   v47 -> v49 [label = "1", style = solid];
-// DOT-NEXT:   v25 -> v50 [label = "0", style = solid];
-// DOT-NEXT:   v47 -> v50 [label = "1", style = solid];
-// DOT-NEXT:   v29 -> v51 [label = "0", style = solid];
-// DOT-NEXT:   v47 -> v51 [label = "1", style = solid];
-// DOT-NEXT:   v48 -> v52 [label = "0", style = solid];
-// DOT-NEXT:   v48 -> v52 [label = "1", style = solid];
-// DOT-NEXT:   v49 -> v53 [label = "", style = solid];
-// DOT-NEXT:   v50 -> v54 [label = "", style = solid];
-// DOT-NEXT:   v53 -> v56 [label = "0", style = solid];
-// DOT-NEXT:   v55 -> v56 [label = "1", style = solid];
-// DOT-NEXT:   v54 -> v58 [label = "0", style = solid];
-// DOT-NEXT:   v57 -> v58 [label = "1", style = solid];
-// DOT-NEXT:   v51 -> v60 [label = "0", style = solid];
-// DOT-NEXT:   v59 -> v60 [label = "1", style = solid];
-// DOT-NEXT:   v51 -> v62 [label = "0", style = solid];
-// DOT-NEXT:   v61 -> v62 [label = "1", style = solid];
-// DOT-NEXT:   v62 -> v63 [label = "", style = solid];
-// DOT-NEXT:   v63 -> v64 [label = "", style = solid];
-// DOT-NEXT:   v62 -> v65 [label = "", style = solid];
-// DOT-NEXT:   v60 -> v67 [label = "0", style = solid];
-// DOT-NEXT:   v66 -> v67 [label = "1", style = solid];
-// DOT-NEXT:   v56 -> v69 [label = "0", style = solid];
-// DOT-NEXT:   v68 -> v69 [label = "1", style = solid];
-// DOT-NEXT:   v58 -> v71 [label = "0", style = solid];
-// DOT-NEXT:   v70 -> v71 [label = "1", style = solid];
-// DOT-NEXT:   v63 -> v73 [label = "0", style = solid];
-// DOT-NEXT:   v72 -> v73 [label = "1", style = solid];
-// DOT-NEXT:   v62 -> v75 [label = "0", style = solid];
-// DOT-NEXT:   v74 -> v75 [label = "1", style = solid];
-// DOT-NEXT:   v65 -> v77 [label = "0", style = solid];
-// DOT-NEXT:   v76 -> v77 [label = "1", style = solid];
-// DOT-NEXT:   v60 -> v79 [label = "0", style = solid];
-// DOT-NEXT:   v78 -> v79 [label = "1", style = solid];
-// DOT-NEXT:   v79 -> v80 [label = "", style = solid];
-// DOT-NEXT:   v80 -> v81 [label = "", style = solid];
-// DOT-NEXT:   v77 -> v82 [label = "", style = solid];
-// DOT-NEXT:   v75 -> v83 [label = "0", style = solid];
-// DOT-NEXT:   v79 -> v83 [label = "1", style = solid];
-// DOT-NEXT:   v83 -> v84 [label = "", style = solid];
-// DOT-NEXT:   v82 -> v85 [label = "0", style = solid];
-// DOT-NEXT:   v84 -> v85 [label = "1", style = solid];
-// DOT-NEXT:   v81 -> v85 [label = "2", style = solid];
-// DOT-NEXT:   v85 -> v86 [label = "0", style = solid];
-// DOT-NEXT:   v80 -> v86 [label = "1", style = solid];
-// DOT-NEXT:   v73 -> v87 [label = "", style = solid];
-// DOT-NEXT:   v83 -> v88 [label = "", style = solid];
-// DOT-NEXT:   v79 -> v89 [label = "", style = solid];
-// DOT-NEXT:   v89 -> v90 [label = "", style = solid];
-// DOT-NEXT:   v88 -> v91 [label = "0", style = solid];
-// DOT-NEXT:   v90 -> v91 [label = "1", style = solid];
-// DOT-NEXT:   v87 -> v91 [label = "2", style = solid];
-// DOT-NEXT:   v91 -> v92 [label = "0", style = solid];
-// DOT-NEXT:   v73 -> v92 [label = "1", style = solid];
-// DOT-NEXT:   v79 -> v93 [label = "", style = solid];
-// DOT-NEXT:   v93 -> v94 [label = "0", style = solid];
-// DOT-NEXT:   v71 -> v94 [label = "1", style = solid];
-// DOT-NEXT:   v94 -> v95 [label = "", style = solid];
-// DOT-NEXT:   v93 -> v96 [label = "0", style = solid];
-// DOT-NEXT:   v95 -> v96 [label = "1", style = solid];
-// DOT-NEXT:   v96 -> v97 [label = "0", style = solid];
-// DOT-NEXT:   v78 -> v97 [label = "1", style = solid];
-// DOT-NEXT:   v77 -> v98 [label = "0", style = solid];
-// DOT-NEXT:   v95 -> v98 [label = "1", style = solid];
-// DOT-NEXT:   v98 -> v99 [label = "0", style = solid];
-// DOT-NEXT:   v76 -> v99 [label = "1", style = solid];
-// DOT-NEXT:   v75 -> v100 [label = "0", style = solid];
-// DOT-NEXT:   v95 -> v100 [label = "1", style = solid];
-// DOT-NEXT:   v100 -> v101 [label = "0", style = solid];
-// DOT-NEXT:   v74 -> v101 [label = "1", style = solid];
-// DOT-NEXT:   v73 -> v102 [label = "0", style = solid];
-// DOT-NEXT:   v95 -> v102 [label = "1", style = solid];
-// DOT-NEXT:   v102 -> v103 [label = "0", style = solid];
-// DOT-NEXT:   v72 -> v103 [label = "1", style = solid];
-// DOT-NEXT:   v71 -> v104 [label = "0", style = solid];
-// DOT-NEXT:   v95 -> v104 [label = "1", style = solid];
-// DOT-NEXT:   v104 -> v105 [label = "0", style = solid];
-// DOT-NEXT:   v70 -> v105 [label = "1", style = solid];
-// DOT-NEXT:   v69 -> v106 [label = "0", style = solid];
-// DOT-NEXT:   v95 -> v106 [label = "1", style = solid];
-// DOT-NEXT:   v106 -> v107 [label = "0", style = solid];
-// DOT-NEXT:   v68 -> v107 [label = "1", style = solid];
-// DOT-NEXT:   v67 -> v108 [label = "0", style = solid];
-// DOT-NEXT:   v95 -> v108 [label = "1", style = solid];
-// DOT-NEXT:   v108 -> v109 [label = "0", style = solid];
-// DOT-NEXT:   v66 -> v109 [label = "1", style = solid];
-// DOT-NEXT:   v75 -> v110 [label = "0", style = solid];
-// DOT-NEXT:   v94 -> v110 [label = "1", style = solid];
-// DOT-NEXT:   v69 -> v111 [label = "0", style = solid];
-// DOT-NEXT:   v94 -> v111 [label = "1", style = solid];
-// DOT-NEXT:   v67 -> v112 [label = "0", style = solid];
-// DOT-NEXT:   v94 -> v112 [label = "1", style = solid];
-// DOT-NEXT:   v71 -> v113 [label = "0", style = solid];
-// DOT-NEXT:   v94 -> v113 [label = "1", style = solid];
-// DOT-NEXT:   v110 -> v114 [label = "", style = solid];
-// DOT-NEXT:   v114 -> v115 [label = "0", style = solid];
-// DOT-NEXT:   v111 -> v115 [label = "1", style = solid];
-// DOT-NEXT:   v115 -> v116 [label = "", style = solid];
-// DOT-NEXT:   v114 -> v117 [label = "0", style = solid];
-// DOT-NEXT:   v116 -> v117 [label = "1", style = solid];
-// DOT-NEXT:   v117 -> v118 [label = "0", style = solid];
-// DOT-NEXT:   v61 -> v118 [label = "1", style = solid];
-// DOT-NEXT:   v112 -> v119 [label = "0", style = solid];
-// DOT-NEXT:   v116 -> v119 [label = "1", style = solid];
-// DOT-NEXT:   v119 -> v120 [label = "0", style = solid];
-// DOT-NEXT:   v59 -> v120 [label = "1", style = solid];
-// DOT-NEXT:   v113 -> v121 [label = "0", style = solid];
-// DOT-NEXT:   v116 -> v121 [label = "1", style = solid];
-// DOT-NEXT:   v121 -> v122 [label = "0", style = solid];
-// DOT-NEXT:   v57 -> v122 [label = "1", style = solid];
-// DOT-NEXT:   v111 -> v123 [label = "0", style = solid];
-// DOT-NEXT:   v116 -> v123 [label = "1", style = solid];
-// DOT-NEXT:   v123 -> v124 [label = "0", style = solid];
-// DOT-NEXT:   v55 -> v124 [label = "1", style = solid];
-// DOT-NEXT:   v115 -> v125 [label = "0", style = solid];
-// DOT-NEXT:   v115 -> v125 [label = "1", style = solid];
-// DOT-NEXT:   v52 -> v126 [label = "0", style = solid];
-// DOT-NEXT:   v36 -> v126 [label = "1", style = solid];
-// DOT-NEXT:   v125 -> v126 [label = "2", style = solid];
