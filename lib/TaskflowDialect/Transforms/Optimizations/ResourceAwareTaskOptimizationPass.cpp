@@ -214,7 +214,7 @@ struct TaskGraphNode {
   int64_t steps = kUnprofiled;
   int64_t ii = kUnprofiled;
   int cgra_count = 1;
-  CgraShape shape = {1, 1, true};
+  CgraShape shape = {1, 1, true, {}};
 
   // Dependency edges (both SSA and memory).
   SmallVector<TaskGraphNode *> predecessors;

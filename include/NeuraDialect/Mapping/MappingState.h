@@ -3,6 +3,7 @@
 
 #include "NeuraDialect/Architecture/Architecture.h"
 #include "mlir/IR/Operation.h"
+#include "NeuraDialect/NeuraOps.h"
 #include "llvm/Support/raw_ostream.h"
 #include <optional>
 #include <unordered_map>
@@ -85,7 +86,7 @@ public:
   // For example, if II is 4, and we want to check (tile 2, step 5), then
   // it will check (tile 2, step 1), (tile 2, step 5), (tile 2, step 9), etc.
   bool isAvailableAcrossTime(const MappingLoc &loc,
-                             Operation *op = nullptr) const;
+                             neura::DataMovOp op = {}) const;
 
   // Checks if a location is available for a specific occupy status.
   // This implements the pipeline-aware availability checking:
@@ -94,7 +95,7 @@ public:
   // - END_PIPE_OCCUPY: available if free or IN_PIPE_OCCUPY or START_PIPE_OCCUPY
   // - IN_PIPE_OCCUPY: always available (can pipeline with any status)
   bool isAvailableForOccupyStatus(const MappingLoc &loc, int new_occupy_status,
-                                  Operation *op = nullptr) const;
+                                  neura::DataMovOp op = {}) const;
 
   // Gets the occupy status at a specific location across time domain.
   // Returns -1 if the location is not occupied.
@@ -105,19 +106,19 @@ public:
   // time step.
   bool isAvailableAcrossTimeInRange(BasicResource *resource, int start_time,
                                     int exclusive_end_time,
-                                    Operation *op = nullptr) const;
+                                    neura::DataMovOp op = {}) const;
 
   // Checks availability of a register's cluster write port across the relevant
   // time steps.  Returns false if a DIFFERENT register in the same
   // RegisterFile is already writing at a congruent time slot.  Multiple writes
   // to the SAME register are allowed (idempotent).
-  bool isRegisterWriteAvailableAcrossTime(Register *reg, int time_step) const;
+  bool isRegisterWriteAvailableAcrossTime(Register *reg, int start_time) const;
 
   // Checks availability of a register's cluster read port across the relevant
   // time steps.  Returns false if a DIFFERENT register in the same
   // RegisterFile is already reading at a congruent time slot.  Multiple reads
   // from the SAME register are allowed (shared read).
-  bool isRegisterReadAvailableAcrossTime(Register *reg, int time_step) const;
+  bool isRegisterReadAvailableAcrossTime(Register *reg, int exclusive_end_time) const;
 
   // Gets the operation at a specific (tile/link, time_step) location.
   std::optional<Operation *> getOpAt(MappingLoc loc) const;

@@ -124,7 +124,7 @@ bool canReachLocInTime(const std::vector<Operation *> &producers,
 // back to the strict one-occupant-per-register rule.
 Register *getAvailableRegister(const MappingState &mapping_state, Tile *tile,
                                int start_time, int exclusive_end_time,
-                               Operation *op = nullptr);
+                               neura::DataMovOp op = {});
 
 // Gets the execution latency of an operation from its "latency" attribute.
 // Returns 1 (single-cycle) if the attribute is not present.
