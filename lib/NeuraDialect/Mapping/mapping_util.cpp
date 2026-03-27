@@ -1,8 +1,6 @@
 #include <deque>
 #include <queue>
 
-#include "NeuraDialect/Architecture/Architecture.h"
-#include "NeuraDialect/Mapping/MappingState.h"
 #include "NeuraDialect/Mapping/mapping_util.h"
 #include "NeuraDialect/NeuraOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -10,6 +8,7 @@
 #include "mlir/IR/Operation.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cassert>
 
@@ -619,15 +618,36 @@ bool mlir::neura::tryRouteBackwardMove(Operation *mov_op, MappingLoc src_loc,
 
 Register *mlir::neura::getAvailableRegister(const MappingState &state,
                                             Tile *tile, int start_time,
-                                            int exclusive_end_time) {
+                                            int exclusive_end_time,
+                                            neura::DataMovOp move_op) {
+  // Finds the first register that is free across the requested range AND
+  // satisfies the single-port cluster constraints:
+  //   - Write port: at start_time, only one register per RegisterFile may be
+  //     written (same-register writes are allowed/idempotent).
+  //   - Read port:  at (exclusive_end_time - 1), only one register per
+  //     RegisterFile may be read (same-register reads are shared/allowed).
+  // Read and write ports are independent — one read AND one write can happen
+  // simultaneously on the same RegisterFile.
+  //
+  // NOTE: Multiple DataMovOps carrying the same materialized source value are
+  // allowed to share the same physical register (see
+  // MappingState::isAvailableAcrossTime() and isAvailableForOccupyStatus()).
+  // This is correct because all such DataMovOps read the identical value from
+  // the register, so the single register read port broadcasts to all consumers.
   for (Register *reg : tile->getRegisters()) {
-    // FIXME: We may need constrain the register availability to the conflicting
-    // input channel (either the input channel or a register file on the same
-    // input direction could be active at one time).
-    if (state.isAvailableAcrossTimeInRange(reg, start_time,
-                                           exclusive_end_time)) {
-      return reg;
+    if (!state.isAvailableAcrossTimeInRange(reg, start_time, exclusive_end_time,
+                                            move_op)) {
+      continue;
     }
+    // Check cluster write-port constraint at the write time step.
+    if (!state.isRegisterWriteAvailableAcrossTime(reg, start_time)) {
+      continue;
+    }
+    // Check cluster read-port constraint at the read time step.
+    if (!state.isRegisterReadAvailableAcrossTime(reg, exclusive_end_time)) {
+      continue;
+    }
+    return reg;
   }
   return nullptr;
 }
@@ -661,7 +681,7 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
     // Uses register as routing resource within the same tile.
     // Finds an available register to store the data.
     Register *available_reg = getAvailableRegister(
-        state, src_tile, src_loc.time_step, exclusive_deadline_step);
+        state, src_tile, src_loc.time_step, exclusive_deadline_step, dyn_cast_or_null<neura::DataMovOp>(mov_op));
     if (!available_reg) {
       llvm::outs()
           << "[tryRouteDataMove] Cannot find available register on Tile#"
@@ -716,7 +736,7 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
           // Arrives early, needs register on destination tile to wait.
           Register *wait_reg =
               getAvailableRegister(state, dst_tile, current_state.current_time,
-                                   exclusive_deadline_step);
+                                   exclusive_deadline_step, dyn_cast_or_null<neura::DataMovOp>(mov_op));
           if (!wait_reg) {
             llvm::outs() << "[tryRouteDataMove] Cannot find available waiting"
                             "register on destination Tile#"
@@ -748,7 +768,7 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
       MappingLoc link_loc = {out_link, current_state.current_time};
 
       // Checks if link is available at current time step.
-      if (!state.isAvailableAcrossTime(link_loc)) {
+      if (!state.isAvailableAcrossTime(link_loc, dyn_cast_or_null<neura::DataMovOp>(mov_op))) {
         continue;
       }
 
@@ -767,7 +787,7 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
     // Option 2: Uses register on current tile to wait one time step.
     Register *wait_register = getAvailableRegister(
         state, current_state.current_tile, current_state.current_time,
-        current_state.current_time + 1);
+        current_state.current_time + 1, dyn_cast_or_null<neura::DataMovOp>(mov_op));
     if (wait_register) {
       int next_time = current_state.current_time + 1;
       // Checks if this(tile, time) combination has been visited.
@@ -1278,7 +1298,6 @@ bool mlir::neura::placeAndRoute(Operation *op, const MappingLoc &target_loc,
       }
       return false;
     }
-
     // Checks whether the operation's user is a ctrl_mov.
     for (Operation *user : getCtrlMovUsers(op)) {
       neura::CtrlMovOp ctrl_mov = dyn_cast<neura::CtrlMovOp>(user);
