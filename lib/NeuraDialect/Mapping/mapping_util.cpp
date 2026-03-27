@@ -619,7 +619,7 @@ bool mlir::neura::tryRouteBackwardMove(Operation *mov_op, MappingLoc src_loc,
 Register *mlir::neura::getAvailableRegister(const MappingState &state,
                                             Tile *tile, int start_time,
                                             int exclusive_end_time,
-                                            neura::DataMovOp op) {
+                                            neura::DataMovOp move_op) {
   // Finds the first register that is free across the requested range AND
   // satisfies the single-port cluster constraints:
   //   - Write port: at start_time, only one register per RegisterFile may be
@@ -636,7 +636,7 @@ Register *mlir::neura::getAvailableRegister(const MappingState &state,
   // the register, so the single register read port broadcasts to all consumers.
   for (Register *reg : tile->getRegisters()) {
     if (!state.isAvailableAcrossTimeInRange(reg, start_time, exclusive_end_time,
-                                            op)) {
+                                            move_op)) {
       continue;
     }
     // Check cluster write-port constraint at the write time step.

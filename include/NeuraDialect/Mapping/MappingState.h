@@ -14,11 +14,10 @@ namespace neura {
 
 // Occupy status for multi-cycle pipeline support.
 // These states define how a tile/FU is occupied at a given time step.
-#define SINGLE_OCCUPY 0     // A single-cycle op is in the FU (exclusive)
+#define SINGLE_OCCUPY     0 // A single-cycle op is in the FU (exclusive)
 #define START_PIPE_OCCUPY 1 // A multi-cycle op starts in the FU
-#define END_PIPE_OCCUPY 2   // A multi-cycle op ends in the FU
-#define IN_PIPE_OCCUPY 3    // A multi-cycle op is occupying the FU (pipelined)
-
+#define END_PIPE_OCCUPY   2 // A multi-cycle op ends in the FU
+#define IN_PIPE_OCCUPY    3 // A multi-cycle op is occupying the FU (pipelined)
 // Represents a spatial-temporal location: (resource, time_step)
 struct MappingLoc {
   BasicResource *resource;
@@ -86,7 +85,7 @@ public:
   // For example, if II is 4, and we want to check (tile 2, step 5), then
   // it will check (tile 2, step 1), (tile 2, step 5), (tile 2, step 9), etc.
   bool isAvailableAcrossTime(const MappingLoc &loc,
-                             neura::DataMovOp op = {}) const;
+                             neura::DataMovOp move_op = nullptr) const;
 
   // Checks if a location is available for a specific occupy status.
   // This implements the pipeline-aware availability checking:
@@ -95,7 +94,7 @@ public:
   // - END_PIPE_OCCUPY: available if free or IN_PIPE_OCCUPY or START_PIPE_OCCUPY
   // - IN_PIPE_OCCUPY: always available (can pipeline with any status)
   bool isAvailableForOccupyStatus(const MappingLoc &loc, int new_occupy_status,
-                                  neura::DataMovOp op = {}) const;
+                                  neura::DataMovOp move_op = nullptr) const;
 
   // Gets the occupy status at a specific location across time domain.
   // Returns -1 if the location is not occupied.
@@ -106,7 +105,7 @@ public:
   // time step.
   bool isAvailableAcrossTimeInRange(BasicResource *resource, int start_time,
                                     int exclusive_end_time,
-                                    neura::DataMovOp op = {}) const;
+                                    neura::DataMovOp move_op = nullptr) const;
 
   // Checks availability of a register's cluster write port across the relevant
   // time steps.  Returns false if a DIFFERENT register in the same

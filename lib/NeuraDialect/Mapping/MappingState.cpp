@@ -339,12 +339,12 @@ void MappingState::unbindOp(Operation *op) {
 }
 
 bool MappingState::isAvailableAcrossTime(const MappingLoc &loc,
-                                         neura::DataMovOp op) const {
+                                         neura::DataMovOp move_op) const {
   // Checks whether the resource at the given (resource, time_step) is free,
   // considering both occupancy state and the register-cluster constraint.
 
   // Returns true if the (resource, t) slot is free (or only IN_PIPE_OCCUPY).
-  auto isSlotFree = [this, op](BasicResource *resource, int t) mutable -> bool {
+  auto isSlotFree = [this, move_op](BasicResource *resource, int t) mutable -> bool {
     std::map<MappingLoc,
              std::vector<std::pair<int, Operation *>>>::const_iterator it =
         occupied_locs.find({resource, t});
@@ -353,9 +353,9 @@ bool MappingState::isAvailableAcrossTime(const MappingLoc &loc,
     }
     for (const std::pair<int, Operation *> &entry : it->second) {
       if (entry.first != IN_PIPE_OCCUPY) {
-        if (op && entry.second) {
+        if (move_op && entry.second) {
           if (auto mov2 = dyn_cast<neura::DataMovOp>(entry.second)) {
-            if (op.getOperand() == mov2.getOperand()) {
+            if (move_op.getOperand() == mov2.getOperand()) {
               continue;
             }
           }
@@ -404,10 +404,10 @@ bool MappingState::isAvailableAcrossTime(const MappingLoc &loc,
 
 bool MappingState::isAvailableForOccupyStatus(const MappingLoc &loc,
                                               int new_occupy_status,
-                                              neura::DataMovOp op) const {
+                                              neura::DataMovOp move_op) const {
   // Helper lambda to check a single location against all existing entries
   auto checkSingleLoc = [this, new_occupy_status,
-                         op](const MappingLoc &check_loc) mutable -> bool {
+                         move_op](const MappingLoc &check_loc) mutable -> bool {
     std::map<MappingLoc,
              std::vector<std::pair<int, Operation *>>>::const_iterator it =
         occupied_locs.find(check_loc);
@@ -421,9 +421,9 @@ bool MappingState::isAvailableForOccupyStatus(const MappingLoc &loc,
       int existing_status = entry.first;
       Operation *existing_op = entry.second;
 
-      if (op && existing_op) {
+      if (move_op && existing_op) {
         if (auto mov2 = dyn_cast<neura::DataMovOp>(existing_op)) {
-          if (op.getOperand() == mov2.getOperand()) {
+          if (move_op.getOperand() == mov2.getOperand()) {
             continue;
           }
         }
@@ -518,12 +518,12 @@ int MappingState::getOccupyStatusAcrossTime(const MappingLoc &loc) const {
 bool MappingState::isAvailableAcrossTimeInRange(BasicResource *resource,
                                                 int start_time,
                                                 int exclusive_end_time,
-                                                neura::DataMovOp op) const {
+                                                neura::DataMovOp move_op) const {
   // Checks the availability for each time step across time domain.
   for (int t = start_time; t < exclusive_end_time; ++t) {
     MappingLoc check_loc = {resource, t};
     // Checks the availability across time domain.
-    if (!isAvailableAcrossTime(check_loc, op)) {
+    if (!isAvailableAcrossTime(check_loc, move_op)) {
       return false;
     }
   }
