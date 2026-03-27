@@ -697,6 +697,18 @@ struct GenerateCodePass
     return out;
   }
 
+  SmallVector<RegStep, 4>
+  collectRegsBetweenLinks(const SmallVector<RegStep, 4> &regs,
+                          int start_time_step, int end_time_step) const {
+    SmallVector<RegStep, 4> segment;
+    for (const RegStep &reg_step : regs) {
+      if (reg_step.time_step <= start_time_step) continue;
+      if (reg_step.time_step >= end_time_step) break;
+      segment.push_back(reg_step);
+    }
+    return segment;
+  }
+
   template<bool IsCtrl>
   void placeRegisterTransfer(const Topology &topology, int tile_id, int time_step,
                              int src_reg_id, int dst_reg_id, int assigned_id = -1) {
@@ -791,23 +803,54 @@ struct GenerateCodePass
 
   // Emits router hops for multi-hop paths (from the second hop onwards). CTRL_MOV emits CTRL_MOV hops.
   template<bool IsCtrl>
-  void generateIntermediateHops(const SmallVector<LinkStep, 8> &links, const Topology &topo,
+  void generateIntermediateHops(const SmallVector<LinkStep, 8> &links,
+                                const SmallVector<RegStep, 4> &regs,
+                                const Topology &topo,
                                 int base_mov_id, size_t &hop_counter) {
     for (size_t i = 1; i < links.size(); ++i) {
       int prev_link = links[i - 1].link_id;
       int cur_link  = links[i].link_id;
-      int time_step = links[i].time_step;
-
       int mid_tile = topo.srcTileOfLink(cur_link);
-      StringRef in  = topo.invertDir(topo.dirFromLink(prev_link));
-      StringRef out = topo.dirFromLink(cur_link);
+      StringRef incoming_dir = topo.invertDir(topo.dirFromLink(prev_link));
+      StringRef outgoing_dir = topo.dirFromLink(cur_link);
 
-      uint64_t sig = static_cast<uint64_t>(llvm::hash_combine(mid_tile, time_step, cur_link));
-      int hop_id = base_mov_id >= 0 ? base_mov_id * 10000 + static_cast<int>(hop_counter) : -1;
-      ++hop_counter;
-      if (hop_signatures.insert(sig).second) {
-        placeRouterHop(topo, mid_tile, time_step, in, out, /*asCtrlMov=*/IsCtrl, hop_id);
+      SmallVector<RegStep, 4> inter_link_regs =
+          collectRegsBetweenLinks(regs, links[i - 1].time_step, links[i].time_step);
+      if (inter_link_regs.empty()) {
+        int time_step = links[i].time_step;
+        uint64_t sig = static_cast<uint64_t>(llvm::hash_combine(mid_tile, time_step, cur_link));
+        int hop_id =
+            base_mov_id >= 0 ? base_mov_id * 10000 + static_cast<int>(hop_counter) : -1;
+        ++hop_counter;
+        if (hop_signatures.insert(sig).second) {
+          placeRouterHop(topo, mid_tile, time_step, incoming_dir, outgoing_dir,
+                         /*asCtrlMov=*/IsCtrl, hop_id);
+        }
+        continue;
       }
+
+      int deposit_id =
+          base_mov_id >= 0 ? base_mov_id * 10000 + static_cast<int>(hop_counter) : -1;
+      ++hop_counter;
+      placeDstDeposit(topo, mid_tile, inter_link_regs.front().time_step,
+                      incoming_dir, inter_link_regs.front().regId,
+                      /*asCtrlMov=*/IsCtrl, deposit_id);
+
+      SmallVector<std::pair<RegStep, RegStep>, 4> transfers =
+          collectRegisterTransfers(inter_link_regs);
+      for (const auto &[prev, cur] : transfers) {
+        int transfer_id =
+            base_mov_id >= 0 ? base_mov_id * 10000 + static_cast<int>(hop_counter) : -1;
+        ++hop_counter;
+        placeRegisterTransfer<IsCtrl>(topo, mid_tile, cur.time_step,
+                                      prev.regId, cur.regId, transfer_id);
+      }
+
+      int egress_id =
+          base_mov_id >= 0 ? base_mov_id * 10000 + static_cast<int>(hop_counter) : -1;
+      ++hop_counter;
+      placeSrcEgress(topo, mid_tile, links[i].time_step, outgoing_dir,
+                     inter_link_regs.back().regId, /*asCtrlMov=*/IsCtrl, egress_id);
     }
   }
 
@@ -944,7 +987,8 @@ struct GenerateCodePass
     size_t next_synthetic_offset =
         emitSourceSyntheticChain<IsCtrl>(basics.reg_split, basics.links, topo,
                                          basics.mov_dfg_id);
-    generateIntermediateHops<IsCtrl>(basics.links, topo, basics.mov_dfg_id, next_synthetic_offset);
+    generateIntermediateHops<IsCtrl>(basics.links, basics.regs, topo,
+                                     basics.mov_dfg_id, next_synthetic_offset);
     emitDestinationSyntheticChain<IsCtrl>(basics.reg_split, basics.links, topo,
                                           basics.mov_dfg_id, next_synthetic_offset);
   }
@@ -1293,33 +1337,58 @@ struct GenerateCodePass
       if (!link_steps.empty()) {
         SmallVector<RegStep, 4> regs = collectRegSteps(operation);
         MovRegSplit reg_split = splitMovRegs(regs, link_steps);
+        std::string opcode = isCtrlMov(operation) ? "CTRL_MOV" : "DATA_MOV";
 
         if (!reg_split.src_reg_steps.empty()) {
           int src_tile_id = topology.srcTileOfLink(link_steps.front().link_id);
           auto coord = topology.tile_location.lookup(src_tile_id);
-          StringRef opcode = isCtrlMov(operation) ? "CTRL_MOV" : "DATA_MOV";
           SmallVector<std::pair<RegStep, RegStep>, 4> transfers =
               collectRegisterTransfers(reg_split.src_reg_steps);
 
           for (const auto &[prev, cur] : transfers) {
             (void)prev;
             pre_mov_nodes.push_back(
-                DfgNodeInfo{opcode.str(), coord.first, coord.second,
+                DfgNodeInfo{opcode, coord.first, coord.second,
                             cur.time_step});
           }
           pre_mov_nodes.push_back(
-              DfgNodeInfo{opcode.str(), coord.first, coord.second,
+              DfgNodeInfo{opcode, coord.first, coord.second,
                           link_steps.front().time_step});
         }
 
-        // Build hop nodes directly from link steps (mirrors router hop emission).
+        // Build intermediate routing nodes so the synthetic DFG matches the
+        // materialized instruction stream:
+        // - plain link-to-link segments emit one hop node
+        // - link-to-reg-to-link segments emit deposit / reg-transfer / egress nodes
         if (link_steps.size() > 1) {
-          StringRef opcode = isCtrlMov(operation) ? "CTRL_MOV" : "DATA_MOV";
           for (size_t i = 1; i < link_steps.size(); ++i) {
             int middle_tile_id = topology.srcTileOfLink(link_steps[i].link_id);
             auto coord = topology.tile_location.lookup(middle_tile_id);
+            SmallVector<RegStep, 4> inter_link_regs =
+                collectRegsBetweenLinks(regs, link_steps[i - 1].time_step,
+                                        link_steps[i].time_step);
+            if (inter_link_regs.empty()) {
+              pre_mov_nodes.push_back(
+                  DfgNodeInfo{opcode, coord.first, coord.second,
+                              link_steps[i].time_step});
+              continue;
+            }
+
             pre_mov_nodes.push_back(
-                DfgNodeInfo{opcode.str(), coord.first, coord.second,
+                DfgNodeInfo{opcode, coord.first, coord.second,
+                            inter_link_regs.front().time_step});
+
+            SmallVector<std::pair<RegStep, RegStep>, 4> transfers =
+                collectRegisterTransfers(inter_link_regs);
+            for (const auto &[prev, cur] : transfers) {
+              (void)prev;
+              pre_mov_nodes.push_back(
+                  DfgNodeInfo{opcode, coord.first, coord.second,
+                              cur.time_step});
+            }
+
+            pre_mov_nodes.push_back(
+                DfgNodeInfo{opcode, coord.first, coord.second,
                             link_steps[i].time_step});
           }
         }
@@ -1327,14 +1396,13 @@ struct GenerateCodePass
         if (reg_split.dst_reg_steps.size() > 1) {
           int dst_tile_id = topology.dstTileOfLink(link_steps.back().link_id);
           auto coord = topology.tile_location.lookup(dst_tile_id);
-          StringRef opcode = isCtrlMov(operation) ? "CTRL_MOV" : "DATA_MOV";
           SmallVector<std::pair<RegStep, RegStep>, 4> transfers =
               collectRegisterTransfers(reg_split.dst_reg_steps);
 
           for (const auto &[prev, cur] : transfers) {
             (void)prev;
             post_mov_nodes.push_back(
-                DfgNodeInfo{opcode.str(), coord.first, coord.second,
+                DfgNodeInfo{opcode, coord.first, coord.second,
                             cur.time_step});
           }
         }
