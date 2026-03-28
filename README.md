@@ -56,6 +56,28 @@ Build LLVM & Neura
  $ /workspace/llvm-project/build/bin/llvm-lit test.mlir -v
 ```
 
+Code Formatting with Pre-commit
+--------------------------------------------------------
+This project uses [pre-commit](https://pre-commit.com/) to automatically format code and check files before committing.
+
+### Setup
+
+```sh
+pip install pre-commit
+pre-commit install
+pre-commit install --hook-type pre-commit
+```
+
+Once installed, pre-commit hooks run automatically on your staged files every time you run `git commit`.
+
+To manually check the entire codebase:
+
+```sh
+pre-commit run --all-files
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for more details.
+
 Sync `test/e2e` outputs into Zeonica_Testbench (submodule)
 --------------------------------------------------------
 This repo vendors [`sarchlab/Zeonica_Testbench`](https://github.com/sarchlab/Zeonica_Testbench.git) as a git submodule at `test/benchmark/Zeonica_Testbench`.
