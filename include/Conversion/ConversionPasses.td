@@ -8,32 +8,34 @@ include "mlir/Pass/PassBase.td"
 //=========================================================//
 // Neura Conversion Passes.
 //=========================================================//
-def LowerArithToNeura : Pass<"lower-arith-to-neura", "FuncOp">{
+def LowerArithToNeura : Pass<"lower-arith-to-neura", "FuncOp"> {
   let summary = "Lower arith to Neura dialect";
-  let description = [{Lower arith dialect operations to Neura dialect operations.}];
+  let description =
+      [{Lower arith dialect operations to Neura dialect operations.}];
   let constructor = "mlir::createLowerArithToNeuraPass()";
 }
 
-def LowerLlvmToNeura : Pass<"lower-llvm-to-neura", "ModuleOp">{
+def LowerLlvmToNeura : Pass<"lower-llvm-to-neura", "ModuleOp"> {
   let summary = "Lower LLVM to Neura dialect";
   let description = [{Lower LLVM operations to Neura dialect operations.}];
   let constructor = "mlir::createLowerLlvmToNeuraPass()";
 }
 
-def LowerMemRefToNeura : Pass<"lower-memref-to-neura", "ModuleOp">{
+def LowerMemRefToNeura : Pass<"lower-memref-to-neura", "ModuleOp"> {
   let summary = "Lower MemRef to Neura dialect";
   let description = [{Lower MemRef operations to Neura dialect operations.}];
   let constructor = "mlir::createLowerMemRefToNeuraPass()";
 }
 
-def LowerBuiltinToNeura : Pass<"lower-builtin-to-neura", "ModuleOp">{
+def LowerBuiltinToNeura : Pass<"lower-builtin-to-neura", "ModuleOp"> {
   let summary = "Lower Builtin to Neura dialect";
   let description = [{Lower Builtin operations to Neura dialect operations.}];
   let constructor = "mlir::createLowerBuiltinToNeuraPass()";
 }
 
-def LowerAffineToNeura : Pass<"lower-affine-to-neura", "func::FuncOp">{
-  let summary = "Lower Affine perfect nested loops to Neura loop_control operations";
+def LowerAffineToNeura : Pass<"lower-affine-to-neura", "func::FuncOp"> {
+  let summary =
+      "Lower Affine perfect nested loops to Neura loop_control operations";
   let description = [{
     Converts perfectly nested affine.for loops directly to Neura dialect using 
     loop_control operations, avoiding the need to flatten to LLVM IR first.
@@ -41,14 +43,15 @@ def LowerAffineToNeura : Pass<"lower-affine-to-neura", "func::FuncOp">{
     dataflow architectures.
   }];
   let constructor = "mlir::createLowerAffineToNeuraPass()";
-  let dependentDialects = ["mlir::neura::NeuraDialect", "mlir::affine::AffineDialect"];
+  let dependentDialects = ["mlir::neura::NeuraDialect",
+                           "mlir::affine::AffineDialect"];
 }
 
 //=========================================================//
 // TaskFlow Conversion Passes.
 //=========================================================//
 
-def ConvertAffineToTaskflow : Pass<"convert-affine-to-taskflow", "ModuleOp">{
+def ConvertAffineToTaskflow : Pass<"convert-affine-to-taskflow", "ModuleOp"> {
   let summary = "Convert top-level affine.for operations to Taskflow dialect";
   let description = [{
     This pass converts top-level affine.for loops in a function into
@@ -65,16 +68,14 @@ def ConvertAffineToTaskflow : Pass<"convert-affine-to-taskflow", "ModuleOp">{
   }];
 
   let constructor = "mlir::createConvertAffineToTaskflowPass()";
-  let dependentDialects = [
-    "mlir::taskflow::TaskflowDialect",
-    "mlir::affine::AffineDialect",
-    "mlir::func::FuncDialect",
-    "mlir::memref::MemRefDialect",
-    "mlir::arith::ArithDialect"
-  ];
+  let dependentDialects = ["mlir::taskflow::TaskflowDialect",
+                           "mlir::affine::AffineDialect",
+                           "mlir::func::FuncDialect",
+                           "mlir::memref::MemRefDialect",
+                           "mlir::arith::ArithDialect"];
 }
 
-def ConvertTaskflowToNeura : Pass<"convert-taskflow-to-neura", "ModuleOp">{
+def ConvertTaskflowToNeura : Pass<"convert-taskflow-to-neura", "ModuleOp"> {
   let summary = "Convert taskflow operations to neura.kernel";
   let description = [{
     Converts taskflow.hyperblock operations into neura.kernel operations suitable for
@@ -86,11 +87,9 @@ def ConvertTaskflowToNeura : Pass<"convert-taskflow-to-neura", "ModuleOp">{
     mlir-neura-opt --convert-taskflow-to-neura input.mlir --architecture-spec=$PATH/architecture.yaml -o output.mlir
   }];
   let constructor = "mlir::createConvertTaskflowToNeuraPass()";
-  let dependentDialects = [
-    "mlir::taskflow::TaskflowDialect",
-    "mlir::neura::NeuraDialect"
-    "mlir::affine::AffineDialect"
-  ];
+  let dependentDialects = ["mlir::taskflow::TaskflowDialect",
+                           "mlir::neura::NeuraDialect"
+                           "mlir::affine::AffineDialect"];
 }
 
 def FoldSubView : Pass<"fold-subview", "func::FuncOp"> {
@@ -101,15 +100,14 @@ def FoldSubView : Pass<"fold-subview", "func::FuncOp"> {
     offsets and strides, enabling direct access to the source memref.
   }];
   let constructor = "mlir::createFoldSubViewPass()";
-  let dependentDialects = [
-    "mlir::affine::AffineDialect",
-    "mlir::memref::MemRefDialect",
-    "mlir::arith::ArithDialect",
-    "mlir::func::FuncDialect"
-  ];
+  let dependentDialects = ["mlir::affine::AffineDialect",
+                           "mlir::memref::MemRefDialect",
+                           "mlir::arith::ArithDialect",
+                           "mlir::func::FuncDialect"];
 }
 
-def ConvertCopyToAffineLoops : Pass<"convert-copy-to-affine-loops", "func::FuncOp"> {
+def ConvertCopyToAffineLoops
+    : Pass<"convert-copy-to-affine-loops", "func::FuncOp"> {
   let summary = "Converts memref.copy to explicit affine loop nests";
   let description = [{
     Converts memref.copy operations into explicit affine.for loop nests
@@ -117,11 +115,9 @@ def ConvertCopyToAffineLoops : Pass<"convert-copy-to-affine-loops", "func::FuncO
     explicit for CGRA compilation with global addressing.
   }];
   let constructor = "mlir::createConvertCopyToAffineLoopsPass()";
-  let dependentDialects = [
-    "mlir::affine::AffineDialect",
-    "mlir::memref::MemRefDialect",
-    "mlir::func::FuncDialect"
-  ];
+  let dependentDialects = ["mlir::affine::AffineDialect",
+                           "mlir::memref::MemRefDialect",
+                           "mlir::func::FuncDialect"];
 }
 
 #endif // CONVERSION_PASSES_TD

@@ -36,8 +36,7 @@ def InsertCtrlMov : Pass<"insert-ctrl-mov", "ModuleOp"> {
 
 def TransformCtrlToDataFlow : Pass<"transform-ctrl-to-data-flow", "ModuleOp"> {
   let summary = "Inserts ctrl move operations in the Neura dialect";
-  let description =
-      [{Transform ctrl to predicate-based data flow.}];
+  let description = [{Transform ctrl to predicate-based data flow.}];
   let constructor = "neura::createTransformCtrlToDataFlowPass()";
 }
 
@@ -73,22 +72,24 @@ def MapToAccelerator : Pass<"map-to-accelerator", "ModuleOp"> {
             valid-tiles="0_0,1_0,2_0,3_0,4_0,5_0,6_0,7_0,8_0,9_0,10_0,11_0,\
                          4_1,5_1,6_1,7_1,4_4,5_4,6_4,7_4,4_5,5_5,6_5,7_5"
   }];
-  let options = [
-    Option<"x_tiles", "x-tiles", "int", /*default=*/"0",
+  let options =
+      [Option<
+           "x_tiles", "x-tiles", "int", /*default=*/"0",
            "Total number of tiles in the X dimension of the target array "
            "(not the number of CGRAs).  Each CGRA contributes per_cgra_cols "
            "tiles.  0 means use the global Architecture singleton (1 CGRA).">,
-    Option<"y_tiles", "y-tiles", "int", /*default=*/"0",
+       Option<
+           "y_tiles", "y-tiles", "int", /*default=*/"0",
            "Total number of tiles in the Y dimension of the target array "
            "(not the number of CGRAs).  Each CGRA contributes per_cgra_rows "
            "tiles.  0 means use the global Architecture singleton (1 CGRA).">,
-    Option<"valid_tiles", "valid-tiles", "std::string", /*default=*/"\"\"",
+       Option<
+           "valid_tiles", "valid-tiles", "std::string", /*default=*/"\"\"",
            "Comma-separated list of tile coordinates (x_y) that are actually "
            "present in the array, used for non-rectangular CGRA shapes such as "
            "L-blocks or T-blocks. Empty string means all tiles in the "
            "x-tiles x y-tiles rectangle are valid. "
-           "Example: 0_0,1_0,0_1 selects three tiles forming an L-shape.">
-  ];
+           "Example: 0_0,1_0,0_1 selects three tiles forming an L-shape.">];
   let constructor = "neura::createMapToAcceleratorPass()";
 }
 
@@ -101,7 +102,7 @@ def GenerateCode : Pass<"generate-code", "ModuleOp"> {
   let constructor = "neura::createGenerateCodePass()";
 }
 
-def FuseLoopControl: Pass<"fuse-loop-control", "ModuleOp">{
+def FuseLoopControl : Pass<"fuse-loop-control", "ModuleOp"> {
   let summary = "Fuses loop control operations in the Neura dialect";
   let description = [{
     This pass fuses loop control operations.
@@ -109,7 +110,7 @@ def FuseLoopControl: Pass<"fuse-loop-control", "ModuleOp">{
   let constructor = "neura::createFuseLoopControlPass()";
 }
 
-def CanonicalizeReturn : Pass<"canonicalize-return", "ModuleOp">{
+def CanonicalizeReturn : Pass<"canonicalize-return", "ModuleOp"> {
   let summary = "Adds execution conditions to void return operations";
   let description = [{
     This pass processes void functions and adds trigger conditions to their
@@ -132,7 +133,8 @@ def CanonicalizeLiveIn : Pass<"canonicalize-live-in", "ModuleOp"> {
 }
 
 def PromoteInputArgToConst : Pass<"promote-input-arg-to-const", "ModuleOp"> {
-  let summary = "Promotes input arguments of functions or neura.kernels to neura constant operations";
+  let summary = "Promotes input arguments of functions or neura.kernels to "
+                "neura constant operations";
   let description = [{
     This pass promotes input arguments of functions or neura.kernels to neura constant operations.
   }];
@@ -161,7 +163,8 @@ def FoldConstant : Pass<"fold-constant", "ModuleOp"> {
   let constructor = "neura::createFoldConstantPass()";
 }
 
-def TransformToSteerControl : Pass<"transform-to-steer-control", "func::FuncOp"> {
+def TransformToSteerControl
+    : Pass<"transform-to-steer-control", "func::FuncOp"> {
   let summary = "Transform control flow into data flow using steer control";
   let description = [{
     This pass transforms Neura control flow graphs (CDFG) into pure dataflow graphs (DFG)
@@ -192,7 +195,8 @@ def IterMergePattern : Pass<"iter-merge-pattern", "ModuleOp"> {
 }
 
 def InitPattern : Pass<"init-pattern", "ModuleOp"> {
-  let summary = "Initialize and identify common patterns in DFG (single iteration)";
+  let summary =
+      "Initialize and identify common patterns in DFG (single iteration)";
   let description = [{
     This pass traverses the DFG (Data Flow Graph) and identifies common patterns
     using graph mining algorithms. It performs a single iteration of pattern merging

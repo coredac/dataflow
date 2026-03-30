@@ -52,8 +52,8 @@ struct FuseFAddFAddPattern : public OpRewritePattern<neura::FAddOp> {
     Location loc = second.getLoc();
     Type type = second.getType();
 
-    auto fused = rewriter.create<neura::FAddFAddOp>(
-        loc, type, first.getLhs(), first.getRhs(), tail);
+    auto fused = rewriter.create<neura::FAddFAddOp>(loc, type, first.getLhs(),
+                                                    first.getRhs(), tail);
 
     rewriter.replaceOp(second, fused.getResult());
     rewriter.eraseOp(first);
@@ -100,8 +100,8 @@ struct FuseFMulFAddPattern : public OpRewritePattern<neura::FAddOp> {
     Location loc = add.getLoc();
     Type type = add.getType();
 
-    auto fused = rewriter.create<neura::FMulFAddOp>(
-        loc, type, fmul.getLhs(), fmul.getRhs(), other);
+    auto fused = rewriter.create<neura::FMulFAddOp>(loc, type, fmul.getLhs(),
+                                                    fmul.getRhs(), other);
 
     rewriter.replaceOp(add, fused.getResult());
     rewriter.eraseOp(fmul);
@@ -132,7 +132,7 @@ struct FuseGepLoadPattern : public OpRewritePattern<neura::LoadOp> {
     for (auto gepIndex : gep_op.getIndices()) {
       indexValues.push_back(gepIndex);
     }
-    
+
     auto fused = rewriter.create<neura::LoadIndexedOp>(
         loc, type, gep_op.getBase(), indexValues);
 
@@ -164,9 +164,9 @@ struct FuseGepStorePattern : public OpRewritePattern<neura::StoreOp> {
     for (auto gepIndex : gep_op.getIndices()) {
       indexValues.push_back(gepIndex);
     }
-    
-    rewriter.create<neura::StoreIndexedOp>(
-        loc, store.getValue(), gep_op.getBase(), indexValues);
+
+    rewriter.create<neura::StoreIndexedOp>(loc, store.getValue(),
+                                           gep_op.getBase(), indexValues);
 
     rewriter.eraseOp(store);
     rewriter.eraseOp(gep_op);
@@ -213,8 +213,8 @@ struct FuseMulAddPattern : public OpRewritePattern<neura::AddOp> {
     Location loc = add.getLoc();
     Type type = add.getType();
 
-    auto fused = rewriter.create<neura::MulAddOp>(
-        loc, type, mul.getLhs(), mul.getRhs(), other, Value());
+    auto fused = rewriter.create<neura::MulAddOp>(loc, type, mul.getLhs(),
+                                                  mul.getRhs(), other, Value());
 
     rewriter.replaceOp(add, fused.getResult());
     rewriter.eraseOp(mul);

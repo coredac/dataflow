@@ -68,3 +68,7 @@ $ ./tools/sync_e2e_outputs_to_zeonica_testbench.sh
 Mapping (per kernel `K`):
 - `test/e2e/K/tmp-generated-dfg.{dot,yaml}` -> `test/benchmark/Zeonica_Testbench/kernel/K/K-dfg.{dot,yaml}`
 - `test/e2e/K/tmp-generated-instructions.{asm,yaml}` -> `test/benchmark/Zeonica_Testbench/kernel/K/K-instructions.{asm,yaml}`
+
+Contributing
+--------------------------------------------------------
+Please refer to the [Contributing Guide](https://github.com/coredac/dataflow?tab=contributing-ov-file#contributing-to-neura) for code style, formatting, and contribution workflow.

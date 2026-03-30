@@ -681,7 +681,8 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
     // Uses register as routing resource within the same tile.
     // Finds an available register to store the data.
     Register *available_reg = getAvailableRegister(
-        state, src_tile, src_loc.time_step, exclusive_deadline_step, dyn_cast_or_null<neura::DataMovOp>(mov_op));
+        state, src_tile, src_loc.time_step, exclusive_deadline_step,
+        dyn_cast_or_null<neura::DataMovOp>(mov_op));
     if (!available_reg) {
       llvm::outs()
           << "[tryRouteDataMove] Cannot find available register on Tile#"
@@ -736,7 +737,8 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
           // Arrives early, needs register on destination tile to wait.
           Register *wait_reg =
               getAvailableRegister(state, dst_tile, current_state.current_time,
-                                   exclusive_deadline_step, dyn_cast_or_null<neura::DataMovOp>(mov_op));
+                                   exclusive_deadline_step,
+                                   dyn_cast_or_null<neura::DataMovOp>(mov_op));
           if (!wait_reg) {
             llvm::outs() << "[tryRouteDataMove] Cannot find available waiting"
                             "register on destination Tile#"
@@ -768,7 +770,8 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
       MappingLoc link_loc = {out_link, current_state.current_time};
 
       // Checks if link is available at current time step.
-      if (!state.isAvailableAcrossTime(link_loc, dyn_cast_or_null<neura::DataMovOp>(mov_op))) {
+      if (!state.isAvailableAcrossTime(
+              link_loc, dyn_cast_or_null<neura::DataMovOp>(mov_op))) {
         continue;
       }
 
@@ -787,7 +790,8 @@ bool mlir::neura::tryRouteDataMove(Operation *mov_op, MappingLoc src_loc,
     // Option 2: Uses register on current tile to wait one time step.
     Register *wait_register = getAvailableRegister(
         state, current_state.current_tile, current_state.current_time,
-        current_state.current_time + 1, dyn_cast_or_null<neura::DataMovOp>(mov_op));
+        current_state.current_time + 1,
+        dyn_cast_or_null<neura::DataMovOp>(mov_op));
     if (wait_register) {
       int next_time = current_state.current_time + 1;
       // Checks if this(tile, time) combination has been visited.

@@ -1,16 +1,17 @@
-//===- InitExecLatencyPass.cpp - Initialize Execution Latency --------------===//
+//===- InitExecLatencyPass.cpp - Initialize Execution Latency
+//--------------===//
 //
 // This pass initializes execution latency information.
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/Pass/Pass.h"
-#include "NeuraDialect/Architecture/ArchitectureSpec.h"
 #include "NeuraDialect/Architecture/Architecture.h"
+#include "NeuraDialect/Architecture/ArchitectureSpec.h"
 #include "NeuraDialect/NeuraDialect.h"
 #include "NeuraDialect/NeuraOps.h"
 #include "NeuraDialect/NeuraPasses.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/Pass/Pass.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
@@ -41,7 +42,7 @@ static bool parseYamlScalarInt(const llvm::yaml::Node *node, int &result) {
 
 // Helper function to parse YAML scalar to string
 static bool parseYamlScalarString(const llvm::yaml::Node *node,
-                                   std::string &result) {
+                                  std::string &result) {
   auto *scalar = llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(node);
   if (!scalar)
     return false;
@@ -51,14 +52,16 @@ static bool parseYamlScalarString(const llvm::yaml::Node *node,
   return true;
 }
 
-// Parse latency YAML file: expects a mapping of operation names to latency values
+// Parse latency YAML file: expects a mapping of operation names to latency
+// values
 static bool parseLatencyYaml(const std::string &file_path,
-                              std::map<std::string, int> &latency_map) {
+                             std::map<std::string, int> &latency_map) {
   llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> buffer_or_err =
       llvm::MemoryBuffer::getFile(file_path);
   if (!buffer_or_err) {
-    llvm::errs() << "[InitExecLatencyPass] Failed to open latency specification file: "
-                 << file_path << "\n";
+    llvm::errs()
+        << "[InitExecLatencyPass] Failed to open latency specification file: "
+        << file_path << "\n";
     return false;
   }
 
@@ -69,7 +72,8 @@ static bool parseLatencyYaml(const std::string &file_path,
 
   llvm::yaml::Document &yaml_doc = *yaml_stream.begin();
   if (yaml_stream.failed()) {
-    llvm::errs() << "[InitExecLatencyPass] YAML parse error in: " << file_path << "\n";
+    llvm::errs() << "[InitExecLatencyPass] YAML parse error in: " << file_path
+                 << "\n";
     return false;
   }
 
@@ -90,7 +94,7 @@ static bool parseLatencyYaml(const std::string &file_path,
         llvm::dyn_cast_or_null<llvm::yaml::ScalarNode>(key_value_pair.getKey());
     if (!key_node)
       continue;
-    
+
     std::string op_name;
     if (!parseYamlScalarString(key_node, op_name))
       continue;
@@ -106,36 +110,37 @@ static bool parseLatencyYaml(const std::string &file_path,
 }
 
 void SetLatency(Operation *op, std::map<std::string, int> &latency_map) {
-    // Get operation name and look up latency
-    std::string op_name = op->getName().getStringRef().str();
-    if (op_name.compare("neura.fused_op") == 0) {
-      op_name = op->getAttrOfType<StringAttr>("pattern_name").getValue().str();
-    }
-    op_name = op_name.substr(op_name.find_last_of(".") + 1); // remove neura. prefix if exists
-    auto it = latency_map.find(op_name);
-    if (it != latency_map.end()) {
-        op->setAttr("latency", 
+  // Get operation name and look up latency
+  std::string op_name = op->getName().getStringRef().str();
+  if (op_name.compare("neura.fused_op") == 0) {
+    op_name = op->getAttrOfType<StringAttr>("pattern_name").getValue().str();
+  }
+  op_name = op_name.substr(op_name.find_last_of(".") +
+                           1); // remove neura. prefix if exists
+  auto it = latency_map.find(op_name);
+  if (it != latency_map.end()) {
+    op->setAttr(
+        "latency",
         IntegerAttr::get(IntegerType::get(op->getContext(), 32), it->second));
-    }
-    else {
-        op->setAttr("latency", 
-            IntegerAttr::get(IntegerType::get(op->getContext(), 32), 1)); 
-    }
+  } else {
+    op->setAttr("latency",
+                IntegerAttr::get(IntegerType::get(op->getContext(), 32), 1));
+  }
 }
 
 struct InitExecLatencyPass
     : public PassWrapper<InitExecLatencyPass, OperationPass<ModuleOp>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(InitExecLatencyPass)
-  
+
   InitExecLatencyPass() = default;
   InitExecLatencyPass(const InitExecLatencyPass &pass)
       : PassWrapper<InitExecLatencyPass, OperationPass<ModuleOp>>(pass) {}
-  
+
   StringRef getArgument() const override { return "init-exec-latency"; }
   StringRef getDescription() const override {
     return "Initialize execution latency information.";
   }
-  
+
   void runOnOperation() override {
 
     ModuleOp module_op = getOperation();
@@ -145,12 +150,15 @@ struct InitExecLatencyPass
     if (latency_file.empty()) {
       latency_file = "latency_map.yaml"; // default file name
     }
-    
-    llvm::errs() << "[InitExecLatencyPass] Latency file: " << latency_file << "\n";
+
+    llvm::errs() << "[InitExecLatencyPass] Latency file: " << latency_file
+                 << "\n";
     // Builds a map of operation name to latency
     std::map<std::string, int> latency_map;
     if (!parseLatencyYaml(latency_file, latency_map)) {
-      llvm::errs() << "[InitExecLatencyPass] Failed to parse latency specification file: " << latency_file << "\n";
+      llvm::errs() << "[InitExecLatencyPass] Failed to parse latency "
+                      "specification file: "
+                   << latency_file << "\n";
       return;
     }
 
@@ -160,14 +168,16 @@ struct InitExecLatencyPass
         for (Region &region : op->getRegions()) {
           region.walk([&](Operation *inner_op) {
             // Skip operations inside fused_op regions
-            if (inner_op->getParentOp() && isa<neura::FusedOp>(inner_op->getParentOp())) {
+            if (inner_op->getParentOp() &&
+                isa<neura::FusedOp>(inner_op->getParentOp())) {
               return;
             }
 
-            if (inner_op->getName().getStringRef().str() == "neura.data_mov" || inner_op->getName().getStringRef().str() == "neura.reserve") {
+            if (inner_op->getName().getStringRef().str() == "neura.data_mov" ||
+                inner_op->getName().getStringRef().str() == "neura.reserve") {
               return;
             }
-            
+
             SetLatency(inner_op, latency_map);
           });
         }

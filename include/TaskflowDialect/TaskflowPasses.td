@@ -8,36 +8,38 @@ include "mlir/Pass/PassBase.td"
 //=========================================================//
 // Passes for Task Level Optimizations
 //=========================================================//
-def AffineLoopTreeSerialization : Pass<"affine-loop-tree-serialization", "ModuleOp">{
-  let summary = "Serializes top-level affine.for loops into minimized task operations";
+def AffineLoopTreeSerialization
+    : Pass<"affine-loop-tree-serialization", "ModuleOp"> {
+  let summary =
+      "Serializes top-level affine.for loops into minimized task operations";
   let description = [{
     This pass converts top-level affine.for loops in a function into
     minimized and canonicalized task operations.
   }];
   let constructor = "taskflow::createAffineLoopTreeSerializationPass()";
-  let dependentDialects = [
-    "mlir::taskflow::TaskflowDialect",
-    "mlir::affine::AffineDialect",
-    "mlir::func::FuncDialect"];
+  let dependentDialects = ["mlir::taskflow::TaskflowDialect",
+                           "mlir::affine::AffineDialect",
+                           "mlir::func::FuncDialect"];
 }
 
-def AffineLoopPerfection : Pass<"affine-loop-perfection", "func::FuncOp">{
-  let summary = "Perfectionizes affine.for loops into perfect nested loop bands";
+def AffineLoopPerfection : Pass<"affine-loop-perfection", "func::FuncOp"> {
+  let summary =
+      "Perfectionizes affine.for loops into perfect nested loop bands";
   let description = [{
     This pass transforms affine.for loops into perfect nested loop bands by
     applying loop transformations such as loop fusion, loop interchange, and
     loop tiling.
   }];
   let constructor = "taskflow::createAffineLoopPerfectionPass()";
-  let dependentDialects = [
-    "mlir::affine::AffineDialect",
-    "mlir::func::FuncDialect"];
+  let dependentDialects = ["mlir::affine::AffineDialect",
+                           "mlir::func::FuncDialect"];
 }
 
 //=========================================================//
 // Passes for the Taskflow dialect
 //=========================================================//
-def ConstructHyperblockFromTask : Pass<"construct-hyperblock-from-task", "func::FuncOp">{
+def ConstructHyperblockFromTask
+    : Pass<"construct-hyperblock-from-task", "func::FuncOp"> {
   let summary = "Constructs hyperblocks from Taskflow tasks.";
   let description = [{
     This passes selected two transform modes based on the input architecture specification.
@@ -47,7 +49,7 @@ def ConstructHyperblockFromTask : Pass<"construct-hyperblock-from-task", "func::
   let constructor = "taskflow::createConstructHyperblockFromTaskPass()";
 }
 
-def ClassifyCounters : Pass<"classify-counters", "ModuleOp">{
+def ClassifyCounters : Pass<"classify-counters", "ModuleOp"> {
   let summary = "Classifies counters as root/relay/leaf";
   let description = [{
     Analyzes the counter hierarchy within taskflow.task operations and
@@ -74,7 +76,8 @@ def MapTaskOnCgra : Pass<"map-task-on-cgra", "func::FuncOp"> {
 }
 
 def FuseTask : Pass<"fuse-task", "func::FuncOp"> {
-  let summary = "Fuses Taskflow tasks using producer-consumer and sibling strategies";
+  let summary =
+      "Fuses Taskflow tasks using producer-consumer and sibling strategies";
   let description = [{
     Fuses taskflow.task operations using producer-consumer and sibling
     fusion strategies. Uses Neura-level MII metrics for profitability analysis.
@@ -85,17 +88,17 @@ def FuseTask : Pass<"fuse-task", "func::FuncOp"> {
     Sibling Fusion: Fuses tasks that share inputs without data dependency.
   }];
   let constructor = "taskflow::createFuseTaskPass()";
-  let dependentDialects = [
-    "mlir::LLVM::LLVMDialect",
-    "mlir::func::FuncDialect",
-    "mlir::arith::ArithDialect",
-    "mlir::memref::MemRefDialect",
-    "mlir::neura::NeuraDialect",
-    "mlir::taskflow::TaskflowDialect"];
+  let dependentDialects = ["mlir::LLVM::LLVMDialect", "mlir::func::FuncDialect",
+                           "mlir::arith::ArithDialect",
+                           "mlir::memref::MemRefDialect",
+                           "mlir::neura::NeuraDialect",
+                           "mlir::taskflow::TaskflowDialect"];
 }
 
-def MemoryAccessStreamingFusion : Pass<"memory-access-streaming-fusion", "func::FuncOp"> {
-  let summary = "Fuses tasks connected by memory dependencies for streaming execution";
+def MemoryAccessStreamingFusion
+    : Pass<"memory-access-streaming-fusion", "func::FuncOp"> {
+  let summary =
+      "Fuses tasks connected by memory dependencies for streaming execution";
   let description = [{
     Identifies and fuses taskflow.task operations that have memory access
     dependencies (one task writes a memref, another task reads it).
@@ -108,8 +111,10 @@ def MemoryAccessStreamingFusion : Pass<"memory-access-streaming-fusion", "func::
   let constructor = "taskflow::createMemoryAccessStreamingFusionPass()";
 }
 
-def ResourceAwareTaskOptimization : Pass<"resource-aware-task-optimization", "func::FuncOp"> {
-  let summary = "Balances pipeline latency and fuses independent tasks for CGRA utilization.";
+def ResourceAwareTaskOptimization
+    : Pass<"resource-aware-task-optimization", "func::FuncOp"> {
+  let summary = "Balances pipeline latency and fuses independent tasks for "
+                "CGRA utilization.";
   let description = [{
     Two-phase optimization:
     1. Utilization Fusion: merges independent (no-edge) tasks, selecting pairs
@@ -139,16 +144,14 @@ def ResourceAwareTaskOptimization : Pass<"resource-aware-task-optimization", "fu
     Example:
       --resource-aware-task-optimization estimation-mode=analytical
   }];
-  let options = [
-    Option<"estimationMode", "estimation-mode", "std::string",
-           /*default=*/"\"compiled\"",
-           "Profiling estimation mode: 'compiled' (default) runs the full "
-           "Neura lowering + mapping pipeline; 'analytical' uses only "
-           "ResMII/RecMII analytical estimates (faster but less accurate).">
-  ];
+  let options = [Option<
+      "estimationMode", "estimation-mode", "std::string",
+      /*default=*/"\"compiled\"",
+      "Profiling estimation mode: 'compiled' (default) runs the full "
+      "Neura lowering + mapping pipeline; 'analytical' uses only "
+      "ResMII/RecMII analytical estimates (faster but less accurate).">];
   let constructor = "taskflow::createResourceAwareTaskOptimizationPass()";
-  let dependentDialects = [
-    "mlir::affine::AffineDialect",
-    "mlir::func::FuncDialect"];
+  let dependentDialects = ["mlir::affine::AffineDialect",
+                           "mlir::func::FuncDialect"];
 }
 #endif // TASKFLOW_PASSES_TD

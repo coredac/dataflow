@@ -531,10 +531,10 @@ void Architecture::applyLinkOverrides(
       // override may reference a tile that was not included in the clone.
       // Skip the override in that case to avoid a crash; the link simply
       // does not exist in the cloned architecture and needs no override.
-      auto src_it = coord_to_tile_.find(
-          {override.src_tile_x, override.src_tile_y});
-      auto dst_it = coord_to_tile_.find(
-          {override.dst_tile_x, override.dst_tile_y});
+      auto src_it =
+          coord_to_tile_.find({override.src_tile_x, override.src_tile_y});
+      auto dst_it =
+          coord_to_tile_.find({override.dst_tile_x, override.dst_tile_y});
       if (src_it == coord_to_tile_.end() || dst_it == coord_to_tile_.end())
         continue; // One or both tiles do not exist in this architecture.
       Tile *src_tile = src_it->second;

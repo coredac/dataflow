@@ -2,8 +2,8 @@
 #define NEURA_ARCH_PARSER_H
 
 #include "NeuraDialect/Architecture/Architecture.h"
-#include "llvm/Support/YAMLParser.h"
 #include "mlir/Support/LogicalResult.h"
+#include "llvm/Support/YAMLParser.h"
 
 namespace mlir {
 namespace neura {

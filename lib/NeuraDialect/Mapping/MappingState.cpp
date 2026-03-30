@@ -192,8 +192,8 @@ bool MappingState::isRegisterWriteAvailableAcrossTime(Register *reg,
   return true;
 }
 
-bool MappingState::isRegisterReadAvailableAcrossTime(Register *reg,
-                                                     int exclusive_end_time) const {
+bool MappingState::isRegisterReadAvailableAcrossTime(
+    Register *reg, int exclusive_end_time) const {
   RegisterFile *reg_file = reg->getRegisterFile();
   if (!reg_file) {
     return true;
@@ -344,7 +344,8 @@ bool MappingState::isAvailableAcrossTime(const MappingLoc &loc,
   // considering both occupancy state and the register-cluster constraint.
 
   // Returns true if the (resource, t) slot is free (or only IN_PIPE_OCCUPY).
-  auto isSlotFree = [this, move_op](BasicResource *resource, int t) mutable -> bool {
+  auto isSlotFree = [this, move_op](BasicResource *resource,
+                                    int t) mutable -> bool {
     std::map<MappingLoc,
              std::vector<std::pair<int, Operation *>>>::const_iterator it =
         occupied_locs.find({resource, t});
@@ -515,10 +516,9 @@ int MappingState::getOccupyStatusAcrossTime(const MappingLoc &loc) const {
   }
 }
 
-bool MappingState::isAvailableAcrossTimeInRange(BasicResource *resource,
-                                                int start_time,
-                                                int exclusive_end_time,
-                                                neura::DataMovOp move_op) const {
+bool MappingState::isAvailableAcrossTimeInRange(
+    BasicResource *resource, int start_time, int exclusive_end_time,
+    neura::DataMovOp move_op) const {
   // Checks the availability for each time step across time domain.
   for (int t = start_time; t < exclusive_end_time; ++t) {
     MappingLoc check_loc = {resource, t};

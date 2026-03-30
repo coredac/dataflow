@@ -1737,7 +1737,7 @@ struct ResourceAwareTaskOptimizationPass
       // The balance-skip-mapper flag now only controls whether a final
       // verification mapper run is performed after convergence (see below).
       auto balance_profile_fn = [&graph](TaskGraphNode *node,
-                                                       TaskflowTaskOp task) {
+                                         TaskflowTaskOp task) {
         graph.profileTask(node, task, /*skip_mapper=*/true);
       };
       PipelineBalancer balancer;
@@ -1775,7 +1775,8 @@ struct ResourceAwareTaskOptimizationPass
         // Converged — optionally re-profile with the real mapper for accuracy.
         // When balance-skip-mapper=false, runs the mapper once per task that
         // had its cgra_count changed, to get authoritative compiled_ii/steps.
-        bool balance_skip_mapper = use_analytical || balanceSkipMapper.getValue();
+        bool balance_skip_mapper =
+            use_analytical || balanceSkipMapper.getValue();
         if (!balance_skip_mapper) {
           llvm::errs() << "[ResourceAware] Running final mapper verification "
                        << "for converged allocation...\n";
@@ -1783,7 +1784,7 @@ struct ResourceAwareTaskOptimizationPass
             // Re-profile with the real mapper to get accurate II/steps.
             node->shape = pickBestShape(node->cgra_count);
             graph.profileTask(node.get(), node->op,
-                                    /*skip_mapper=*/false);
+                              /*skip_mapper=*/false);
           }
         }
 

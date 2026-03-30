@@ -46,7 +46,8 @@ struct MapToAcceleratorPass
   }
 
   MapToAcceleratorPass() = default;
-  MapToAcceleratorPass(const MapToAcceleratorOptions &options) : MapToAcceleratorPass() {
+  MapToAcceleratorPass(const MapToAcceleratorOptions &options)
+      : MapToAcceleratorPass() {
     this->x_tiles = options.x_tiles;
     this->y_tiles = options.y_tiles;
     this->valid_tiles = options.valid_tiles;
@@ -87,7 +88,8 @@ struct MapToAcceleratorPass
       llvm::cl::init(0)};
   Option<std::string> valid_tiles{
       *this, "valid-tiles",
-      llvm::cl::desc("Comma separated list of valid tile coords x_y,x_y to support non-rectangular shapes."),
+      llvm::cl::desc("Comma separated list of valid tile coords x_y,x_y to "
+                     "support non-rectangular shapes."),
       llvm::cl::init("")};
 
   // Configures mapping strategy and mode based on command-line options.
@@ -381,8 +383,9 @@ struct MapToAcceleratorPass
       if (!valid_tiles.getValue().empty()) {
         llvm::SmallVector<llvm::StringRef, 4> coords;
         llvm::StringRef(valid_tiles.getValue()).split(coords, ',');
-        
-        // Default: mark all tiles as non-existent first if valid_tiles provided.
+
+        // Default: mark all tiles as non-existent first if valid_tiles
+        // provided.
         for (int y = 0; y < y_tiles.getValue(); ++y) {
           for (int x = 0; x < x_tiles.getValue(); ++x) {
             TileOverride to;
@@ -392,12 +395,13 @@ struct MapToAcceleratorPass
             additional_overrides.push_back(to);
           }
         }
-        
+
         // Then mark the valid ones as existent.
         for (llvm::StringRef coord : coords) {
           auto pair = coord.split('_');
           int x, y;
-          if (!pair.first.getAsInteger(10, x) && !pair.second.getAsInteger(10, y)) {
+          if (!pair.first.getAsInteger(10, x) &&
+              !pair.second.getAsInteger(10, y)) {
             TileOverride to;
             to.tile_x = x;
             to.tile_y = y;
@@ -412,10 +416,11 @@ struct MapToAcceleratorPass
       // before inter-tile links are created, so no boundary links connect to
       // absent tiles.
       custom_arch = global_arch.cloneWithNewDimensions(
-        y_tiles.getValue(), x_tiles.getValue(), additional_overrides);
+          y_tiles.getValue(), x_tiles.getValue(), additional_overrides);
       target_arch = custom_arch.get();
-      llvm::errs() << "[MapToAcceleratorPass] Overriding architecture dimensions to "
-                   << y_tiles.getValue() << "x" << x_tiles.getValue() << " tiles.\n";
+      llvm::errs()
+          << "[MapToAcceleratorPass] Overriding architecture dimensions to "
+          << y_tiles.getValue() << "x" << x_tiles.getValue() << " tiles.\n";
     }
 
     const Architecture &architecture = *target_arch;
@@ -461,8 +466,8 @@ struct MapToAcceleratorPass
 
 namespace mlir::neura {
 
-std::unique_ptr<Pass> createMapToAcceleratorPass(
-    const MapToAcceleratorOptions &options) {
+std::unique_ptr<Pass>
+createMapToAcceleratorPass(const MapToAcceleratorOptions &options) {
   return std::make_unique<MapToAcceleratorPass>(options);
 }
 
