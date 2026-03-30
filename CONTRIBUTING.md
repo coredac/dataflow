@@ -12,13 +12,16 @@ Please follow the steps below:
 
 ## Code Format Style
 
-We follow LLVM style. The single source of truth is the `.clang-format` file
+We follow LLVM style. The format configuration is in the `.clang-format` file
 at the repo root — all tools below read it automatically.
 
-### VS Code
+You can choose one of the two options listed below for code formatting.
 
-1. Install the
-   [clangd extension](https://marketplace.visualstudio.com/items?itemName=llvm-vs-code-extensions.vscode-clangd).
+### Option 1: VS Code
+
+1. Install the following extensions:
+   - [clangd](https://marketplace.visualstudio.com/items?itemName=llvm-vs-code-extensions.vscode-clangd)
+     — C/C++ language server and formatter.
 2. Add the following to your workspace or user `settings.json`
    (`Ctrl+Shift+P` → `Preferences: Open Workspace Settings (JSON)`):
 
@@ -42,7 +45,7 @@ additional style configuration is needed.
 > `"C_Cpp.clang_format_style": "file"` so it reads `.clang-format` rather
 > than using a hard-coded style.
 
-### Command line (`git clang-format`)
+### Option 2: Command line (`git clang-format`)
 
 Before submitting a patch, format your changed lines against `main`:
 
