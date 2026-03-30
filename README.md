@@ -69,17 +69,6 @@ Mapping (per kernel `K`):
 - `test/e2e/K/tmp-generated-dfg.{dot,yaml}` -> `test/benchmark/Zeonica_Testbench/kernel/K/K-dfg.{dot,yaml}`
 - `test/e2e/K/tmp-generated-instructions.{asm,yaml}` -> `test/benchmark/Zeonica_Testbench/kernel/K/K-instructions.{asm,yaml}`
 
-Code Formatting
+Contributing
 --------------------------------------------------------
-Neura uses LLVM-style formatting via `.clang-format`.
-
-```sh
-# LLVM-style: format changed lines against main
-$ git clang-format main
-
-# Show formatting patch only (non-destructive)
-$ git clang-format --diff main
-
-# Restrict formatting to selected paths
-$ git clang-format main -- lib/ tools/
-```
+Please refer to the [Contributing Guide](https://github.com/coredac/dataflow?tab=contributing-ov-file#contributing-to-neura) for code style, formatting, and contribution workflow.
