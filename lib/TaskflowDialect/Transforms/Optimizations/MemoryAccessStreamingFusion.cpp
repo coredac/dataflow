@@ -835,8 +835,9 @@ private:
     // read_memrefs contain SSA results, not raw allocs).
     auto orig_reads = task_op.getOriginalReadMemrefs();
     for (unsigned i = 0; i < num_reads; ++i) {
-      Value orig_memref =
-          (i < orig_reads.size()) ? orig_reads[i] : task_op.getDependencyReadIn()[i];
+      Value orig_memref = (i < orig_reads.size())
+                              ? orig_reads[i]
+                              : task_op.getDependencyReadIn()[i];
       if (orig_memref == intermediate) {
         // Intermediate memref — no corresponding fused arg. Skip.
         orig_arg_idx++;

@@ -14,20 +14,19 @@ include "mlir/IR/CommonAttrConstraints.td"
 //----------------------------------------------------------------------
 // Base Class for all Taskflow operations.
 //----------------------------------------------------------------------
-class TaskflowOpBase<string mnemonic, list<Trait> traits = []> : Op<TaskflowDialect, mnemonic, traits>;
+class TaskflowOpBase<string mnemonic, list<Trait> traits = []>
+    : Op<TaskflowDialect, mnemonic, traits>;
 
 //----------------------------------------------------------------------
 // Task Level Operations.
 //----------------------------------------------------------------------
 
 // Defines a uniform computation task operation within a Taskflow graph.
-def TaskflowTaskOp : TaskflowOpBase<"task", [
-    IsolatedFromAbove,
-    AutomaticAllocationScope,
-    AttrSizedOperandSegments,
-    AttrSizedResultSegments,
-    SingleBlockImplicitTerminator<"TaskflowYieldOp">
-]>{
+def TaskflowTaskOp
+    : TaskflowOpBase<
+          "task", [IsolatedFromAbove, AutomaticAllocationScope,
+                   AttrSizedOperandSegments, AttrSizedResultSegments,
+                   SingleBlockImplicitTerminator<"TaskflowYieldOp">]> {
   let summary = "Computation task operation within a Taskflow graph.";
 
   let description = [{
@@ -61,20 +60,14 @@ def TaskflowTaskOp : TaskflowOpBase<"task", [
       } : (memref<4xi32>, memref<?xi32>, i32) -> (memref<4xi32>, memref<?xi32>, i32)
   }];
 
-  let arguments = (ins
-    Variadic<AnyMemRef>:$dependency_read_in,
-    Variadic<AnyMemRef>:$dependency_write_in,
-    Variadic<AnyType>:$value_inputs,
-    StrAttr:$task_name,
-    Variadic<AnyMemRef>:$original_read_memrefs,
-    Variadic<AnyMemRef>:$original_write_memrefs
-  );
+  let arguments = (ins Variadic<AnyMemRef>:$dependency_read_in,
+      Variadic<AnyMemRef>:$dependency_write_in, Variadic<AnyType>:$value_inputs,
+      StrAttr:$task_name, Variadic<AnyMemRef>:$original_read_memrefs,
+      Variadic<AnyMemRef>:$original_write_memrefs);
 
-  let results = (outs
-    Variadic<AnyMemRef>:$dependency_read_out,
-    Variadic<AnyMemRef>:$dependency_write_out,
-    Variadic<AnyType>:$value_outputs
-  );
+  let results = (outs Variadic<AnyMemRef>:$dependency_read_out,
+      Variadic<AnyMemRef>:$dependency_write_out,
+      Variadic<AnyType>:$value_outputs);
 
   let regions = (region SizedRegion<1>:$body);
 
@@ -82,7 +75,10 @@ def TaskflowTaskOp : TaskflowOpBase<"task", [
 }
 
 // Defines the yield operation to terminate a Taskflow task.
-def TaskflowYieldOp : TaskflowOpBase<"yield", [Terminator, Pure, ReturnLike, AttrSizedOperandSegments, ParentOneOf<["TaskflowTaskOp"]>]>{
+def TaskflowYieldOp
+    : TaskflowOpBase<"yield", [Terminator, Pure, ReturnLike,
+                               AttrSizedOperandSegments,
+                               ParentOneOf<["TaskflowTaskOp"]>]> {
   let summary = "Yield operation for Taskflow task";
   let description = [{
     Yields values from a task body. The number and types of operands
@@ -95,24 +91,24 @@ def TaskflowYieldOp : TaskflowOpBase<"yield", [Terminator, Pure, ReturnLike, Att
       } : (memref<4xi32>, i32) -> memref<4xi32>
   }];
 
-  let arguments = (ins
-    Variadic<AnyMemRef>:$read_results,
-    Variadic<AnyMemRef>:$memory_results,
-    Variadic<AnyType>:$value_results);
+  let arguments = (ins Variadic<AnyMemRef>:$read_results,
+      Variadic<AnyMemRef>:$memory_results, Variadic<AnyType>:$value_results);
 
   let hasCustomAssemblyFormat = 1;
 
   let builders = [
-    // Default builder for empty yield.
-    OpBuilder<(ins), [{
+      // Default builder for empty yield.
+      OpBuilder<(ins), [{
     build($_builder, $_state, ValueRange{}, ValueRange{}, ValueRange{});
-    }]>
-  ];
+    }]>];
 }
 
-// Defines the data dependency edge operation that carries data dependencies between tasks in a Taskflow graph.
-def TaskflowChannelOp : TaskflowOpBase<"channel", [Pure, SameOperandsAndResultType]>{
-  let summary = "Data dependency edge that carries data dependencies between tasks in a Taskflow graph";
+// Defines the data dependency edge operation that carries data dependencies
+// between tasks in a Taskflow graph.
+def TaskflowChannelOp
+    : TaskflowOpBase<"channel", [Pure, SameOperandsAndResultType]> {
+  let summary = "Data dependency edge that carries data dependencies between "
+                "tasks in a Taskflow graph";
   let description = [{
     Represents a data dependency edge between tasks in the taskflow graph.
     A channel connects a producer task's output to a consumer task's input.
@@ -141,7 +137,7 @@ def TaskflowChannelOp : TaskflowOpBase<"channel", [Pure, SameOperandsAndResultTy
 // Intra-Task Operations.
 //----------------------------------------------------------------------
 // Counter operation representing loop iteration control within a Taskflow task.
-def TaskflowCounterOp : TaskflowOpBase<"counter", []>{
+def TaskflowCounterOp : TaskflowOpBase<"counter", []> {
   let summary = "Loop counter operation with hardware counter semantics";
 
   let description = [{
@@ -170,14 +166,9 @@ def TaskflowCounterOp : TaskflowOpBase<"counter", []>{
       } : index
   }];
 
-  let arguments = (ins
-    Optional<AnyType>:$parent_index,
-    IndexAttr:$lower_bound,
-    IndexAttr:$upper_bound,
-    IndexAttr:$step,
-    OptionalAttr<StrAttr>:$counter_type,
-    OptionalAttr<I32Attr>:$counter_id
-  );
+  let arguments = (ins Optional<AnyType>:$parent_index, IndexAttr:$lower_bound,
+      IndexAttr:$upper_bound, IndexAttr:$step,
+      OptionalAttr<StrAttr>:$counter_type, OptionalAttr<I32Attr>:$counter_id);
 
   let results = (outs AnyType:$counter_index);
 
@@ -188,11 +179,11 @@ def TaskflowCounterOp : TaskflowOpBase<"counter", []>{
   }];
 }
 
-def TaskflowHyperblockOp : TaskflowOpBase<"hyperblock",[
-  AutomaticAllocationScope,
-  AttrSizedOperandSegments,
-  SingleBlockImplicitTerminator<"TaskflowHyperblockYieldOp">
-]>{
+def TaskflowHyperblockOp
+    : TaskflowOpBase<"hyperblock", [AutomaticAllocationScope,
+                                    AttrSizedOperandSegments,
+                                    SingleBlockImplicitTerminator<
+                                        "TaskflowHyperblockYieldOp">]> {
   let summary = "Hyperblock operation containing loop body computation";
 
   let description = [{
@@ -210,14 +201,10 @@ def TaskflowHyperblockOp : TaskflowOpBase<"hyperblock",[
       } -> i32
   }];
 
-  let arguments = (ins
-    Variadic<AnyType>:$indices,
-    Variadic<AnyType>:$iter_args
-  );
+  let arguments = (ins Variadic<AnyType>:$indices,
+      Variadic<AnyType>:$iter_args);
 
-  let results = (outs
-    Variadic<AnyType>:$outputs
-  );
+  let results = (outs Variadic<AnyType>:$outputs);
 
   let regions = (region SizedRegion<1>:$body);
 
@@ -229,22 +216,19 @@ def TaskflowHyperblockOp : TaskflowOpBase<"hyperblock",[
   // }];
 }
 
-def TaskflowHyperblockYieldOp : TaskflowOpBase<"hyperblock.yield", [
-  Terminator,
-  Pure,
-  ReturnLike,
-  AttrSizedOperandSegments,
-  ParentOneOf<["TaskflowHyperblockOp"]>
-]>{
+def TaskflowHyperblockYieldOp
+    : TaskflowOpBase<
+          "hyperblock.yield", [Terminator, Pure, ReturnLike,
+                               AttrSizedOperandSegments,
+                               ParentOneOf<["TaskflowHyperblockOp"]>]> {
   let summary = "Yield operation for Taskflow hyperblock";
 
   let description = [{
     Terminates the hyperblock body.
   }];
 
-  let arguments = (ins
-    Variadic<AnyType>:$iter_args_next,
-    Variadic<AnyType>:$results);
+  let arguments = (ins Variadic<AnyType>:$iter_args_next,
+      Variadic<AnyType>:$results);
 
   let assemblyFormat = [{
     (`iter_args_next` `(` $iter_args_next^ `:` type($iter_args_next) `)`)?
@@ -252,9 +236,8 @@ def TaskflowHyperblockYieldOp : TaskflowOpBase<"hyperblock.yield", [
     attr-dict
   }];
 
-  let builders = [
-    OpBuilder<(ins), [{build($_builder, $_state, ValueRange{}, ValueRange{});}]>
-  ];
+  let builders = [OpBuilder<
+      (ins), [{build($_builder, $_state, ValueRange{}, ValueRange{});}]>];
 }
 
 #endif // TASKFLOW_OPS_TD

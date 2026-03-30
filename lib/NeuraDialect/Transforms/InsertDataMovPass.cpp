@@ -34,8 +34,7 @@ struct InsertDataMovForNeuraOps : public RewritePattern {
         // a direct reference to the same SSA value used by phi_start.
         // Inserting a DataMovOp between reserve and its consumers would break
         // the ctrl_mov→reserve back-edge and corrupt the recurrence cycle.
-        isa<neura::ReserveOp>(op) ||
-        isa<neura::KernelOp>(op) ||
+        isa<neura::ReserveOp>(op) || isa<neura::KernelOp>(op) ||
         isa<neura::FusedOp>(op)) {
       return failure();
     }

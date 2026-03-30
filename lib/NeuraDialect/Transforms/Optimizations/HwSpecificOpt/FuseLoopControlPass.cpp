@@ -1,7 +1,7 @@
 #include "Common/AcceleratorAttrs.h"
+#include "NeuraDialect/NeuraAttributes.h"
 #include "NeuraDialect/NeuraOps.h"
 #include "NeuraDialect/NeuraTypes.h"
-#include "NeuraDialect/NeuraAttributes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Operation.h"

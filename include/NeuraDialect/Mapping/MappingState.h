@@ -2,8 +2,8 @@
 #define NEURA_MAPPING_STATE_H
 
 #include "NeuraDialect/Architecture/Architecture.h"
-#include "mlir/IR/Operation.h"
 #include "NeuraDialect/NeuraOps.h"
+#include "mlir/IR/Operation.h"
 #include "llvm/Support/raw_ostream.h"
 #include <optional>
 #include <unordered_map>
@@ -14,10 +14,10 @@ namespace neura {
 
 // Occupy status for multi-cycle pipeline support.
 // These states define how a tile/FU is occupied at a given time step.
-#define SINGLE_OCCUPY     0 // A single-cycle op is in the FU (exclusive)
+#define SINGLE_OCCUPY 0     // A single-cycle op is in the FU (exclusive)
 #define START_PIPE_OCCUPY 1 // A multi-cycle op starts in the FU
-#define END_PIPE_OCCUPY   2 // A multi-cycle op ends in the FU
-#define IN_PIPE_OCCUPY    3 // A multi-cycle op is occupying the FU (pipelined)
+#define END_PIPE_OCCUPY 2   // A multi-cycle op ends in the FU
+#define IN_PIPE_OCCUPY 3    // A multi-cycle op is occupying the FU (pipelined)
 // Represents a spatial-temporal location: (resource, time_step)
 struct MappingLoc {
   BasicResource *resource;
@@ -117,7 +117,8 @@ public:
   // time steps.  Returns false if a DIFFERENT register in the same
   // RegisterFile is already reading at a congruent time slot.  Multiple reads
   // from the SAME register are allowed (shared read).
-  bool isRegisterReadAvailableAcrossTime(Register *reg, int exclusive_end_time) const;
+  bool isRegisterReadAvailableAcrossTime(Register *reg,
+                                         int exclusive_end_time) const;
 
   // Gets the operation at a specific (tile/link, time_step) location.
   std::optional<Operation *> getOpAt(MappingLoc loc) const;

@@ -313,8 +313,8 @@ struct ArithMinimumFToNeuraFCmpSel
 
     // minimumf(a, b) → sel(fcmp(a, b, "olt"), a, b)
     // "olt" = ordered less-than: true when a < b (false if either is NaN).
-    Value cmp = rewriter.create<neura::FCmpOp>(
-        loc, result_type, lhs, rhs, rewriter.getStringAttr("olt"));
+    Value cmp = rewriter.create<neura::FCmpOp>(loc, result_type, lhs, rhs,
+                                               rewriter.getStringAttr("olt"));
     rewriter.replaceOpWithNewOp<neura::SelOp>(op, result_type, cmp, lhs, rhs);
     return success();
   }
@@ -333,8 +333,8 @@ struct ArithMaximumFToNeuraFCmpSel
 
     // maximumf(a, b) → sel(fcmp(a, b, "ogt"), a, b)
     // "ogt" = ordered greater-than: true when a > b (false if either is NaN).
-    Value cmp = rewriter.create<neura::FCmpOp>(
-        loc, result_type, lhs, rhs, rewriter.getStringAttr("ogt"));
+    Value cmp = rewriter.create<neura::FCmpOp>(loc, result_type, lhs, rhs,
+                                               rewriter.getStringAttr("ogt"));
     rewriter.replaceOpWithNewOp<neura::SelOp>(op, result_type, cmp, lhs, rhs);
     return success();
   }
@@ -384,15 +384,14 @@ struct LowerArithToNeuraPass
 
   RewritePatternSet populateArithToNeuraPatterns(MLIRContext *context) {
     RewritePatternSet patterns(context);
-    patterns
-        .add<ArithFAddToNeuraFAdd, ArithConstantToNeuraConstant,
-             ArithAddIToNeuraAdd, ArithCmpiToNeuraICmp, ArithSelectToNeuraSel,
-             ArithExtUIToNeuraCast, ArithIndexCastToNeuraCast,
-             ArithFDivToNeuraFDiv, ArithExtfToNeuraCast, ArithMulFToNeuraFMul,
-             ArithSubIToNeuraSub, ArithSubFToNeuraFSub, ArithMulIToNeuraMul,
-             ArithDivSIToNeuraDiv, ArithRemSIToNeuraOp,
-             ArithMinimumFToNeuraFCmpSel, ArithMaximumFToNeuraFCmpSel,
-             ArithAndIToNeuraAnd, ArithOrIToNeuraOr>(context);
+    patterns.add<
+        ArithFAddToNeuraFAdd, ArithConstantToNeuraConstant, ArithAddIToNeuraAdd,
+        ArithCmpiToNeuraICmp, ArithSelectToNeuraSel, ArithExtUIToNeuraCast,
+        ArithIndexCastToNeuraCast, ArithFDivToNeuraFDiv, ArithExtfToNeuraCast,
+        ArithMulFToNeuraFMul, ArithSubIToNeuraSub, ArithSubFToNeuraFSub,
+        ArithMulIToNeuraMul, ArithDivSIToNeuraDiv, ArithRemSIToNeuraOp,
+        ArithMinimumFToNeuraFCmpSel, ArithMaximumFToNeuraFCmpSel,
+        ArithAndIToNeuraAnd, ArithOrIToNeuraOr>(context);
     return patterns;
   }
 

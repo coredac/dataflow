@@ -114,14 +114,15 @@ bool canReachLocInTime(const std::vector<Operation *> &producers,
 // The end_time is exclusive, meaning the register should be available
 // until end_time - 1. Returns nullptr if no available register found.
 //
-// The optional `move_op` parameter is the DataMovOp being routed. It is forwarded
-// to MappingState::isAvailableAcrossTime() / isAvailableForOccupyStatus() so
-// that multiple DataMovOps carrying the same materialized source value can
-// share a single physical register. When `move_op` is non-null the availability
-// check recognises that two DataMovOps reading the identical value do not
-// actually conflict, because the single register read port broadcasts the
-// value to all consumers. Passing nullptr disables this sharing and falls
-// back to the strict one-occupant-per-register rule.
+// The optional `move_op` parameter is the DataMovOp being routed. It is
+// forwarded to MappingState::isAvailableAcrossTime() /
+// isAvailableForOccupyStatus() so that multiple DataMovOps carrying the same
+// materialized source value can share a single physical register. When
+// `move_op` is non-null the availability check recognises that two DataMovOps
+// reading the identical value do not actually conflict, because the single
+// register read port broadcasts the value to all consumers. Passing nullptr
+// disables this sharing and falls back to the strict one-occupant-per-register
+// rule.
 Register *getAvailableRegister(const MappingState &mapping_state, Tile *tile,
                                int start_time, int exclusive_end_time,
                                neura::DataMovOp move_op = nullptr);

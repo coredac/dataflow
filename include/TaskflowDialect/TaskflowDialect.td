@@ -11,7 +11,8 @@ def TaskflowDialect : Dialect {
   let name = "taskflow";
   let cppNamespace = "::mlir::taskflow";
 
-  let summary = "A computation abstraction dialect for both scale-out and scale-up spatial architectures.";
+  let summary = "A computation abstraction dialect for both scale-out and "
+                "scale-up spatial architectures.";
   let description = [{
      This dialect provides abstractions for expressing task-based computations
      suitable for execution on various spatial architectures.

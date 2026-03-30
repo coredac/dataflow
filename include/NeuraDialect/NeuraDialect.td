@@ -10,12 +10,12 @@ include "mlir/IR/AttrTypeBase.td"
 def NeuraDialect : Dialect {
   let name = "neura";
   let cppNamespace = "::mlir::neura";
-  
+
   let summary = "A dialect for the Neura compiler infrastructure.";
   let description = [{
     This dialect is used for representing Neura operations and types.
   }];
-  
+
   let useDefaultTypePrinterParser = 0;
   let useDefaultAttributePrinterParser = 0;
 

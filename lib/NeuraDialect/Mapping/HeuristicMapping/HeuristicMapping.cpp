@@ -37,10 +37,10 @@ bool HeuristicMapping::mapWithBacktrack(
                << sorted_ops_with_levels.size() - materialized_ops.size()
                << " non-materialized operations, " << materialized_ops.size()
                << " operations require physical mapping." << "\n";
-  
+
   llvm::outs() << "[HeuristicMapping] Materialized operations list:\n";
   for (size_t i = 0; i < materialized_ops.size(); ++i) {
-    llvm::outs() << i << " " << *materialized_ops[i].first 
+    llvm::outs() << i << " " << *materialized_ops[i].first
                  << " (level: " << materialized_ops[i].second << ")\n";
   }
 

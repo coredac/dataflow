@@ -5,16 +5,13 @@ include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/IR/OpBase.td"
 
-
 // ----------------------------------------------------
 // Defines neura kernel related operations.
 // ----------------------------------------------------
 
-def Neura_KernelOp : Op<NeuraDialect, "kernel", [
-  IsolatedFromAbove,
-  RecursiveMemoryEffects,
-  AttrSizedOperandSegments
-  ]> {
+def Neura_KernelOp : Op<NeuraDialect, "kernel",
+                        [IsolatedFromAbove, RecursiveMemoryEffects,
+                         AttrSizedOperandSegments]> {
   let summary = "Marks a region for CGRA execution.";
   let description = [{
     Defines a computation region that should be offloaded to CGRA.
@@ -43,12 +40,15 @@ def Neura_KernelOp : Op<NeuraDialect, "kernel", [
       }
   }];
 
-  let arguments = (ins
-    Variadic<AnyType>:$inputs, // Input operands from surrounding context.
-    Variadic<AnyType>:$iter_args_init, // Initial values for loop carried variables.
-    OptionalAttr<I32Attr>:$cgra_id, // Target CGRA ID (for multi-CGRA systems).
-    OptionalAttr<StrAttr>:$kernel_name, // Name of the kernel (for identification).
-    OptionalAttr<StrAttr>:$accelerator // Target accelerator name.
+  let arguments = (ins Variadic<AnyType>:$inputs, // Input operands from
+                                                  // surrounding context.
+      Variadic<AnyType>:$iter_args_init,  // Initial values for loop carried
+                                          // variables.
+      OptionalAttr<I32Attr>:$cgra_id,     // Target CGRA ID (for multi-CGRA
+                                          // systems).
+      OptionalAttr<StrAttr>:$kernel_name, // Name of the kernel (for
+                                          // identification).
+      OptionalAttr<StrAttr>:$accelerator  // Target accelerator name.
   );
 
   let results = (outs Variadic<AnyType>:$outputs);
@@ -65,7 +65,9 @@ def Neura_KernelOp : Op<NeuraDialect, "kernel", [
 }
 
 // Yield operation for fused_op and kernel regions.
-def Neura_YieldOp : Op<NeuraDialect, "yield", [Terminator, Pure, ReturnLike, AttrSizedOperandSegments]> {
+def Neura_YieldOp
+    : Op<NeuraDialect,
+         "yield", [Terminator, Pure, ReturnLike, AttrSizedOperandSegments]> {
   let summary = "Yield values from a neura.kernel or neura.fused_op region.";
   let description = [{
     Returns values from a neura.kernel or neura.fused_op region to the parent operation.
@@ -77,14 +79,12 @@ def Neura_YieldOp : Op<NeuraDialect, "yield", [Terminator, Pure, ReturnLike, Att
         neura.yield %v : f32
       } : f32
   }];
-  
-  let arguments = (ins
-    Variadic<AnyType>:$iter_args_next,
-    Variadic<AnyType>:$results);
 
-  let builders = [
-    OpBuilder<(ins), [{ build($_builder, $_state, ValueRange{}, ValueRange{}); }]>
-  ];
+  let arguments = (ins Variadic<AnyType>:$iter_args_next,
+      Variadic<AnyType>:$results);
+
+  let builders = [OpBuilder<
+      (ins), [{ build($_builder, $_state, ValueRange{}, ValueRange{}); }]>];
 
   let assemblyFormat = [{
   (`iter_args_next` `(` $iter_args_next^ `:` type($iter_args_next) `)` )?
@@ -92,7 +92,6 @@ def Neura_YieldOp : Op<NeuraDialect, "yield", [Terminator, Pure, ReturnLike, Att
 
   let hasVerifier = 1;
 }
-
 
 // ----------------------------------------------------
 // Defines basic scalar operations.
@@ -139,7 +138,7 @@ def Neura_DivOp : Op<NeuraDialect, "div"> {
   let traits = [SameOperandsAndResultElementType];
 }
 
-def Neura_RemOp : Op<NeuraDialect, "rem">{
+def Neura_RemOp : Op<NeuraDialect, "rem"> {
   let summary = "Integer remainder operation";
   let description = [{
     Performs an integer remainder operation, computing the result of
@@ -159,12 +158,13 @@ def Neura_FAddOp : Op<NeuraDialect, "fadd"> {
   let opName = "fadd";
   let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs);
   let results = (outs AnyType:$result);
-  // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:` type($result)";
+  // let assemblyFormat = "$lhs `,` $rhs `,` $predicate attr-dict `:`
+  // type($result)";
   let traits = [SameOperandsAndResultElementType];
 }
 
 // Defines a floating-point substraction operation.
-def Neura_FSubOp: Op<NeuraDialect, "fsub"> {
+def Neura_FSubOp : Op<NeuraDialect, "fsub"> {
   let summary = "Floating substraction operation";
   let opName = "fsub";
   let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs);
@@ -220,11 +220,13 @@ def Neura_FMaxOp : Op<NeuraDialect, "fmax"> {
       %result = neura.fmax<"maximum">(%a, %b : f32) : f32 -> f32
   }];
   let opName = "fmax";
-  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs, 
-                   DefaultValuedAttr<StrAttr, "\"maxnum\"">:$nan_semantic);
+  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs,
+      DefaultValuedAttr<StrAttr, "\"maxnum\"">:$nan_semantic);
   let results = (outs AnyType:$result);
   let traits = [SameOperandsAndResultElementType];
-  let assemblyFormat = "`<` $nan_semantic `>` `(` $lhs (`,` $rhs^ `:` type($rhs))? `)` attr-dict `:` type($lhs) `->` type($result)";
+  let assemblyFormat =
+      "`<` $nan_semantic `>` `(` $lhs (`,` $rhs^ `:` type($rhs))? `)` "
+      "attr-dict `:` type($lhs) `->` type($result)";
 }
 
 // Defines a floating-point minimum operation.
@@ -242,10 +244,12 @@ def Neura_FMinOp : Op<NeuraDialect, "fmin"> {
   }];
   let opName = "fmin";
   let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs,
-                   DefaultValuedAttr<StrAttr, "\"minnum\"">:$nan_semantic);
+      DefaultValuedAttr<StrAttr, "\"minnum\"">:$nan_semantic);
   let results = (outs AnyType:$result);
   let traits = [SameOperandsAndResultElementType];
-  let assemblyFormat = "`<` $nan_semantic `>` `(` $lhs (`,` $rhs^ `:` type($rhs))? `)` attr-dict `:` type($lhs) `->` type($result)";
+  let assemblyFormat =
+      "`<` $nan_semantic `>` `(` $lhs (`,` $rhs^ `:` type($rhs))? `)` "
+      "attr-dict `:` type($lhs) `->` type($result)";
 }
 
 // Defines a bitwise OR operation.
@@ -269,23 +273,21 @@ def Neura_OrOp : Op<NeuraDialect, "or"> {
 def Neura_ICmpOp : Op<NeuraDialect, "icmp"> {
   let summary = "Integer compare operation";
   let opName = "icmp";
-  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs,
-                   StrAttr:$cmpType);
+  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs, StrAttr:$cmpType);
   let results = (outs AnyType:$result);
-  // let assemblyFormat = "$lhs `,` $rhs `,` $cmpTypeAttr `,` $cmp_type attr-dict `:` type($result)";
-  // let traits = [SameOperandsAndResultElementType];
+  // let assemblyFormat = "$lhs `,` $rhs `,` $cmpTypeAttr `,` $cmp_type
+  // attr-dict `:` type($result)"; let traits =
+  // [SameOperandsAndResultElementType];
 }
 
 // Defines a floating-point compare operation.
 def Neura_FCmpOp : Op<NeuraDialect, "fcmp"> {
   let summary = "Floating-point compare operation";
   let opName = "fcmp";
-  let arguments = (ins AnyType:$lhs,
-                   Optional<AnyType>:$rhs,
-                   StrAttr:$cmpType);
+  let arguments = (ins AnyType:$lhs, Optional<AnyType>:$rhs, StrAttr:$cmpType);
   let results = (outs AnyType:$result);
-  // let assemblyFormat = "$lhs `,` $rhs `,` $cmpType attr-dict `:` type($result)";
-  // let traits = [SameOperandsAndResultElementType];
+  // let assemblyFormat = "$lhs `,` $rhs `,` $cmpType attr-dict `:`
+  // type($result)"; let traits = [SameOperandsAndResultElementType];
 }
 
 // Defines a load operation.
@@ -311,15 +313,18 @@ def Neura_MemsetOp : Op<NeuraDialect, "memset"> {
     Example:
       neura.memset %dest, %value, %len {is_volatile = false} : !neura.data<ptr, i1>, i8, i64
   }];
-  let arguments = (ins AnyType:$dest, AnyType:$value, AnyType:$len, 
-                   BoolAttr:$is_volatile);
+  let arguments = (ins AnyType:$dest, AnyType:$value, AnyType:$len,
+      BoolAttr:$is_volatile);
   let results = (outs);
-  // let assemblyFormat = "$dest `,` $value `,` $len attr-dict `:` type($dest) `,` type($value) `,` type($len)";
+  // let assemblyFormat = "$dest `,` $value `,` $len attr-dict `:` type($dest)
+  // `,` type($value) `,` type($len)";
 }
 
 // Defines a load operation with integrated address calculation.
-def Neura_LoadIndexedOp: Op<NeuraDialect, "load_indexed", [AttrSizedOperandSegments]>{
-  let summary = "Load with integrated address calculation for multi-dimensional arrays";
+def Neura_LoadIndexedOp
+    : Op<NeuraDialect, "load_indexed", [AttrSizedOperandSegments]> {
+  let summary =
+      "Load with integrated address calculation for multi-dimensional arrays";
   let description = [{
     Calculates the address using the base address and indices.
     Load the value at the calculated address.
@@ -328,21 +333,26 @@ def Neura_LoadIndexedOp: Op<NeuraDialect, "load_indexed", [AttrSizedOperandSegme
   }];
   let arguments = (ins Optional<AnyType>:$base, Variadic<AnyType>:$indices);
   let results = (outs AnyType:$result);
-  let assemblyFormat = "$base `[` $indices `:` type($indices) `]` type($base) attr-dict `:` type($result)";
+  let assemblyFormat = "$base `[` $indices `:` type($indices) `]` type($base) "
+                       "attr-dict `:` type($result)";
 }
 
-//Defines a store operation with integrated address calculation.
-def Neura_StoreIndexedOp: Op<NeuraDialect, "store_indexed", [AttrSizedOperandSegments]> {
-  let summary = "Store with integrated address calculation for multi-dimensional arrays";
+// Defines a store operation with integrated address calculation.
+def Neura_StoreIndexedOp
+    : Op<NeuraDialect, "store_indexed", [AttrSizedOperandSegments]> {
+  let summary =
+      "Store with integrated address calculation for multi-dimensional arrays";
   let description = [{
     Calculates the address using the base address and indices.
     Store the value at the calculated address.
     Example:
       neura.store_indexed %value, %base [%arg1, %arg2] : f32
   }];
-  let arguments = (ins AnyType:$value, Optional<AnyType>:$base, Variadic<AnyType>:$indices);
+  let arguments = (ins AnyType:$value, Optional<AnyType>:$base,
+      Variadic<AnyType>:$indices);
   let results = (outs);
-  let assemblyFormat = "$value `to` $base `[` $indices `:` type($indices) `]` type($base) attr-dict `:` type($value)";
+  let assemblyFormat = "$value `to` $base `[` $indices `:` type($indices) `]` "
+                       "type($base) attr-dict `:` type($value)";
 }
 
 // Defines a pointer computation operation.
@@ -354,12 +364,14 @@ def Neura_GEP : Op<NeuraDialect, "gep", [AttrSizedOperandSegments]> {
 }
 
 // Defines a conditional branch operation.
-def Neura_CondBr : Op<NeuraDialect, "cond_br", [Terminator, AttrSizedOperandSegments]> {
-  let arguments = (ins AnyType:$condition,
-                   Variadic<AnyType>:$trueArgs,
-                   Variadic<AnyType>:$falseArgs);
+def Neura_CondBr
+    : Op<NeuraDialect, "cond_br", [Terminator, AttrSizedOperandSegments]> {
+  let arguments = (ins AnyType:$condition, Variadic<AnyType>:$trueArgs,
+      Variadic<AnyType>:$falseArgs);
   let successors = (successor AnySuccessor:$trueDest, AnySuccessor:$falseDest);
-  let assemblyFormat = "$condition `:` type($condition) `then` ($trueArgs^ `:` type($trueArgs))? `to` $trueDest `else` ($falseArgs^ `:` type($falseArgs))? `to` $falseDest attr-dict";
+  let assemblyFormat = "$condition `:` type($condition) `then` ($trueArgs^ `:` "
+                       "type($trueArgs))? `to` $trueDest `else` ($falseArgs^ "
+                       "`:` type($falseArgs))? `to` $falseDest attr-dict";
 }
 
 // Defines an unconditional branch operation.
@@ -372,7 +384,8 @@ def Neura_Br : Op<NeuraDialect, "br", [Terminator]> {
 def Neura_SelOp : Op<NeuraDialect, "sel"> {
   let arguments = (ins AnyType:$cond, AnyType:$ifTrue, AnyType:$ifFalse);
   let results = (outs AnyType:$result);
-  // let assemblyFormat = "$cond `,` $ifTrue `,` $ifFalse attr-dict `:` type($result)";
+  // let assemblyFormat = "$cond `,` $ifTrue `,` $ifFalse attr-dict `:`
+  // type($result)";
 }
 
 def Neura_NotOp : Op<NeuraDialect, "not"> {
@@ -388,7 +401,7 @@ def Neura_ReturnOp : Op<NeuraDialect, "return", [Terminator]> {
 }
 
 // Defines a return operation for void functions in dataflow mode.
-def Neura_ReturnVoidOp : Op<NeuraDialect, "return_void", []>{
+def Neura_ReturnVoidOp : Op<NeuraDialect, "return_void", []> {
   let summary = "Return operation for void functions in dataflow mode.";
   let description = [{
     Terminates a void function. The trigger operand provides the execution
@@ -409,7 +422,7 @@ def Neura_ReturnVoidOp : Op<NeuraDialect, "return_void", []>{
 }
 
 // Defines a return operation for non-void fnctions in dataflow mode.
-def Neura_ReturnValueOp : Op<NeuraDialect, "return_value", []>{
+def Neura_ReturnValueOp : Op<NeuraDialect, "return_value", []> {
   let summary = "Return operation for non-void functions in dataflow mode.";
   let description = [{
     Represents a return point for non-void functions in dataflow mode.
@@ -426,13 +439,13 @@ def Neura_ReturnValueOp : Op<NeuraDialect, "return_value", []>{
   let assemblyFormat = "($values^ `:` type($values))? attr-dict";
 }
 
-
 // Defines a cast operation for type conversion.
-def Neura_CastOp : Op<NeuraDialect, "cast">{
+def Neura_CastOp : Op<NeuraDialect, "cast"> {
   let summary = "Generic type conversion operation";
   let arguments = (ins AnyType:$input, StrAttr:$cast_type);
   let results = (outs AnyType:$result);
-  // let assemblyFormat = "$input type($input) `->` type($output) `,` attr-dict";
+  // let assemblyFormat = "$input type($input) `->` type($output) `,`
+  // attr-dict";
 }
 
 // Defines an alloca operation for memory allocation.
@@ -540,7 +553,8 @@ def Neura_VFAddOp : Op<NeuraDialect, "vfadd"> {
 
 // Defines a vector reduction add operation (reduces vector to scalar).
 def Neura_VectorReduceAddOp : Op<NeuraDialect, "vector.reduce.add"> {
-  let summary = "Vector reduction add operation - reduces vector to scalar by summing elements";
+  let summary = "Vector reduction add operation - reduces vector to scalar by "
+                "summing elements";
   let description = [{
     Reduces a vector to a scalar by summing all elements.
     Similar to llvm.intr.vector.reduce.add.
@@ -575,9 +589,11 @@ def Neura_FMulFAddOp : Op<NeuraDialect, "fmul_fadd"> {
 
 def Neura_MulAddOp : Op<NeuraDialect, "mul_add"> {
   let summary = "Fused add(mul(a, b), c)";
-  let arguments = (ins AnyType:$a, AnyType:$b, AnyType:$c, Optional<AnyType>:$predicate);
+  let arguments = (ins AnyType:$a, AnyType:$b, AnyType:$c,
+      Optional<AnyType>:$predicate);
   let results = (outs AnyType:$result);
-  // let assemblyFormat = "$a `,` $b `,` $c `,` $predicate attr-dict `:` type($result)";
+  // let assemblyFormat = "$a `,` $b `,` $c `,` $predicate attr-dict `:`
+  // type($result)";
   let traits = [SameOperandsAndResultElementType];
 }
 
@@ -587,7 +603,8 @@ def Neura_DataMovOp : Op<NeuraDialect, "data_mov"> {
   let summary = "Data movement operation";
   let arguments = (ins AnyType:$input);
   let results = (outs AnyType:$output);
-  // let assemblyFormat = "$input attr-dict `:` type($input) `->` type($output)";
+  // let assemblyFormat = "$input attr-dict `:` type($input) `->`
+  // type($output)";
 }
 
 // ----------------------------------------------------
@@ -611,11 +628,13 @@ def Neura_PhiOp : Op<NeuraDialect, "phi"> {
   let results = (outs AnyType:$result);
 
   // Explicitly specifies types for operands in the assembly format.
-  // let assemblyFormat = "$init_val `:` type($init_val) `,` $loop_val `:` type($loop_val) attr-dict `,` type($result)";
+  // let assemblyFormat = "$init_val `:` type($init_val) `,` $loop_val `:`
+  // type($loop_val) attr-dict `,` type($result)";
 }
 
-// Defines phi_start operation specifically for phi operations with neura.reserve as an operand.
-def Neura_PhiStartOp : Op<NeuraDialect, "phi_start">{
+// Defines phi_start operation specifically for phi operations with
+// neura.reserve as an operand.
+def Neura_PhiStartOp : Op<NeuraDialect, "phi_start"> {
   let summary = "Phi start operation for neura.reserve operand.";
   let description = [{
     Special phi operation for loop initialization where the first operand
@@ -639,7 +658,9 @@ def Neura_PhiStartOp : Op<NeuraDialect, "phi_start">{
   let arguments = (ins AnyType:$init_value, AnyType:$reserved);
   let results = (outs AnyType:$result);
 
-  let assemblyFormat = "$init_value `,` $reserved attr-dict `:` type($init_value) `,` type($reserved) `->` type($result)";
+  let assemblyFormat =
+      "$init_value `,` $reserved attr-dict `:` type($init_value) `,` "
+      "type($reserved) `->` type($result)";
 
   let hasVerifier = 1;
 }
@@ -660,7 +681,8 @@ def Neura_CtrlMovOp : Op<NeuraDialect, "ctrl_mov"> {
   let results = (outs);
 
   // Corrects assembly format - types must be space-separated.
-  let assemblyFormat = "$value `->` $target attr-dict `:` type($value) type($target)";
+  let assemblyFormat =
+      "$value `->` $target attr-dict `:` type($value) type($target)";
 }
 
 // Defines reserve operation for control flow values.
@@ -694,7 +716,8 @@ def Neura_GrantPredicateOp : Op<NeuraDialect, "grant_predicate"> {
   let arguments = (ins AnyType:$value, AnyType:$predicate);
   let results = (outs AnyType:$result);
 
-  let assemblyFormat = "$value `,` $predicate attr-dict `:` type($value) `,` type($predicate) `->` type($result)";
+  let assemblyFormat = "$value `,` $predicate attr-dict `:` type($value) `,` "
+                       "type($predicate) `->` type($result)";
 }
 
 def Neura_GrantOnceOp : Op<NeuraDialect, "grant_once"> {
@@ -708,12 +731,12 @@ def Neura_GrantOnceOp : Op<NeuraDialect, "grant_once"> {
       %c = neura.grant_once <{value = 42 : i64}> : !neura.data<i64, i1>
   }];
 
-  let arguments = (ins
-  Optional<AnyType>:$value,
-  OptionalAttr<AnyAttr>:$constant_value);
+  let arguments = (ins Optional<AnyType>:$value,
+      OptionalAttr<AnyAttr>:$constant_value);
   let results = (outs AnyType:$result);
 
-  // let assemblyFormat = "$value attr-dict `:` type($value) `->` type($result)";
+  // let assemblyFormat = "$value attr-dict `:` type($value) `->`
+  // type($result)";
 }
 
 def Neura_GrantAlwaysOp : Op<NeuraDialect, "grant_always"> {
@@ -726,19 +749,19 @@ def Neura_GrantAlwaysOp : Op<NeuraDialect, "grant_always"> {
       %v = neura.grant_always %init : !neura.data<f32, i1> -> !neura.data<f32, i1>
   }];
 
-  let arguments = (ins
-  Optional<AnyType>:$value,
-  OptionalAttr<AnyAttr>:$constant_value);
+  let arguments = (ins Optional<AnyType>:$value,
+      OptionalAttr<AnyAttr>:$constant_value);
   let results = (outs AnyType:$result);
 
-  // let assemblyFormat = "$value attr-dict `:` type($value) `->` type($result)";
+  // let assemblyFormat = "$value attr-dict `:` type($value) `->`
+  // type($result)";
 }
 
 // ----------------------------------------------------
 // Defines fused control flow operations.
 // ----------------------------------------------------
 
-def Neura_LoopControlOp : Op<NeuraDialect, "loop_control">{
+def Neura_LoopControlOp : Op<NeuraDialect, "loop_control"> {
   let summary = "Generates loop indicies and valid predicates.";
   let description = [{
     Controls loop execution with minimal recurrence cycle length (1).
@@ -762,26 +785,28 @@ def Neura_LoopControlOp : Op<NeuraDialect, "loop_control">{
          }> : !neura.data<i1, i1> -> !neura.data<i64, i1>, !neura.data<i1, i1>
   }];
 
-  let arguments = (ins
-    AnyType:$parentValid,  // Valid predicate from the parent loop.
-    AnyAttr:$iterationType, // "increment" or "decrement".
-    AnyAttr:$start,       // Start index value.
-    AnyAttr:$end,         // End index value.
-    AnyAttr:$step         // Step value (increment or decrement based on iteration_type).
-  );
-  
+  let arguments =
+      (ins AnyType:$parentValid,  // Valid predicate from the parent loop.
+          AnyAttr:$iterationType, // "increment" or "decrement".
+          AnyAttr:$start,         // Start index value.
+          AnyAttr:$end,           // End index value.
+          AnyAttr:$step           // Step value (increment or decrement based on
+                                  // iteration_type).
+      );
 
-  let results = (outs
-    AnyType:$nextindex,         // Current loop index
-    AnyType:$valid          // Valid predicate for the current index
+  let results = (outs AnyType:$nextindex, // Current loop index
+      AnyType:$valid // Valid predicate for the current index
   );
 
   // let assemblyFormat =
-  //   " `(``parent_valid` `=` $parentValid `,` `start` `=` $start `,` `end` `=` $end `,` `step` `=` $step`)` attr-dict `:` type($parentValid) `,` type($start) `,` type($end) `,` type($step) `->` type($nextindex) `,` type($valid)";
+  //   " `(``parent_valid` `=` $parentValid `,` `start` `=` $start `,` `end` `=`
+  //   $end `,` `step` `=` $step`)` attr-dict `:` type($parentValid) `,`
+  //   type($start) `,` type($end) `,` type($step) `->` type($nextindex) `,`
+  //   type($valid)";
 }
 
 // Defines an operation for hardware loop counters.
-def Neura_CounterOp : Op<NeuraDialect, "counter", [Pure]>{
+def Neura_CounterOp : Op<NeuraDialect, "counter", [Pure]> {
   let summary = "Hardware loop counter for CGRA execution.";
   let description = [{
     Represents a hardware loop counter unit that generates loop indices.
@@ -798,20 +823,15 @@ def Neura_CounterOp : Op<NeuraDialect, "counter", [Pure]>{
         counter_type = "leaf"
       } : index
   }];
-  let arguments = (ins
-    IndexAttr:$lower_bound,
-    IndexAttr:$upper_bound,
-    IndexAttr:$step,
-    StrAttr:$counter_type,
-    I32Attr:$counter_id
-  );
+  let arguments = (ins IndexAttr:$lower_bound, IndexAttr:$upper_bound,
+      IndexAttr:$step, StrAttr:$counter_type, I32Attr:$counter_id);
 
   let results = (outs AnyType:$current_index);
   let assemblyFormat = "attr-dict `:` type($current_index)";
 }
 
 // Defines an operation to extract the predicate bit from a predicated value.
-def Neura_ExtractPredicateOp : Op<NeuraDialect, "extract_predicate">{
+def Neura_ExtractPredicateOp : Op<NeuraDialect, "extract_predicate"> {
   let summary = "Extracts the predicate bit from a predicated value.";
   let description = [{
     Extracts the predicate bit from a predicated value,
@@ -827,7 +847,8 @@ def Neura_ExtractPredicateOp : Op<NeuraDialect, "extract_predicate">{
 
   let arguments = (ins AnyType:$input);
   let results = (outs AnyType:$predicate);
-  let assemblyFormat = "$input attr-dict `:` type($input) `->` type($predicate)";
+  let assemblyFormat =
+      "$input attr-dict `:` type($input) `->` type($predicate)";
 }
 
 // ----------------------------------------------------
@@ -835,9 +856,10 @@ def Neura_ExtractPredicateOp : Op<NeuraDialect, "extract_predicate">{
 // ----------------------------------------------------
 
 // Defines the true_steer operation.
-def Neura_TrueSteerOp : Op<NeuraDialect, "true_steer">{
+def Neura_TrueSteerOp : Op<NeuraDialect, "true_steer"> {
   let summary = "Conditionally pass a value when condition is true.";
-  let description = [{When the condition is true, the input value is passed to the output; otherwise, the output is empty.
+  let description =
+      [{When the condition is true, the input value is passed to the output; otherwise, the output is empty.
     Example:
       %out = neura.true_steer %in, %cond : i32, i1 -> f32
   }];
@@ -845,13 +867,15 @@ def Neura_TrueSteerOp : Op<NeuraDialect, "true_steer">{
   let arguments = (ins AnyType:$input, AnyType:$condition);
   let results = (outs AnyType:$output);
 
-  let assemblyFormat = "$input `,` $condition attr-dict `:` type($input) `,` type($condition) `->` type($output)";
+  let assemblyFormat = "$input `,` $condition attr-dict `:` type($input) `,` "
+                       "type($condition) `->` type($output)";
 }
 
 // Defines the false_steer operation.
-def Neura_FalseSteerOp : Op<NeuraDialect, "false_steer">{
+def Neura_FalseSteerOp : Op<NeuraDialect, "false_steer"> {
   let summary = "Conditionally pass a value when condition is false.";
-  let description = [{When the condition is false, the input value is passed to the output; otherwise, the output is empty.
+  let description =
+      [{When the condition is false, the input value is passed to the output; otherwise, the output is empty.
     Example:
       %out = neura.false_steer %in, %cond : i32, i1 -> f32
   }];
@@ -859,11 +883,12 @@ def Neura_FalseSteerOp : Op<NeuraDialect, "false_steer">{
   let arguments = (ins AnyType:$input, AnyType:$condition);
   let results = (outs AnyType:$output);
 
-  let assemblyFormat = "$input `,` $condition attr-dict `:` type($input) `,` type($condition) `->` type($output)";
+  let assemblyFormat = "$input `,` $condition attr-dict `:` type($input) `,` "
+                       "type($condition) `->` type($output)";
 }
 
 // Defines the carry operation.
-def Neura_CarryOp : Op<NeuraDialect, "carry">{
+def Neura_CarryOp : Op<NeuraDialect, "carry"> {
   let summary = "Carry state across iterations.";
   let description = [{
   Three inputs for carry operation:
@@ -877,11 +902,13 @@ def Neura_CarryOp : Op<NeuraDialect, "carry">{
 
   let arguments = (ins AnyType:$initial, AnyType:$condition, AnyType:$carried);
   let results = (outs AnyType:$result);
-  let assemblyFormat = "$initial `,` $condition `,` $carried attr-dict `:` type($initial) `,` type($condition) `,` type($carried) `->` type($result)";
+  let assemblyFormat =
+      "$initial `,` $condition `,` $carried attr-dict `:` type($initial) `,` "
+      "type($condition) `,` type($carried) `->` type($result)";
 }
 
 // Defines the merge operation.
-def Neura_MergeOp : Op<NeuraDialect, "merge">{
+def Neura_MergeOp : Op<NeuraDialect, "merge"> {
   let summary = "Merge multiple inputs into one output.";
   let description = [{
   Merges multiple input values into a single output value based on the condition.
@@ -889,14 +916,17 @@ def Neura_MergeOp : Op<NeuraDialect, "merge">{
       %out = neura.merge %cond, %in1, %in2 : i1, i32, i32 -> i32
   }];
 
-  let arguments = (ins AnyType:$condition, AnyType:$true_value, AnyType:$false_value);
+  let arguments = (ins AnyType:$condition, AnyType:$true_value,
+      AnyType:$false_value);
   let results = (outs AnyType:$result);
 
-  let assemblyFormat = "$condition `,` $true_value `,` $false_value attr-dict `:` type($condition) `,` type($true_value) `,` type($false_value) `->` type($result)";
+  let assemblyFormat = "$condition `,` $true_value `,` $false_value attr-dict "
+                       "`:` type($condition) `,` type($true_value) `,` "
+                       "type($false_value) `->` type($result)";
 }
 
 // Defines the invariant operation.
-def Neura_InvariantOp : Op<NeuraDialect, "invariant">{
+def Neura_InvariantOp : Op<NeuraDialect, "invariant"> {
   let summary = "Invariant value across DFG execution.";
   let description = [{
   Invariant operation is a subset of carry operation where the output is always the initial value.
@@ -905,7 +935,8 @@ def Neura_InvariantOp : Op<NeuraDialect, "invariant">{
   }];
   let arguments = (ins AnyType:$initial, AnyType:$condition);
   let results = (outs AnyType:$result);
-  let assemblyFormat = "$initial `,` $condition attr-dict `:` type($initial) `,` type($condition) `->` type($result)";
+  let assemblyFormat = "$initial `,` $condition attr-dict `:` type($initial) "
+                       "`,` type($condition) `->` type($result)";
 }
 
 // ----------------------------------------------------
@@ -933,16 +964,12 @@ def Neura_FusedOp : Op<NeuraDialect, "fused_op", [NoTerminator]> {
           "neura.yield"(%1) : (!neura.data<!llvm.ptr, i1>) -> ()
         })
   }];
-  
-  let arguments = (ins 
-    Variadic<AnyType>:$inputs,
-    I64Attr:$pattern_id,
-    StrAttr:$pattern_name,
-    I64Attr:$frequency
-  );
-  
+
+  let arguments = (ins Variadic<AnyType>:$inputs, I64Attr:$pattern_id,
+      StrAttr:$pattern_name, I64Attr:$frequency);
+
   let results = (outs Variadic<AnyType>:$outputs);
   let regions = (region SizedRegion<1>:$body);
-  
+
   let hasVerifier = 0;
 }
