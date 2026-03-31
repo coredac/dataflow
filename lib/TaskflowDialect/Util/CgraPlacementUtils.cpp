@@ -108,8 +108,9 @@ SmallVector<CgraShape> mlir::taskflow::getAllPlacementShapes(int cgra_count) {
             // Adds the rotated orientation if different (e.g. 1×4 -> 4×1).
             if (row_dim != col_dim) {
               int64_t rotated_key = ((int64_t)col_dim << 16) | row_dim;
-              if (seen_keys.insert(rotated_key).second)
+              if (seen_keys.insert(rotated_key).second) {
                 shapes.push_back({col_dim, row_dim, true, {}});
+              }
             }
           }
         }
@@ -169,9 +170,9 @@ SmallVector<CgraShape> mlir::taskflow::getAllPlacementShapes(int cgra_count) {
       int64_t hash = 0;
       for (auto &[col_off, row_off] : sorted_positions)
         hash = hash * 131 + col_off * 17 + row_off;
-      if (!seen_hashes.insert(hash).second)
+      if (!seen_hashes.insert(hash).second) {
         continue;
-
+      }
       // Computes bounding box for this rotation.
       int max_col = 0, max_row = 0;
       for (auto &[col_off, row_off] : positions) {
@@ -196,8 +197,9 @@ bool mlir::taskflow::canAllTasksFitOnGrid(ArrayRef<int> task_cgra_counts) {
   int total_cgras = 0;
   for (int count : task_cgra_counts)
     total_cgras += count;
-  if (total_cgras > kTotalCGRAs)
+  if (total_cgras > kTotalCGRAs) {
     return false;
+  }
 
   // Simulates placement on a grid.
   bool occupied[kCgraGridRows][kCgraGridCols] = {};
@@ -268,8 +270,9 @@ bool mlir::taskflow::canAllTasksFitOnGrid(ArrayRef<int> task_cgra_counts) {
       }
     }
 
-    if (!placed)
+    if (!placed) {
       return false;
+    }
   }
   return true;
 }

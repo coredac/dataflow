@@ -1,4 +1,4 @@
-//===- AllocateCgraToTaskPass.cpp - Task to CGRA Mapping Pass ----------------===//
+//===- AllocateCgraToTaskPass.cpp - Task to CGRA Mapping Pass -===//
 //
 // This pass maps Taskflow tasks onto a 2D CGRA grid array:
 // 1. Places tasks with SSA dependencies on adjacent CGRAs.

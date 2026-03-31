@@ -26,7 +26,6 @@ std::unique_ptr<mlir::Pass> createClassifyCountersPass();
 std::unique_ptr<mlir::Pass> createAllocateCgraToTaskPass();
 std::unique_ptr<mlir::Pass> createFuseTaskPass();
 
-
 //=========================================================//
 // Optimization Passes
 //=========================================================//

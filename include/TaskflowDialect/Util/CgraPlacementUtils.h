@@ -35,9 +35,9 @@ constexpr int kCgraGridCols = 4;
 // (col, row) coordinates of the occupied CGRAs.  `rows`/`cols` give the
 // bounding box so that tile-level x_tiles/y_tiles can be computed.
 struct CgraShape {
-  int rows;             // Bounding-box CGRA rows.
-  int cols;             // Bounding-box CGRA columns.
-  bool is_rectangular;  // True if all cells in the bbox are used.
+  int rows;            // Bounding-box CGRA rows.
+  int cols;            // Bounding-box CGRA columns.
+  bool is_rectangular; // True if all cells in the bbox are used.
   // Explicit CGRA positions for non-rectangular shapes.
   // Each pair is (col, row) in CGRA coordinates.  Empty for rectangles.
   llvm::SmallVector<std::pair<int, int>> cgra_positions;
@@ -98,7 +98,8 @@ bool canAllTasksFitOnGrid(llvm::ArrayRef<int> task_cgra_counts);
 // grid_rows/grid_cols default to 4x4 (kCgraGridRows/kCgraGridCols).
 //
 // Defined in lib/TaskflowDialect/Util/AllocateCgraTaskMapper.cpp.
-void runAllocateCgraToTask(mlir::func::FuncOp func, int grid_rows = kCgraGridRows,
+void runAllocateCgraToTask(mlir::func::FuncOp func,
+                           int grid_rows = kCgraGridRows,
                            int grid_cols = kCgraGridCols);
 
 } // namespace taskflow

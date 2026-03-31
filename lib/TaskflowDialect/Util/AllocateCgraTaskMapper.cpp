@@ -40,9 +40,7 @@ struct CgraPosition {
     return row == other.row && col == other.col;
   }
 
-  bool operator!=(const CgraPosition &other) const {
-    return !(*this == other);
-  }
+  bool operator!=(const CgraPosition &other) const { return !(*this == other); }
 
   int manhattanDistance(const CgraPosition &other) const {
     return std::abs(row - other.row) + std::abs(col - other.col);
@@ -212,11 +210,13 @@ public:
 
       for (TaskNode *task_node : sorted_tasks) {
         int cgra_count = 1;
-        if (auto attr = task_node->op->getAttrOfType<IntegerAttr>("cgra_count")) {
+        if (auto attr =
+                task_node->op->getAttrOfType<IntegerAttr>("cgra_count")) {
           cgra_count = attr.getInt();
         }
 
-        TaskPlacement placement = findBestPlacement(task_node, cgra_count, graph);
+        TaskPlacement placement =
+            findBestPlacement(task_node, cgra_count, graph);
 
         assert(!placement.cgra_positions.empty() &&
                "findBestPlacement must succeed: cgra_count should be "
@@ -253,17 +253,18 @@ public:
       SmallVector<Attribute> pos_attrs;
       for (const auto &pos : task_node->placement) {
         SmallVector<NamedAttribute, 2> coord_attrs;
-        coord_attrs.push_back(NamedAttribute(
-            StringAttr::get(func.getContext(), "row"),
-            builder.getI32IntegerAttr(pos.row)));
-        coord_attrs.push_back(NamedAttribute(
-            StringAttr::get(func.getContext(), "col"),
-            builder.getI32IntegerAttr(pos.col)));
-        pos_attrs.push_back(DictionaryAttr::get(func.getContext(), coord_attrs));
+        coord_attrs.push_back(
+            NamedAttribute(StringAttr::get(func.getContext(), "row"),
+                           builder.getI32IntegerAttr(pos.row)));
+        coord_attrs.push_back(
+            NamedAttribute(StringAttr::get(func.getContext(), "col"),
+                           builder.getI32IntegerAttr(pos.col)));
+        pos_attrs.push_back(
+            DictionaryAttr::get(func.getContext(), coord_attrs));
       }
-      mapping_attrs.push_back(NamedAttribute(
-          StringAttr::get(func.getContext(), "cgra_positions"),
-          builder.getArrayAttr(pos_attrs)));
+      mapping_attrs.push_back(
+          NamedAttribute(StringAttr::get(func.getContext(), "cgra_positions"),
+                         builder.getArrayAttr(pos_attrs)));
 
       SmallVector<Attribute> read_sram_attrs;
       for (MemoryNode *mem : task_node->read_memrefs) {
@@ -275,7 +276,8 @@ public:
           sram_coord.push_back(NamedAttribute(
               StringAttr::get(func.getContext(), "col"),
               builder.getI32IntegerAttr(mem->assigned_sram_pos->col)));
-          read_sram_attrs.push_back(DictionaryAttr::get(func.getContext(), sram_coord));
+          read_sram_attrs.push_back(
+              DictionaryAttr::get(func.getContext(), sram_coord));
         }
       }
       mapping_attrs.push_back(NamedAttribute(
@@ -293,15 +295,17 @@ public:
               StringAttr::get(func.getContext(), "col"),
               builder.getI32IntegerAttr(mem->assigned_sram_pos->col)));
 
-          write_sram_attrs.push_back(DictionaryAttr::get(func.getContext(), sram_coord));
+          write_sram_attrs.push_back(
+              DictionaryAttr::get(func.getContext(), sram_coord));
         }
       }
       mapping_attrs.push_back(NamedAttribute(
           StringAttr::get(func.getContext(), "write_sram_locations"),
           builder.getArrayAttr(write_sram_attrs)));
 
-      task_node->op->setAttr("task_mapping_info",
-                             DictionaryAttr::get(func.getContext(), mapping_attrs));
+      task_node->op->setAttr(
+          "task_mapping_info",
+          DictionaryAttr::get(func.getContext(), mapping_attrs));
     }
   }
 
@@ -402,8 +406,9 @@ private:
   TaskPlacement findBestPlacement(TaskNode *task_node, int cgra_count,
                                   TaskMemoryGraph &graph) {
     for (int rows = 1; rows <= cgra_count; ++rows) {
-      if (cgra_count % rows != 0)
+      if (cgra_count % rows != 0) {
         continue;
+      }
       int cols = cgra_count / rows;
       SmallVector<std::pair<int, int>> shape_offsets;
       for (int r = 0; r < rows; ++r)
@@ -435,14 +440,16 @@ private:
           }
         }
       }
-      if (!best_placement.cgra_positions.empty())
+      if (!best_placement.cgra_positions.empty()) {
         return best_placement;
+      }
     }
 
     if (cgra_count > 1) {
       TaskPlacement p = tryNonRectShapes(task_node, cgra_count, graph);
-      if (!p.cgra_positions.empty())
+      if (!p.cgra_positions.empty()) {
         return p;
+      }
     }
 
     return {};
@@ -507,7 +514,8 @@ private:
     int ssa_score = 0;
     int mem_score = 0;
 
-    auto minDistToPlacement = [&](const SmallVector<CgraPosition> &other) -> int {
+    auto minDistToPlacement =
+        [&](const SmallVector<CgraPosition> &other) -> int {
       int min_dist = INT_MAX;
       for (const auto &pos : placement.cgra_positions) {
         for (const auto &opos : other) {
@@ -575,8 +583,8 @@ private:
     for (MemoryNode *mem : node->write_memrefs) {
       for (TaskNode *reader : mem->readers) {
         if (reader != node) {
-          max_child_depth =
-              std::max(max_child_depth, calculateDepth(reader, depth_cache) + 1);
+          max_child_depth = std::max(max_child_depth,
+                                     calculateDepth(reader, depth_cache) + 1);
         }
       }
     }
