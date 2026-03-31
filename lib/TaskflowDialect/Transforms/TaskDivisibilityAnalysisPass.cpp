@@ -11,10 +11,12 @@
 //   - atomic: No exploitable parallel loops.  Must execute as a single
 //     indivisible unit.
 //
-// The pass attaches three attributes to each taskflow.task:
-//   - divisibility   : StringAttr       ("divisible" or "atomic")
-//   - parallel_dims   : DenseI64ArrayAttr (loop depth indices)
-//   - parallel_space  : DenseI64ArrayAttr (trip counts of those dims)
+// The pass attaches an attribute to each taskflow.task:
+//   divisibility_info = {
+//     divisibility   : StringAttr       ("divisible" or "atomic")
+//     parallel_dims  : DenseI32ArrayAttr (loop depth indices of parallel loops)
+//     parallel_space : DenseI32ArrayAttr (trip counts of those parallel loops)
+//   }
 //
 //===----------------------------------------------------------------------===//
 
@@ -26,11 +28,11 @@
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/raw_ostream.h"
 
 using namespace mlir;
 using namespace mlir::taskflow;
@@ -75,17 +77,17 @@ collectLoopNest(affine::AffineForOp outermost) {
 //===----------------------------------------------------------------------===//
 
 struct TaskParallelismInfo {
-  StringRef category;                  // "divisible" or "atomic"
-  SmallVector<int64_t> parallel_dims;  // Loop depth indices of parallel loops.
-  SmallVector<int64_t> parallel_space; // Trip counts of those dims.
+  StringRef divisibility;          // "divisible" or "atomic"
+  SmallVector<int> parallel_dims;  // Loop depth indices of parallel loops.
+  SmallVector<int> parallel_space; // Trip counts of parallel dims.
 };
 
 // Analyzes a single taskflow.task and determines its category.
 static TaskParallelismInfo analyzeTask(TaskflowTaskOp task_op) {
   TaskParallelismInfo info;
-  info.category = "atomic"; // Default: no parallelism found.
+  info.divisibility = "atomic"; // Default: no parallelism found.
 
-  // Find the outermost affine.for in the task body.
+  // Finds the outermost affine.for in the task body.
   affine::AffineForOp outermost_loop = nullptr;
   task_op.getBody().walk([&](affine::AffineForOp for_op) {
     // We want the outermost loop. Walk visits ops in pre-order,
@@ -139,11 +141,11 @@ static TaskParallelismInfo analyzeTask(TaskflowTaskOp task_op) {
 
   // Classify based on whether any parallel dims were found.
   if (!info.parallel_dims.empty()) {
-    info.category = "divisible";
+    info.divisibility = "divisible";
   }
 
   llvm::errs() << "[TaskDivisibilityAnalysis] Task " << task_op.getTaskName()
-               << " -> " << info.category;
+               << " -> " << info.divisibility;
   if (!info.parallel_dims.empty()) {
     llvm::errs() << ", parallel_dims=[";
     for (size_t i = 0; i < info.parallel_dims.size(); ++i) {
@@ -186,15 +188,18 @@ struct TaskDivisibilityAnalysisPass
                  << func.getName() << "\n";
 
     func.walk([&](TaskflowTaskOp task_op) {
-      // Analyze the task.
+      // Analyzes the task.
       TaskParallelismInfo info = analyzeTask(task_op);
-      // Attach attributes.
+      // Attaches the divisibility_info attribute to each task.
       OpBuilder builder(task_op);
-      task_op->setAttr("divisibility", builder.getStringAttr(info.category));
+
+      SmallVector<NamedAttribute, 3> div_attrs;
+      task_op->setAttr("divisibility",
+                       builder.getStringAttr(info.divisibility));
       task_op->setAttr("parallel_dims",
-                       builder.getDenseI64ArrayAttr(info.parallel_dims));
+                       builder.getDenseI32ArrayAttr(info.parallel_dims));
       task_op->setAttr("parallel_space",
-                       builder.getDenseI64ArrayAttr(info.parallel_space));
+                       builder.getDenseI32ArrayAttr(info.parallel_space));
     });
   }
 };
