@@ -57,7 +57,7 @@ collectLoopNest(affine::AffineForOp outermost) {
   while (current) {
     nest.push_back(current);
 
-    // Look for a single nested affine.for in the body.
+    // Looks for a single nested affine.for in the body.
     affine::AffineForOp nested = nullptr;
     for (Operation &op : current.getBody()->getOperations()) {
       if (auto for_op = dyn_cast<affine::AffineForOp>(&op)) {
@@ -110,39 +110,34 @@ static TaskParallelismInfo analyzeTask(TaskflowTaskOp task_op) {
     return info;
   }
 
-  // Collect the loop nest spine.
+  // Collects the loop nest spine.
   SmallVector<affine::AffineForOp> loop_nest = collectLoopNest(outermost_loop);
 
   llvm::errs() << "[TaskDivisibilityAnalysis] Task " << task_op.getTaskName()
                << ": loop nest depth = " << loop_nest.size() << "\n";
 
-  // Analyze each loop level for parallelism.
+  // Analyzes each loop level for parallelism.
   for (size_t depth = 0; depth < loop_nest.size(); ++depth) {
     affine::AffineForOp loop = loop_nest[depth];
 
-    // Check if the loop is parallel (including reduction-parallel).
-    SmallVector<affine::LoopReduction> reductions;
-    bool is_parallel = affine::isLoopParallel(loop, &reductions);
+    // Checks if the loop is parallel (not including reduction-parallel).
+    bool is_parallel = affine::isLoopParallel(loop);
 
-    // Get the trip count.
-    std::optional<uint64_t> trip_count = affine::getConstantTripCount(loop);
-    int64_t tc =
-        trip_count.has_value() ? static_cast<int64_t>(*trip_count) : -1;
+    // Gets the trip count.
+    std::optional<int> trip_count = affine::getConstantTripCount(loop);
+    int tc = trip_count.has_value() ? static_cast<int>(*trip_count) : -1;
 
     llvm::errs() << "[TaskDivisibilityAnalysis]   depth " << depth
-                 << ": parallel=" << is_parallel << ", trip_count=" << tc;
-    if (!reductions.empty()) {
-      llvm::errs() << " (with " << reductions.size() << " reductions)";
-    }
-    llvm::errs() << "\n";
+                 << ": parallel=" << is_parallel << ", trip_count=" << tc
+                 << "\n";
 
     if (is_parallel && tc > 1) {
-      info.parallel_dims.push_back(static_cast<int64_t>(depth));
+      info.parallel_dims.push_back(static_cast<int>(depth));
       info.parallel_space.push_back(tc);
     }
   }
 
-  // Classify based on whether any parallel dims were found.
+  // Classifies based on whether any parallel dims were found.
   if (!info.parallel_dims.empty()) {
     info.divisibility = "divisible";
   }
