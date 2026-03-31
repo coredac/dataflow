@@ -4,6 +4,7 @@ add_mlir_conversion_library(MLIRTaskflowOptimization
   AffineLoopTreeSerializationPass.cpp
   AffineLoopPerfectionPass.cpp
   MemoryAccessStreamingFusion.cpp
+  TaskCategorizationPass.cpp
   ResourceAwareTaskOptimizationPass.cpp
 
   DEPENDS

@@ -30,6 +30,7 @@ std::unique_ptr<mlir::Pass> createFuseTaskPass();
 std::unique_ptr<mlir::Pass> createAffineLoopTreeSerializationPass();
 std::unique_ptr<mlir::Pass> createAffineLoopPerfectionPass();
 std::unique_ptr<mlir::Pass> createMemoryAccessStreamingFusionPass();
+std::unique_ptr<mlir::Pass> createTaskCategorizationPass();
 std::unique_ptr<mlir::Pass> createResourceAwareTaskOptimizationPass();
 
 #define GEN_PASS_REGISTRATION

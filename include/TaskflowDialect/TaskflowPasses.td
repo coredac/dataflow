@@ -95,6 +95,33 @@ def FuseTask : Pass<"fuse-task", "func::FuncOp"> {
                            "mlir::taskflow::TaskflowDialect"];
 }
 
+def TaskCategorization : Pass<"task-categorization", "func::FuncOp"> {
+  let summary = "Categorizes tasks as divisible or atomic based on loop parallelism";
+  let description = [{
+    Analyzes each taskflow.task operation to determine whether its loop nest
+    contains parallel loops that can be tiled for data-level parallelism.
+
+    Task categories:
+    - divisible: The task has at least one parallel loop (no loop-carried
+      dependencies) whose trip count > 1.  Such tasks can be tiled into
+      sibling sub-tasks for runtime configuration duplication (DLP).
+    - atomic: The task has no exploitable parallel loops.  It must execute
+      as a single indivisible unit.
+
+    The pass attaches three attributes to each taskflow.task:
+    - task_category : StringAttr  ("divisible" or "atomic")
+    - parallel_dims : DenseI64ArrayAttr  (loop depth indices of parallel loops)
+    - parallel_space : DenseI64ArrayAttr  (trip counts of the parallel dims)
+
+    Parallel loop detection uses MLIR's affine dependence analysis
+    (isLoopParallel).  Reduction loops recognised by MLIR are also counted
+    as parallel.
+  }];
+  let constructor = "taskflow::createTaskCategorizationPass()";
+  let dependentDialects = ["mlir::affine::AffineDialect",
+                           "mlir::func::FuncDialect"];
+}
+
 def MemoryAccessStreamingFusion
     : Pass<"memory-access-streaming-fusion", "func::FuncOp"> {
   let summary =
