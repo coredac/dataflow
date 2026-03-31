@@ -101,8 +101,9 @@ struct TaskNode {
   SmallVector<MemoryNode *> read_memrefs;  // MemoryNodes this task reads.
   SmallVector<MemoryNode *> write_memrefs; // MemoryNodes this task writes.
   // SSA value edges between tasks.
-  SmallVector<TaskNode *> ssa_users;    // Tasks that consume this task's output.
-  SmallVector<TaskNode *> ssa_operands; // Tasks whose output this task consumes.
+  SmallVector<TaskNode *> ssa_users; // Tasks that consume this task's output.
+  SmallVector<TaskNode *>
+      ssa_operands; // Tasks whose output this task consumes.
 
   // Placement result — populated by TaskMapper::place().
   SmallVector<CgraPosition> placement;
@@ -558,18 +559,21 @@ private:
             }
             return;
           }
-          constexpr int dr[] = {-1, 1, 0, 0};
-          constexpr int dc[] = {0, 0, -1, 1};
+          // Explores all 4-connected neighbours of every cell already in the
+          // current polyomino.  delta_row/delta_col encode the four cardinal
+          // directions: up, down, left, right.
+          constexpr int delta_row[] = {-1, 1, 0, 0};
+          constexpr int delta_col[] = {0, 0, -1, 1};
           for (size_t i = 0; i < current.size(); ++i) {
-            auto pos = current[i];
-            for (int d = 0; d < 4; ++d) {
-              int nr = pos.row + dr[d];
-              int nc = pos.col + dc[d];
-              if (nr >= 0 && nr < grid_rows_ && nc >= 0 && nc < grid_cols_ &&
-                  !occupied_[nr][nc]) {
-                uint64_t bit = 1ULL << (nr * grid_cols_ + nc);
+            const CgraPosition &cell = current[i];
+            for (int dir = 0; dir < 4; ++dir) {
+              int next_row = cell.row + delta_row[dir];
+              int next_col = cell.col + delta_col[dir];
+              if (next_row >= 0 && next_row < grid_rows_ && next_col >= 0 &&
+                  next_col < grid_cols_ && !occupied_[next_row][next_col]) {
+                uint64_t bit = 1ULL << (next_row * grid_cols_ + next_col);
                 if ((mask & bit) == 0) {
-                  current.push_back({nr, nc});
+                  current.push_back({next_row, next_col});
                   search(current, mask | bit);
                   current.pop_back();
                 }
@@ -578,11 +582,12 @@ private:
           }
         };
 
-    for (int r = 0; r < grid_rows_; ++r) {
-      for (int c = 0; c < grid_cols_; ++c) {
-        if (!occupied_[r][c]) {
-          SmallVector<CgraPosition> start = {{r, c}};
-          search(start, 1ULL << (r * grid_cols_ + c));
+    // Seeds the DFS from every free cell on the grid.
+    for (int seed_row = 0; seed_row < grid_rows_; ++seed_row) {
+      for (int seed_col = 0; seed_col < grid_cols_; ++seed_col) {
+        if (!occupied_[seed_row][seed_col]) {
+          SmallVector<CgraPosition> start = {{seed_row, seed_col}};
+          search(start, 1ULL << (seed_row * grid_cols_ + seed_col));
         }
       }
     }
