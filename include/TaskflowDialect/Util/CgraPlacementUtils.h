@@ -42,6 +42,10 @@ struct CgraShape {
   // Each pair is (col, row) in CGRA coordinates.  Empty for rectangles.
   llvm::SmallVector<std::pair<int, int>> cgra_positions;
 
+  // Returns the bounding-box area (rows * cols).  For rectangular shapes this
+  // equals cgra_count; for non-rectangular shapes it is larger than cgra_count
+  // (some cells in the bbox are unoccupied).  Used only for shape sorting
+  // (prefer smaller bounding boxes), not for counting occupied CGRAs.
   int area() const { return rows * cols; }
 
   // Returns a human-readable description for log messages only (not IR).
