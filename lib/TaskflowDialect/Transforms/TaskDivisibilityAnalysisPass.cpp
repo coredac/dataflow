@@ -20,6 +20,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "TaskflowDialect/TaskflowAttributes.h"
 #include "TaskflowDialect/TaskflowDialect.h"
 #include "TaskflowDialect/TaskflowOps.h"
 #include "TaskflowDialect/TaskflowPasses.h"
@@ -31,8 +32,10 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 
 using namespace mlir;
 using namespace mlir::taskflow;
@@ -85,7 +88,7 @@ struct TaskParallelismInfo {
 // Analyzes a single taskflow.task and determines its category.
 static TaskParallelismInfo analyzeTask(TaskflowTaskOp task_op) {
   TaskParallelismInfo info;
-  info.divisibility = "atomic"; // Default: no parallelism found.
+  info.divisibility = attr::val::kAtomic; // Default: no parallelism found.
 
   // Finds the outermost affine.for in the task body.
   affine::AffineForOp outermost_loop = nullptr;
@@ -93,7 +96,7 @@ static TaskParallelismInfo analyzeTask(TaskflowTaskOp task_op) {
     // We want the outermost loop. Walk visits ops in pre-order,
     // so the first affine.for encountered at the top level is outermost.
     if (!outermost_loop) {
-      // Check that this loop is at the top level of the task body
+      // Checks that this loop is at the top level of the task body
       // (its parent is the task's block, not another loop).
       if (for_op->getParentOp() == task_op.getOperation()) {
         outermost_loop = for_op;
@@ -191,15 +194,22 @@ struct TaskDivisibilityAnalysisPass
       // Analyzes the task.
       TaskParallelismInfo info = analyzeTask(task_op);
       // Attaches the divisibility_info attribute to each task.
+      MLIRContext *ctx = task_op.getContext();
       OpBuilder builder(task_op);
 
       SmallVector<NamedAttribute, 3> div_attrs;
-      task_op->setAttr("divisibility",
-                       builder.getStringAttr(info.divisibility));
-      task_op->setAttr("parallel_dims",
-                       builder.getDenseI32ArrayAttr(info.parallel_dims));
-      task_op->setAttr("parallel_space",
-                       builder.getDenseI32ArrayAttr(info.parallel_space));
+      div_attrs.push_back(
+          NamedAttribute(StringAttr::get(ctx, attr::kDivisibility),
+                         StringAttr::get(ctx, info.divisibility)));
+      div_attrs.push_back(
+          NamedAttribute(StringAttr::get(ctx, attr::kParallelDims),
+                         DenseI32ArrayAttr::get(ctx, info.parallel_dims)));
+      div_attrs.push_back(
+          NamedAttribute(StringAttr::get(ctx, attr::kParallelSpace),
+                         DenseI32ArrayAttr::get(ctx, info.parallel_space)));
+
+      task_op->setAttr(attr::kDivisibilityInfo,
+                       builder.getDictionaryAttr(div_attrs));
     });
   }
 };
