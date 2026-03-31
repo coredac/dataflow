@@ -1,13 +1,13 @@
-//===- AllocateCgraTaskMapper.cpp - Task-to-CGRA mapping implementation ---===//
+//===- allocation_utils_mapper.cpp - Task-to-CGRA mapping implementation --===//
 //
 // Implements runAllocateCgraToTask and the internal TaskMapper used by
-// AllocateCgraToTaskPass.  Kept under TaskflowDialect/Util per code review.
+// AllocateCgraToTaskPass.  Kept under TaskflowDialect/Allocation per code review.
 //
 //===----------------------------------------------------------------------===//
 
 #include "TaskflowDialect/TaskflowDialect.h"
 #include "TaskflowDialect/TaskflowOps.h"
-#include "TaskflowDialect/Util/CgraPlacementUtils.h"
+#include "TaskflowDialect/Allocation/allocation_utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Builders.h"
 #include "llvm/ADT/DenseMap.h"

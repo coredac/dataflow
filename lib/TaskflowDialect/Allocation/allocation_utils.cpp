@@ -1,11 +1,11 @@
-//===- CgraPlacementUtils.cpp - Shared CGRA placement utilities -----------===//
+//===- allocation_utils.cpp - Shared CGRA allocation utilities ------------===//
 //
 // Implements shared utility functions for CGRA grid placement used by
 // AllocateCgraToTaskPass and ResourceAwareTaskOptimizationPass.
 //
 //===----------------------------------------------------------------------===//
 
-#include "TaskflowDialect/Util/CgraPlacementUtils.h"
+#include "TaskflowDialect/Allocation/allocation_utils.h"
 
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"

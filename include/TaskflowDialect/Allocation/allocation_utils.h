@@ -1,4 +1,4 @@
-//===- CgraPlacementUtils.h - Shared CGRA placement utilities -------------===//
+//===- allocation_utils.h - Shared CGRA allocation utilities --------------===//
 //
 // Shared utility types and functions used by AllocateCgraToTaskPass and
 // ResourceAwareTaskOptimizationPass for CGRA grid placement feasibility
@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef TASKFLOW_CGRA_PLACEMENT_UTILS_H
-#define TASKFLOW_CGRA_PLACEMENT_UTILS_H
+#ifndef TASKFLOW_ALLOCATION_UTILS_H
+#define TASKFLOW_ALLOCATION_UTILS_H
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "llvm/ADT/SmallVector.h"

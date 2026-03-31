@@ -15,7 +15,7 @@ add_mlir_library(MLIRTaskflowTransforms
     MLIRSupport
     MLIRTransforms
     MLIRTaskflow
-    MLIRTaskflowUtil
+    MLIRTaskflowAllocation
     MLIRNeura
     MLIRNeuraTransforms
     MLIRConversion

@@ -5,14 +5,14 @@
 // 2. Assigns memrefs to SRAMs (each MemRef is assigned to exactly one SRAM,
 //    determined by proximity to the task that first accesses it).
 //
-// Implementation lives in lib/TaskflowDialect/Util/AllocateCgraTaskMapper.cpp
+// Implementation lives in lib/TaskflowDialect/Allocation/allocation_utils_mapper.cpp
 // (runAllocateCgraToTask).
 //
 //===----------------------------------------------------------------------===//
 
 #include "TaskflowDialect/TaskflowDialect.h"
 #include "TaskflowDialect/TaskflowPasses.h"
-#include "TaskflowDialect/Util/CgraPlacementUtils.h"
+#include "TaskflowDialect/Allocation/allocation_utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/Pass.h"
 
