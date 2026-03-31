@@ -1,10 +1,10 @@
-//===- TaskCategorizationPass.cpp - Classify tasks as divisible/atomic ----===//
+//===- TaskDivisibilityAnalysisPass.cpp - Analyze task divisibility ----===//
 //
 // This pass analyzes each taskflow.task operation to determine whether its
 // loop nest contains parallel loops that can be tiled for data-level
 // parallelism (DLP).
 //
-// Task categories:
+// Task divisibility categories:
 //   - divisible: Has at least one parallel loop (no loop-carried deps) with
 //     trip_count > 1.  Can be tiled into sibling sub-tasks for runtime
 //     configuration duplication.
@@ -12,7 +12,7 @@
 //     indivisible unit.
 //
 // The pass attaches three attributes to each taskflow.task:
-//   - task_category   : StringAttr       ("divisible" or "atomic")
+//   - divisibility   : StringAttr       ("divisible" or "atomic")
 //   - parallel_dims   : DenseI64ArrayAttr (loop depth indices)
 //   - parallel_space  : DenseI64ArrayAttr (trip counts of those dims)
 //
@@ -100,7 +100,7 @@ static TaskParallelismInfo analyzeTask(TaskflowTaskOp task_op) {
   });
 
   if (!outermost_loop) {
-    llvm::errs() << "[TaskCategorization] Task " << task_op.getTaskName()
+    llvm::errs() << "[TaskDivisibilityAnalysis] Task " << task_op.getTaskName()
                  << ": no affine.for found, classified as atomic\n";
     return info;
   }
@@ -108,7 +108,7 @@ static TaskParallelismInfo analyzeTask(TaskflowTaskOp task_op) {
   // Collect the loop nest spine.
   SmallVector<affine::AffineForOp> loop_nest = collectLoopNest(outermost_loop);
 
-  llvm::errs() << "[TaskCategorization] Task " << task_op.getTaskName()
+  llvm::errs() << "[TaskDivisibilityAnalysis] Task " << task_op.getTaskName()
                << ": loop nest depth = " << loop_nest.size() << "\n";
 
   // Analyze each loop level for parallelism.
@@ -124,7 +124,7 @@ static TaskParallelismInfo analyzeTask(TaskflowTaskOp task_op) {
     int64_t tc =
         trip_count.has_value() ? static_cast<int64_t>(*trip_count) : -1;
 
-    llvm::errs() << "[TaskCategorization]   depth " << depth
+    llvm::errs() << "[TaskDivisibilityAnalysis]   depth " << depth
                  << ": parallel=" << is_parallel << ", trip_count=" << tc;
     if (!reductions.empty()) {
       llvm::errs() << " (with " << reductions.size() << " reductions)";
@@ -142,7 +142,7 @@ static TaskParallelismInfo analyzeTask(TaskflowTaskOp task_op) {
     info.category = "divisible";
   }
 
-  llvm::errs() << "[TaskCategorization] Task " << task_op.getTaskName()
+  llvm::errs() << "[TaskDivisibilityAnalysis] Task " << task_op.getTaskName()
                << " -> " << info.category;
   if (!info.parallel_dims.empty()) {
     llvm::errs() << ", parallel_dims=[";
@@ -165,23 +165,24 @@ static TaskParallelismInfo analyzeTask(TaskflowTaskOp task_op) {
 }
 
 //===----------------------------------------------------------------------===//
-// Task Categorization Pass
+// Task Divisibility Analysis Pass
 //===----------------------------------------------------------------------===//
 
-struct TaskCategorizationPass
-    : public PassWrapper<TaskCategorizationPass, OperationPass<func::FuncOp>> {
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TaskCategorizationPass)
+struct TaskDivisibilityAnalysisPass
+    : public PassWrapper<TaskDivisibilityAnalysisPass,
+                         OperationPass<func::FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TaskDivisibilityAnalysisPass)
 
-  StringRef getArgument() const final { return "task-categorization"; }
+  StringRef getArgument() const final { return "task-divisibility-analysis"; }
 
   StringRef getDescription() const final {
-    return "Categorizes tasks as divisible or atomic based on loop parallelism";
+    return "Analyzes task divisibility based on loop parallelism";
   }
 
   void runOnOperation() override {
     func::FuncOp func = getOperation();
 
-    llvm::errs() << "[TaskCategorization] Running on function: "
+    llvm::errs() << "[TaskDivisibilityAnalysis] Running on function: "
                  << func.getName() << "\n";
 
     func.walk([&](TaskflowTaskOp task_op) {
@@ -189,7 +190,7 @@ struct TaskCategorizationPass
       TaskParallelismInfo info = analyzeTask(task_op);
       // Attach attributes.
       OpBuilder builder(task_op);
-      task_op->setAttr("task_category", builder.getStringAttr(info.category));
+      task_op->setAttr("divisibility", builder.getStringAttr(info.category));
       task_op->setAttr("parallel_dims",
                        builder.getDenseI64ArrayAttr(info.parallel_dims));
       task_op->setAttr("parallel_space",
@@ -204,6 +205,6 @@ struct TaskCategorizationPass
 // Pass Registration
 //===----------------------------------------------------------------------===//
 
-std::unique_ptr<Pass> mlir::taskflow::createTaskCategorizationPass() {
-  return std::make_unique<TaskCategorizationPass>();
+std::unique_ptr<Pass> mlir::taskflow::createTaskDivisibilityAnalysisPass() {
+  return std::make_unique<TaskDivisibilityAnalysisPass>();
 }

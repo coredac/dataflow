@@ -23,6 +23,7 @@ std::unique_ptr<mlir::Pass> createConstructHyperblockFromTaskPass();
 std::unique_ptr<mlir::Pass> createClassifyCountersPass();
 std::unique_ptr<mlir::Pass> createMapTaskOnCgraPass();
 std::unique_ptr<mlir::Pass> createFuseTaskPass();
+std::unique_ptr<mlir::Pass> createTaskDivisibilityAnalysisPass();
 
 //=========================================================//
 // Optimization Passes
@@ -30,7 +31,6 @@ std::unique_ptr<mlir::Pass> createFuseTaskPass();
 std::unique_ptr<mlir::Pass> createAffineLoopTreeSerializationPass();
 std::unique_ptr<mlir::Pass> createAffineLoopPerfectionPass();
 std::unique_ptr<mlir::Pass> createMemoryAccessStreamingFusionPass();
-std::unique_ptr<mlir::Pass> createTaskCategorizationPass();
 std::unique_ptr<mlir::Pass> createResourceAwareTaskOptimizationPass();
 
 #define GEN_PASS_REGISTRATION
