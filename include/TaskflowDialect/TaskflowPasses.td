@@ -64,11 +64,12 @@ def ClassifyCounters : Pass<"classify-counters", "ModuleOp"> {
 }
 
 def AllocateCgraToTask : Pass<"allocate-cgra-to-task", "func::FuncOp"> {
-  let summary = "Maps Taskflow tasks onto a 2D CGRA grid array";
+  let summary = "Maps Taskflow tasks onto a 2D multi-CGRA grid array";
   let description = [{
-    This pass maps Taskflow tasks onto a 2D CGRA grid array.
-    Fusion candidates (same-header SSA dependencies) are placed on adjacent
-    CGRAs to enable direct data forwarding.
+    This pass maps Taskflow tasks onto a 2D multi-CGRA grid array.
+    Tasks with direct SSA dependencies (producer-consumer pairs that are
+    candidates for downstream streaming fusion) are placed on adjacent CGRAs
+    to enable direct data forwarding without going through the network.
 
     Uses a default 4x4 CGRA grid.
   }];

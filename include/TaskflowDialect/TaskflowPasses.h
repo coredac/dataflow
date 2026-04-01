@@ -3,9 +3,9 @@
 #ifndef TASKFLOW_PASSES_H
 #define TASKFLOW_PASSES_H
 
+#include "TaskflowDialect/Allocation/allocation_utils.h"
 #include "TaskflowDialect/TaskflowDialect.h"
 #include "TaskflowDialect/TaskflowOps.h"
-#include "TaskflowDialect/Allocation/allocation_utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"

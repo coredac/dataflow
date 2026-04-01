@@ -1,7 +1,7 @@
 //===- allocation_utils.cpp - Shared CGRA allocation utilities ------------===//
 //
-// Implements shared utility functions for CGRA grid placement used by
-// AllocateCgraToTaskPass and ResourceAwareTaskOptimizationPass.
+// Implements shared utility functions for 2D multi-CGRA grid placement used
+// by AllocateCgraToTaskPass and ResourceAwareTaskOptimizationPass.
 //
 //===----------------------------------------------------------------------===//
 

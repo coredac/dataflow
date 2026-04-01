@@ -1,18 +1,22 @@
 //===- AllocateCgraToTaskPass.cpp - Task to CGRA Mapping Pass -===//
 //
-// This pass maps Taskflow tasks onto a 2D CGRA grid array:
+// This pass maps Taskflow tasks onto a 2D multi-CGRA grid array:
 // 1. Places tasks with SSA dependencies on adjacent CGRAs.
 // 2. Assigns memrefs to SRAMs (each MemRef is assigned to exactly one SRAM,
 //    determined by proximity to the task that first accesses it).
 //
-// Implementation lives in lib/TaskflowDialect/Allocation/allocation_utils_mapper.cpp
-// (runAllocateCgraToTask).
+// Implementation: runAllocateCgraToTask() in
+// lib/TaskflowDialect/Allocation/allocation_utils.cpp.
+//
+// TODO: Introduce an Allocation abstract base class (modelled after
+// NeuraDialect/Mapping/Mapping.h) so that alternative placement strategies can
+// be plugged in by overriding runOnOperation().
 //
 //===----------------------------------------------------------------------===//
 
+#include "TaskflowDialect/Allocation/allocation_utils.h"
 #include "TaskflowDialect/TaskflowDialect.h"
 #include "TaskflowDialect/TaskflowPasses.h"
-#include "TaskflowDialect/Allocation/allocation_utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/Pass.h"
 
@@ -30,7 +34,7 @@ struct AllocateCgraToTaskPass
   StringRef getArgument() const override { return "allocate-cgra-to-task"; }
 
   StringRef getDescription() const override {
-    return "Maps Taskflow tasks onto a 2D CGRA grid with adjacency "
+    return "Maps Taskflow tasks onto a 2D multi-CGRA grid with adjacency "
            "optimization and memory mapping.";
   }
 

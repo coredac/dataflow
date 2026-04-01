@@ -1,8 +1,8 @@
 //===- allocation_utils.h - Shared CGRA allocation utilities --------------===//
 //
 // Shared utility types and functions used by AllocateCgraToTaskPass and
-// ResourceAwareTaskOptimizationPass for CGRA grid placement feasibility
-// checks and task-to-CGRA mapping.
+// ResourceAwareTaskOptimizationPass for 2D multi-CGRA grid placement
+// feasibility checks and task-to-CGRA mapping.
 //
 //===----------------------------------------------------------------------===//
 
@@ -78,12 +78,12 @@ llvm::SmallVector<CgraShape> getAllPlacementShapes(int cgra_count);
 // Global Placement Feasibility
 //===----------------------------------------------------------------------===//
 
-// Simulates greedy placement of all tasks' shapes on the kCgraGridRows ×
+// Simulates greedy placement of all tasks' shapes on the kCgraGridRows x
 // kCgraGridCols grid to verify that they physically fit without overlap.
 //
 // For each task, all valid shapes (including rotations) are tried. Rectangular
-// shapes prefer square-like orientations (e.g. 2×2 over 1×4). Non-rectangular
-// shapes are tried in all four 90° rotations.
+// shapes prefer square-like orientations (e.g. 2x2 over 1x4). Non-rectangular
+// shapes are tried in all four 90 degree rotations.
 //
 // `task_cgra_counts` contains the cgra_count for every task in the graph
 // (including the speculatively modified one).
@@ -95,13 +95,18 @@ bool canAllTasksFitOnGrid(llvm::ArrayRef<int> task_cgra_counts);
 // Direct Pass Invocation
 //===----------------------------------------------------------------------===//
 
-// Runs the CGRA task placement logic directly on a function, producing
-// `task_mapping_info` attributes with global grid placement that respects
-// multi-CGRA shapes.
+// Runs the proximity-based CGRA task placement algorithm on `func`, annotating
+// each taskflow.task op with a `task_mapping_info` attribute that records the
+// assigned CGRA positions and SRAM locations.
+//
+// For each task, `cgra_count` is read from the op's `cgra_count` attribute
+// (set by the upstream ResourceAwareTaskOptimization pass).  Both shape
+// selection and rotation are handled internally by this function -- see
+// findBestPlacement in allocation_utils_mapper.cpp.
 //
 // grid_rows/grid_cols default to 4x4 (kCgraGridRows/kCgraGridCols).
 //
-// Defined in lib/TaskflowDialect/Util/AllocateCgraTaskMapper.cpp.
+// Defined in lib/TaskflowDialect/Allocation/allocation_utils_mapper.cpp.
 void runAllocateCgraToTask(mlir::func::FuncOp func,
                            int grid_rows = kCgraGridRows,
                            int grid_cols = kCgraGridCols);
