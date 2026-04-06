@@ -51,7 +51,7 @@ struct CgraShape {
   // Returns a human-readable description for log messages only (not IR).
   std::string describe(int cgra_count) const;
 
-  // Returns the shape string written into the IR tile_shape attribute.
+  // Returns the shape string written into the IR cgra_shape attribute.
   // For rectangular shapes: "NxM" (e.g. "2x2").
   // For non-rectangular shapes: "NxM[(c0,r0)(c1,r1)...]" listing only the
   // occupied CGRA positions so that downstream passes can reconstruct the
@@ -96,17 +96,19 @@ bool canAllTasksFitOnGrid(llvm::ArrayRef<int> task_cgra_counts);
 //===----------------------------------------------------------------------===//
 
 // Runs the proximity-based CGRA task placement algorithm on `func`, annotating
-// each taskflow.task op with a `task_mapping_info` attribute that records the
-// assigned CGRA positions and SRAM locations.
+// each taskflow.task op with a `task_allocation_info` attribute that records
+// the assigned CGRA positions and SRAM locations.  The upstream
+// resource-binding attributes (`cgra_count`, `cgra_shape`) are removed after
+// allocation.
 //
 // For each task, `cgra_count` is read from the op's `cgra_count` attribute
 // (set by the upstream ResourceAwareTaskOptimization pass).  Both shape
 // selection and rotation are handled internally by this function -- see
-// findBestPlacement in allocation_utils_mapper.cpp.
+// findBestPlacement in allocation_utils.cpp.
 //
 // grid_rows/grid_cols default to 4x4 (kCgraGridRows/kCgraGridCols).
 //
-// Defined in lib/TaskflowDialect/Allocation/allocation_utils_mapper.cpp.
+// Defined in lib/TaskflowDialect/Allocation/allocation_utils.cpp.
 void runAllocateCgraToTask(mlir::func::FuncOp func,
                            int grid_rows = kCgraGridRows,
                            int grid_cols = kCgraGridCols);

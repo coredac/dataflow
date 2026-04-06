@@ -1,7 +1,8 @@
 //===- AllocateCgraToTaskPass.cpp - Task to CGRA Mapping Pass -===//
 //
 // This pass maps Taskflow tasks onto a 2D multi-CGRA grid array:
-// 1. Places tasks with SSA dependencies on adjacent CGRAs.
+// 1. Places tasks with SSA dependencies (producer-consumer pairs) on
+//    adjacent CGRAs to enable direct data forwarding.
 // 2. Assigns memrefs to SRAMs (each MemRef is assigned to exactly one SRAM,
 //    determined by proximity to the task that first accesses it).
 //

@@ -1,6 +1,5 @@
 add_mlir_library(MLIRTaskflowAllocation
     allocation_utils.cpp
-    allocation_utils_mapper.cpp
 
     DEPENDS
     MLIRTaskflowTransformsIncGen
