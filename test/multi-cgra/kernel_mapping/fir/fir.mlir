@@ -115,7 +115,7 @@ module attributes {} {
 // DIV:      module {
 // DIV-NEXT:   func.func @_Z6kernelPiS_S_(%arg0: memref<?xi32>, %arg1: memref<?xi32>, %arg2: memref<?xi32>) -> i32 attributes {llvm.linkage = #llvm.linkage<external>} {
 // DIV-NEXT:     %c0_i32 = arith.constant 0 : i32
-// DIV-NEXT:     %dependency_read_out:2, %value_outputs = taskflow.task @Task_0 dependency_read_in(%arg0, %arg2 : memref<?xi32>, memref<?xi32>) value_inputs(%c0_i32 : i32) [original_read_memrefs(%arg0, %arg2 : memref<?xi32>, memref<?xi32>)] {divisibility_info = {divisibility = "atomic", parallel_dims = array<i32>, parallel_space = array<i32>}} : (memref<?xi32>, memref<?xi32>, i32) -> (memref<?xi32>, memref<?xi32>, i32) {
+// DIV-NEXT:     %dependency_read_out:2, %value_outputs = taskflow.task @Task_0 dependency_read_in(%arg0, %arg2 : memref<?xi32>, memref<?xi32>) value_inputs(%c0_i32 : i32) [original_read_memrefs(%arg0, %arg2 : memref<?xi32>, memref<?xi32>)] {task_info = {divisibility = "atomic", parallel_dims = array<i32>, parallel_space = array<i32>}} : (memref<?xi32>, memref<?xi32>, i32) -> (memref<?xi32>, memref<?xi32>, i32) {
 // DIV-NEXT:     ^bb0(%arg3: memref<?xi32>, %arg4: memref<?xi32>, %arg5: i32):
 // DIV-NEXT:       %0 = affine.for %arg6 = 0 to 32 iter_args(%arg7 = %arg5) -> (i32) {
 // DIV-NEXT:         %1 = affine.load %arg3[%arg6] : memref<?xi32>

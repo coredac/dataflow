@@ -12,7 +12,7 @@
 //     indivisible unit.
 //
 // The pass attaches an attribute to each taskflow.task:
-//   divisibility_info = {
+//   task_info = {
 //     divisibility   : StringAttr       ("divisible" or "atomic")
 //     parallel_dims  : DenseI32ArrayAttr (loop depth indices of parallel loops)
 //     parallel_space : DenseI32ArrayAttr (trip counts of those parallel loops)
@@ -188,7 +188,7 @@ struct TaskDivisibilityAnalysisPass
     func.walk([&](TaskflowTaskOp task_op) {
       // Analyzes the task.
       TaskParallelismInfo info = analyzeTask(task_op);
-      // Attaches the divisibility_info attribute to each task.
+      // Attaches the task_info attribute to each task.
       MLIRContext *ctx = task_op.getContext();
       OpBuilder builder(task_op);
 
@@ -203,8 +203,7 @@ struct TaskDivisibilityAnalysisPass
           NamedAttribute(StringAttr::get(ctx, attr::kParallelSpace),
                          DenseI32ArrayAttr::get(ctx, info.parallel_space)));
 
-      task_op->setAttr(attr::kDivisibilityInfo,
-                       builder.getDictionaryAttr(div_attrs));
+      task_op->setAttr(attr::kTaskInfo, builder.getDictionaryAttr(div_attrs));
     });
   }
 };
