@@ -12,7 +12,7 @@ env:
   LLVM_COMMIT: "6146a88f60492b520a36f8f8f3231e15f3cc6082"
   CCACHE_DIR: "${{ github.workspace }}/.ccache"
   CCACHE_COMPRESS: "true"
-  CCACHE_MAXSIZE: "1G"
+  CCACHE_MAXSIZE: "4G"
 
 jobs:
   build:
@@ -55,12 +55,22 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-ccache-llvm-${{ env.LLVM_COMMIT }}-
 
+    # Caches the entire LLVM build directory keyed by LLVM_COMMIT.
+    # When the cache hits, the LLVM build step is skipped entirely.
+    - name: LLVM build cache
+      id: llvm-cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ github.workspace }}/llvm-project
+        key: ${{ runner.os }}-llvm-build-${{ env.LLVM_COMMIT }}
+
     # install graphviz
     - name: install graphviz
       run: sudo apt-get install graphviz
 
-    # setup LLVM
+    # setup LLVM — skipped entirely when the build directory is cached.
     - name: install a specific version of LLVM
+      if: steps.llvm-cache.outputs.cache-hit != 'true'
       working-directory: ${{github.workspace}}
       run: |
         mkdir -p ${{ env.CCACHE_DIR }}
@@ -93,8 +103,9 @@ jobs:
         echo "CCache Status after build:"
         ccache -s
 
-        # Add LLVM tools to PATH
-        echo "${{github.workspace}}/llvm-project/build/bin" >> $GITHUB_PATH
+    # Always add LLVM tools to PATH (whether from cache or fresh build).
+    - name: Add LLVM to PATH
+      run: echo "${{github.workspace}}/llvm-project/build/bin" >> $GITHUB_PATH
     # setup mlir-cgra
     - name: setup dataflow tool-chain
       working-directory: ${{github.workspace}}
