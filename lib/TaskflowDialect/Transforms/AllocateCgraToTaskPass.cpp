@@ -6,17 +6,12 @@
 // 2. Assigns memrefs to SRAMs (each MemRef is assigned to exactly one SRAM,
 //    determined by proximity to the task that first accesses it).
 //
-// Implementation: runAllocateCgraToTask() in
-// lib/TaskflowDialect/Allocation/allocation_utils.cpp.
-//
-// TODO: Introduce an Allocation abstract base class (modelled after
-// NeuraDialect/Mapping/Mapping.h) so that alternative placement strategies can
-// be plugged in by overriding runOnOperation().
+// Implementation: RoutingCriticalPathAllocation in
+// lib/TaskflowDialect/Allocation/RoutingCriticalPathAllocation.cpp.
 //
 //===----------------------------------------------------------------------===//
 
-#include "TaskflowDialect/Allocation/allocation_utils.h"
-#include "TaskflowDialect/TaskflowDialect.h"
+#include "TaskflowDialect/Allocation/RoutingCriticalPathAllocation.h"
 #include "TaskflowDialect/TaskflowPasses.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/Pass.h"
@@ -30,17 +25,15 @@ struct AllocateCgraToTaskPass
     : public PassWrapper<AllocateCgraToTaskPass, OperationPass<func::FuncOp>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(AllocateCgraToTaskPass)
 
-  AllocateCgraToTaskPass() = default;
-
   StringRef getArgument() const override { return "allocate-cgra-to-task"; }
-
   StringRef getDescription() const override {
     return "Maps Taskflow tasks onto a 2D multi-CGRA grid with adjacency "
            "optimization and memory mapping.";
   }
 
   void runOnOperation() override {
-    runAllocateCgraToTask(getOperation(), kCgraGridRows, kCgraGridCols);
+    RoutingCriticalPathAllocation strategy(kCgraGridRows, kCgraGridCols);
+    strategy.runAllocation(getOperation());
   }
 };
 

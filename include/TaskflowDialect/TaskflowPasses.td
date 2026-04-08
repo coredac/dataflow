@@ -76,6 +76,15 @@ def AllocateCgraToTask : Pass<"allocate-cgra-to-task", "func::FuncOp"> {
   let constructor = "taskflow::createAllocateCgraToTaskPass()";
 }
 
+def MapTaskOnCgra : Pass<"map-task-on-cgra", "func::FuncOp"> {
+  let summary = "Maps Taskflow tasks onto a CGRA using heuristic mapping";
+  let description = [{
+    This pass maps Taskflow hyperblock operations onto CGRA tiles using the
+    heuristic mapping algorithm (ALAP scheduling + backtracking placement).
+  }];
+  let constructor = "taskflow::createMapTaskOnCgraPass()";
+}
+
 def FuseTask : Pass<"fuse-task", "func::FuncOp"> {
   let summary =
       "Fuses Taskflow tasks using producer-consumer and sibling strategies";

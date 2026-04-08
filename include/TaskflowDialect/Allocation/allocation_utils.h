@@ -9,7 +9,6 @@
 #ifndef TASKFLOW_ALLOCATION_UTILS_H
 #define TASKFLOW_ALLOCATION_UTILS_H
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "llvm/ADT/SmallVector.h"
 
 namespace mlir {
@@ -90,28 +89,6 @@ llvm::SmallVector<CgraShape> getAllPlacementShapes(int cgra_count);
 //
 // Returns true if all tasks can be placed without overlap.
 bool canAllTasksFitOnGrid(llvm::ArrayRef<int> task_cgra_counts);
-
-//===----------------------------------------------------------------------===//
-// Direct Pass Invocation
-//===----------------------------------------------------------------------===//
-
-// Runs the proximity-based CGRA task placement algorithm on `func`, annotating
-// each taskflow.task op with a `task_allocation_info` attribute that records
-// the assigned CGRA positions and SRAM locations.  The upstream
-// resource-binding attributes (`cgra_count`, `cgra_shape`) are removed after
-// allocation.
-//
-// For each task, `cgra_count` is read from the op's `cgra_count` attribute
-// (set by the upstream ResourceAwareTaskOptimization pass).  Both shape
-// selection and rotation are handled internally by this function -- see
-// findBestPlacement in allocation_utils.cpp.
-//
-// grid_rows/grid_cols default to 4x4 (kCgraGridRows/kCgraGridCols).
-//
-// Defined in lib/TaskflowDialect/Allocation/allocation_utils.cpp.
-void runAllocateCgraToTask(mlir::func::FuncOp func,
-                           int grid_rows = kCgraGridRows,
-                           int grid_cols = kCgraGridCols);
 
 } // namespace taskflow
 } // namespace mlir
