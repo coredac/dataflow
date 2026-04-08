@@ -28,7 +28,8 @@
 // RUN: --canonicalize-live-in \
 // RUN: --leverage-predicated-value \
 // RUN: --transform-ctrl-to-data-flow \
-// RUN: | FileCheck %s -check-prefix=CTRL2DATA
+// RUN: -o %t-ctrl2data.mlir
+// RUN: FileCheck %s --input-file=%t-ctrl2data.mlir --check-prefix=CTRL2DATA
 
 // RUN: mlir-neura-opt %t-llvm.mlir \
 // RUN: --assign-accelerator \
@@ -47,7 +48,8 @@
 // RUN: --insert-data-mov \
 // RUN: --map-to-accelerator="mapping-strategy=heuristic backtrack-config=customized" \
 // RUN: --architecture-spec=../../arch_spec/architecture.yaml \
-// RUN: | FileCheck %s -check-prefix=MAPPING
+// RUN: -o %t-mapped.mlir
+// RUN: FileCheck %s --input-file=%t-mapped.mlir --check-prefix=MAPPING
 
 module attributes {} {
   func.func @_Z10bert_node1PA1_A1_A1_A1_A128_bPA1_A128_S1_(%arg0: memref<?x1x1x1x1x128xi8>, %arg1: memref<?x1x128x1x1x128xi8>) attributes {llvm.linkage = #llvm.linkage<external>} {
@@ -152,19 +154,19 @@ module attributes {} {
 // CTRL2DATA-NEXT:     %30 = neura.grant_predicate %23, %23 : !neura.data<i1, i1>, !neura.data<i1, i1> -> !neura.data<i1, i1>
 // CTRL2DATA-NEXT:     neura.return_void %30 : !neura.data<i1, i1>
 // CTRL2DATA-NEXT:     %31 = neura.reserve : !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %32 = neura.phi_start %29, %31 : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %32 = "neura.phi"(%31, %29) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %33 = neura.reserve : !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %34 = neura.phi_start %28, %33 : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %34 = "neura.phi"(%33, %28) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %35 = neura.reserve : !neura.data<memref<?x1x128x1x1x128xi8>, i1>
-// CTRL2DATA-NEXT:     %36 = neura.phi_start %27, %35 : !neura.data<memref<?x1x128x1x1x128xi8>, i1>, !neura.data<memref<?x1x128x1x1x128xi8>, i1> -> !neura.data<memref<?x1x128x1x1x128xi8>, i1>
+// CTRL2DATA-NEXT:     %36 = "neura.phi"(%35, %27) : (!neura.data<memref<?x1x128x1x1x128xi8>, i1>, !neura.data<memref<?x1x128x1x1x128xi8>, i1>) -> !neura.data<memref<?x1x128x1x1x128xi8>, i1>
 // CTRL2DATA-NEXT:     %37 = neura.reserve : !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %38 = neura.phi_start %24, %37 : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %38 = "neura.phi"(%37, %24) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %39 = neura.reserve : !neura.data<memref<?x1x1x1x1x128xi8>, i1>
-// CTRL2DATA-NEXT:     %40 = neura.phi_start %26, %39 : !neura.data<memref<?x1x1x1x1x128xi8>, i1>, !neura.data<memref<?x1x1x1x1x128xi8>, i1> -> !neura.data<memref<?x1x1x1x1x128xi8>, i1>
+// CTRL2DATA-NEXT:     %40 = "neura.phi"(%39, %26) : (!neura.data<memref<?x1x1x1x1x128xi8>, i1>, !neura.data<memref<?x1x1x1x1x128xi8>, i1>) -> !neura.data<memref<?x1x1x1x1x128xi8>, i1>
 // CTRL2DATA-NEXT:     %41 = neura.reserve : !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %42 = neura.phi_start %25, %41 : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %42 = "neura.phi"(%41, %25) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %43 = neura.reserve : !neura.data<i64, i1>
-// CTRL2DATA-NEXT:     %44 = neura.phi_start %24, %43 : !neura.data<i64, i1>, !neura.data<i64, i1> -> !neura.data<i64, i1>
+// CTRL2DATA-NEXT:     %44 = "neura.phi"(%43, %24) : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i64, i1>
 // CTRL2DATA-NEXT:     %45 = "neura.icmp"(%44, %42) <{cmpType = "slt"}> : (!neura.data<i64, i1>, !neura.data<i64, i1>) -> !neura.data<i1, i1>
 // CTRL2DATA-NEXT:     %46 = neura.grant_predicate %40, %45 : !neura.data<memref<?x1x1x1x1x128xi8>, i1>, !neura.data<i1, i1> -> !neura.data<memref<?x1x1x1x1x128xi8>, i1>
 // CTRL2DATA-NEXT:     %47 = neura.grant_predicate %38, %45 : !neura.data<i64, i1>, !neura.data<i1, i1> -> !neura.data<i64, i1>
@@ -200,4 +202,4 @@ module attributes {} {
 // CTRL2DATA-NEXT:     neura.yield
 // CTRL2DATA-NEXT:   }
 
-// MAPPING:      func.func @_Z10bert_node1PA1_A1_A1_A1_A128_bPA1_A128_S1_(%arg0: memref<?x1x1x1x1x128xi8>, %arg1: memref<?x1x128x1x1x128xi8>) attributes {accelerator = "neura", dataflow_mode = "predicate", llvm.linkage = #llvm.linkage<external>, mapping_info = {compiled_ii = 8 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 8 : i32, res_mii = 2 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}
+// MAPPING:      func.func @_Z10bert_node1PA1_A1_A1_A1_A128_bPA1_A128_S1_(%arg0: memref<?x1x1x1x1x128xi8>, %arg1: memref<?x1x128x1x1x128xi8>) attributes {accelerator = "neura", dataflow_mode = "predicate", llvm.linkage = #llvm.linkage<external>, mapping_info = {compiled_ii = 8 : i32, mapping_mode = "spatial-temporal", mapping_strategy = "heuristic", rec_mii = 8 : i32, res_mii = 2 : i32, x_tiles = 4 : i32, y_tiles = 4 : i32}}

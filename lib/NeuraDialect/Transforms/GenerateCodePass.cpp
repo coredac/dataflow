@@ -90,6 +90,7 @@ static bool isCtrlMov(Operation *op) {
 static bool isPhiStart(Operation *op) {
   return dyn_cast<PhiStartOp>(op) != nullptr;
 }
+static bool isPhi(Operation *op) { return dyn_cast<PhiOp>(op) != nullptr; }
 static bool isReserve(Operation *op) {
   return dyn_cast<ReserveOp>(op) != nullptr;
 }
@@ -102,7 +103,9 @@ static bool isFusedOp(Operation *op) {
 // ---- Constant for phi_start operation ----.
 static constexpr unsigned kReserveOpIndex = 1;
 
-// Returns the reserve operand for phi_start (operand #1). Guards to ReserveOp.
+// Returns the reserve operand for phi_start/phi.
+// - phi_start: reserve is operand #1 by definition.
+// - phi: scans inputs and returns the operand defined by neura.reserve.
 static Value getReserveOperand(Operation *op) {
   if (auto phi_start = dyn_cast<PhiStartOp>(op)) {
     assert(op->getNumOperands() > kReserveOpIndex &&
@@ -112,6 +115,16 @@ static Value getReserveOperand(Operation *op) {
            "phi_start operand #1 must be a ReserveOp");
     return candidate;
   }
+
+  if (auto phi = dyn_cast<PhiOp>(op)) {
+    for (Value operand : phi.getInputs()) {
+      if (auto def_op = operand.getDefiningOp()) {
+        if (isa<ReserveOp>(def_op))
+          return operand;
+      }
+    }
+  }
+
   return Value();
 }
 
@@ -596,7 +609,8 @@ struct GenerateCodePass
       operation_placements[op] = getTileLocation(op);
 
       // Builds reserve -> phi mapping for loop-carried dependencies.
-      if (isPhiStart(op)) {
+      // Supports both phi_start and phi forms.
+      if (isPhiStart(op) || isPhi(op)) {
         if (Value reserve = getReserveOperand(op)) {
           reserve_to_phi_map[reserve] = op;
         }
