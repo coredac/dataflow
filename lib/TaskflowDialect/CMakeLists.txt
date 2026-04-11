@@ -13,5 +13,5 @@ add_mlir_dialect_library(MLIRTaskflow
         MLIRInferTypeOpInterface
 )
 
+add_subdirectory(Allocation)
 add_subdirectory(Transforms)
-add_subdirectory(Transforms/Optimizations)

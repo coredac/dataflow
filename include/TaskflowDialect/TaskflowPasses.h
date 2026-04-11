@@ -3,8 +3,10 @@
 #ifndef TASKFLOW_PASSES_H
 #define TASKFLOW_PASSES_H
 
+#include "TaskflowDialect/Allocation/allocation_utils.h"
 #include "TaskflowDialect/TaskflowDialect.h"
 #include "TaskflowDialect/TaskflowOps.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassRegistry.h"
@@ -21,6 +23,7 @@ void registerTosaToAffineConversionPassPipeline();
 #include "TaskflowDialect/TaskflowPasses.h.inc"
 std::unique_ptr<mlir::Pass> createConstructHyperblockFromTaskPass();
 std::unique_ptr<mlir::Pass> createClassifyCountersPass();
+std::unique_ptr<mlir::Pass> createAllocateCgraToTaskPass();
 std::unique_ptr<mlir::Pass> createMapTaskOnCgraPass();
 std::unique_ptr<mlir::Pass> createFuseTaskPass();
 

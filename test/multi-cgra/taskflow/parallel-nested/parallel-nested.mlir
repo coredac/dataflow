@@ -42,7 +42,7 @@
 // RUN: mlir-neura-opt %s --affine-loop-tree-serialization \
 // RUN: --convert-affine-to-taskflow \
 // RUN: --construct-hyperblock-from-task \
-// RUN: --map-task-on-cgra \
+// RUN: --allocate-cgra-to-task \
 // RUN: -o %t.placement.mlir
 // RUN: FileCheck %s --input-file=%t.placement.mlir --check-prefixes=PLACEMENT
 
@@ -157,7 +157,7 @@ module {
 
 // PLACEMENT: module {
 // PLACEMENT-NEXT:   func.func @parallel_nested_example(%arg0: memref<16xf32>, %arg1: memref<8x8xf32>, %arg2: memref<8x8xf32>, %arg3: memref<8x8xf32>, %arg4: f32) {
-// PLACEMENT-NEXT:     %dependency_read_out, %dependency_write_out = taskflow.task @Task_0 dependency_read_in(%arg0 : memref<16xf32>) dependency_write_in(%arg0 : memref<16xf32>) value_inputs(%arg4 : f32) [original_read_memrefs(%arg0 : memref<16xf32>), original_write_memrefs(%arg0 : memref<16xf32>)] {task_mapping_info = {cgra_positions = [{col = 0 : i32, row = 0 : i32}], read_sram_locations = [{col = 0 : i32, row = 0 : i32}], write_sram_locations = [{col = 0 : i32, row = 0 : i32}]}} : (memref<16xf32>, memref<16xf32>, f32) -> (memref<16xf32>, memref<16xf32>) {
+// PLACEMENT-NEXT:     %dependency_read_out, %dependency_write_out = taskflow.task @Task_0 dependency_read_in(%arg0 : memref<16xf32>) dependency_write_in(%arg0 : memref<16xf32>) value_inputs(%arg4 : f32) [original_read_memrefs(%arg0 : memref<16xf32>), original_write_memrefs(%arg0 : memref<16xf32>)] {task_allocation_info = {cgra_positions = [{col = 0 : i32, row = 0 : i32}], read_sram_locations = [{col = 0 : i32, row = 0 : i32}], write_sram_locations = [{col = 0 : i32, row = 0 : i32}]}} : (memref<16xf32>, memref<16xf32>, f32) -> (memref<16xf32>, memref<16xf32>) {
 // PLACEMENT-NEXT:     ^bb0(%arg5: memref<16xf32>, %arg6: memref<16xf32>, %arg7: f32):
 // PLACEMENT-NEXT:       %0 = taskflow.counter attributes {lower_bound = 0 : index, step = 1 : index, upper_bound = 16 : index} : index
 // PLACEMENT-NEXT:       "taskflow.hyperblock"(%0) <{operandSegmentSizes = array<i32: 1, 0>}> ({
@@ -169,7 +169,7 @@ module {
 // PLACEMENT-NEXT:       }) : (index) -> ()
 // PLACEMENT-NEXT:       taskflow.yield reads(%arg6 : memref<16xf32>) writes(%arg6 : memref<16xf32>)
 // PLACEMENT-NEXT:     }
-// PLACEMENT-NEXT:     %dependency_read_out_0:2, %dependency_write_out_1 = taskflow.task @Task_1 dependency_read_in(%arg1, %arg2 : memref<8x8xf32>, memref<8x8xf32>) dependency_write_in(%arg3 : memref<8x8xf32>) [original_read_memrefs(%arg1, %arg2 : memref<8x8xf32>, memref<8x8xf32>), original_write_memrefs(%arg3 : memref<8x8xf32>)] {task_mapping_info = {cgra_positions = [{col = 1 : i32, row = 0 : i32}], read_sram_locations = [{col = 1 : i32, row = 0 : i32}, {col = 1 : i32, row = 0 : i32}], write_sram_locations = [{col = 1 : i32, row = 0 : i32}]}} : (memref<8x8xf32>, memref<8x8xf32>, memref<8x8xf32>) -> (memref<8x8xf32>, memref<8x8xf32>, memref<8x8xf32>) {
+// PLACEMENT-NEXT:     %dependency_read_out_0:2, %dependency_write_out_1 = taskflow.task @Task_1 dependency_read_in(%arg1, %arg2 : memref<8x8xf32>, memref<8x8xf32>) dependency_write_in(%arg3 : memref<8x8xf32>) [original_read_memrefs(%arg1, %arg2 : memref<8x8xf32>, memref<8x8xf32>), original_write_memrefs(%arg3 : memref<8x8xf32>)] {task_allocation_info = {cgra_positions = [{col = 1 : i32, row = 0 : i32}], read_sram_locations = [{col = 1 : i32, row = 0 : i32}, {col = 1 : i32, row = 0 : i32}], write_sram_locations = [{col = 1 : i32, row = 0 : i32}]}} : (memref<8x8xf32>, memref<8x8xf32>, memref<8x8xf32>) -> (memref<8x8xf32>, memref<8x8xf32>, memref<8x8xf32>) {
 // PLACEMENT-NEXT:     ^bb0(%arg5: memref<8x8xf32>, %arg6: memref<8x8xf32>, %arg7: memref<8x8xf32>):
 // PLACEMENT-NEXT:       %0 = taskflow.counter attributes {lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
 // PLACEMENT-NEXT:       %1 = taskflow.counter parent(%0 : index) attributes {lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
@@ -187,9 +187,11 @@ module {
 // PLACEMENT-NEXT:   }
 // PLACEMENT-NEXT: }
 
+
+
 // RESOPT: module {
 // RESOPT-NEXT:   func.func @parallel_nested_example(%arg0: memref<16xf32>, %arg1: memref<8x8xf32>, %arg2: memref<8x8xf32>, %arg3: memref<8x8xf32>, %arg4: f32) {
-// RESOPT-NEXT:     %dependency_read_out:3, %dependency_write_out:2 = taskflow.task @Task_0_Task_1_utilfused dependency_read_in(%arg0, %arg1, %arg2 : memref<16xf32>, memref<8x8xf32>, memref<8x8xf32>) dependency_write_in(%arg0, %arg3 : memref<16xf32>, memref<8x8xf32>) value_inputs(%arg4 : f32) [original_read_memrefs(%arg0, %arg1, %arg2 : memref<16xf32>, memref<8x8xf32>, memref<8x8xf32>), original_write_memrefs(%arg0, %arg3 : memref<16xf32>, memref<8x8xf32>)] {cgra_count = 2 : i32, compiled_ii = 2 : i32, steps = 4 : i32, tile_shape = "1x2", trip_count = 64 : i32} : (memref<16xf32>, memref<8x8xf32>, memref<8x8xf32>, memref<16xf32>, memref<8x8xf32>, f32) -> (memref<16xf32>, memref<8x8xf32>, memref<8x8xf32>, memref<16xf32>, memref<8x8xf32>) {
+// RESOPT-NEXT:     %dependency_read_out:3, %dependency_write_out:2 = taskflow.task @Task_0_Task_1_utilfused dependency_read_in(%arg0, %arg1, %arg2 : memref<16xf32>, memref<8x8xf32>, memref<8x8xf32>) dependency_write_in(%arg0, %arg3 : memref<16xf32>, memref<8x8xf32>) value_inputs(%arg4 : f32) [original_read_memrefs(%arg0, %arg1, %arg2 : memref<16xf32>, memref<8x8xf32>, memref<8x8xf32>), original_write_memrefs(%arg0, %arg3 : memref<16xf32>, memref<8x8xf32>)] {cgra_count = 2 : i32, cgra_shape = "1x2", compiled_ii = 2 : i32, steps = 4 : i32, trip_count = 64 : i32} : (memref<16xf32>, memref<8x8xf32>, memref<8x8xf32>, memref<16xf32>, memref<8x8xf32>, f32) -> (memref<16xf32>, memref<8x8xf32>, memref<8x8xf32>, memref<16xf32>, memref<8x8xf32>) {
 // RESOPT-NEXT:     ^bb0(%arg5: memref<16xf32>, %arg6: memref<8x8xf32>, %arg7: memref<8x8xf32>, %arg8: memref<16xf32>, %arg9: memref<8x8xf32>, %arg10: f32):
 // RESOPT-NEXT:       %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 16 : index} : index
 // RESOPT-NEXT:       neura.kernel inputs(%arg8, %arg10, %arg6, %arg7, %arg9 : memref<16xf32>, f32, memref<8x8xf32>, memref<8x8xf32>, memref<8x8xf32>) attributes {accelerator = "neura", dataflow_mode = "predicate"} {

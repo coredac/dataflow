@@ -90,7 +90,7 @@ struct CgraShape {
     return s;
   }
 
-  // Returns the shape string written into the IR tile_shape attribute.
+  // Returns the shape string written into the IR cgra_shape attribute.
   // For rectangular shapes: "NxM" (e.g. "2x2").
   // For non-rectangular shapes: "NxM[(c0,r0)(c1,r1)...]" listing only the
   // occupied CGRA positions so that downstream passes can reconstruct the
@@ -1798,10 +1798,10 @@ struct ResourceAwareTaskOptimizationPass
           node->op->setAttr("steps", b.getI32IntegerAttr(node->steps));
           node->op->setAttr("trip_count",
                             b.getI32IntegerAttr(node->trip_count));
-          // Writes tile_shape attribute: simple "NxM" bounding-box string.
+          // Writes cgra_shape attribute: simple "NxM" bounding-box string.
           // The detailed occupancy diagram is printed in the summary below.
           std::string shape_str = node->shape.irAttr();
-          node->op->setAttr("tile_shape", b.getStringAttr(shape_str));
+          node->op->setAttr("cgra_shape", b.getStringAttr(shape_str));
         }
         break;
       }

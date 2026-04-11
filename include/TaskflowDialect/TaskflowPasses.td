@@ -63,14 +63,24 @@ def ClassifyCounters : Pass<"classify-counters", "ModuleOp"> {
   let constructor = "taskflow::createClassifyCountersPass()";
 }
 
-def MapTaskOnCgra : Pass<"map-task-on-cgra", "func::FuncOp"> {
-  let summary = "Maps Taskflow tasks onto a 2D CGRA grid array";
+def AllocateCgraToTask : Pass<"allocate-cgra-to-task", "func::FuncOp"> {
+  let summary = "Maps Taskflow tasks onto a 2D multi-CGRA grid array";
   let description = [{
-    This pass maps Taskflow tasks onto a 2D CGRA grid array.
-    Fusion candidates (same-header SSA dependencies) are placed on adjacent
-    CGRAs to enable direct data forwarding.
+    This pass maps Taskflow tasks onto a 2D multi-CGRA grid array.
+    Tasks with direct SSA dependencies (producer-consumer pairs) are placed
+    on adjacent CGRAs to enable direct data forwarding without going through
+    the network.
 
-    Uses a default 3x3 CGRA grid.
+    Uses a default 4x4 CGRA grid.
+  }];
+  let constructor = "taskflow::createAllocateCgraToTaskPass()";
+}
+
+def MapTaskOnCgra : Pass<"map-task-on-cgra", "func::FuncOp"> {
+  let summary = "Maps Taskflow tasks onto a CGRA using heuristic mapping";
+  let description = [{
+    This pass maps Taskflow hyperblock operations onto CGRA tiles using the
+    heuristic mapping algorithm (ALAP scheduling + backtracking placement).
   }];
   let constructor = "taskflow::createMapTaskOnCgraPass()";
 }
