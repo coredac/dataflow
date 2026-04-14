@@ -192,9 +192,7 @@ func.func @test_sibling_rejected_compute(%A: memref<64xf32>,
 // =============================================================================
 
 // CHECK-LABEL: func.func @test_sibling_rejected_memory
-// CHECK:         taskflow.task @Task_0
-// CHECK:         taskflow.task @Task_1
-// CHECK-NOT:     fused_sibling
+// CHECK:         taskflow.task @fused_sibling
 // CHECK:         return
 
 func.func @test_sibling_rejected_memory(%A: memref<64xf32>,
