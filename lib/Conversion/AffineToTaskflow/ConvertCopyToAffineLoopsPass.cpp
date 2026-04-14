@@ -6,8 +6,10 @@
 
 #include "Conversion/ConversionPasses.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -46,8 +48,27 @@ struct CopyOpLoweringPattern : public OpRewritePattern<memref::CopyOp> {
 
     // Creates explicit memory copy using an affine loop nest.
     SmallVector<Value> ivs;
-    for (auto dim_size : memref_type.getShape()) {
-      auto loop = rewriter.create<affine::AffineForOp>(loc, 0, dim_size);
+    auto makeBound =
+        [&](Value src, int dim_idx,
+            int64_t static_size) -> std::pair<AffineMap, SmallVector<Value>> {
+      if (ShapedType::isDynamic(static_size)) {
+        Value idx = rewriter.create<arith::ConstantIndexOp>(loc, dim_idx);
+        Value runtime_size = rewriter.create<memref::DimOp>(loc, src, idx);
+        AffineMap map = AffineMap::get(
+            /*dimCount=*/0, /*symbolCount=*/1, rewriter.getAffineSymbolExpr(0));
+        return {map, {runtime_size}};
+      }
+      return {AffineMap::getConstantMap(static_size, rewriter.getContext()),
+              {}};
+    };
+
+    for (int i = 0; i < memref_type.getRank(); ++i) {
+      // Loop lower bound is always 0 for memref.copy.
+      auto [lb_map, lb_operands] = makeBound(copy.getSource(), i, 0);
+      auto [ub_map, ub_operands] =
+          makeBound(copy.getSource(), i, memref_type.getShape()[i]);
+      auto loop = rewriter.create<affine::AffineForOp>(
+          loc, lb_operands, lb_map, ub_operands, ub_map, /*step=*/1);
       rewriter.setInsertionPointToStart(loop.getBody());
       ivs.push_back(loop.getInductionVar());
     }
