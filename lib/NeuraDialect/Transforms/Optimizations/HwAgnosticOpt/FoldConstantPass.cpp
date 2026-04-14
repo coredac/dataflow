@@ -593,6 +593,90 @@ struct FuseConstantAndGrantPattern
 };
 
 // =========================================
+// FuseCounterConstantPattern
+// Folds constant lower_bound, upper_bound, and/or step of CounterOp
+// into attributes: lower_bound_value, upper_bound_value, step_value.
+// =========================================
+struct FuseCounterConstantPattern : public OpRewritePattern<neura::CounterOp> {
+  using OpRewritePattern<neura::CounterOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(neura::CounterOp counter_op,
+                                PatternRewriter &rewriter) const override {
+    // Checks if already (partially) folded.
+    if (counter_op->hasAttr("lower_bound_value") ||
+        counter_op->hasAttr("upper_bound_value") ||
+        counter_op->hasAttr("step_value")) {
+      return failure();
+    }
+    Value lb = counter_op.getLowerBound();
+    Value ub = counter_op.getUpperBound();
+    Value step = counter_op.getStep();
+
+    bool lb_is_const = isOriginConstantOp(lb);
+    bool ub_is_const = isOriginConstantOp(ub);
+    bool step_is_const = isOriginConstantOp(step);
+
+    if (!lb_is_const && !ub_is_const && !step_is_const) {
+      return failure();
+    }
+
+    // Builds new operand list keeping only non-constant (or absent) bounds.
+    SmallVector<Value> operands;
+    int32_t lb_present = 0, ub_present = 0, step_present = 0;
+
+    if (!lb_is_const && lb) {
+      operands.push_back(lb);
+      lb_present = 1;
+    }
+    if (!ub_is_const && ub) {
+      operands.push_back(ub);
+      ub_present = 1;
+    }
+    if (!step_is_const && step) {
+      operands.push_back(step);
+      step_present = 1;
+    }
+
+    OperationState state(counter_op.getLoc(), counter_op.getOperationName());
+    state.addOperands(operands);
+    state.addTypes(counter_op->getResultTypes());
+
+    // Copies all existing attributes except operandSegmentSizes.
+    for (auto attr : counter_op->getAttrs()) {
+      if (attr.getName() != "operandSegmentSizes") {
+        state.addAttribute(attr.getName(), attr.getValue());
+      }
+    }
+
+    // Adds folded constant attributes.
+    if (lb_is_const)
+      state.addAttribute("lower_bound_value", getOriginConstantValue(lb));
+    if (ub_is_const)
+      state.addAttribute("upper_bound_value", getOriginConstantValue(ub));
+    if (step_is_const)
+      state.addAttribute("step_value", getOriginConstantValue(step));
+
+    // Updates operandSegmentSizes for the three optional slots.
+    state.addAttribute(
+        "operandSegmentSizes",
+        rewriter.getDenseI32ArrayAttr({lb_present, ub_present, step_present}));
+
+    Operation *new_op = rewriter.create(state);
+    rewriter.replaceOp(counter_op, new_op->getResults());
+
+    // Cleans up now-unused constant ops.
+    if (lb_is_const && lb.getDefiningOp()->use_empty())
+      rewriter.eraseOp(lb.getDefiningOp());
+    if (ub_is_const && ub.getDefiningOp()->use_empty())
+      rewriter.eraseOp(ub.getDefiningOp());
+    if (step_is_const && step.getDefiningOp()->use_empty())
+      rewriter.eraseOp(step.getDefiningOp());
+
+    return success();
+  }
+};
+
+// =========================================
 // FoldConstantPass Implementation
 // =========================================
 struct FoldConstantPass
@@ -635,6 +719,9 @@ struct FoldConstantPass
 
     // Adds pattern for grant operations (post-transform).
     patterns.add<FuseConstantAndGrantPattern>(&getContext());
+
+    // Adds pattern for CounterOp.
+    patterns.add<FuseCounterConstantPattern>(&getContext());
 
     FrozenRewritePatternSet frozen(std::move(patterns));
 

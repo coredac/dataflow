@@ -806,7 +806,7 @@ def Neura_LoopControlOp : Op<NeuraDialect, "loop_control"> {
 }
 
 // Defines an operation for hardware loop counters.
-def Neura_CounterOp : Op<NeuraDialect, "counter", [Pure]> {
+def Neura_CounterOp : Op<NeuraDialect, "counter", [Pure, AttrSizedOperandSegments]> {
   let summary = "Hardware loop counter for CGRA execution.";
   let description = [{
     Represents a hardware loop counter unit that generates loop indices.
@@ -830,13 +830,16 @@ def Neura_CounterOp : Op<NeuraDialect, "counter", [Pure]> {
       %idx = neura.counter from %c0 to %N step %c1
                {counter_type = "leaf", counter_id = 0 : i32} : index
   }];
-  let arguments = (ins Index:$lower_bound, Index:$upper_bound,
-      Index:$step, StrAttr:$counter_type, I32Attr:$counter_id);
+  let arguments = (ins Optional<AnyType>:$lower_bound, Optional<AnyType>:$upper_bound,
+      Optional<AnyType>:$step, StrAttr:$counter_type, I32Attr:$counter_id);
 
   let results = (outs AnyType:$current_index);
   let assemblyFormat = [{
-    `from` $lower_bound `to` $upper_bound `step` $step
-    attr-dict-with-keyword `:` type($current_index)
+    (`from` $lower_bound^ `:` type($lower_bound))?
+    (`to` $upper_bound^ `:` type($upper_bound))?
+    (`step` $step^ `:` type($step))?
+    attr-dict-with-keyword
+    `->` type($current_index)
   }];
 }
 
