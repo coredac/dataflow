@@ -9,6 +9,7 @@
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Passes.h"
+#include "mlir/Dialect/MemRef//Transforms/Passes.h"
 #include "mlir/Dialect/Tosa/Transforms/Passes.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassRegistry.h"
@@ -103,6 +104,9 @@ void mlir::taskflow::registerLinalgToAffineConversionPassPipeline() {
 
         // Step 4: Converts Linalg to Affine loops.
         pm.nest<func::FuncOp>().addPass(createConvertLinalgToAffineLoopsPass());
+
+        pm.nest<func::FuncOp>().addPass(
+            mlir::memref::createFoldMemRefAliasOpsPass());
 
         // Step 5: Cleans up subview and copy operations introduced by
         // bufferization.
