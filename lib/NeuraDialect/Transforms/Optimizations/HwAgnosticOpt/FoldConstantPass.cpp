@@ -665,12 +665,21 @@ struct FuseCounterConstantPattern : public OpRewritePattern<neura::CounterOp> {
     rewriter.replaceOp(counter_op, new_op->getResults());
 
     // Cleans up now-unused constant ops.
-    if (lb_is_const && lb.getDefiningOp()->use_empty())
-      rewriter.eraseOp(lb.getDefiningOp());
-    if (ub_is_const && ub.getDefiningOp()->use_empty())
-      rewriter.eraseOp(ub.getDefiningOp());
-    if (step_is_const && step.getDefiningOp()->use_empty())
-      rewriter.eraseOp(step.getDefiningOp());
+    // Use a set to avoid double-erasing when two bounds share the same defining
+    // op.
+    llvm::SmallPtrSet<Operation *, 4> to_erase;
+    if (lb_is_const && lb.getDefiningOp()->use_empty()) {
+      to_erase.insert(lb.getDefiningOp());
+    }
+    if (ub_is_const && ub.getDefiningOp()->use_empty()) {
+      to_erase.insert(ub.getDefiningOp());
+    }
+    if (step_is_const && step.getDefiningOp()->use_empty()) {
+      to_erase.insert(step.getDefiningOp());
+    }
+    for (Operation *op : to_erase) {
+      rewriter.eraseOp(op);
+    }
 
     return success();
   }

@@ -776,8 +776,8 @@ private:
     }
 
     auto getConstantIndex = [](Value val) -> int64_t {
-      if (auto cst = val.getDefiningOp<neura::ConstantOp>()) {
-        return cast<IntegerAttr>(cst.getValueAttr()).getInt();
+      if (auto cst = val.getDefiningOp<arith::ConstantIndexOp>()) {
+        return cst.value();
       } else {
         // Unexpected dynamic bounds.
         // TODO: support dynamic bounds if needed.

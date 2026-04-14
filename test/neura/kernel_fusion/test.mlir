@@ -3,7 +3,8 @@
 // RUN:   --convert-affine-to-taskflow \
 // RUN:   --construct-hyperblock-from-task \
 // RUN:   --fuse-task \
-// RUN:   2>&1 | FileCheck %s
+// RUN:   -o %t-kernel-fuse.mlir
+// RUN:   FileCheck --input-file=%t-kernel-fuse.mlir %s
 
 module {
 
