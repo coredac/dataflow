@@ -54,11 +54,11 @@ void mlir::taskflow::registerTosaToAffineConversionPassPipeline() {
         pm.addPass(createCanonicalizerPass());
 
         // Step 6: Bufferization with proper options (module-level).
-        OneShotBufferizationOptions bufferizationOptions;
-        bufferizationOptions.bufferizeFunctionBoundaries = true;
-        bufferizationOptions.setFunctionBoundaryTypeConversion(
+        OneShotBufferizationOptions bufferization_options;
+        bufferization_options.bufferizeFunctionBoundaries = true;
+        bufferization_options.setFunctionBoundaryTypeConversion(
             LayoutMapOption::IdentityLayoutMap);
-        pm.addPass(createOneShotBufferizePass(bufferizationOptions));
+        pm.addPass(createOneShotBufferizePass(bufferization_options));
 
         // Step 7: Linalg to Affine Loops (function-level).
         pm.nest<func::FuncOp>().addPass(createConvertLinalgToAffineLoopsPass());
@@ -68,6 +68,48 @@ void mlir::taskflow::registerTosaToAffineConversionPassPipeline() {
         pm.nest<func::FuncOp>().addPass(createConvertCopyToAffineLoopsPass());
 
         // Step 9: Final Affine cleanup (function-level).
+        pm.nest<func::FuncOp>().addPass(
+            mlir::affine::createAffineLoopNormalizePass());
+        pm.nest<func::FuncOp>().addPass(
+            mlir::affine::createSimplifyAffineStructuresPass());
+        pm.addPass(createCanonicalizerPass());
+      });
+}
+
+// This pass pipeline converts Linag-on-Tensors (torch-mlir LINALG_ON_TENSORS
+// output) to Affine dialect.
+void mlir::taskflow::registerLinalgToAffineConversionPassPipeline() {
+  PassPipelineRegistration<>(
+      "linalg-to-affine-conversion",
+      "BUfferizes linalg-on-tensors IR then lowers to affine loops.",
+      [](OpPassManager &pm) {
+        // Step 1: Generalizes named linalg ops (matmul, transpose, conv, etc.)
+        // to their generic form.
+        pm.nest<func::FuncOp>().addPass(createLinalgGeneralizeNamedOpsPass());
+
+        pm.nest<func::FuncOp>().addPass(createEmptyTensorEliminationPass());
+
+        // Step 2: Canonicalizes before bufferization.
+        pm.addPass(createCanonicalizerPass());
+
+        // Step 3: One-Shot Bufferization - tensor -> memref.
+        // allowReturnAllocsFromLoops=true is needed for dynamic shapes.
+        OneShotBufferizationOptions bufferization_options;
+        bufferization_options.bufferizeFunctionBoundaries = true;
+        bufferization_options.allowReturnAllocsFromLoops = true;
+        bufferization_options.setFunctionBoundaryTypeConversion(
+            LayoutMapOption::IdentityLayoutMap);
+        pm.addPass(createOneShotBufferizePass(bufferization_options));
+
+        // Step 4: Converts Linalg to Affine loops.
+        pm.nest<func::FuncOp>().addPass(createConvertLinalgToAffineLoopsPass());
+
+        // Step 5: Cleans up subview and copy operations introduced by
+        // bufferization.
+        pm.nest<func::FuncOp>().addPass(createFoldSubViewPass());
+        pm.nest<func::FuncOp>().addPass(createConvertCopyToAffineLoopsPass());
+
+        // Step 6: Affine cleanup for downstream passes.
         pm.nest<func::FuncOp>().addPass(
             mlir::affine::createAffineLoopNormalizePass());
         pm.nest<func::FuncOp>().addPass(
