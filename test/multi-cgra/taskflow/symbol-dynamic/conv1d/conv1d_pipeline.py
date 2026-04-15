@@ -55,7 +55,7 @@ class Conv1DPipeline(nn.Module):
 # ---------------------------------------------------------------------------
 
 def generate_mlir(
-    out_file="./Output/conv1d_pipeline_linalg.mlir",
+    out_file,
     time_len=128,
     in_channels=1,
     hidden_channels=16,
@@ -99,4 +99,3 @@ if __name__ == "__main__":
     import sys
     out = sys.argv[1] if len(sys.argv) > 1 else "conv1d_pipeline_linalg.mlir"
     generate_mlir(out_file=out)
-    generate_mlir()
