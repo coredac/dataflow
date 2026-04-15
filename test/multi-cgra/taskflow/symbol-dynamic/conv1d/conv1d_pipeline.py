@@ -74,7 +74,7 @@ def _try_torch_mlir(out_file, T, Cin, Ch, Cout, Ncls, K):
         from torch_mlir.fx import export_and_import
         from torch_mlir.compiler_utils import OutputType
     except ImportError as e:
-        print(f"torch-mlir unavailable ({e}), using fallback.")
+        print(f"torch-mlir unavailable ({e}).")
         return False
 
     model = Conv1DPipeline(Cin, Ch, Cout, Ncls, K).eval()
