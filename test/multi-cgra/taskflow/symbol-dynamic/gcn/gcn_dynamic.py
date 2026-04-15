@@ -85,7 +85,7 @@ def _try_torch_mlir(out_file, N, Fin, Fh):
         print(f"Generated {out_file}  [dynamic shapes via torch-mlir]")
         return True
     except Exception as e:
-        print(f"  dynamic_shapes failed ({e}), retrying static...")
+        print(f"Fail to generate MLIR via torch-mlir ({e})")
     return False
 
 if __name__ == "__main__":
