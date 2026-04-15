@@ -7,9 +7,12 @@
 
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
@@ -99,6 +102,29 @@ struct CounterInfo {
   Value counter_index;
 };
 
+// Resolves an affine bound (lower or upper) to an SSA value.
+static Value resolveAffineBound(OpBuilder &builder, Location loc, AffineMap map,
+                                ValueRange operands) {
+  // Constant: affine_map<() -> (C)>
+  if (map.isSingleConstant()) {
+    return builder.create<arith::ConstantIndexOp>(
+        loc, map.getSingleConstantResult());
+  }
+
+  // Simple symbol passthrough: affine_map<(d0) -> (d0)>
+  if (map.getNumResults() == 1) {
+    if (auto sym = dyn_cast<AffineSymbolExpr>(map.getResult(0))) {
+      return operands[map.getNumDims() + sym.getPosition()];
+    }
+    if (auto dim = dyn_cast<AffineDimExpr>(map.getResult(0))) {
+      return operands[dim.getPosition()];
+    }
+  }
+
+  // General case: materializes as affine.apply.
+  return builder.create<affine::AffineApplyOp>(loc, map, operands);
+}
+
 // Creates a chain of taskflow.counter operations for a perfect loop band.
 // Returns counter info for each loop level.
 static SmallVector<CounterInfo>
@@ -112,43 +138,26 @@ createCounterChain(OpBuilder &builder, Location loc,
     info.loop = loop;
 
     // Gets loop bounds.
-    int32_t lb = 0, ub = 0, step = 0;
-    if (loop.hasConstantLowerBound() && loop.hasConstantUpperBound()) {
-      lb = loop.getConstantLowerBound();
-      ub = loop.getConstantUpperBound();
-      step = loop.getStepAsInt();
-    } else {
-      llvm::errs() << "Warning: Non-constant loop bounds not supported yet\n";
-      continue;
-    }
+    Value lb = resolveAffineBound(builder, loc, loop.getLowerBoundMap(),
+                                  loop.getLowerBoundOperands());
+    Value up = resolveAffineBound(builder, loc, loop.getUpperBoundMap(),
+                                  loop.getUpperBoundOperands());
+    Value step =
+        builder.create<arith::ConstantIndexOp>(loc, loop.getStepAsInt());
 
     // Creates counter.
-    if (parent_counter) {
-      // Creates nested counter with parent.
-      TaskflowCounterOp counter_op = builder.create<TaskflowCounterOp>(
-          loc,
-          /*counter_index*/ builder.getIndexType(),
-          /*parent_index*/ parent_counter,
-          /*lower_bound*/ builder.getIndexAttr(lb),
-          /*upper_bound*/ builder.getIndexAttr(ub),
-          /*step*/ builder.getIndexAttr(step),
-          /*counter_type*/ nullptr,
-          /*counter_id*/ nullptr);
-      info.counter_index = counter_op.getCounterIndex();
-    } else {
-      // Creates the top-level counter (no parent).
-      TaskflowCounterOp counter_op = builder.create<TaskflowCounterOp>(
-          loc,
-          /*counter_index*/ builder.getIndexType(),
-          /*parent_index*/ nullptr,
-          /*lower_bound*/ builder.getIndexAttr(lb),
-          /*upper_bound*/ builder.getIndexAttr(ub),
-          /*step*/ builder.getIndexAttr(step),
-          /*counter_type*/ nullptr,
-          /*counter_id*/ nullptr);
-      info.counter_index = counter_op.getCounterIndex();
-    }
 
+    auto counter_op = builder.create<TaskflowCounterOp>(
+        loc,
+        /*counter_index_type*/ builder.getIndexType(),
+        /*parent_index*/ parent_counter,
+        /*lower_bound*/ lb,
+        /*upper_bound*/ up,
+        /*step*/ step,
+        /*counter_type*/ StringAttr{},
+        /*counter_id*/ IntegerAttr{});
+
+    info.counter_index = counter_op.getCounterIndex();
     parent_counter = info.counter_index;
     counters.push_back(info);
   }
@@ -448,7 +457,8 @@ static LogicalResult transformTaskWithCounter(TaskflowTaskOp task_op) {
   }
 
   if (top_level_loops.empty()) {
-    llvm::errs() << "No loops found in task " << task_op.getTaskName() << "\n";
+    // llvm::errs() << "No loops found in task " << task_op.getTaskName() <<
+    // "\n";
     return success();
   }
 

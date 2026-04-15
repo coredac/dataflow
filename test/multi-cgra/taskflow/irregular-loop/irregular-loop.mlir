@@ -304,7 +304,7 @@ module attributes {} {
 // KERNEL-NEXT:   }
 // KERNEL-NEXT: }
 
-// HYPERBLOCK: module {
+// HYPERBLOCK:      module {
 // HYPERBLOCK-NEXT:   func.func @_Z21irregularLoopExample1v() -> i32 attributes {llvm.linkage = #llvm.linkage<external>} {
 // HYPERBLOCK-NEXT:     %c2_i32 = arith.constant 2 : i32
 // HYPERBLOCK-NEXT:     %c8_i32 = arith.constant 8 : i32
@@ -313,7 +313,10 @@ module attributes {} {
 // HYPERBLOCK-NEXT:     %alloca_0 = memref.alloca() : memref<4x8xi32>
 // HYPERBLOCK-NEXT:     %value_outputs = taskflow.task @Task_0 value_inputs(%c0_i32 : i32) : (i32) -> (i32) {
 // HYPERBLOCK-NEXT:     ^bb0(%arg0: i32):
-// HYPERBLOCK-NEXT:       %1 = taskflow.counter attributes {lower_bound = 0 : index, step = 1 : index, upper_bound = 5 : index} : index
+// HYPERBLOCK-NEXT:       %c0 = arith.constant 0 : index
+// HYPERBLOCK-NEXT:       %c5 = arith.constant 5 : index
+// HYPERBLOCK-NEXT:       %c1 = arith.constant 1 : index
+// HYPERBLOCK-NEXT:       %1 = taskflow.counter from %c0 to %c5 step %c1 : index
 // HYPERBLOCK-NEXT:       %2 = "taskflow.hyperblock"(%1, %arg0) <{operandSegmentSizes = array<i32: 1, 1>}> ({
 // HYPERBLOCK-NEXT:       ^bb0(%arg1: index, %arg2: i32):
 // HYPERBLOCK-NEXT:         %3 = arith.index_cast %arg1 : index to i32
@@ -324,15 +327,18 @@ module attributes {} {
 // HYPERBLOCK-NEXT:     }
 // HYPERBLOCK-NEXT:     %dependency_write_out = taskflow.task @Task_1 dependency_write_in(%alloca_0 : memref<4x8xi32>) value_inputs(%c8_i32 : i32) [original_write_memrefs(%alloca_0 : memref<4x8xi32>)] : (memref<4x8xi32>, i32) -> (memref<4x8xi32>) {
 // HYPERBLOCK-NEXT:     ^bb0(%arg0: memref<4x8xi32>, %arg1: i32):
-// HYPERBLOCK-NEXT:       %1 = taskflow.counter attributes {lower_bound = 0 : index, step = 1 : index, upper_bound = 4 : index} : index
+// HYPERBLOCK-NEXT:       %c0 = arith.constant 0 : index
+// HYPERBLOCK-NEXT:       %c4 = arith.constant 4 : index
+// HYPERBLOCK-NEXT:       %c1 = arith.constant 1 : index
+// HYPERBLOCK-NEXT:       %1 = taskflow.counter from %c0 to %c4 step %c1 : index
 // HYPERBLOCK-NEXT:       "taskflow.hyperblock"(%1) <{operandSegmentSizes = array<i32: 1, 0>}> ({
 // HYPERBLOCK-NEXT:       ^bb0(%arg2: index):
 // HYPERBLOCK-NEXT:         %2 = arith.index_cast %arg2 : index to i32
 // HYPERBLOCK-NEXT:         %3 = arith.muli %2, %arg1 : i32
-// HYPERBLOCK-NEXT:         %c0 = arith.constant 0 : index
+// HYPERBLOCK-NEXT:         %c0_2 = arith.constant 0 : index
 // HYPERBLOCK-NEXT:         %c8 = arith.constant 8 : index
-// HYPERBLOCK-NEXT:         %c1 = arith.constant 1 : index
-// HYPERBLOCK-NEXT:         scf.for %arg3 = %c0 to %c8 step %c1 {
+// HYPERBLOCK-NEXT:         %c1_3 = arith.constant 1 : index
+// HYPERBLOCK-NEXT:         scf.for %arg3 = %c0_2 to %c8 step %c1_3 {
 // HYPERBLOCK-NEXT:           %4 = arith.index_cast %arg3 : index to i32
 // HYPERBLOCK-NEXT:           %5 = arith.addi %3, %4 : i32
 // HYPERBLOCK-NEXT:           memref.store %5, %arg0[%arg2, %arg3] : memref<4x8xi32>
@@ -343,24 +349,27 @@ module attributes {} {
 // HYPERBLOCK-NEXT:     }
 // HYPERBLOCK-NEXT:     %dependency_read_out, %dependency_write_out_1 = taskflow.task @Task_2 dependency_read_in(%dependency_write_out : memref<4x8xi32>) dependency_write_in(%alloca : memref<i32>) value_inputs(%c8_i32, %value_outputs, %c2_i32 : i32, i32, i32) [original_read_memrefs(%alloca_0 : memref<4x8xi32>), original_write_memrefs(%alloca : memref<i32>)] : (memref<4x8xi32>, memref<i32>, i32, i32, i32) -> (memref<4x8xi32>, memref<i32>) {
 // HYPERBLOCK-NEXT:     ^bb0(%arg0: memref<4x8xi32>, %arg1: memref<i32>, %arg2: i32, %arg3: i32, %arg4: i32):
-// HYPERBLOCK-NEXT:       %1 = taskflow.counter attributes {lower_bound = 0 : index, step = 1 : index, upper_bound = 4 : index} : index
+// HYPERBLOCK-NEXT:       %c0 = arith.constant 0 : index
+// HYPERBLOCK-NEXT:       %c4 = arith.constant 4 : index
+// HYPERBLOCK-NEXT:       %c1 = arith.constant 1 : index
+// HYPERBLOCK-NEXT:       %1 = taskflow.counter from %c0 to %c4 step %c1 : index
 // HYPERBLOCK-NEXT:       "taskflow.hyperblock"(%1) <{operandSegmentSizes = array<i32: 1, 0>}> ({
 // HYPERBLOCK-NEXT:       ^bb0(%arg5: index):
 // HYPERBLOCK-NEXT:         %2 = arith.index_cast %arg5 : index to i32
 // HYPERBLOCK-NEXT:         %3 = arith.muli %2, %arg2 : i32
-// HYPERBLOCK-NEXT:         %c0 = arith.constant 0 : index
+// HYPERBLOCK-NEXT:         %c0_2 = arith.constant 0 : index
 // HYPERBLOCK-NEXT:         %c8 = arith.constant 8 : index
-// HYPERBLOCK-NEXT:         %c1 = arith.constant 1 : index
-// HYPERBLOCK-NEXT:         scf.for %arg6 = %c0 to %c8 step %c1 {
+// HYPERBLOCK-NEXT:         %c1_3 = arith.constant 1 : index
+// HYPERBLOCK-NEXT:         scf.for %arg6 = %c0_2 to %c8 step %c1_3 {
 // HYPERBLOCK-NEXT:           %4 = memref.load %arg0[%arg5, %arg6] : memref<4x8xi32>
 // HYPERBLOCK-NEXT:           %5 = arith.addi %4, %arg3 : i32
-// HYPERBLOCK-NEXT:           %c0_2 = arith.constant 0 : index
+// HYPERBLOCK-NEXT:           %c0_4 = arith.constant 0 : index
 // HYPERBLOCK-NEXT:           %c-3 = arith.constant -3 : index
 // HYPERBLOCK-NEXT:           %6 = arith.addi %arg5, %c-3 : index
-// HYPERBLOCK-NEXT:           %7 = arith.cmpi eq, %6, %c0_2 : index
+// HYPERBLOCK-NEXT:           %7 = arith.cmpi eq, %6, %c0_4 : index
 // HYPERBLOCK-NEXT:           %c-7 = arith.constant -7 : index
 // HYPERBLOCK-NEXT:           %8 = arith.addi %arg6, %c-7 : index
-// HYPERBLOCK-NEXT:           %9 = arith.cmpi eq, %8, %c0_2 : index
+// HYPERBLOCK-NEXT:           %9 = arith.cmpi eq, %8, %c0_4 : index
 // HYPERBLOCK-NEXT:           %10 = arith.andi %7, %9 : i1
 // HYPERBLOCK-NEXT:           scf.if %10 {
 // HYPERBLOCK-NEXT:             memref.store %5, %arg1[] : memref<i32>
@@ -377,7 +386,7 @@ module attributes {} {
 // HYPERBLOCK-NEXT:   }
 // HYPERBLOCK-NEXT: }
 
-// PLACEMENT: module {
+// PLACEMENT:      module {
 // PLACEMENT-NEXT:   func.func @_Z21irregularLoopExample1v() -> i32 attributes {llvm.linkage = #llvm.linkage<external>} {
 // PLACEMENT-NEXT:     %c2_i32 = arith.constant 2 : i32
 // PLACEMENT-NEXT:     %c8_i32 = arith.constant 8 : i32
@@ -386,7 +395,10 @@ module attributes {} {
 // PLACEMENT-NEXT:     %alloca_0 = memref.alloca() : memref<4x8xi32>
 // PLACEMENT-NEXT:     %value_outputs = taskflow.task @Task_0 value_inputs(%c0_i32 : i32) {task_allocation_info = {cgra_positions = [{col = 0 : i32, row = 0 : i32}], read_sram_locations = [], write_sram_locations = []}} : (i32) -> (i32) {
 // PLACEMENT-NEXT:     ^bb0(%arg0: i32):
-// PLACEMENT-NEXT:       %1 = taskflow.counter attributes {lower_bound = 0 : index, step = 1 : index, upper_bound = 5 : index} : index
+// PLACEMENT-NEXT:       %c0 = arith.constant 0 : index
+// PLACEMENT-NEXT:       %c5 = arith.constant 5 : index
+// PLACEMENT-NEXT:       %c1 = arith.constant 1 : index
+// PLACEMENT-NEXT:       %1 = taskflow.counter from %c0 to %c5 step %c1 : index
 // PLACEMENT-NEXT:       %2 = "taskflow.hyperblock"(%1, %arg0) <{operandSegmentSizes = array<i32: 1, 1>}> ({
 // PLACEMENT-NEXT:       ^bb0(%arg1: index, %arg2: i32):
 // PLACEMENT-NEXT:         %3 = arith.index_cast %arg1 : index to i32
@@ -397,15 +409,18 @@ module attributes {} {
 // PLACEMENT-NEXT:     }
 // PLACEMENT-NEXT:     %dependency_write_out = taskflow.task @Task_1 dependency_write_in(%alloca_0 : memref<4x8xi32>) value_inputs(%c8_i32 : i32) [original_write_memrefs(%alloca_0 : memref<4x8xi32>)] {task_allocation_info = {cgra_positions = [{col = 2 : i32, row = 0 : i32}], read_sram_locations = [], write_sram_locations = [{col = 2 : i32, row = 0 : i32}]}} : (memref<4x8xi32>, i32) -> (memref<4x8xi32>) {
 // PLACEMENT-NEXT:     ^bb0(%arg0: memref<4x8xi32>, %arg1: i32):
-// PLACEMENT-NEXT:       %1 = taskflow.counter attributes {lower_bound = 0 : index, step = 1 : index, upper_bound = 4 : index} : index
+// PLACEMENT-NEXT:       %c0 = arith.constant 0 : index
+// PLACEMENT-NEXT:       %c4 = arith.constant 4 : index
+// PLACEMENT-NEXT:       %c1 = arith.constant 1 : index
+// PLACEMENT-NEXT:       %1 = taskflow.counter from %c0 to %c4 step %c1 : index
 // PLACEMENT-NEXT:       "taskflow.hyperblock"(%1) <{operandSegmentSizes = array<i32: 1, 0>}> ({
 // PLACEMENT-NEXT:       ^bb0(%arg2: index):
 // PLACEMENT-NEXT:         %2 = arith.index_cast %arg2 : index to i32
 // PLACEMENT-NEXT:         %3 = arith.muli %2, %arg1 : i32
-// PLACEMENT-NEXT:         %c0 = arith.constant 0 : index
+// PLACEMENT-NEXT:         %c0_2 = arith.constant 0 : index
 // PLACEMENT-NEXT:         %c8 = arith.constant 8 : index
-// PLACEMENT-NEXT:         %c1 = arith.constant 1 : index
-// PLACEMENT-NEXT:         scf.for %arg3 = %c0 to %c8 step %c1 {
+// PLACEMENT-NEXT:         %c1_3 = arith.constant 1 : index
+// PLACEMENT-NEXT:         scf.for %arg3 = %c0_2 to %c8 step %c1_3 {
 // PLACEMENT-NEXT:           %4 = arith.index_cast %arg3 : index to i32
 // PLACEMENT-NEXT:           %5 = arith.addi %3, %4 : i32
 // PLACEMENT-NEXT:           memref.store %5, %arg0[%arg2, %arg3] : memref<4x8xi32>
@@ -416,24 +431,27 @@ module attributes {} {
 // PLACEMENT-NEXT:     }
 // PLACEMENT-NEXT:     %dependency_read_out, %dependency_write_out_1 = taskflow.task @Task_2 dependency_read_in(%dependency_write_out : memref<4x8xi32>) dependency_write_in(%alloca : memref<i32>) value_inputs(%c8_i32, %value_outputs, %c2_i32 : i32, i32, i32) [original_read_memrefs(%alloca_0 : memref<4x8xi32>), original_write_memrefs(%alloca : memref<i32>)] {task_allocation_info = {cgra_positions = [{col = 1 : i32, row = 0 : i32}], read_sram_locations = [{col = 2 : i32, row = 0 : i32}], write_sram_locations = [{col = 1 : i32, row = 0 : i32}]}} : (memref<4x8xi32>, memref<i32>, i32, i32, i32) -> (memref<4x8xi32>, memref<i32>) {
 // PLACEMENT-NEXT:     ^bb0(%arg0: memref<4x8xi32>, %arg1: memref<i32>, %arg2: i32, %arg3: i32, %arg4: i32):
-// PLACEMENT-NEXT:       %1 = taskflow.counter attributes {lower_bound = 0 : index, step = 1 : index, upper_bound = 4 : index} : index
+// PLACEMENT-NEXT:       %c0 = arith.constant 0 : index
+// PLACEMENT-NEXT:       %c4 = arith.constant 4 : index
+// PLACEMENT-NEXT:       %c1 = arith.constant 1 : index
+// PLACEMENT-NEXT:       %1 = taskflow.counter from %c0 to %c4 step %c1 : index
 // PLACEMENT-NEXT:       "taskflow.hyperblock"(%1) <{operandSegmentSizes = array<i32: 1, 0>}> ({
 // PLACEMENT-NEXT:       ^bb0(%arg5: index):
 // PLACEMENT-NEXT:         %2 = arith.index_cast %arg5 : index to i32
 // PLACEMENT-NEXT:         %3 = arith.muli %2, %arg2 : i32
-// PLACEMENT-NEXT:         %c0 = arith.constant 0 : index
+// PLACEMENT-NEXT:         %c0_2 = arith.constant 0 : index
 // PLACEMENT-NEXT:         %c8 = arith.constant 8 : index
-// PLACEMENT-NEXT:         %c1 = arith.constant 1 : index
-// PLACEMENT-NEXT:         scf.for %arg6 = %c0 to %c8 step %c1 {
+// PLACEMENT-NEXT:         %c1_3 = arith.constant 1 : index
+// PLACEMENT-NEXT:         scf.for %arg6 = %c0_2 to %c8 step %c1_3 {
 // PLACEMENT-NEXT:           %4 = memref.load %arg0[%arg5, %arg6] : memref<4x8xi32>
 // PLACEMENT-NEXT:           %5 = arith.addi %4, %arg3 : i32
-// PLACEMENT-NEXT:           %c0_2 = arith.constant 0 : index
+// PLACEMENT-NEXT:           %c0_4 = arith.constant 0 : index
 // PLACEMENT-NEXT:           %c-3 = arith.constant -3 : index
 // PLACEMENT-NEXT:           %6 = arith.addi %arg5, %c-3 : index
-// PLACEMENT-NEXT:           %7 = arith.cmpi eq, %6, %c0_2 : index
+// PLACEMENT-NEXT:           %7 = arith.cmpi eq, %6, %c0_4 : index
 // PLACEMENT-NEXT:           %c-7 = arith.constant -7 : index
 // PLACEMENT-NEXT:           %8 = arith.addi %arg6, %c-7 : index
-// PLACEMENT-NEXT:           %9 = arith.cmpi eq, %8, %c0_2 : index
+// PLACEMENT-NEXT:           %9 = arith.cmpi eq, %8, %c0_4 : index
 // PLACEMENT-NEXT:           %10 = arith.andi %7, %9 : i1
 // PLACEMENT-NEXT:           scf.if %10 {
 // PLACEMENT-NEXT:             memref.store %5, %arg1[] : memref<i32>
@@ -450,7 +468,7 @@ module attributes {} {
 // PLACEMENT-NEXT:   }
 // PLACEMENT-NEXT: }
 
-// RESOPT: module {
+// RESOPT:      module {
 // RESOPT-NEXT:   func.func @_Z21irregularLoopExample1v() -> i32 attributes {llvm.linkage = #llvm.linkage<external>} {
 // RESOPT-NEXT:     %c2_i32 = arith.constant 2 : i32
 // RESOPT-NEXT:     %c8_i32 = arith.constant 8 : i32
@@ -459,13 +477,16 @@ module attributes {} {
 // RESOPT-NEXT:     %alloca_0 = memref.alloca() : memref<4x8xi32>
 // RESOPT-NEXT:     %dependency_write_out, %value_outputs = taskflow.task @Task_0_Task_1_utilfused dependency_write_in(%alloca_0 : memref<4x8xi32>) value_inputs(%c0_i32, %c8_i32 : i32, i32) [original_write_memrefs(%alloca_0 : memref<4x8xi32>)] {cgra_count = 2 : i32, cgra_shape = "1x2", compiled_ii = 3 : i32, steps = 5 : i32, trip_count = 32 : i32} : (memref<4x8xi32>, i32, i32) -> (memref<4x8xi32>, i32) {
 // RESOPT-NEXT:     ^bb0(%arg0: memref<4x8xi32>, %arg1: i32, %arg2: i32):
-// RESOPT-NEXT:       %1 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 5 : index} : index
+// RESOPT-NEXT:       %c0 = arith.constant 0 : index
+// RESOPT-NEXT:       %c5 = arith.constant 5 : index
+// RESOPT-NEXT:       %c1 = arith.constant 1 : index
+// RESOPT-NEXT:       %1 = taskflow.counter from %c0 to %c5 step %c1 attributes {counter_id = 0 : i32, counter_type = "leaf"} : index
 // RESOPT-NEXT:       %2 = neura.kernel inputs(%arg2, %arg0 : i32, memref<4x8xi32>) iter_args_init(%arg1 : i32) attributes {accelerator = "neura", dataflow_mode = "predicate"} {
 // RESOPT-NEXT:       ^bb0(%arg3: i32, %arg4: memref<4x8xi32>, %arg5: i32):
 // RESOPT-NEXT:         %5 = "neura.grant_once"() <{constant_value = "%iter_arg_init0"}> : () -> !neura.data<i32, i1>
 // RESOPT-NEXT:         %6 = neura.reserve : !neura.data<i32, i1>
 // RESOPT-NEXT:         %7 = neura.phi_start %5, %6 : !neura.data<i32, i1>, !neura.data<i32, i1> -> !neura.data<i32, i1>
-// RESOPT-NEXT:         %8 = neura.counter {counter_id = 0 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 5 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %8 = neura.counter attributes {counter_id = 0 : i32, counter_type = "leaf", lower_bound_value = 0 : index, step_value = 1 : index, upper_bound_value = 5 : index} -> !neura.data<index, i1>
 // RESOPT-NEXT:         %9 = "neura.cast"(%8) <{cast_type = "index_to_int"}> : (!neura.data<index, i1>) -> !neura.data<i32, i1>
 // RESOPT-NEXT:         %10 = "neura.add"(%7, %9) : (!neura.data<i32, i1>, !neura.data<i32, i1>) -> !neura.data<i32, i1>
 // RESOPT-NEXT:         neura.ctrl_mov %10 -> %6 : !neura.data<i32, i1> !neura.data<i32, i1>
@@ -473,8 +494,8 @@ module attributes {} {
 // RESOPT-NEXT:         %12 = "neura.not"(%11) : (!neura.data<i1, i1>) -> !neura.data<i1, i1>
 // RESOPT-NEXT:         %13 = neura.grant_predicate %7, %12 : !neura.data<i32, i1>, !neura.data<i1, i1> -> !neura.data<i32, i1>
 // RESOPT-NEXT:         neura.return_value %13 : !neura.data<i32, i1>
-// RESOPT-NEXT:         %14 = neura.counter {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 4 : index} : !neura.data<index, i1>
-// RESOPT-NEXT:         %15 = neura.counter {counter_id = 1 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %14 = neura.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound_value = 0 : index, step_value = 1 : index, upper_bound_value = 4 : index} -> !neura.data<index, i1>
+// RESOPT-NEXT:         %15 = neura.counter attributes {counter_id = 1 : i32, counter_type = "leaf", lower_bound_value = 0 : index, step_value = 1 : index, upper_bound_value = 8 : index} -> !neura.data<index, i1>
 // RESOPT-NEXT:         %16 = "neura.cast"(%14) <{cast_type = "index_to_int"}> : (!neura.data<index, i1>) -> !neura.data<i32, i1>
 // RESOPT-NEXT:         %17 = "neura.mul"(%16) {rhs_value = "%input0"} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
 // RESOPT-NEXT:         %18 = "neura.cast"(%15) <{cast_type = "index_to_int"}> : (!neura.data<index, i1>) -> !neura.data<i32, i1>
@@ -482,18 +503,26 @@ module attributes {} {
 // RESOPT-NEXT:         neura.store_indexed %19 to [%14, %15 : !neura.data<index, i1>, !neura.data<index, i1>]  {rhs_value = "%input1"} : !neura.data<i32, i1>
 // RESOPT-NEXT:         neura.yield
 // RESOPT-NEXT:       } : i32
-// RESOPT-NEXT:       %3 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 4 : index} : index
-// RESOPT-NEXT:       %4 = taskflow.counter parent(%3 : index) attributes {counter_id = 1 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// RESOPT-NEXT:       %c8 = arith.constant 8 : index
+// RESOPT-NEXT:       %c0_2 = arith.constant 0 : index
+// RESOPT-NEXT:       %c4 = arith.constant 4 : index
+// RESOPT-NEXT:       %c1_3 = arith.constant 1 : index
+// RESOPT-NEXT:       %3 = taskflow.counter from %c0_2 to %c4 step %c1_3 attributes {counter_id = 0 : i32, counter_type = "root"} : index
+// RESOPT-NEXT:       %4 = taskflow.counter parent(%3 : index) from %c0_2 to %c8 step %c1_3 attributes {counter_id = 1 : i32, counter_type = "leaf"} : index
 // RESOPT-NEXT:       taskflow.yield writes(%arg0 : memref<4x8xi32>) values(%2 : i32)
 // RESOPT-NEXT:     }
 // RESOPT-NEXT:     %dependency_read_out, %dependency_write_out_1 = taskflow.task @Task_2 dependency_read_in(%dependency_write_out : memref<4x8xi32>) dependency_write_in(%alloca : memref<i32>) value_inputs(%c8_i32, %value_outputs, %c2_i32 : i32, i32, i32) [original_read_memrefs(%alloca_0 : memref<4x8xi32>), original_write_memrefs(%alloca : memref<i32>)] {cgra_count = 2 : i32, cgra_shape = "1x2", compiled_ii = 2 : i32, steps = 7 : i32, trip_count = 32 : i32} : (memref<4x8xi32>, memref<i32>, i32, i32, i32) -> (memref<4x8xi32>, memref<i32>) {
 // RESOPT-NEXT:     ^bb0(%arg0: memref<4x8xi32>, %arg1: memref<i32>, %arg2: i32, %arg3: i32, %arg4: i32):
-// RESOPT-NEXT:       %1 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 4 : index} : index
-// RESOPT-NEXT:       %2 = taskflow.counter parent(%1 : index) attributes {counter_id = 1 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// RESOPT-NEXT:       %c8 = arith.constant 8 : index
+// RESOPT-NEXT:       %c0 = arith.constant 0 : index
+// RESOPT-NEXT:       %c4 = arith.constant 4 : index
+// RESOPT-NEXT:       %c1 = arith.constant 1 : index
+// RESOPT-NEXT:       %1 = taskflow.counter from %c0 to %c4 step %c1 attributes {counter_id = 0 : i32, counter_type = "root"} : index
+// RESOPT-NEXT:       %2 = taskflow.counter parent(%1 : index) from %c0 to %c8 step %c1 attributes {counter_id = 1 : i32, counter_type = "leaf"} : index
 // RESOPT-NEXT:       neura.kernel inputs(%arg0, %arg3, %arg1, %arg4 : memref<4x8xi32>, i32, memref<i32>, i32) attributes {accelerator = "neura", dataflow_mode = "predicate"} {
 // RESOPT-NEXT:       ^bb0(%arg5: memref<4x8xi32>, %arg6: i32, %arg7: memref<i32>, %arg8: i32):
-// RESOPT-NEXT:         %3 = neura.counter {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 4 : index} : !neura.data<index, i1>
-// RESOPT-NEXT:         %4 = neura.counter {counter_id = 1 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : !neura.data<index, i1>
+// RESOPT-NEXT:         %3 = neura.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound_value = 0 : index, step_value = 1 : index, upper_bound_value = 4 : index} -> !neura.data<index, i1>
+// RESOPT-NEXT:         %4 = neura.counter attributes {counter_id = 1 : i32, counter_type = "leaf", lower_bound_value = 0 : index, step_value = 1 : index, upper_bound_value = 8 : index} -> !neura.data<index, i1>
 // RESOPT-NEXT:         %5 = neura.load_indexed [%3, %4 : !neura.data<index, i1>, !neura.data<index, i1>]  {lhs_value = "%input0"} : !neura.data<i32, i1>
 // RESOPT-NEXT:         %6 = "neura.add"(%5) {rhs_value = "%input1"} : (!neura.data<i32, i1>) -> !neura.data<i32, i1>
 // RESOPT-NEXT:         %7 = "neura.add"(%3) {rhs_value = -3 : index} : (!neura.data<index, i1>) -> !neura.data<index, i1>
@@ -513,4 +542,6 @@ module attributes {} {
 // RESOPT-NEXT:     return %0 : i32
 // RESOPT-NEXT:   }
 // RESOPT-NEXT: }
+
+
 

@@ -13,6 +13,7 @@
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
@@ -302,15 +303,39 @@ struct InternalizeCounterPattern : public OpRewritePattern<neura::KernelOp> {
     Location loc = kernel_op.getLoc();
     Block &old_block = kernel_op.getBody().front();
 
-    // Builds new inputs (excluding counter inputs).
+    // Is this value produced by a constant-like op?
+    auto isConstantLike = [](Value val) -> bool {
+      return val.getDefiningOp() &&
+             val.getDefiningOp()->hasTrait<OpTrait::ConstantLike>();
+    };
+
+    // Builds counter index set.
     DenseSet<size_t> counter_idx_set;
     for (auto &[idx, _] : counter_inputs) {
       counter_idx_set.insert(idx);
     }
+
+    // Builds new_inputs:
+    //    1) original non-counter inputs (preserved)
+    //    2) dynamic bound values from counters (deduplicated)
+    llvm::MapVector<Value, size_t> dynamic_bound_to_input_idx;
     SmallVector<Value> new_inputs;
+
     for (size_t i = 0; i < inputs.size(); i++) {
       if (!counter_idx_set.contains(i)) {
         new_inputs.push_back(inputs[i]);
+      }
+    }
+    // Collects dynamic (non-constant) bound values that need to be passed into
+    // the neura.kernel as additional inputs.
+    for (auto &[idx, counter_op] : counter_inputs) {
+      for (Value bound : {counter_op.getLowerBound(),
+                          counter_op.getUpperBound(), counter_op.getStep()}) {
+        if (!isConstantLike(bound) &&
+            !dynamic_bound_to_input_idx.count(bound)) {
+          dynamic_bound_to_input_idx.insert({bound, new_inputs.size()});
+          new_inputs.push_back(bound);
+        }
       }
     }
 
@@ -327,7 +352,8 @@ struct InternalizeCounterPattern : public OpRewritePattern<neura::KernelOp> {
     Block *new_block = rewriter.createBlock(&new_region);
 
     IRMapping mapping;
-    // Maps non-counter input block arguments.
+
+    // Block args for non-counter original inputs.
     for (size_t i = 0; i < inputs.size(); i++) {
       BlockArgument old_arg = old_block.getArgument(i);
       if (!counter_idx_set.contains(i)) {
@@ -336,7 +362,14 @@ struct InternalizeCounterPattern : public OpRewritePattern<neura::KernelOp> {
       }
     }
 
-    // Maps iter_args block arguments.
+    // Block args for iter_args.
+    DenseMap<Value, Value> dynamic_bound_to_block_arg;
+    for (auto &[bound_val, _] : dynamic_bound_to_input_idx) {
+      Value arg = new_block->addArgument(bound_val.getType(), loc);
+      dynamic_bound_to_block_arg[bound_val] = arg;
+    }
+
+    // Block args for iter_args.
     size_t num_inputs = inputs.size();
     for (size_t i = 0; i < iter_args_init.size(); i++) {
       BlockArgument old_arg = old_block.getArgument(num_inputs + i);
@@ -346,14 +379,26 @@ struct InternalizeCounterPattern : public OpRewritePattern<neura::KernelOp> {
 
     // Inserts neura.counter ops at the start of the new block.
     rewriter.setInsertionPointToStart(new_block);
+
+    // Resolves a bound value into somthing valid inside new_block:
+    //   constant -> clone the defining op
+    //   dynamic bound -> use the corresponding block argument
+    auto resolveBoundValue = [&](Value val) -> Value {
+      if (isConstantLike(val)) {
+        return rewriter.clone(*val.getDefiningOp())->getResult(0);
+      }
+      return dynamic_bound_to_block_arg.lookup(val);
+    };
+
     for (auto &[old_idx, source_counter] : counter_inputs) {
       BlockArgument old_counter_arg = old_block.getArgument(old_idx);
+      Value lb = resolveBoundValue(source_counter.getLowerBound());
+      Value ub = resolveBoundValue(source_counter.getUpperBound());
+      Value step = resolveBoundValue(source_counter.getStep());
 
       // Creates neura.counter op.
       neura::CounterOp new_counter_op = rewriter.create<neura::CounterOp>(
-          source_counter.getLoc(), old_counter_arg.getType(),
-          source_counter.getLowerBoundAttr(),
-          source_counter.getUpperBoundAttr(), source_counter.getStepAttr(),
+          source_counter.getLoc(), old_counter_arg.getType(), lb, ub, step,
           source_counter.getCounterTypeAttr(),
           source_counter.getCounterIdAttr());
       mapping.map(old_counter_arg, new_counter_op.getCurrentIndex());

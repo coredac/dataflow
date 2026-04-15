@@ -92,16 +92,29 @@ static SmallVector<TaskflowCounterOp> extractCounterChain(TaskflowTaskOp task) {
 // Returns true if two counter chains have identical bounds and steps.
 static bool counterChainsMatch(SmallVectorImpl<TaskflowCounterOp> &a,
                                SmallVectorImpl<TaskflowCounterOp> &b) {
-  if (a.size() != b.size())
+  if (a.size() != b.size()) {
     return false;
+  }
+  auto get_const_val = [](Value val) -> std::optional<int64_t> {
+    if (auto cst = val.getDefiningOp<arith::ConstantIndexOp>()) {
+      return cst.value();
+    }
+    if (auto cst = val.getDefiningOp<arith::ConstantIntOp>()) {
+      return cst.value();
+    }
+    return std::nullopt;
+  };
   for (unsigned i = 0; i < a.size(); ++i) {
-    auto get_int = [](Operation *op, StringRef name) -> int64_t {
-      return op->getAttrOfType<IntegerAttr>(name).getInt();
-    };
-    if (get_int(a[i], "lower_bound") != get_int(b[i], "lower_bound") ||
-        get_int(a[i], "upper_bound") != get_int(b[i], "upper_bound") ||
-        get_int(a[i], "step") != get_int(b[i], "step"))
+    auto al = get_const_val(a[i].getLowerBound());
+    auto bl = get_const_val(b[i].getLowerBound());
+    auto au = get_const_val(a[i].getUpperBound());
+    auto bu = get_const_val(b[i].getUpperBound());
+    auto as_ = get_const_val(a[i].getStep());
+    auto bs_ = get_const_val(b[i].getStep());
+    if (!al || !bl || !au || !bu || !as_ || !bs_ || *al != *bl || *au != *bu ||
+        *as_ != *bs_) {
       return false;
+    }
   }
   return true;
 }
@@ -417,15 +430,16 @@ static TaskflowTaskOp fuseProducerConsumerTasks(TaskflowTaskOp producer,
     mapping.map(cons_body.getArgument(cons_read.size() + cons_write.size() + i),
                 body->getArgument(cons_val_fused + i));
 
+  // Clones non-counter, non-hyperblock, non-yield ops from both task bodies
+  // FIRST (e.g. arith.constant for loop bounds) so they are in the mapping
+  // before the counter chain is cloned.
+  cloneTaskBodyMiscOps(prod_body, builder, mapping);
+  cloneTaskBodyMiscOps(cons_body, builder, mapping);
+
   // Clones counter chain from producer.
   auto prod_counters = extractCounterChain(producer);
   for (auto ctr : prod_counters)
     builder.clone(*ctr, mapping);
-
-  // Clones non-counter, non-hyperblock, non-yield ops from both task bodies
-  // (e.g. arith.constant for loop bounds).
-  cloneTaskBodyMiscOps(prod_body, builder, mapping);
-  cloneTaskBodyMiscOps(cons_body, builder, mapping);
 
   // Locates both hyperblocks.
   auto prod_hb = findHyperblock(producer);
@@ -664,20 +678,22 @@ static TaskflowTaskOp fuseSiblingTasks(TaskflowTaskOp t1, TaskflowTaskOp t2,
   OpBuilder::InsertionGuard guard(builder);
   builder.setInsertionPointToStart(body);
 
-  // Clones counter chain from t1.
+  // Clones non-counter, non-hyperblock, non-yield ops from both task bodies
+  // FIRST (e.g. arith.constant for loop bounds) so they are in the mapping
+  // before the counter chain is cloned.
   IRMapping mapping;
   mapBlockArgs(t1, mapping, /*is_t2=*/false);
-  auto counters = extractCounterChain(t1);
-  for (auto ctr : counters)
-    builder.clone(*ctr, mapping);
-
-  // Clones non-counter, non-hyperblock, non-yield ops from both task bodies.
   Block &t1_body = t1.getBody().front();
   Block &t2_body = t2.getBody().front();
   IRMapping mapping2;
   mapBlockArgs(t2, mapping2, /*is_t2=*/true);
   cloneTaskBodyMiscOps(t1_body, builder, mapping);
   cloneTaskBodyMiscOps(t2_body, builder, mapping2);
+
+  // Clones counter chain from t1.
+  auto counters = extractCounterChain(t1);
+  for (auto ctr : counters)
+    builder.clone(*ctr, mapping);
 
   // Locates both hyperblocks.
   auto hb1 = findHyperblock(t1), hb2 = findHyperblock(t2);

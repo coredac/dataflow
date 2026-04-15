@@ -26,7 +26,8 @@ def TaskflowTaskOp
     : TaskflowOpBase<
           "task", [IsolatedFromAbove, AutomaticAllocationScope,
                    AttrSizedOperandSegments, AttrSizedResultSegments,
-                   SingleBlockImplicitTerminator<"TaskflowYieldOp">]> {
+                   SingleBlockImplicitTerminator<"TaskflowYieldOp">,
+                   NativeOpTrait<"AffineScope">]> {
   let summary = "Computation task operation within a Taskflow graph.";
 
   let description = [{
@@ -141,8 +142,8 @@ def TaskflowCounterOp : TaskflowOpBase<"counter", []> {
   let summary = "Loop counter operation with hardware counter semantics";
 
   let description = [{
-    Represents a loop counter that generates iteration indices.
-    The hardware counter produces a predicated index value.
+    Represents a hardware loop counter. Bounds and step are all SSA values,
+    supporting both static and dynamic trip counts uniformly.
 
     Counter classification:
     - "root": Top-level counter with no parent (drives entire loop nest)
@@ -150,30 +151,24 @@ def TaskflowCounterOp : TaskflowOpBase<"counter", []> {
     - "leaf": Innermost counter with no child counters (maps to CGRA tile array)
 
     Example:
-      // Root counter
-      %i = taskflow.counter {
-        lower_bound = 0 : index,
-        upper_bound = 16 : index,
-        step = 1 : index,
-        counter_type = "root"
-      } : index
-      // Leaf counter
-      %j = taskflow.counter parent(%i) {
-        lower_bound = 0 : index,
-        upper_bound = 8 : index,
-        step = 1 : index,
-        counter_type = "leaf"
-      } : index
+      %c0 = arith.constant 0 : index
+      %c16 = arith.constant 16 : index
+      %c1 = arith.constant 1 : index
+      %i = taskflow.counter from %c0 to %c16 step %c1 : index
+      %j = taskflow.counter parent(%i : index) from %c0 to %N step %c1 : index
   }];
 
-  let arguments = (ins Optional<AnyType>:$parent_index, IndexAttr:$lower_bound,
-      IndexAttr:$upper_bound, IndexAttr:$step,
+  let arguments = (ins Optional<AnyType>:$parent_index,
+      Index:$lower_bound,
+      Index:$upper_bound,
+      Index:$step,
       OptionalAttr<StrAttr>:$counter_type, OptionalAttr<I32Attr>:$counter_id);
 
   let results = (outs AnyType:$counter_index);
 
   let assemblyFormat = [{
     (`parent` `(` $parent_index^ `:` type($parent_index) `)`)?
+    `from` $lower_bound `to` $upper_bound `step` $step
     attr-dict-with-keyword
     `:` type($counter_index)
   }];

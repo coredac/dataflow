@@ -108,6 +108,7 @@ int main(int argc, char **argv) {
   registry.insert<mlir::tosa::TosaDialect>();
   registry.insert<mlir::bufferization::BufferizationDialect>();
   registry.insert<mlir::taskflow::TaskflowDialect>();
+  registry.insert<mlir::math::MathDialect>();
   mlir::registerAllExtensions(registry);
   mlir::linalg::registerBufferizableOpInterfaceExternalModels(registry);
   mlir::tensor::registerBufferizableOpInterfaceExternalModels(registry);
