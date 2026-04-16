@@ -1,0 +1,219 @@
+//===- TaskDivisibilityAnalysisPass.cpp - Analyze task divisibility ----===//
+//
+// This pass analyzes each taskflow.task operation to determine whether its
+// loop nest contains parallel loops that can be tiled for data-level
+// parallelism (DLP).
+//
+// Task divisibility categories:
+//   - divisible: Has at least one parallel loop (no loop-carried deps) with
+//     trip_count > 1.  Can be tiled into sibling sub-tasks for runtime
+//     configuration duplication.
+//   - atomic: No exploitable parallel loops.  Must execute as a single
+//     indivisible unit.
+//
+// The pass attaches an attribute to each taskflow.task:
+//   task_info = {
+//     divisibility   : StringAttr       ("divisible" or "atomic")
+//     parallel_dims  : DenseI32ArrayAttr (loop depth indices of parallel loops)
+//     parallel_space : DenseI32ArrayAttr (trip counts of those parallel loops)
+//   }
+//
+//===----------------------------------------------------------------------===//
+
+#include "TaskflowDialect/TaskflowAttributes.h"
+#include "TaskflowDialect/TaskflowDialect.h"
+#include "TaskflowDialect/TaskflowOps.h"
+#include "TaskflowDialect/TaskflowPasses.h"
+
+#include "mlir/Dialect/Affine/Analysis/AffineAnalysis.h"
+#include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/Pass/Pass.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
+
+using namespace mlir;
+using namespace mlir::taskflow;
+
+namespace {
+
+//===----------------------------------------------------------------------===//
+// Loop Nest Traversal Helpers
+//===----------------------------------------------------------------------===//
+
+// Collects the full loop nest starting from `outermost`, walking into
+// perfectly and imperfectly nested loops (only follows the first nested
+// affine.for at each level to form the "spine" of the nest).
+static SmallVector<affine::AffineForOp>
+collectLoopNest(affine::AffineForOp outermost) {
+  SmallVector<affine::AffineForOp> nest;
+  affine::AffineForOp current = outermost;
+
+  while (current) {
+    nest.push_back(current);
+
+    // Looks for a single nested affine.for in the body.
+    affine::AffineForOp nested = nullptr;
+    for (Operation &op : current.getBody()->getOperations()) {
+      if (auto for_op = dyn_cast<affine::AffineForOp>(&op)) {
+        if (nested) {
+          // Multiple nested loops — stop descending (not a simple chain).
+          nested = nullptr;
+          break;
+        }
+        nested = for_op;
+      }
+    }
+    current = nested;
+  }
+
+  return nest;
+}
+
+//===----------------------------------------------------------------------===//
+// Per-Task Parallelism Analysis
+//===----------------------------------------------------------------------===//
+
+struct TaskParallelismInfo {
+  StringRef divisibility;          // "divisible" or "atomic"
+  SmallVector<int> parallel_dims;  // Loop depth indices of parallel loops.
+  SmallVector<int> parallel_space; // Trip counts of parallel dims.
+};
+
+// Analyzes a single taskflow.task and determines its category.
+static TaskParallelismInfo analyzeTask(TaskflowTaskOp task_op) {
+  TaskParallelismInfo info;
+  info.divisibility = attr::val::kAtomic; // Default: no parallelism found.
+
+  // Finds the outermost affine.for in the task body.
+  affine::AffineForOp outermost_loop = nullptr;
+  task_op.getBody().walk([&](affine::AffineForOp for_op) {
+    // We want the outermost loop. Walk visits ops in pre-order,
+    // so the first affine.for encountered at the top level is outermost.
+    if (!outermost_loop) {
+      // Checks that this loop is at the top level of the task body
+      // (its parent is the task's block, not another loop).
+      if (for_op->getParentOp() == task_op.getOperation()) {
+        outermost_loop = for_op;
+      }
+    }
+  });
+
+  if (!outermost_loop) {
+    llvm::errs() << "[TaskDivisibilityAnalysis] Task " << task_op.getTaskName()
+                 << ": no affine.for found, classified as atomic\n";
+    return info;
+  }
+
+  // Collects the loop nest spine.
+  SmallVector<affine::AffineForOp> loop_nest = collectLoopNest(outermost_loop);
+
+  llvm::errs() << "[TaskDivisibilityAnalysis] Task " << task_op.getTaskName()
+               << ": loop nest depth = " << loop_nest.size() << "\n";
+
+  // Analyzes each loop level for parallelism.
+  for (size_t depth = 0; depth < loop_nest.size(); ++depth) {
+    affine::AffineForOp loop = loop_nest[depth];
+
+    // Checks if the loop is parallel (not including reduction-parallel).
+    bool is_parallel = affine::isLoopParallel(loop);
+
+    // Gets the trip count.
+    std::optional<int> trip_count = affine::getConstantTripCount(loop);
+    int tc = trip_count.has_value() ? static_cast<int>(*trip_count) : -1;
+
+    llvm::errs() << "[TaskDivisibilityAnalysis]   depth " << depth
+                 << ": parallel=" << is_parallel << ", trip_count=" << tc
+                 << "\n";
+
+    if (is_parallel && tc > 1) {
+      info.parallel_dims.push_back(static_cast<int>(depth));
+      info.parallel_space.push_back(tc);
+    }
+  }
+
+  // Classifies based on whether any parallel dims were found.
+  if (!info.parallel_dims.empty()) {
+    info.divisibility = "divisible";
+  }
+
+  llvm::errs() << "[TaskDivisibilityAnalysis] Task " << task_op.getTaskName()
+               << " -> " << info.divisibility;
+  if (!info.parallel_dims.empty()) {
+    llvm::errs() << ", parallel_dims=[";
+    for (size_t i = 0; i < info.parallel_dims.size(); ++i) {
+      if (i > 0)
+        llvm::errs() << ",";
+      llvm::errs() << info.parallel_dims[i];
+    }
+    llvm::errs() << "], parallel_space=[";
+    for (size_t i = 0; i < info.parallel_space.size(); ++i) {
+      if (i > 0)
+        llvm::errs() << ",";
+      llvm::errs() << info.parallel_space[i];
+    }
+    llvm::errs() << "]";
+  }
+  llvm::errs() << "\n";
+
+  return info;
+}
+
+//===----------------------------------------------------------------------===//
+// Task Divisibility Analysis Pass
+//===----------------------------------------------------------------------===//
+
+struct TaskDivisibilityAnalysisPass
+    : public PassWrapper<TaskDivisibilityAnalysisPass,
+                         OperationPass<func::FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TaskDivisibilityAnalysisPass)
+
+  StringRef getArgument() const final { return "task-divisibility-analysis"; }
+
+  StringRef getDescription() const final {
+    return "Analyzes task divisibility based on loop parallelism";
+  }
+
+  void runOnOperation() override {
+    func::FuncOp func = getOperation();
+
+    llvm::errs() << "[TaskDivisibilityAnalysis] Running on function: "
+                 << func.getName() << "\n";
+
+    func.walk([&](TaskflowTaskOp task_op) {
+      // Analyzes the task.
+      TaskParallelismInfo info = analyzeTask(task_op);
+      // Attaches the task_info attribute to each task.
+      MLIRContext *ctx = task_op.getContext();
+      OpBuilder builder(task_op);
+
+      SmallVector<NamedAttribute, 3> div_attrs;
+      div_attrs.push_back(
+          NamedAttribute(StringAttr::get(ctx, attr::kDivisibility),
+                         StringAttr::get(ctx, info.divisibility)));
+      div_attrs.push_back(
+          NamedAttribute(StringAttr::get(ctx, attr::kParallelDims),
+                         DenseI32ArrayAttr::get(ctx, info.parallel_dims)));
+      div_attrs.push_back(
+          NamedAttribute(StringAttr::get(ctx, attr::kParallelSpace),
+                         DenseI32ArrayAttr::get(ctx, info.parallel_space)));
+
+      task_op->setAttr(attr::kTaskInfo, builder.getDictionaryAttr(div_attrs));
+    });
+  }
+};
+
+} // namespace
+
+//===----------------------------------------------------------------------===//
+// Pass Registration
+//===----------------------------------------------------------------------===//
+
+std::unique_ptr<Pass> mlir::taskflow::createTaskDivisibilityAnalysisPass() {
+  return std::make_unique<TaskDivisibilityAnalysisPass>();
+}

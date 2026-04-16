@@ -15,6 +15,15 @@
 // RUN: -o %t.stream.mlir
 // RUN: FileCheck %s --input-file=%t.stream.mlir --check-prefixes=STREAM
 
+// RUN: mlir-neura-opt %t.affine.mlir \
+// RUN: --affine-loop-tree-serialization \
+// RUN: --affine-loop-perfection \
+// RUN: --convert-affine-to-taskflow \
+// RUN: --memory-access-streaming-fusion \
+// RUN: --task-divisibility-analysis \
+// RUN: -o %t.div.mlir
+// RUN: FileCheck %s --input-file=%t.div.mlir --check-prefixes=DIV
+
 // RUN: mlir-neura-opt %t.stream.mlir \
 // RUN: --affine-loop-tree-serialization \
 // RUN: --affine-loop-perfection \
@@ -703,6 +712,187 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // STREAM-NEXT:     return %dependency_write_out_23 : memref<1x64x8x8xf32>
 // STREAM-NEXT:   }
 // STREAM-NEXT: }
+
+// DIV:      module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
+// DIV-NEXT:   memref.global "private" constant @__constant_64xf32 : memref<64xf32> = dense<0.000000e+00> {alignment = 64 : i64}
+// DIV-NEXT:   memref.global "private" constant @__constant_64x3x3x64xf32_0 : memref<64x3x3x64xf32> = dense<-0.0151730878> {alignment = 64 : i64}
+// DIV-NEXT:   memref.global "private" constant @__constant_64x3x3x64xf32 : memref<64x3x3x64xf32> = dense<0.0197670367> {alignment = 64 : i64}
+// DIV-NEXT:   func.func @forward(%arg0: memref<1x64x8x8xf32>) -> memref<1x64x8x8xf32> {
+// DIV-NEXT:     %cst = arith.constant 0.0197670367 : f32
+// DIV-NEXT:     %cst_0 = arith.constant -0.0151730878 : f32
+// DIV-NEXT:     %cst_1 = arith.constant 3.40282347E+38 : f32
+// DIV-NEXT:     %cst_2 = arith.constant 0.000000e+00 : f32
+// DIV-NEXT:     %alloc = memref.alloc() {alignment = 64 : i64} : memref<1x8x8x64xf32>
+// DIV-NEXT:     %dependency_read_out, %dependency_write_out = taskflow.task @Task_0 dependency_read_in(%arg0 : memref<1x64x8x8xf32>) dependency_write_in(%alloc : memref<1x8x8x64xf32>) [original_read_memrefs(%arg0 : memref<1x64x8x8xf32>), original_write_memrefs(%alloc : memref<1x8x8x64xf32>)] {task_info = {divisibility = "divisible", parallel_dims = array<i32: 1, 2, 3>, parallel_space = array<i32: 8, 8, 64>}} : (memref<1x64x8x8xf32>, memref<1x8x8x64xf32>) -> (memref<1x64x8x8xf32>, memref<1x8x8x64xf32>) {
+// DIV-NEXT:     ^bb0(%arg1: memref<1x64x8x8xf32>, %arg2: memref<1x8x8x64xf32>):
+// DIV-NEXT:       affine.for %arg3 = 0 to 1 {
+// DIV-NEXT:         affine.for %arg4 = 0 to 8 {
+// DIV-NEXT:           affine.for %arg5 = 0 to 8 {
+// DIV-NEXT:             affine.for %arg6 = 0 to 64 {
+// DIV-NEXT:               %0 = affine.load %arg1[%arg3, %arg6, %arg4, %arg5] : memref<1x64x8x8xf32>
+// DIV-NEXT:               affine.store %0, %arg2[%arg3, %arg4, %arg5, %arg6] : memref<1x8x8x64xf32>
+// DIV-NEXT:             }
+// DIV-NEXT:           }
+// DIV-NEXT:         }
+// DIV-NEXT:       }
+// DIV-NEXT:       taskflow.yield reads(%arg1 : memref<1x64x8x8xf32>) writes(%arg2 : memref<1x8x8x64xf32>)
+// DIV-NEXT:     }
+// DIV-NEXT:     %alloc_3 = memref.alloc() {alignment = 64 : i64} : memref<1x10x10x64xf32>
+// DIV-NEXT:     %dependency_write_out_4 = taskflow.task @Task_1 dependency_write_in(%alloc_3 : memref<1x10x10x64xf32>) value_inputs(%cst_2 : f32) [original_write_memrefs(%alloc_3 : memref<1x10x10x64xf32>)] {task_info = {divisibility = "divisible", parallel_dims = array<i32: 1, 2, 3>, parallel_space = array<i32: 10, 10, 64>}} : (memref<1x10x10x64xf32>, f32) -> (memref<1x10x10x64xf32>) {
+// DIV-NEXT:     ^bb0(%arg1: memref<1x10x10x64xf32>, %arg2: f32):
+// DIV-NEXT:       affine.for %arg3 = 0 to 1 {
+// DIV-NEXT:         affine.for %arg4 = 0 to 10 {
+// DIV-NEXT:           affine.for %arg5 = 0 to 10 {
+// DIV-NEXT:             affine.for %arg6 = 0 to 64 {
+// DIV-NEXT:               affine.store %arg2, %arg1[%arg3, %arg4, %arg5, %arg6] : memref<1x10x10x64xf32>
+// DIV-NEXT:             }
+// DIV-NEXT:           }
+// DIV-NEXT:         }
+// DIV-NEXT:       }
+// DIV-NEXT:       taskflow.yield writes(%arg1 : memref<1x10x10x64xf32>)
+// DIV-NEXT:     }
+// DIV-NEXT:     %alloc_5 = memref.alloc() {alignment = 64 : i64} : memref<1x8x8x64xf32>
+// DIV-NEXT:     %dependency_write_out_6 = taskflow.task @Task_2 dependency_write_in(%alloc_5 : memref<1x8x8x64xf32>) value_inputs(%cst_2 : f32) [original_write_memrefs(%alloc_5 : memref<1x8x8x64xf32>)] {task_info = {divisibility = "divisible", parallel_dims = array<i32: 1, 2, 3>, parallel_space = array<i32: 8, 8, 64>}} : (memref<1x8x8x64xf32>, f32) -> (memref<1x8x8x64xf32>) {
+// DIV-NEXT:     ^bb0(%arg1: memref<1x8x8x64xf32>, %arg2: f32):
+// DIV-NEXT:       affine.for %arg3 = 0 to 1 {
+// DIV-NEXT:         affine.for %arg4 = 0 to 8 {
+// DIV-NEXT:           affine.for %arg5 = 0 to 8 {
+// DIV-NEXT:             affine.for %arg6 = 0 to 64 {
+// DIV-NEXT:               affine.store %arg2, %arg1[%arg3, %arg4, %arg5, %arg6] : memref<1x8x8x64xf32>
+// DIV-NEXT:             }
+// DIV-NEXT:           }
+// DIV-NEXT:         }
+// DIV-NEXT:       }
+// DIV-NEXT:       taskflow.yield writes(%arg1 : memref<1x8x8x64xf32>)
+// DIV-NEXT:     }
+// DIV-NEXT:     %dependency_read_out_7:2, %dependency_write_out_8 = taskflow.task @Task_3 dependency_read_in(%dependency_write_out_4, %dependency_write_out_6 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>) dependency_write_in(%dependency_write_out_6 : memref<1x8x8x64xf32>) value_inputs(%cst_0 : f32) [original_read_memrefs(%alloc_3, %alloc_5 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>), original_write_memrefs(%alloc_5 : memref<1x8x8x64xf32>)] {task_info = {divisibility = "divisible", parallel_dims = array<i32: 1, 2, 3>, parallel_space = array<i32: 8, 8, 64>}} : (memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>, f32) -> (memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>) {
+// DIV-NEXT:     ^bb0(%arg1: memref<1x10x10x64xf32>, %arg2: memref<1x8x8x64xf32>, %arg3: memref<1x8x8x64xf32>, %arg4: f32):
+// DIV-NEXT:       affine.for %arg5 = 0 to 1 {
+// DIV-NEXT:         affine.for %arg6 = 0 to 8 {
+// DIV-NEXT:           affine.for %arg7 = 0 to 8 {
+// DIV-NEXT:             affine.for %arg8 = 0 to 64 {
+// DIV-NEXT:               affine.for %arg9 = 0 to 3 {
+// DIV-NEXT:                 affine.for %arg10 = 0 to 3 {
+// DIV-NEXT:                   affine.for %arg11 = 0 to 64 {
+// DIV-NEXT:                     %0 = affine.load %arg1[%arg5, %arg6 + %arg9, %arg7 + %arg10, %arg11] : memref<1x10x10x64xf32>
+// DIV-NEXT:                     %1 = affine.load %arg3[%arg5, %arg6, %arg7, %arg8] : memref<1x8x8x64xf32>
+// DIV-NEXT:                     %2 = arith.mulf %0, %arg4 : f32
+// DIV-NEXT:                     %3 = arith.addf %1, %2 : f32
+// DIV-NEXT:                     affine.store %3, %arg3[%arg5, %arg6, %arg7, %arg8] : memref<1x8x8x64xf32>
+// DIV-NEXT:                   }
+// DIV-NEXT:                 }
+// DIV-NEXT:               }
+// DIV-NEXT:             }
+// DIV-NEXT:           }
+// DIV-NEXT:         }
+// DIV-NEXT:       }
+// DIV-NEXT:       taskflow.yield reads(%arg1, %arg3 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>) writes(%arg3 : memref<1x8x8x64xf32>)
+// DIV-NEXT:     }
+// DIV-NEXT:     %alloc_9 = memref.alloc() {alignment = 64 : i64} : memref<1x64x8x8xf32>
+// DIV-NEXT:     %dependency_read_out_10, %dependency_write_out_11 = taskflow.task @Task_4_Task_5_fused dependency_read_in(%dependency_write_out_8 : memref<1x8x8x64xf32>) dependency_write_in(%alloc_9 : memref<1x64x8x8xf32>) value_inputs(%cst_1, %cst_2 : f32, f32) [original_read_memrefs(%alloc_5 : memref<1x8x8x64xf32>), original_write_memrefs(%alloc_9 : memref<1x64x8x8xf32>)] {task_info = {divisibility = "divisible", parallel_dims = array<i32: 1, 2, 3>, parallel_space = array<i32: 64, 8, 8>}} : (memref<1x8x8x64xf32>, memref<1x64x8x8xf32>, f32, f32) -> (memref<1x8x8x64xf32>, memref<1x64x8x8xf32>) {
+// DIV-NEXT:     ^bb0(%arg1: memref<1x8x8x64xf32>, %arg2: memref<1x64x8x8xf32>, %arg3: f32, %arg4: f32):
+// DIV-NEXT:       affine.for %arg5 = 0 to 1 {
+// DIV-NEXT:         affine.for %arg6 = 0 to 64 {
+// DIV-NEXT:           affine.for %arg7 = 0 to 8 {
+// DIV-NEXT:             affine.for %arg8 = 0 to 8 {
+// DIV-NEXT:               %0 = affine.load %arg1[%arg5, %arg7, %arg8, %arg6] : memref<1x8x8x64xf32>
+// DIV-NEXT:               %1 = arith.minimumf %0, %arg3 : f32
+// DIV-NEXT:               %2 = arith.maximumf %1, %arg4 : f32
+// DIV-NEXT:               affine.store %2, %arg2[%arg5, %arg6, %arg7, %arg8] : memref<1x64x8x8xf32>
+// DIV-NEXT:             }
+// DIV-NEXT:           }
+// DIV-NEXT:         }
+// DIV-NEXT:       }
+// DIV-NEXT:       taskflow.yield reads(%arg1 : memref<1x8x8x64xf32>) writes(%arg2 : memref<1x64x8x8xf32>)
+// DIV-NEXT:     }
+// DIV-NEXT:     %alloc_12 = memref.alloc() {alignment = 64 : i64} : memref<1x8x8x64xf32>
+// DIV-NEXT:     %dependency_read_out_13, %dependency_write_out_14 = taskflow.task @Task_6 dependency_read_in(%dependency_write_out_11 : memref<1x64x8x8xf32>) dependency_write_in(%alloc_12 : memref<1x8x8x64xf32>) [original_read_memrefs(%alloc_9 : memref<1x64x8x8xf32>), original_write_memrefs(%alloc_12 : memref<1x8x8x64xf32>)] {task_info = {divisibility = "divisible", parallel_dims = array<i32: 1, 2, 3>, parallel_space = array<i32: 8, 8, 64>}} : (memref<1x64x8x8xf32>, memref<1x8x8x64xf32>) -> (memref<1x64x8x8xf32>, memref<1x8x8x64xf32>) {
+// DIV-NEXT:     ^bb0(%arg1: memref<1x64x8x8xf32>, %arg2: memref<1x8x8x64xf32>):
+// DIV-NEXT:       affine.for %arg3 = 0 to 1 {
+// DIV-NEXT:         affine.for %arg4 = 0 to 8 {
+// DIV-NEXT:           affine.for %arg5 = 0 to 8 {
+// DIV-NEXT:             affine.for %arg6 = 0 to 64 {
+// DIV-NEXT:               %0 = affine.load %arg1[%arg3, %arg6, %arg4, %arg5] : memref<1x64x8x8xf32>
+// DIV-NEXT:               affine.store %0, %arg2[%arg3, %arg4, %arg5, %arg6] : memref<1x8x8x64xf32>
+// DIV-NEXT:             }
+// DIV-NEXT:           }
+// DIV-NEXT:         }
+// DIV-NEXT:       }
+// DIV-NEXT:       taskflow.yield reads(%arg1 : memref<1x64x8x8xf32>) writes(%arg2 : memref<1x8x8x64xf32>)
+// DIV-NEXT:     }
+// DIV-NEXT:     %alloc_15 = memref.alloc() {alignment = 64 : i64} : memref<1x10x10x64xf32>
+// DIV-NEXT:     %dependency_write_out_16 = taskflow.task @Task_7 dependency_write_in(%alloc_15 : memref<1x10x10x64xf32>) value_inputs(%cst_2 : f32) [original_write_memrefs(%alloc_15 : memref<1x10x10x64xf32>)] {task_info = {divisibility = "divisible", parallel_dims = array<i32: 1, 2, 3>, parallel_space = array<i32: 10, 10, 64>}} : (memref<1x10x10x64xf32>, f32) -> (memref<1x10x10x64xf32>) {
+// DIV-NEXT:     ^bb0(%arg1: memref<1x10x10x64xf32>, %arg2: f32):
+// DIV-NEXT:       affine.for %arg3 = 0 to 1 {
+// DIV-NEXT:         affine.for %arg4 = 0 to 10 {
+// DIV-NEXT:           affine.for %arg5 = 0 to 10 {
+// DIV-NEXT:             affine.for %arg6 = 0 to 64 {
+// DIV-NEXT:               affine.store %arg2, %arg1[%arg3, %arg4, %arg5, %arg6] : memref<1x10x10x64xf32>
+// DIV-NEXT:             }
+// DIV-NEXT:           }
+// DIV-NEXT:         }
+// DIV-NEXT:       }
+// DIV-NEXT:       taskflow.yield writes(%arg1 : memref<1x10x10x64xf32>)
+// DIV-NEXT:     }
+// DIV-NEXT:     %alloc_17 = memref.alloc() {alignment = 64 : i64} : memref<1x8x8x64xf32>
+// DIV-NEXT:     %dependency_write_out_18 = taskflow.task @Task_8 dependency_write_in(%alloc_17 : memref<1x8x8x64xf32>) value_inputs(%cst_2 : f32) [original_write_memrefs(%alloc_17 : memref<1x8x8x64xf32>)] {task_info = {divisibility = "divisible", parallel_dims = array<i32: 1, 2, 3>, parallel_space = array<i32: 8, 8, 64>}} : (memref<1x8x8x64xf32>, f32) -> (memref<1x8x8x64xf32>) {
+// DIV-NEXT:     ^bb0(%arg1: memref<1x8x8x64xf32>, %arg2: f32):
+// DIV-NEXT:       affine.for %arg3 = 0 to 1 {
+// DIV-NEXT:         affine.for %arg4 = 0 to 8 {
+// DIV-NEXT:           affine.for %arg5 = 0 to 8 {
+// DIV-NEXT:             affine.for %arg6 = 0 to 64 {
+// DIV-NEXT:               affine.store %arg2, %arg1[%arg3, %arg4, %arg5, %arg6] : memref<1x8x8x64xf32>
+// DIV-NEXT:             }
+// DIV-NEXT:           }
+// DIV-NEXT:         }
+// DIV-NEXT:       }
+// DIV-NEXT:       taskflow.yield writes(%arg1 : memref<1x8x8x64xf32>)
+// DIV-NEXT:     }
+// DIV-NEXT:     %dependency_read_out_19:2, %dependency_write_out_20 = taskflow.task @Task_9 dependency_read_in(%dependency_write_out_16, %dependency_write_out_18 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>) dependency_write_in(%dependency_write_out_18 : memref<1x8x8x64xf32>) value_inputs(%cst : f32) [original_read_memrefs(%alloc_15, %alloc_17 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>), original_write_memrefs(%alloc_17 : memref<1x8x8x64xf32>)] {task_info = {divisibility = "divisible", parallel_dims = array<i32: 1, 2, 3>, parallel_space = array<i32: 8, 8, 64>}} : (memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>, f32) -> (memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>) {
+// DIV-NEXT:     ^bb0(%arg1: memref<1x10x10x64xf32>, %arg2: memref<1x8x8x64xf32>, %arg3: memref<1x8x8x64xf32>, %arg4: f32):
+// DIV-NEXT:       affine.for %arg5 = 0 to 1 {
+// DIV-NEXT:         affine.for %arg6 = 0 to 8 {
+// DIV-NEXT:           affine.for %arg7 = 0 to 8 {
+// DIV-NEXT:             affine.for %arg8 = 0 to 64 {
+// DIV-NEXT:               affine.for %arg9 = 0 to 3 {
+// DIV-NEXT:                 affine.for %arg10 = 0 to 3 {
+// DIV-NEXT:                   affine.for %arg11 = 0 to 64 {
+// DIV-NEXT:                     %0 = affine.load %arg1[%arg5, %arg6 + %arg9, %arg7 + %arg10, %arg11] : memref<1x10x10x64xf32>
+// DIV-NEXT:                     %1 = affine.load %arg3[%arg5, %arg6, %arg7, %arg8] : memref<1x8x8x64xf32>
+// DIV-NEXT:                     %2 = arith.mulf %0, %arg4 : f32
+// DIV-NEXT:                     %3 = arith.addf %1, %2 : f32
+// DIV-NEXT:                     affine.store %3, %arg3[%arg5, %arg6, %arg7, %arg8] : memref<1x8x8x64xf32>
+// DIV-NEXT:                   }
+// DIV-NEXT:                 }
+// DIV-NEXT:               }
+// DIV-NEXT:             }
+// DIV-NEXT:           }
+// DIV-NEXT:         }
+// DIV-NEXT:       }
+// DIV-NEXT:       taskflow.yield reads(%arg1, %arg3 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>) writes(%arg3 : memref<1x8x8x64xf32>)
+// DIV-NEXT:     }
+// DIV-NEXT:     %alloc_21 = memref.alloc() {alignment = 64 : i64} : memref<1x64x8x8xf32>
+// DIV-NEXT:     %dependency_read_out_22:2, %dependency_write_out_23 = taskflow.task @Task_10_Task_11_Task_12_fused_fused dependency_read_in(%dependency_write_out_20, %dependency_read_out : memref<1x8x8x64xf32>, memref<1x64x8x8xf32>) dependency_write_in(%alloc_21 : memref<1x64x8x8xf32>) value_inputs(%cst_1, %cst_2 : f32, f32) [original_read_memrefs(%alloc_17, %arg0 : memref<1x8x8x64xf32>, memref<1x64x8x8xf32>), original_write_memrefs(%alloc_21 : memref<1x64x8x8xf32>)] {task_info = {divisibility = "divisible", parallel_dims = array<i32: 1, 2, 3>, parallel_space = array<i32: 64, 8, 8>}} : (memref<1x8x8x64xf32>, memref<1x64x8x8xf32>, memref<1x64x8x8xf32>, f32, f32) -> (memref<1x8x8x64xf32>, memref<1x64x8x8xf32>, memref<1x64x8x8xf32>) {
+// DIV-NEXT:     ^bb0(%arg1: memref<1x8x8x64xf32>, %arg2: memref<1x64x8x8xf32>, %arg3: memref<1x64x8x8xf32>, %arg4: f32, %arg5: f32):
+// DIV-NEXT:       affine.for %arg6 = 0 to 1 {
+// DIV-NEXT:         affine.for %arg7 = 0 to 64 {
+// DIV-NEXT:           affine.for %arg8 = 0 to 8 {
+// DIV-NEXT:             affine.for %arg9 = 0 to 8 {
+// DIV-NEXT:               %0 = affine.load %arg1[%arg6, %arg8, %arg9, %arg7] : memref<1x8x8x64xf32>
+// DIV-NEXT:               %1 = affine.load %arg2[%arg6, %arg7, %arg8, %arg9] : memref<1x64x8x8xf32>
+// DIV-NEXT:               %2 = arith.addf %0, %1 : f32
+// DIV-NEXT:               %3 = arith.minimumf %2, %arg4 : f32
+// DIV-NEXT:               %4 = arith.maximumf %3, %arg5 : f32
+// DIV-NEXT:               affine.store %4, %arg3[%arg6, %arg7, %arg8, %arg9] : memref<1x64x8x8xf32>
+// DIV-NEXT:             }
+// DIV-NEXT:           }
+// DIV-NEXT:         }
+// DIV-NEXT:       }
+// DIV-NEXT:       taskflow.yield reads(%arg1, %arg2 : memref<1x8x8x64xf32>, memref<1x64x8x8xf32>) writes(%arg3 : memref<1x64x8x8xf32>)
+// DIV-NEXT:     }
+// DIV-NEXT:     return %dependency_write_out_23 : memref<1x64x8x8xf32>
+// DIV-NEXT:   }
+// DIV-NEXT: }
 
 
 // RESOPT: module attributes {torch.debug_module_name = "SimpleResNetBlock"} {

@@ -6,6 +6,7 @@ add_mlir_library(MLIRTaskflowTransforms
     ClassifyCountersPass.cpp
     MapTaskOnCgraPass.cpp
     FuseTaskPass.cpp
+    TaskDivisibilityAnalysisPass.cpp
 
     DEPENDS
     MLIRTaskflowTransformsIncGen
