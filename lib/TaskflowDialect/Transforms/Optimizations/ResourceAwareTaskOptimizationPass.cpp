@@ -732,19 +732,26 @@ private:
       int64_t total = 1;
       task.walk([&](neura::KernelOp kernel) {
         int64_t kernel_product = 1;
-        kernel.walk([&](Operation *op) {
-          if (op->getName().getStringRef() == "neura.counter") {
-            auto lb = op->getAttrOfType<IntegerAttr>("lower_bound");
-            auto ub = op->getAttrOfType<IntegerAttr>("upper_bound");
-            auto st = op->getAttrOfType<IntegerAttr>("step");
-            if (lb && ub && st && st.getInt() > 0) {
-              int64_t range = ub.getInt() - lb.getInt();
-              int64_t step = st.getInt();
-              int64_t tc = (range + step - 1) / step;
-              if (tc > 0)
-                kernel_product *= tc;
+        kernel.walk([&](neura::CounterOp counter_op) {
+          auto getConst = [](Value val) -> std::optional<int64_t> {
+            if (auto cst = val.getDefiningOp<neura::ConstantOp>()) {
+              return cast<IntegerAttr>(cst.getValueAttr()).getInt();
+            }
+            return std::nullopt;
+          };
+          auto lb = getConst(counter_op.getLowerBound());
+          auto ub = getConst(counter_op.getUpperBound());
+          auto st = getConst(counter_op.getStep());
+          if (lb && ub && st && *st > 0) {
+            int64_t range = *ub - *lb;
+            int64_t step = *st;
+            int64_t tc = (range + step - 1) / step;
+            if (tc > 0) {
+              kernel_product *= tc;
             }
           }
+          // Dynamic bounds: conservatively treated as trip_count=1 (unchanged
+          // default)
         });
         total = std::max(total, kernel_product);
       });
@@ -768,13 +775,25 @@ private:
         parent_to_children[parent].push_back(counter);
     }
 
+    auto getConstantIndex = [](Value val) -> int64_t {
+      if (auto cst = val.getDefiningOp<arith::ConstantIndexOp>()) {
+        return cst.value();
+      } else {
+        // Unexpected dynamic bounds.
+        // TODO: support dynamic bounds if needed.
+        assert(false && "Expected constant index for counter parent_index");
+      }
+      return 0;
+    };
     // Computes trip count for a single counter.
-    auto counterTripCount = [](TaskflowCounterOp counter) -> int64_t {
-      int64_t lb = counter.getLowerBound().getSExtValue();
-      int64_t ub = counter.getUpperBound().getSExtValue();
-      int64_t step = counter.getStep().getSExtValue();
-      if (step <= 0)
+    auto counterTripCount =
+        [&getConstantIndex](TaskflowCounterOp counter) -> int64_t {
+      int64_t lb = getConstantIndex(counter.getLowerBound());
+      int64_t ub = getConstantIndex(counter.getUpperBound());
+      int64_t step = getConstantIndex(counter.getStep());
+      if (step <= 0) {
         return 1;
+      }
       int64_t range = ub - lb;
       return (range > 0) ? ((range + step - 1) / step) : 1;
     };

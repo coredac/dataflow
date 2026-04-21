@@ -69,6 +69,7 @@ int main(int argc, char **argv) {
   mlir::neura::registerNeuraConversionPassPipeline();
   mlir::taskflow::registerTosaToAffineConversionPassPipeline();
   mlir::taskflow::registerTaskflowConversionPassPipeline();
+  mlir::taskflow::registerLinalgToAffineConversionPassPipeline();
 
   // Print architecture spec file info
   if (!architecture_spec_file.empty()) {

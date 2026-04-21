@@ -17,6 +17,7 @@ namespace taskflow {
 
 void registerTaskflowConversionPassPipeline();
 void registerTosaToAffineConversionPassPipeline();
+void registerLinalgToAffineConversionPassPipeline();
 
 // Passes defined in TaskflowPasses.td
 #define GEN_PASS_DECL

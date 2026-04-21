@@ -806,28 +806,41 @@ def Neura_LoopControlOp : Op<NeuraDialect, "loop_control"> {
 }
 
 // Defines an operation for hardware loop counters.
-def Neura_CounterOp : Op<NeuraDialect, "counter", [Pure]> {
+def Neura_CounterOp : Op<NeuraDialect, "counter", [Pure, AttrSizedOperandSegments]> {
   let summary = "Hardware loop counter for CGRA execution.";
   let description = [{
     Represents a hardware loop counter unit that generates loop indices.
     This maps directly to a counter FU on the CGRA.
 
-    The counter produces:
-    - current index: the current loop index value.
+    Bounds and step are SSA Values (Index type), supporting both static
+    and dynamic trip counts uniformly. Static bounds are typically
+    arith.constant ops; dynamic bounds come from kernel inputs.
 
-    Example:
-      %idx = neura.counter {
-        lower_bound = 0 : index,
-        upper_bound = 32 : index,
-        step = 1 : index,
-        counter_type = "leaf"
-      } : index
+    The counter produces:
+    - current_index: the current loop index value.
+
+    Example (static):
+      %c0 = arith.constant 0 : index
+      %c32 = arith.constant 32 : index
+      %c1 = arith.constant 1 : index
+      %idx = neura.counter from %c0 to %c32 step %c1
+               {counter_type = "leaf", counter_id = 0 : i32} : index
+
+    Example (dynamic upper bound from kernel input):
+      %idx = neura.counter from %c0 to %N step %c1
+               {counter_type = "leaf", counter_id = 0 : i32} : index
   }];
-  let arguments = (ins IndexAttr:$lower_bound, IndexAttr:$upper_bound,
-      IndexAttr:$step, StrAttr:$counter_type, I32Attr:$counter_id);
+  let arguments = (ins Optional<AnyType>:$lower_bound, Optional<AnyType>:$upper_bound,
+      Optional<AnyType>:$step, StrAttr:$counter_type, I32Attr:$counter_id);
 
   let results = (outs AnyType:$current_index);
-  let assemblyFormat = "attr-dict `:` type($current_index)";
+  let assemblyFormat = [{
+    (`from` $lower_bound^ `:` type($lower_bound))?
+    (`to` $upper_bound^ `:` type($upper_bound))?
+    (`step` $step^ `:` type($step))?
+    attr-dict-with-keyword
+    `->` type($current_index)
+  }];
 }
 
 // Defines an operation to extract the predicate bit from a predicated value.

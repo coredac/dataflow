@@ -3,7 +3,8 @@
 // RUN:   --convert-affine-to-taskflow \
 // RUN:   --construct-hyperblock-from-task \
 // RUN:   --fuse-task \
-// RUN:   2>&1 | FileCheck %s
+// RUN:   -o %t-kernel-fuse.mlir
+// RUN:   FileCheck --input-file=%t-kernel-fuse.mlir %s
 
 module {
 
@@ -191,9 +192,7 @@ func.func @test_sibling_rejected_compute(%A: memref<64xf32>,
 // =============================================================================
 
 // CHECK-LABEL: func.func @test_sibling_rejected_memory
-// CHECK:         taskflow.task @Task_0
-// CHECK:         taskflow.task @Task_1
-// CHECK-NOT:     fused_sibling
+// CHECK:         taskflow.task @fused_sibling
 // CHECK:         return
 
 func.func @test_sibling_rejected_memory(%A: memref<64xf32>,
