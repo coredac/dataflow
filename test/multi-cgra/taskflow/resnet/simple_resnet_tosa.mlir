@@ -15,6 +15,13 @@
 // RUN: -o %t.stream.mlir
 // RUN: FileCheck %s --input-file=%t.stream.mlir --check-prefixes=STREAM
 
+// RUN: mlir-neura-opt %s --affine-loop-tree-serialization \
+// RUN: --convert-affine-to-taskflow \
+// RUN: --construct-hyperblock-from-task \
+// RUN: '--map-task-on-cgra=allocation-mode=spatial-temporal' \
+// RUN: -o %t.map_spatial_temporal.mlir
+// RUN: FileCheck %s --input-file=%t.map_spatial_temporal.mlir --check-prefixes=MAP-SPATIAL-TEMPORAL
+
 // RUN: mlir-neura-opt %t.stream.mlir \
 // RUN: --affine-loop-tree-serialization \
 // RUN: --affine-loop-perfection \
@@ -240,396 +247,287 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // AFFINE-NEXT: }
 
 
-// KERNEL:      module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
-// KERNEL-NEXT:   memref.global "private" constant @__constant_64xf32 : memref<64xf32> = dense<0.000000e+00> {alignment = 64 : i64}
-// KERNEL-NEXT:   memref.global "private" constant @__constant_64x3x3x64xf32_0 : memref<64x3x3x64xf32> = dense<-0.0151730878> {alignment = 64 : i64}
-// KERNEL-NEXT:   memref.global "private" constant @__constant_64x3x3x64xf32 : memref<64x3x3x64xf32> = dense<0.0197670367> {alignment = 64 : i64}
-// KERNEL-NEXT:   func.func @forward(%arg0: memref<1x64x8x8xf32>) -> memref<1x64x8x8xf32> {
-// KERNEL-NEXT:     %cst = arith.constant 0.0197670367 : f32
-// KERNEL-NEXT:     %cst_0 = arith.constant -0.0151730878 : f32
-// KERNEL-NEXT:     %cst_1 = arith.constant 3.40282347E+38 : f32
-// KERNEL-NEXT:     %cst_2 = arith.constant 0.000000e+00 : f32
-// KERNEL-NEXT:     %alloc = memref.alloc() {alignment = 64 : i64} : memref<1x8x8x64xf32>
-// KERNEL-NEXT:     %dependency_read_out, %dependency_write_out = taskflow.task @Task_0 dependency_read_in(%arg0 : memref<1x64x8x8xf32>) dependency_write_in(%alloc : memref<1x8x8x64xf32>) [original_read_memrefs(%arg0 : memref<1x64x8x8xf32>), original_write_memrefs(%alloc : memref<1x8x8x64xf32>)] : (memref<1x64x8x8xf32>, memref<1x8x8x64xf32>) -> (memref<1x64x8x8xf32>, memref<1x8x8x64xf32>) {
-// KERNEL-NEXT:     ^bb0(%arg1: memref<1x64x8x8xf32>, %arg2: memref<1x8x8x64xf32>):
-// KERNEL-NEXT:       %c64 = arith.constant 64 : index
-// KERNEL-NEXT:       %c8 = arith.constant 8 : index
-// KERNEL-NEXT:       %c0 = arith.constant 0 : index
-// KERNEL-NEXT:       %c1 = arith.constant 1 : index
-// KERNEL-NEXT:       %0 = taskflow.counter from %c0 to %c1 step %c1 attributes {counter_id = 0 : i32, counter_type = "root"} : index
-// KERNEL-NEXT:       %1 = taskflow.counter parent(%0 : index) from %c0 to %c8 step %c1 attributes {counter_id = 1 : i32, counter_type = "relay"} : index
-// KERNEL-NEXT:       %2 = taskflow.counter parent(%1 : index) from %c0 to %c8 step %c1 attributes {counter_id = 2 : i32, counter_type = "relay"} : index
-// KERNEL-NEXT:       %3 = taskflow.counter parent(%2 : index) from %c0 to %c64 step %c1 attributes {counter_id = 3 : i32, counter_type = "leaf"} : index
-// KERNEL-NEXT:       neura.kernel inputs(%arg1, %arg2 : memref<1x64x8x8xf32>, memref<1x8x8x64xf32>) {
-// KERNEL-NEXT:       ^bb0(%arg3: memref<1x64x8x8xf32>, %arg4: memref<1x8x8x64xf32>):
-// KERNEL-NEXT:         %c64_33 = arith.constant 64 : index
-// KERNEL-NEXT:         %c8_34 = arith.constant 8 : index
-// KERNEL-NEXT:         %c0_35 = arith.constant 0 : index
-// KERNEL-NEXT:         %c1_36 = arith.constant 1 : index
-// KERNEL-NEXT:         %4 = neura.counter from %c0_35 : index to %c1_36 : index step %c1_36 : index attributes {counter_id = 0 : i32, counter_type = "root"} -> index
-// KERNEL-NEXT:         %5 = neura.counter from %c0_35 : index to %c8_34 : index step %c1_36 : index attributes {counter_id = 1 : i32, counter_type = "relay"} -> index
-// KERNEL-NEXT:         %6 = neura.counter from %c0_35 : index to %c8_34 : index step %c1_36 : index attributes {counter_id = 2 : i32, counter_type = "relay"} -> index
-// KERNEL-NEXT:         %7 = neura.counter from %c0_35 : index to %c64_33 : index step %c1_36 : index attributes {counter_id = 3 : i32, counter_type = "leaf"} -> index
-// KERNEL-NEXT:         %8 = memref.load %arg3[%4, %7, %5, %6] : memref<1x64x8x8xf32>
-// KERNEL-NEXT:         memref.store %8, %arg4[%4, %5, %6, %7] : memref<1x8x8x64xf32>
-// KERNEL-NEXT:         neura.yield
-// KERNEL-NEXT:       }
-// KERNEL-NEXT:       taskflow.yield reads(%arg1 : memref<1x64x8x8xf32>) writes(%arg2 : memref<1x8x8x64xf32>)
-// KERNEL-NEXT:     }
-// KERNEL-NEXT:     %alloc_3 = memref.alloc() {alignment = 64 : i64} : memref<1x10x10x64xf32>
-// KERNEL-NEXT:     %dependency_write_out_4 = taskflow.task @Task_1 dependency_write_in(%alloc_3 : memref<1x10x10x64xf32>) value_inputs(%cst_2 : f32) [original_write_memrefs(%alloc_3 : memref<1x10x10x64xf32>)] : (memref<1x10x10x64xf32>, f32) -> (memref<1x10x10x64xf32>) {
-// KERNEL-NEXT:     ^bb0(%arg1: memref<1x10x10x64xf32>, %arg2: f32):
-// KERNEL-NEXT:       %c64 = arith.constant 64 : index
-// KERNEL-NEXT:       %c10 = arith.constant 10 : index
-// KERNEL-NEXT:       %c0 = arith.constant 0 : index
-// KERNEL-NEXT:       %c1 = arith.constant 1 : index
-// KERNEL-NEXT:       %0 = taskflow.counter from %c0 to %c1 step %c1 attributes {counter_id = 0 : i32, counter_type = "root"} : index
-// KERNEL-NEXT:       %1 = taskflow.counter parent(%0 : index) from %c0 to %c10 step %c1 attributes {counter_id = 1 : i32, counter_type = "relay"} : index
-// KERNEL-NEXT:       %2 = taskflow.counter parent(%1 : index) from %c0 to %c10 step %c1 attributes {counter_id = 2 : i32, counter_type = "relay"} : index
-// KERNEL-NEXT:       %3 = taskflow.counter parent(%2 : index) from %c0 to %c64 step %c1 attributes {counter_id = 3 : i32, counter_type = "leaf"} : index
-// KERNEL-NEXT:       neura.kernel inputs(%arg2, %arg1 : f32, memref<1x10x10x64xf32>) {
-// KERNEL-NEXT:       ^bb0(%arg3: f32, %arg4: memref<1x10x10x64xf32>):
-// KERNEL-NEXT:         %c64_33 = arith.constant 64 : index
-// KERNEL-NEXT:         %c10_34 = arith.constant 10 : index
-// KERNEL-NEXT:         %c0_35 = arith.constant 0 : index
-// KERNEL-NEXT:         %c1_36 = arith.constant 1 : index
-// KERNEL-NEXT:         %4 = neura.counter from %c0_35 : index to %c1_36 : index step %c1_36 : index attributes {counter_id = 0 : i32, counter_type = "root"} -> index
-// KERNEL-NEXT:         %5 = neura.counter from %c0_35 : index to %c10_34 : index step %c1_36 : index attributes {counter_id = 1 : i32, counter_type = "relay"} -> index
-// KERNEL-NEXT:         %6 = neura.counter from %c0_35 : index to %c10_34 : index step %c1_36 : index attributes {counter_id = 2 : i32, counter_type = "relay"} -> index
-// KERNEL-NEXT:         %7 = neura.counter from %c0_35 : index to %c64_33 : index step %c1_36 : index attributes {counter_id = 3 : i32, counter_type = "leaf"} -> index
-// KERNEL-NEXT:         memref.store %arg3, %arg4[%4, %5, %6, %7] : memref<1x10x10x64xf32>
-// KERNEL-NEXT:         neura.yield
-// KERNEL-NEXT:       }
-// KERNEL-NEXT:       taskflow.yield writes(%arg1 : memref<1x10x10x64xf32>)
-// KERNEL-NEXT:     }
-// KERNEL-NEXT:     %alloc_5 = memref.alloc() {alignment = 64 : i64} : memref<1x8x8x64xf32>
-// KERNEL-NEXT:     %dependency_write_out_6 = taskflow.task @Task_2 dependency_write_in(%alloc_5 : memref<1x8x8x64xf32>) value_inputs(%cst_2 : f32) [original_write_memrefs(%alloc_5 : memref<1x8x8x64xf32>)] : (memref<1x8x8x64xf32>, f32) -> (memref<1x8x8x64xf32>) {
-// KERNEL-NEXT:     ^bb0(%arg1: memref<1x8x8x64xf32>, %arg2: f32):
-// KERNEL-NEXT:       %c64 = arith.constant 64 : index
-// KERNEL-NEXT:       %c8 = arith.constant 8 : index
-// KERNEL-NEXT:       %c0 = arith.constant 0 : index
-// KERNEL-NEXT:       %c1 = arith.constant 1 : index
-// KERNEL-NEXT:       %0 = taskflow.counter from %c0 to %c1 step %c1 attributes {counter_id = 0 : i32, counter_type = "root"} : index
-// KERNEL-NEXT:       %1 = taskflow.counter parent(%0 : index) from %c0 to %c8 step %c1 attributes {counter_id = 1 : i32, counter_type = "relay"} : index
-// KERNEL-NEXT:       %2 = taskflow.counter parent(%1 : index) from %c0 to %c8 step %c1 attributes {counter_id = 2 : i32, counter_type = "relay"} : index
-// KERNEL-NEXT:       %3 = taskflow.counter parent(%2 : index) from %c0 to %c64 step %c1 attributes {counter_id = 3 : i32, counter_type = "leaf"} : index
-// KERNEL-NEXT:       neura.kernel inputs(%arg2, %arg1 : f32, memref<1x8x8x64xf32>) {
-// KERNEL-NEXT:       ^bb0(%arg3: f32, %arg4: memref<1x8x8x64xf32>):
-// KERNEL-NEXT:         %c64_33 = arith.constant 64 : index
-// KERNEL-NEXT:         %c8_34 = arith.constant 8 : index
-// KERNEL-NEXT:         %c0_35 = arith.constant 0 : index
-// KERNEL-NEXT:         %c1_36 = arith.constant 1 : index
-// KERNEL-NEXT:         %4 = neura.counter from %c0_35 : index to %c1_36 : index step %c1_36 : index attributes {counter_id = 0 : i32, counter_type = "root"} -> index
-// KERNEL-NEXT:         %5 = neura.counter from %c0_35 : index to %c8_34 : index step %c1_36 : index attributes {counter_id = 1 : i32, counter_type = "relay"} -> index
-// KERNEL-NEXT:         %6 = neura.counter from %c0_35 : index to %c8_34 : index step %c1_36 : index attributes {counter_id = 2 : i32, counter_type = "relay"} -> index
-// KERNEL-NEXT:         %7 = neura.counter from %c0_35 : index to %c64_33 : index step %c1_36 : index attributes {counter_id = 3 : i32, counter_type = "leaf"} -> index
-// KERNEL-NEXT:         memref.store %arg3, %arg4[%4, %5, %6, %7] : memref<1x8x8x64xf32>
-// KERNEL-NEXT:         neura.yield
-// KERNEL-NEXT:       }
-// KERNEL-NEXT:       taskflow.yield writes(%arg1 : memref<1x8x8x64xf32>)
-// KERNEL-NEXT:     }
-// KERNEL-NEXT:     %dependency_read_out_7:2, %dependency_write_out_8 = taskflow.task @Task_3 dependency_read_in(%dependency_write_out_4, %dependency_write_out_6 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>) dependency_write_in(%dependency_write_out_6 : memref<1x8x8x64xf32>) value_inputs(%cst_0 : f32) [original_read_memrefs(%alloc_3, %alloc_5 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>), original_write_memrefs(%alloc_5 : memref<1x8x8x64xf32>)] : (memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>, f32) -> (memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>) {
-// KERNEL-NEXT:     ^bb0(%arg1: memref<1x10x10x64xf32>, %arg2: memref<1x8x8x64xf32>, %arg3: memref<1x8x8x64xf32>, %arg4: f32):
-// KERNEL-NEXT:       %c3 = arith.constant 3 : index
-// KERNEL-NEXT:       %c64 = arith.constant 64 : index
-// KERNEL-NEXT:       %c8 = arith.constant 8 : index
-// KERNEL-NEXT:       %c0 = arith.constant 0 : index
-// KERNEL-NEXT:       %c1 = arith.constant 1 : index
-// KERNEL-NEXT:       %0 = taskflow.counter from %c0 to %c1 step %c1 attributes {counter_id = 0 : i32, counter_type = "root"} : index
-// KERNEL-NEXT:       %1 = taskflow.counter parent(%0 : index) from %c0 to %c8 step %c1 attributes {counter_id = 1 : i32, counter_type = "relay"} : index
-// KERNEL-NEXT:       %2 = taskflow.counter parent(%1 : index) from %c0 to %c8 step %c1 attributes {counter_id = 2 : i32, counter_type = "relay"} : index
-// KERNEL-NEXT:       %3 = taskflow.counter parent(%2 : index) from %c0 to %c64 step %c1 attributes {counter_id = 3 : i32, counter_type = "relay"} : index
-// KERNEL-NEXT:       %4 = taskflow.counter parent(%3 : index) from %c0 to %c3 step %c1 attributes {counter_id = 4 : i32, counter_type = "relay"} : index
-// KERNEL-NEXT:       %5 = taskflow.counter parent(%4 : index) from %c0 to %c3 step %c1 attributes {counter_id = 5 : i32, counter_type = "relay"} : index
-// KERNEL-NEXT:       %6 = taskflow.counter parent(%5 : index) from %c0 to %c64 step %c1 attributes {counter_id = 6 : i32, counter_type = "leaf"} : index
-// KERNEL-NEXT:       neura.kernel inputs(%arg1, %arg3, %arg4 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, f32) {
-// KERNEL-NEXT:       ^bb0(%arg5: memref<1x10x10x64xf32>, %arg6: memref<1x8x8x64xf32>, %arg7: f32):
-// KERNEL-NEXT:         %c3_33 = arith.constant 3 : index
-// KERNEL-NEXT:         %c64_34 = arith.constant 64 : index
-// KERNEL-NEXT:         %c8_35 = arith.constant 8 : index
-// KERNEL-NEXT:         %c0_36 = arith.constant 0 : index
-// KERNEL-NEXT:         %c1_37 = arith.constant 1 : index
-// KERNEL-NEXT:         %7 = neura.counter from %c0_36 : index to %c1_37 : index step %c1_37 : index attributes {counter_id = 0 : i32, counter_type = "root"} -> index
-// KERNEL-NEXT:         %8 = neura.counter from %c0_36 : index to %c8_35 : index step %c1_37 : index attributes {counter_id = 1 : i32, counter_type = "relay"} -> index
-// KERNEL-NEXT:         %9 = neura.counter from %c0_36 : index to %c8_35 : index step %c1_37 : index attributes {counter_id = 2 : i32, counter_type = "relay"} -> index
-// KERNEL-NEXT:         %10 = neura.counter from %c0_36 : index to %c64_34 : index step %c1_37 : index attributes {counter_id = 3 : i32, counter_type = "relay"} -> index
-// KERNEL-NEXT:         %11 = neura.counter from %c0_36 : index to %c3_33 : index step %c1_37 : index attributes {counter_id = 4 : i32, counter_type = "relay"} -> index
-// KERNEL-NEXT:         %12 = neura.counter from %c0_36 : index to %c3_33 : index step %c1_37 : index attributes {counter_id = 5 : i32, counter_type = "relay"} -> index
-// KERNEL-NEXT:         %13 = neura.counter from %c0_36 : index to %c64_34 : index step %c1_37 : index attributes {counter_id = 6 : i32, counter_type = "leaf"} -> index
-// KERNEL-NEXT:         %14 = arith.addi %8, %11 : index
-// KERNEL-NEXT:         %15 = arith.addi %9, %12 : index
-// KERNEL-NEXT:         %16 = memref.load %arg5[%7, %14, %15, %13] : memref<1x10x10x64xf32>
-// KERNEL-NEXT:         %17 = memref.load %arg6[%7, %8, %9, %10] : memref<1x8x8x64xf32>
-// KERNEL-NEXT:         %18 = arith.mulf %16, %arg7 : f32
-// KERNEL-NEXT:         %19 = arith.addf %17, %18 : f32
-// KERNEL-NEXT:         memref.store %19, %arg6[%7, %8, %9, %10] : memref<1x8x8x64xf32>
-// KERNEL-NEXT:         neura.yield
-// KERNEL-NEXT:       }
-// KERNEL-NEXT:       taskflow.yield reads(%arg1, %arg3 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>) writes(%arg3 : memref<1x8x8x64xf32>)
-// KERNEL-NEXT:     }
-// KERNEL-NEXT:     %alloc_9 = memref.alloc() {alignment = 64 : i64} : memref<1x64x8x8xf32>
-// KERNEL-NEXT:     %dependency_read_out_10, %dependency_write_out_11 = taskflow.task @Task_4 dependency_read_in(%dependency_write_out_8 : memref<1x8x8x64xf32>) dependency_write_in(%alloc_9 : memref<1x64x8x8xf32>) [original_read_memrefs(%alloc_5 : memref<1x8x8x64xf32>), original_write_memrefs(%alloc_9 : memref<1x64x8x8xf32>)] : (memref<1x8x8x64xf32>, memref<1x64x8x8xf32>) -> (memref<1x8x8x64xf32>, memref<1x64x8x8xf32>) {
-// KERNEL-NEXT:     ^bb0(%arg1: memref<1x8x8x64xf32>, %arg2: memref<1x64x8x8xf32>):
-// KERNEL-NEXT:       %c8 = arith.constant 8 : index
-// KERNEL-NEXT:       %c64 = arith.constant 64 : index
-// KERNEL-NEXT:       %c0 = arith.constant 0 : index
-// KERNEL-NEXT:       %c1 = arith.constant 1 : index
-// KERNEL-NEXT:       %0 = taskflow.counter from %c0 to %c1 step %c1 attributes {counter_id = 0 : i32, counter_type = "root"} : index
-// KERNEL-NEXT:       %1 = taskflow.counter parent(%0 : index) from %c0 to %c64 step %c1 attributes {counter_id = 1 : i32, counter_type = "relay"} : index
-// KERNEL-NEXT:       %2 = taskflow.counter parent(%1 : index) from %c0 to %c8 step %c1 attributes {counter_id = 2 : i32, counter_type = "relay"} : index
-// KERNEL-NEXT:       %3 = taskflow.counter parent(%2 : index) from %c0 to %c8 step %c1 attributes {counter_id = 3 : i32, counter_type = "leaf"} : index
-// KERNEL-NEXT:       neura.kernel inputs(%arg1, %arg2 : memref<1x8x8x64xf32>, memref<1x64x8x8xf32>) {
-// KERNEL-NEXT:       ^bb0(%arg3: memref<1x8x8x64xf32>, %arg4: memref<1x64x8x8xf32>):
-// KERNEL-NEXT:         %c8_33 = arith.constant 8 : index
-// KERNEL-NEXT:         %c64_34 = arith.constant 64 : index
-// KERNEL-NEXT:         %c0_35 = arith.constant 0 : index
-// KERNEL-NEXT:         %c1_36 = arith.constant 1 : index
-// KERNEL-NEXT:         %4 = neura.counter from %c0_35 : index to %c1_36 : index step %c1_36 : index attributes {counter_id = 0 : i32, counter_type = "root"} -> index
-// KERNEL-NEXT:         %5 = neura.counter from %c0_35 : index to %c64_34 : index step %c1_36 : index attributes {counter_id = 1 : i32, counter_type = "relay"} -> index
-// KERNEL-NEXT:         %6 = neura.counter from %c0_35 : index to %c8_33 : index step %c1_36 : index attributes {counter_id = 2 : i32, counter_type = "relay"} -> index
-// KERNEL-NEXT:         %7 = neura.counter from %c0_35 : index to %c8_33 : index step %c1_36 : index attributes {counter_id = 3 : i32, counter_type = "leaf"} -> index
-// KERNEL-NEXT:         %8 = memref.load %arg3[%4, %6, %7, %5] : memref<1x8x8x64xf32>
-// KERNEL-NEXT:         memref.store %8, %arg4[%4, %5, %6, %7] : memref<1x64x8x8xf32>
-// KERNEL-NEXT:         neura.yield
-// KERNEL-NEXT:       }
-// KERNEL-NEXT:       taskflow.yield reads(%arg1 : memref<1x8x8x64xf32>) writes(%arg2 : memref<1x64x8x8xf32>)
-// KERNEL-NEXT:     }
-// KERNEL-NEXT:     %alloc_12 = memref.alloc() {alignment = 64 : i64} : memref<1x64x8x8xf32>
-// KERNEL-NEXT:     %dependency_read_out_13, %dependency_write_out_14 = taskflow.task @Task_5 dependency_read_in(%dependency_write_out_11 : memref<1x64x8x8xf32>) dependency_write_in(%alloc_12 : memref<1x64x8x8xf32>) value_inputs(%cst_1, %cst_2 : f32, f32) [original_read_memrefs(%alloc_9 : memref<1x64x8x8xf32>), original_write_memrefs(%alloc_12 : memref<1x64x8x8xf32>)] : (memref<1x64x8x8xf32>, memref<1x64x8x8xf32>, f32, f32) -> (memref<1x64x8x8xf32>, memref<1x64x8x8xf32>) {
-// KERNEL-NEXT:     ^bb0(%arg1: memref<1x64x8x8xf32>, %arg2: memref<1x64x8x8xf32>, %arg3: f32, %arg4: f32):
-// KERNEL-NEXT:       %c8 = arith.constant 8 : index
-// KERNEL-NEXT:       %c64 = arith.constant 64 : index
-// KERNEL-NEXT:       %c0 = arith.constant 0 : index
-// KERNEL-NEXT:       %c1 = arith.constant 1 : index
-// KERNEL-NEXT:       %0 = taskflow.counter from %c0 to %c1 step %c1 attributes {counter_id = 0 : i32, counter_type = "root"} : index
-// KERNEL-NEXT:       %1 = taskflow.counter parent(%0 : index) from %c0 to %c64 step %c1 attributes {counter_id = 1 : i32, counter_type = "relay"} : index
-// KERNEL-NEXT:       %2 = taskflow.counter parent(%1 : index) from %c0 to %c8 step %c1 attributes {counter_id = 2 : i32, counter_type = "relay"} : index
-// KERNEL-NEXT:       %3 = taskflow.counter parent(%2 : index) from %c0 to %c8 step %c1 attributes {counter_id = 3 : i32, counter_type = "leaf"} : index
-// KERNEL-NEXT:       neura.kernel inputs(%arg1, %arg3, %arg4, %arg2 : memref<1x64x8x8xf32>, f32, f32, memref<1x64x8x8xf32>) {
-// KERNEL-NEXT:       ^bb0(%arg5: memref<1x64x8x8xf32>, %arg6: f32, %arg7: f32, %arg8: memref<1x64x8x8xf32>):
-// KERNEL-NEXT:         %c8_33 = arith.constant 8 : index
-// KERNEL-NEXT:         %c64_34 = arith.constant 64 : index
-// KERNEL-NEXT:         %c0_35 = arith.constant 0 : index
-// KERNEL-NEXT:         %c1_36 = arith.constant 1 : index
-// KERNEL-NEXT:         %4 = neura.counter from %c0_35 : index to %c1_36 : index step %c1_36 : index attributes {counter_id = 0 : i32, counter_type = "root"} -> index
-// KERNEL-NEXT:         %5 = neura.counter from %c0_35 : index to %c64_34 : index step %c1_36 : index attributes {counter_id = 1 : i32, counter_type = "relay"} -> index
-// KERNEL-NEXT:         %6 = neura.counter from %c0_35 : index to %c8_33 : index step %c1_36 : index attributes {counter_id = 2 : i32, counter_type = "relay"} -> index
-// KERNEL-NEXT:         %7 = neura.counter from %c0_35 : index to %c8_33 : index step %c1_36 : index attributes {counter_id = 3 : i32, counter_type = "leaf"} -> index
-// KERNEL-NEXT:         %8 = memref.load %arg5[%4, %5, %6, %7] : memref<1x64x8x8xf32>
-// KERNEL-NEXT:         %9 = arith.minimumf %8, %arg6 : f32
-// KERNEL-NEXT:         %10 = arith.maximumf %9, %arg7 : f32
-// KERNEL-NEXT:         memref.store %10, %arg8[%4, %5, %6, %7] : memref<1x64x8x8xf32>
-// KERNEL-NEXT:         neura.yield
-// KERNEL-NEXT:       }
-// KERNEL-NEXT:       taskflow.yield reads(%arg1 : memref<1x64x8x8xf32>) writes(%arg2 : memref<1x64x8x8xf32>)
-// KERNEL-NEXT:     }
-// KERNEL-NEXT:     %alloc_15 = memref.alloc() {alignment = 64 : i64} : memref<1x8x8x64xf32>
-// KERNEL-NEXT:     %dependency_read_out_16, %dependency_write_out_17 = taskflow.task @Task_6 dependency_read_in(%dependency_write_out_14 : memref<1x64x8x8xf32>) dependency_write_in(%alloc_15 : memref<1x8x8x64xf32>) [original_read_memrefs(%alloc_12 : memref<1x64x8x8xf32>), original_write_memrefs(%alloc_15 : memref<1x8x8x64xf32>)] : (memref<1x64x8x8xf32>, memref<1x8x8x64xf32>) -> (memref<1x64x8x8xf32>, memref<1x8x8x64xf32>) {
-// KERNEL-NEXT:     ^bb0(%arg1: memref<1x64x8x8xf32>, %arg2: memref<1x8x8x64xf32>):
-// KERNEL-NEXT:       %c64 = arith.constant 64 : index
-// KERNEL-NEXT:       %c8 = arith.constant 8 : index
-// KERNEL-NEXT:       %c0 = arith.constant 0 : index
-// KERNEL-NEXT:       %c1 = arith.constant 1 : index
-// KERNEL-NEXT:       %0 = taskflow.counter from %c0 to %c1 step %c1 attributes {counter_id = 0 : i32, counter_type = "root"} : index
-// KERNEL-NEXT:       %1 = taskflow.counter parent(%0 : index) from %c0 to %c8 step %c1 attributes {counter_id = 1 : i32, counter_type = "relay"} : index
-// KERNEL-NEXT:       %2 = taskflow.counter parent(%1 : index) from %c0 to %c8 step %c1 attributes {counter_id = 2 : i32, counter_type = "relay"} : index
-// KERNEL-NEXT:       %3 = taskflow.counter parent(%2 : index) from %c0 to %c64 step %c1 attributes {counter_id = 3 : i32, counter_type = "leaf"} : index
-// KERNEL-NEXT:       neura.kernel inputs(%arg1, %arg2 : memref<1x64x8x8xf32>, memref<1x8x8x64xf32>) {
-// KERNEL-NEXT:       ^bb0(%arg3: memref<1x64x8x8xf32>, %arg4: memref<1x8x8x64xf32>):
-// KERNEL-NEXT:         %c64_33 = arith.constant 64 : index
-// KERNEL-NEXT:         %c8_34 = arith.constant 8 : index
-// KERNEL-NEXT:         %c0_35 = arith.constant 0 : index
-// KERNEL-NEXT:         %c1_36 = arith.constant 1 : index
-// KERNEL-NEXT:         %4 = neura.counter from %c0_35 : index to %c1_36 : index step %c1_36 : index attributes {counter_id = 0 : i32, counter_type = "root"} -> index
-// KERNEL-NEXT:         %5 = neura.counter from %c0_35 : index to %c8_34 : index step %c1_36 : index attributes {counter_id = 1 : i32, counter_type = "relay"} -> index
-// KERNEL-NEXT:         %6 = neura.counter from %c0_35 : index to %c8_34 : index step %c1_36 : index attributes {counter_id = 2 : i32, counter_type = "relay"} -> index
-// KERNEL-NEXT:         %7 = neura.counter from %c0_35 : index to %c64_33 : index step %c1_36 : index attributes {counter_id = 3 : i32, counter_type = "leaf"} -> index
-// KERNEL-NEXT:         %8 = memref.load %arg3[%4, %7, %5, %6] : memref<1x64x8x8xf32>
-// KERNEL-NEXT:         memref.store %8, %arg4[%4, %5, %6, %7] : memref<1x8x8x64xf32>
-// KERNEL-NEXT:         neura.yield
-// KERNEL-NEXT:       }
-// KERNEL-NEXT:       taskflow.yield reads(%arg1 : memref<1x64x8x8xf32>) writes(%arg2 : memref<1x8x8x64xf32>)
-// KERNEL-NEXT:     }
-// KERNEL-NEXT:     %alloc_18 = memref.alloc() {alignment = 64 : i64} : memref<1x10x10x64xf32>
-// KERNEL-NEXT:     %dependency_write_out_19 = taskflow.task @Task_7 dependency_write_in(%alloc_18 : memref<1x10x10x64xf32>) value_inputs(%cst_2 : f32) [original_write_memrefs(%alloc_18 : memref<1x10x10x64xf32>)] : (memref<1x10x10x64xf32>, f32) -> (memref<1x10x10x64xf32>) {
-// KERNEL-NEXT:     ^bb0(%arg1: memref<1x10x10x64xf32>, %arg2: f32):
-// KERNEL-NEXT:       %c64 = arith.constant 64 : index
-// KERNEL-NEXT:       %c10 = arith.constant 10 : index
-// KERNEL-NEXT:       %c0 = arith.constant 0 : index
-// KERNEL-NEXT:       %c1 = arith.constant 1 : index
-// KERNEL-NEXT:       %0 = taskflow.counter from %c0 to %c1 step %c1 attributes {counter_id = 0 : i32, counter_type = "root"} : index
-// KERNEL-NEXT:       %1 = taskflow.counter parent(%0 : index) from %c0 to %c10 step %c1 attributes {counter_id = 1 : i32, counter_type = "relay"} : index
-// KERNEL-NEXT:       %2 = taskflow.counter parent(%1 : index) from %c0 to %c10 step %c1 attributes {counter_id = 2 : i32, counter_type = "relay"} : index
-// KERNEL-NEXT:       %3 = taskflow.counter parent(%2 : index) from %c0 to %c64 step %c1 attributes {counter_id = 3 : i32, counter_type = "leaf"} : index
-// KERNEL-NEXT:       neura.kernel inputs(%arg2, %arg1 : f32, memref<1x10x10x64xf32>) {
-// KERNEL-NEXT:       ^bb0(%arg3: f32, %arg4: memref<1x10x10x64xf32>):
-// KERNEL-NEXT:         %c64_33 = arith.constant 64 : index
-// KERNEL-NEXT:         %c10_34 = arith.constant 10 : index
-// KERNEL-NEXT:         %c0_35 = arith.constant 0 : index
-// KERNEL-NEXT:         %c1_36 = arith.constant 1 : index
-// KERNEL-NEXT:         %4 = neura.counter from %c0_35 : index to %c1_36 : index step %c1_36 : index attributes {counter_id = 0 : i32, counter_type = "root"} -> index
-// KERNEL-NEXT:         %5 = neura.counter from %c0_35 : index to %c10_34 : index step %c1_36 : index attributes {counter_id = 1 : i32, counter_type = "relay"} -> index
-// KERNEL-NEXT:         %6 = neura.counter from %c0_35 : index to %c10_34 : index step %c1_36 : index attributes {counter_id = 2 : i32, counter_type = "relay"} -> index
-// KERNEL-NEXT:         %7 = neura.counter from %c0_35 : index to %c64_33 : index step %c1_36 : index attributes {counter_id = 3 : i32, counter_type = "leaf"} -> index
-// KERNEL-NEXT:         memref.store %arg3, %arg4[%4, %5, %6, %7] : memref<1x10x10x64xf32>
-// KERNEL-NEXT:         neura.yield
-// KERNEL-NEXT:       }
-// KERNEL-NEXT:       taskflow.yield writes(%arg1 : memref<1x10x10x64xf32>)
-// KERNEL-NEXT:     }
-// KERNEL-NEXT:     %alloc_20 = memref.alloc() {alignment = 64 : i64} : memref<1x8x8x64xf32>
-// KERNEL-NEXT:     %dependency_write_out_21 = taskflow.task @Task_8 dependency_write_in(%alloc_20 : memref<1x8x8x64xf32>) value_inputs(%cst_2 : f32) [original_write_memrefs(%alloc_20 : memref<1x8x8x64xf32>)] : (memref<1x8x8x64xf32>, f32) -> (memref<1x8x8x64xf32>) {
-// KERNEL-NEXT:     ^bb0(%arg1: memref<1x8x8x64xf32>, %arg2: f32):
-// KERNEL-NEXT:       %c64 = arith.constant 64 : index
-// KERNEL-NEXT:       %c8 = arith.constant 8 : index
-// KERNEL-NEXT:       %c0 = arith.constant 0 : index
-// KERNEL-NEXT:       %c1 = arith.constant 1 : index
-// KERNEL-NEXT:       %0 = taskflow.counter from %c0 to %c1 step %c1 attributes {counter_id = 0 : i32, counter_type = "root"} : index
-// KERNEL-NEXT:       %1 = taskflow.counter parent(%0 : index) from %c0 to %c8 step %c1 attributes {counter_id = 1 : i32, counter_type = "relay"} : index
-// KERNEL-NEXT:       %2 = taskflow.counter parent(%1 : index) from %c0 to %c8 step %c1 attributes {counter_id = 2 : i32, counter_type = "relay"} : index
-// KERNEL-NEXT:       %3 = taskflow.counter parent(%2 : index) from %c0 to %c64 step %c1 attributes {counter_id = 3 : i32, counter_type = "leaf"} : index
-// KERNEL-NEXT:       neura.kernel inputs(%arg2, %arg1 : f32, memref<1x8x8x64xf32>) {
-// KERNEL-NEXT:       ^bb0(%arg3: f32, %arg4: memref<1x8x8x64xf32>):
-// KERNEL-NEXT:         %c64_33 = arith.constant 64 : index
-// KERNEL-NEXT:         %c8_34 = arith.constant 8 : index
-// KERNEL-NEXT:         %c0_35 = arith.constant 0 : index
-// KERNEL-NEXT:         %c1_36 = arith.constant 1 : index
-// KERNEL-NEXT:         %4 = neura.counter from %c0_35 : index to %c1_36 : index step %c1_36 : index attributes {counter_id = 0 : i32, counter_type = "root"} -> index
-// KERNEL-NEXT:         %5 = neura.counter from %c0_35 : index to %c8_34 : index step %c1_36 : index attributes {counter_id = 1 : i32, counter_type = "relay"} -> index
-// KERNEL-NEXT:         %6 = neura.counter from %c0_35 : index to %c8_34 : index step %c1_36 : index attributes {counter_id = 2 : i32, counter_type = "relay"} -> index
-// KERNEL-NEXT:         %7 = neura.counter from %c0_35 : index to %c64_33 : index step %c1_36 : index attributes {counter_id = 3 : i32, counter_type = "leaf"} -> index
-// KERNEL-NEXT:         memref.store %arg3, %arg4[%4, %5, %6, %7] : memref<1x8x8x64xf32>
-// KERNEL-NEXT:         neura.yield
-// KERNEL-NEXT:       }
-// KERNEL-NEXT:       taskflow.yield writes(%arg1 : memref<1x8x8x64xf32>)
-// KERNEL-NEXT:     }
-// KERNEL-NEXT:     %dependency_read_out_22:2, %dependency_write_out_23 = taskflow.task @Task_9 dependency_read_in(%dependency_write_out_19, %dependency_write_out_21 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>) dependency_write_in(%dependency_write_out_21 : memref<1x8x8x64xf32>) value_inputs(%cst : f32) [original_read_memrefs(%alloc_18, %alloc_20 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>), original_write_memrefs(%alloc_20 : memref<1x8x8x64xf32>)] : (memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>, f32) -> (memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>) {
-// KERNEL-NEXT:     ^bb0(%arg1: memref<1x10x10x64xf32>, %arg2: memref<1x8x8x64xf32>, %arg3: memref<1x8x8x64xf32>, %arg4: f32):
-// KERNEL-NEXT:       %c3 = arith.constant 3 : index
-// KERNEL-NEXT:       %c64 = arith.constant 64 : index
-// KERNEL-NEXT:       %c8 = arith.constant 8 : index
-// KERNEL-NEXT:       %c0 = arith.constant 0 : index
-// KERNEL-NEXT:       %c1 = arith.constant 1 : index
-// KERNEL-NEXT:       %0 = taskflow.counter from %c0 to %c1 step %c1 attributes {counter_id = 0 : i32, counter_type = "root"} : index
-// KERNEL-NEXT:       %1 = taskflow.counter parent(%0 : index) from %c0 to %c8 step %c1 attributes {counter_id = 1 : i32, counter_type = "relay"} : index
-// KERNEL-NEXT:       %2 = taskflow.counter parent(%1 : index) from %c0 to %c8 step %c1 attributes {counter_id = 2 : i32, counter_type = "relay"} : index
-// KERNEL-NEXT:       %3 = taskflow.counter parent(%2 : index) from %c0 to %c64 step %c1 attributes {counter_id = 3 : i32, counter_type = "relay"} : index
-// KERNEL-NEXT:       %4 = taskflow.counter parent(%3 : index) from %c0 to %c3 step %c1 attributes {counter_id = 4 : i32, counter_type = "relay"} : index
-// KERNEL-NEXT:       %5 = taskflow.counter parent(%4 : index) from %c0 to %c3 step %c1 attributes {counter_id = 5 : i32, counter_type = "relay"} : index
-// KERNEL-NEXT:       %6 = taskflow.counter parent(%5 : index) from %c0 to %c64 step %c1 attributes {counter_id = 6 : i32, counter_type = "leaf"} : index
-// KERNEL-NEXT:       neura.kernel inputs(%arg1, %arg3, %arg4 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, f32) {
-// KERNEL-NEXT:       ^bb0(%arg5: memref<1x10x10x64xf32>, %arg6: memref<1x8x8x64xf32>, %arg7: f32):
-// KERNEL-NEXT:         %c3_33 = arith.constant 3 : index
-// KERNEL-NEXT:         %c64_34 = arith.constant 64 : index
-// KERNEL-NEXT:         %c8_35 = arith.constant 8 : index
-// KERNEL-NEXT:         %c0_36 = arith.constant 0 : index
-// KERNEL-NEXT:         %c1_37 = arith.constant 1 : index
-// KERNEL-NEXT:         %7 = neura.counter from %c0_36 : index to %c1_37 : index step %c1_37 : index attributes {counter_id = 0 : i32, counter_type = "root"} -> index
-// KERNEL-NEXT:         %8 = neura.counter from %c0_36 : index to %c8_35 : index step %c1_37 : index attributes {counter_id = 1 : i32, counter_type = "relay"} -> index
-// KERNEL-NEXT:         %9 = neura.counter from %c0_36 : index to %c8_35 : index step %c1_37 : index attributes {counter_id = 2 : i32, counter_type = "relay"} -> index
-// KERNEL-NEXT:         %10 = neura.counter from %c0_36 : index to %c64_34 : index step %c1_37 : index attributes {counter_id = 3 : i32, counter_type = "relay"} -> index
-// KERNEL-NEXT:         %11 = neura.counter from %c0_36 : index to %c3_33 : index step %c1_37 : index attributes {counter_id = 4 : i32, counter_type = "relay"} -> index
-// KERNEL-NEXT:         %12 = neura.counter from %c0_36 : index to %c3_33 : index step %c1_37 : index attributes {counter_id = 5 : i32, counter_type = "relay"} -> index
-// KERNEL-NEXT:         %13 = neura.counter from %c0_36 : index to %c64_34 : index step %c1_37 : index attributes {counter_id = 6 : i32, counter_type = "leaf"} -> index
-// KERNEL-NEXT:         %14 = arith.addi %8, %11 : index
-// KERNEL-NEXT:         %15 = arith.addi %9, %12 : index
-// KERNEL-NEXT:         %16 = memref.load %arg5[%7, %14, %15, %13] : memref<1x10x10x64xf32>
-// KERNEL-NEXT:         %17 = memref.load %arg6[%7, %8, %9, %10] : memref<1x8x8x64xf32>
-// KERNEL-NEXT:         %18 = arith.mulf %16, %arg7 : f32
-// KERNEL-NEXT:         %19 = arith.addf %17, %18 : f32
-// KERNEL-NEXT:         memref.store %19, %arg6[%7, %8, %9, %10] : memref<1x8x8x64xf32>
-// KERNEL-NEXT:         neura.yield
-// KERNEL-NEXT:       }
-// KERNEL-NEXT:       taskflow.yield reads(%arg1, %arg3 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>) writes(%arg3 : memref<1x8x8x64xf32>)
-// KERNEL-NEXT:     }
-// KERNEL-NEXT:     %alloc_24 = memref.alloc() {alignment = 64 : i64} : memref<1x64x8x8xf32>
-// KERNEL-NEXT:     %dependency_read_out_25, %dependency_write_out_26 = taskflow.task @Task_10 dependency_read_in(%dependency_write_out_23 : memref<1x8x8x64xf32>) dependency_write_in(%alloc_24 : memref<1x64x8x8xf32>) [original_read_memrefs(%alloc_20 : memref<1x8x8x64xf32>), original_write_memrefs(%alloc_24 : memref<1x64x8x8xf32>)] : (memref<1x8x8x64xf32>, memref<1x64x8x8xf32>) -> (memref<1x8x8x64xf32>, memref<1x64x8x8xf32>) {
-// KERNEL-NEXT:     ^bb0(%arg1: memref<1x8x8x64xf32>, %arg2: memref<1x64x8x8xf32>):
-// KERNEL-NEXT:       %c8 = arith.constant 8 : index
-// KERNEL-NEXT:       %c64 = arith.constant 64 : index
-// KERNEL-NEXT:       %c0 = arith.constant 0 : index
-// KERNEL-NEXT:       %c1 = arith.constant 1 : index
-// KERNEL-NEXT:       %0 = taskflow.counter from %c0 to %c1 step %c1 attributes {counter_id = 0 : i32, counter_type = "root"} : index
-// KERNEL-NEXT:       %1 = taskflow.counter parent(%0 : index) from %c0 to %c64 step %c1 attributes {counter_id = 1 : i32, counter_type = "relay"} : index
-// KERNEL-NEXT:       %2 = taskflow.counter parent(%1 : index) from %c0 to %c8 step %c1 attributes {counter_id = 2 : i32, counter_type = "relay"} : index
-// KERNEL-NEXT:       %3 = taskflow.counter parent(%2 : index) from %c0 to %c8 step %c1 attributes {counter_id = 3 : i32, counter_type = "leaf"} : index
-// KERNEL-NEXT:       neura.kernel inputs(%arg1, %arg2 : memref<1x8x8x64xf32>, memref<1x64x8x8xf32>) {
-// KERNEL-NEXT:       ^bb0(%arg3: memref<1x8x8x64xf32>, %arg4: memref<1x64x8x8xf32>):
-// KERNEL-NEXT:         %c8_33 = arith.constant 8 : index
-// KERNEL-NEXT:         %c64_34 = arith.constant 64 : index
-// KERNEL-NEXT:         %c0_35 = arith.constant 0 : index
-// KERNEL-NEXT:         %c1_36 = arith.constant 1 : index
-// KERNEL-NEXT:         %4 = neura.counter from %c0_35 : index to %c1_36 : index step %c1_36 : index attributes {counter_id = 0 : i32, counter_type = "root"} -> index
-// KERNEL-NEXT:         %5 = neura.counter from %c0_35 : index to %c64_34 : index step %c1_36 : index attributes {counter_id = 1 : i32, counter_type = "relay"} -> index
-// KERNEL-NEXT:         %6 = neura.counter from %c0_35 : index to %c8_33 : index step %c1_36 : index attributes {counter_id = 2 : i32, counter_type = "relay"} -> index
-// KERNEL-NEXT:         %7 = neura.counter from %c0_35 : index to %c8_33 : index step %c1_36 : index attributes {counter_id = 3 : i32, counter_type = "leaf"} -> index
-// KERNEL-NEXT:         %8 = memref.load %arg3[%4, %6, %7, %5] : memref<1x8x8x64xf32>
-// KERNEL-NEXT:         memref.store %8, %arg4[%4, %5, %6, %7] : memref<1x64x8x8xf32>
-// KERNEL-NEXT:         neura.yield
-// KERNEL-NEXT:       }
-// KERNEL-NEXT:       taskflow.yield reads(%arg1 : memref<1x8x8x64xf32>) writes(%arg2 : memref<1x64x8x8xf32>)
-// KERNEL-NEXT:     }
-// KERNEL-NEXT:     %alloc_27 = memref.alloc() {alignment = 64 : i64} : memref<1x64x8x8xf32>
-// KERNEL-NEXT:     %dependency_read_out_28:2, %dependency_write_out_29 = taskflow.task @Task_11 dependency_read_in(%dependency_write_out_26, %dependency_read_out : memref<1x64x8x8xf32>, memref<1x64x8x8xf32>) dependency_write_in(%alloc_27 : memref<1x64x8x8xf32>) [original_read_memrefs(%alloc_24, %arg0 : memref<1x64x8x8xf32>, memref<1x64x8x8xf32>), original_write_memrefs(%alloc_27 : memref<1x64x8x8xf32>)] : (memref<1x64x8x8xf32>, memref<1x64x8x8xf32>, memref<1x64x8x8xf32>) -> (memref<1x64x8x8xf32>, memref<1x64x8x8xf32>, memref<1x64x8x8xf32>) {
-// KERNEL-NEXT:     ^bb0(%arg1: memref<1x64x8x8xf32>, %arg2: memref<1x64x8x8xf32>, %arg3: memref<1x64x8x8xf32>):
-// KERNEL-NEXT:       %c8 = arith.constant 8 : index
-// KERNEL-NEXT:       %c64 = arith.constant 64 : index
-// KERNEL-NEXT:       %c0 = arith.constant 0 : index
-// KERNEL-NEXT:       %c1 = arith.constant 1 : index
-// KERNEL-NEXT:       %0 = taskflow.counter from %c0 to %c1 step %c1 attributes {counter_id = 0 : i32, counter_type = "root"} : index
-// KERNEL-NEXT:       %1 = taskflow.counter parent(%0 : index) from %c0 to %c64 step %c1 attributes {counter_id = 1 : i32, counter_type = "relay"} : index
-// KERNEL-NEXT:       %2 = taskflow.counter parent(%1 : index) from %c0 to %c8 step %c1 attributes {counter_id = 2 : i32, counter_type = "relay"} : index
-// KERNEL-NEXT:       %3 = taskflow.counter parent(%2 : index) from %c0 to %c8 step %c1 attributes {counter_id = 3 : i32, counter_type = "leaf"} : index
-// KERNEL-NEXT:       neura.kernel inputs(%arg1, %arg2, %arg3 : memref<1x64x8x8xf32>, memref<1x64x8x8xf32>, memref<1x64x8x8xf32>) {
-// KERNEL-NEXT:       ^bb0(%arg4: memref<1x64x8x8xf32>, %arg5: memref<1x64x8x8xf32>, %arg6: memref<1x64x8x8xf32>):
-// KERNEL-NEXT:         %c8_33 = arith.constant 8 : index
-// KERNEL-NEXT:         %c64_34 = arith.constant 64 : index
-// KERNEL-NEXT:         %c0_35 = arith.constant 0 : index
-// KERNEL-NEXT:         %c1_36 = arith.constant 1 : index
-// KERNEL-NEXT:         %4 = neura.counter from %c0_35 : index to %c1_36 : index step %c1_36 : index attributes {counter_id = 0 : i32, counter_type = "root"} -> index
-// KERNEL-NEXT:         %5 = neura.counter from %c0_35 : index to %c64_34 : index step %c1_36 : index attributes {counter_id = 1 : i32, counter_type = "relay"} -> index
-// KERNEL-NEXT:         %6 = neura.counter from %c0_35 : index to %c8_33 : index step %c1_36 : index attributes {counter_id = 2 : i32, counter_type = "relay"} -> index
-// KERNEL-NEXT:         %7 = neura.counter from %c0_35 : index to %c8_33 : index step %c1_36 : index attributes {counter_id = 3 : i32, counter_type = "leaf"} -> index
-// KERNEL-NEXT:         %8 = memref.load %arg4[%4, %5, %6, %7] : memref<1x64x8x8xf32>
-// KERNEL-NEXT:         %9 = memref.load %arg5[%4, %5, %6, %7] : memref<1x64x8x8xf32>
-// KERNEL-NEXT:         %10 = arith.addf %8, %9 : f32
-// KERNEL-NEXT:         memref.store %10, %arg6[%4, %5, %6, %7] : memref<1x64x8x8xf32>
-// KERNEL-NEXT:         neura.yield
-// KERNEL-NEXT:       }
-// KERNEL-NEXT:       taskflow.yield reads(%arg1, %arg2 : memref<1x64x8x8xf32>, memref<1x64x8x8xf32>) writes(%arg3 : memref<1x64x8x8xf32>)
-// KERNEL-NEXT:     }
-// KERNEL-NEXT:     %alloc_30 = memref.alloc() {alignment = 64 : i64} : memref<1x64x8x8xf32>
-// KERNEL-NEXT:     %dependency_read_out_31, %dependency_write_out_32 = taskflow.task @Task_12 dependency_read_in(%dependency_write_out_29 : memref<1x64x8x8xf32>) dependency_write_in(%alloc_30 : memref<1x64x8x8xf32>) value_inputs(%cst_1, %cst_2 : f32, f32) [original_read_memrefs(%alloc_27 : memref<1x64x8x8xf32>), original_write_memrefs(%alloc_30 : memref<1x64x8x8xf32>)] : (memref<1x64x8x8xf32>, memref<1x64x8x8xf32>, f32, f32) -> (memref<1x64x8x8xf32>, memref<1x64x8x8xf32>) {
-// KERNEL-NEXT:     ^bb0(%arg1: memref<1x64x8x8xf32>, %arg2: memref<1x64x8x8xf32>, %arg3: f32, %arg4: f32):
-// KERNEL-NEXT:       %c8 = arith.constant 8 : index
-// KERNEL-NEXT:       %c64 = arith.constant 64 : index
-// KERNEL-NEXT:       %c0 = arith.constant 0 : index
-// KERNEL-NEXT:       %c1 = arith.constant 1 : index
-// KERNEL-NEXT:       %0 = taskflow.counter from %c0 to %c1 step %c1 attributes {counter_id = 0 : i32, counter_type = "root"} : index
-// KERNEL-NEXT:       %1 = taskflow.counter parent(%0 : index) from %c0 to %c64 step %c1 attributes {counter_id = 1 : i32, counter_type = "relay"} : index
-// KERNEL-NEXT:       %2 = taskflow.counter parent(%1 : index) from %c0 to %c8 step %c1 attributes {counter_id = 2 : i32, counter_type = "relay"} : index
-// KERNEL-NEXT:       %3 = taskflow.counter parent(%2 : index) from %c0 to %c8 step %c1 attributes {counter_id = 3 : i32, counter_type = "leaf"} : index
-// KERNEL-NEXT:       neura.kernel inputs(%arg1, %arg3, %arg4, %arg2 : memref<1x64x8x8xf32>, f32, f32, memref<1x64x8x8xf32>) {
-// KERNEL-NEXT:       ^bb0(%arg5: memref<1x64x8x8xf32>, %arg6: f32, %arg7: f32, %arg8: memref<1x64x8x8xf32>):
-// KERNEL-NEXT:         %c8_33 = arith.constant 8 : index
-// KERNEL-NEXT:         %c64_34 = arith.constant 64 : index
-// KERNEL-NEXT:         %c0_35 = arith.constant 0 : index
-// KERNEL-NEXT:         %c1_36 = arith.constant 1 : index
-// KERNEL-NEXT:         %4 = neura.counter from %c0_35 : index to %c1_36 : index step %c1_36 : index attributes {counter_id = 0 : i32, counter_type = "root"} -> index
-// KERNEL-NEXT:         %5 = neura.counter from %c0_35 : index to %c64_34 : index step %c1_36 : index attributes {counter_id = 1 : i32, counter_type = "relay"} -> index
-// KERNEL-NEXT:         %6 = neura.counter from %c0_35 : index to %c8_33 : index step %c1_36 : index attributes {counter_id = 2 : i32, counter_type = "relay"} -> index
-// KERNEL-NEXT:         %7 = neura.counter from %c0_35 : index to %c8_33 : index step %c1_36 : index attributes {counter_id = 3 : i32, counter_type = "leaf"} -> index
-// KERNEL-NEXT:         %8 = memref.load %arg5[%4, %5, %6, %7] : memref<1x64x8x8xf32>
-// KERNEL-NEXT:         %9 = arith.minimumf %8, %arg6 : f32
-// KERNEL-NEXT:         %10 = arith.maximumf %9, %arg7 : f32
-// KERNEL-NEXT:         memref.store %10, %arg8[%4, %5, %6, %7] : memref<1x64x8x8xf32>
-// KERNEL-NEXT:         neura.yield
-// KERNEL-NEXT:       }
-// KERNEL-NEXT:       taskflow.yield reads(%arg1 : memref<1x64x8x8xf32>) writes(%arg2 : memref<1x64x8x8xf32>)
-// KERNEL-NEXT:     }
-// KERNEL-NEXT:     return %dependency_write_out_32 : memref<1x64x8x8xf32>
-// KERNEL-NEXT:   }
-// KERNEL-NEXT: }
-
+// KERNEL: module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
+// KERNEL-NEXT:    memref.global "private" constant @__constant_64xf32 : memref<64xf32> = dense<0.000000e+00> {alignment = 64 : i64}
+// KERNEL-NEXT:    memref.global "private" constant @__constant_64x3x3x64xf32_0 : memref<64x3x3x64xf32> = dense<-0.0151730878> {alignment = 64 : i64}
+// KERNEL-NEXT:    memref.global "private" constant @__constant_64x3x3x64xf32 : memref<64x3x3x64xf32> = dense<0.0197670367> {alignment = 64 : i64}
+// KERNEL-NEXT:    func.func @forward(%arg0: memref<1x64x8x8xf32>) -> memref<1x64x8x8xf32> {
+// KERNEL-NEXT:      %cst = arith.constant 0.0197670367 : f32
+// KERNEL-NEXT:      %cst_0 = arith.constant -0.0151730878 : f32
+// KERNEL-NEXT:      %cst_1 = arith.constant 3.40282347E+38 : f32
+// KERNEL-NEXT:      %cst_2 = arith.constant 0.000000e+00 : f32
+// KERNEL-NEXT:      %alloc = memref.alloc() {alignment = 64 : i64} : memref<1x8x8x64xf32>
+// KERNEL-NEXT:      %dependency_read_out, %dependency_write_out = taskflow.task @Task_0 dependency_read_in(%arg0 : memref<1x64x8x8xf32>) dependency_write_in(%alloc : memref<1x8x8x64xf32>) [original_read_memrefs(%arg0 : memref<1x64x8x8xf32>), original_write_memrefs(%alloc : memref<1x8x8x64xf32>)] : (memref<1x64x8x8xf32>, memref<1x8x8x64xf32>) -> (memref<1x64x8x8xf32>, memref<1x8x8x64xf32>) {
+// KERNEL-NEXT:      ^bb0(%arg1: memref<1x64x8x8xf32>, %arg2: memref<1x8x8x64xf32>):
+// KERNEL-NEXT:        %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// KERNEL-NEXT:        %1 = taskflow.counter parent(%0 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:        %2 = taskflow.counter parent(%1 : index) attributes {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:        %3 = taskflow.counter parent(%2 : index) attributes {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// KERNEL-NEXT:        neura.kernel inputs(%arg1, %arg2 : memref<1x64x8x8xf32>, memref<1x8x8x64xf32>) {
+// KERNEL-NEXT:        ^bb0(%arg3: memref<1x64x8x8xf32>, %arg4: memref<1x8x8x64xf32>):
+// KERNEL-NEXT:          %4 = neura.counter {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// KERNEL-NEXT:          %5 = neura.counter {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:          %6 = neura.counter {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:          %7 = neura.counter {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// KERNEL-NEXT:          %8 = memref.load %arg3[%4, %7, %5, %6] : memref<1x64x8x8xf32>
+// KERNEL-NEXT:          memref.store %8, %arg4[%4, %5, %6, %7] : memref<1x8x8x64xf32>
+// KERNEL-NEXT:          neura.yield
+// KERNEL-NEXT:        }
+// KERNEL-NEXT:        taskflow.yield reads(%arg1 : memref<1x64x8x8xf32>) writes(%arg2 : memref<1x8x8x64xf32>)
+// KERNEL-NEXT:      }
+// KERNEL-NEXT:      %alloc_3 = memref.alloc() {alignment = 64 : i64} : memref<1x10x10x64xf32>
+// KERNEL-NEXT:      %dependency_write_out_4 = taskflow.task @Task_1 dependency_write_in(%alloc_3 : memref<1x10x10x64xf32>) value_inputs(%cst_2 : f32) [original_write_memrefs(%alloc_3 : memref<1x10x10x64xf32>)] : (memref<1x10x10x64xf32>, f32) -> (memref<1x10x10x64xf32>) {
+// KERNEL-NEXT:      ^bb0(%arg1: memref<1x10x10x64xf32>, %arg2: f32):
+// KERNEL-NEXT:        %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// KERNEL-NEXT:        %1 = taskflow.counter parent(%0 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 10 : index} : index
+// KERNEL-NEXT:        %2 = taskflow.counter parent(%1 : index) attributes {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 10 : index} : index
+// KERNEL-NEXT:        %3 = taskflow.counter parent(%2 : index) attributes {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// KERNEL-NEXT:        neura.kernel inputs(%arg2, %arg1 : f32, memref<1x10x10x64xf32>) {
+// KERNEL-NEXT:        ^bb0(%arg3: f32, %arg4: memref<1x10x10x64xf32>):
+// KERNEL-NEXT:          %4 = neura.counter {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// KERNEL-NEXT:          %5 = neura.counter {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 10 : index} : index
+// KERNEL-NEXT:          %6 = neura.counter {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 10 : index} : index
+// KERNEL-NEXT:          %7 = neura.counter {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// KERNEL-NEXT:          memref.store %arg3, %arg4[%4, %5, %6, %7] : memref<1x10x10x64xf32>
+// KERNEL-NEXT:          neura.yield
+// KERNEL-NEXT:        }
+// KERNEL-NEXT:        taskflow.yield writes(%arg1 : memref<1x10x10x64xf32>)
+// KERNEL-NEXT:      }
+// KERNEL-NEXT:      %alloc_5 = memref.alloc() {alignment = 64 : i64} : memref<1x8x8x64xf32>
+// KERNEL-NEXT:      %dependency_write_out_6 = taskflow.task @Task_2 dependency_write_in(%alloc_5 : memref<1x8x8x64xf32>) value_inputs(%cst_2 : f32) [original_write_memrefs(%alloc_5 : memref<1x8x8x64xf32>)] : (memref<1x8x8x64xf32>, f32) -> (memref<1x8x8x64xf32>) {
+// KERNEL-NEXT:      ^bb0(%arg1: memref<1x8x8x64xf32>, %arg2: f32):
+// KERNEL-NEXT:        %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// KERNEL-NEXT:        %1 = taskflow.counter parent(%0 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:        %2 = taskflow.counter parent(%1 : index) attributes {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:        %3 = taskflow.counter parent(%2 : index) attributes {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// KERNEL-NEXT:        neura.kernel inputs(%arg2, %arg1 : f32, memref<1x8x8x64xf32>) {
+// KERNEL-NEXT:        ^bb0(%arg3: f32, %arg4: memref<1x8x8x64xf32>):
+// KERNEL-NEXT:          %4 = neura.counter {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// KERNEL-NEXT:          %5 = neura.counter {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:          %6 = neura.counter {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:          %7 = neura.counter {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// KERNEL-NEXT:          memref.store %arg3, %arg4[%4, %5, %6, %7] : memref<1x8x8x64xf32>
+// KERNEL-NEXT:          neura.yield
+// KERNEL-NEXT:        }
+// KERNEL-NEXT:        taskflow.yield writes(%arg1 : memref<1x8x8x64xf32>)
+// KERNEL-NEXT:      }
+// KERNEL-NEXT:      %dependency_read_out_7:2, %dependency_write_out_8 = taskflow.task @Task_3 dependency_read_in(%dependency_write_out_4, %dependency_write_out_6 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>) dependency_write_in(%dependency_write_out_6 : memref<1x8x8x64xf32>) value_inputs(%cst_0 : f32) [original_read_memrefs(%alloc_3, %alloc_5 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>), original_write_memrefs(%alloc_5 : memref<1x8x8x64xf32>)] : (memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>, f32) -> (memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>) {
+// KERNEL-NEXT:      ^bb0(%arg1: memref<1x10x10x64xf32>, %arg2: memref<1x8x8x64xf32>, %arg3: memref<1x8x8x64xf32>, %arg4: f32):
+// KERNEL-NEXT:        %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// KERNEL-NEXT:        %1 = taskflow.counter parent(%0 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:        %2 = taskflow.counter parent(%1 : index) attributes {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:        %3 = taskflow.counter parent(%2 : index) attributes {counter_id = 3 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// KERNEL-NEXT:        %4 = taskflow.counter parent(%3 : index) attributes {counter_id = 4 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 3 : index} : index
+// KERNEL-NEXT:        %5 = taskflow.counter parent(%4 : index) attributes {counter_id = 5 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 3 : index} : index
+// KERNEL-NEXT:        %6 = taskflow.counter parent(%5 : index) attributes {counter_id = 6 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// KERNEL-NEXT:        neura.kernel inputs(%arg1, %arg3, %arg4 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, f32) {
+// KERNEL-NEXT:        ^bb0(%arg5: memref<1x10x10x64xf32>, %arg6: memref<1x8x8x64xf32>, %arg7: f32):
+// KERNEL-NEXT:          %7 = neura.counter {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// KERNEL-NEXT:          %8 = neura.counter {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:          %9 = neura.counter {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:          %10 = neura.counter {counter_id = 3 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// KERNEL-NEXT:          %11 = neura.counter {counter_id = 4 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 3 : index} : index
+// KERNEL-NEXT:          %12 = neura.counter {counter_id = 5 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 3 : index} : index
+// KERNEL-NEXT:          %13 = neura.counter {counter_id = 6 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// KERNEL-NEXT:          %14 = arith.addi %8, %11 : index
+// KERNEL-NEXT:          %15 = arith.addi %9, %12 : index
+// KERNEL-NEXT:          %16 = memref.load %arg5[%7, %14, %15, %13] : memref<1x10x10x64xf32>
+// KERNEL-NEXT:          %17 = memref.load %arg6[%7, %8, %9, %10] : memref<1x8x8x64xf32>
+// KERNEL-NEXT:          %18 = arith.mulf %16, %arg7 : f32
+// KERNEL-NEXT:          %19 = arith.addf %17, %18 : f32
+// KERNEL-NEXT:          memref.store %19, %arg6[%7, %8, %9, %10] : memref<1x8x8x64xf32>
+// KERNEL-NEXT:          neura.yield
+// KERNEL-NEXT:        }
+// KERNEL-NEXT:        taskflow.yield reads(%arg1, %arg3 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>) writes(%arg3 : memref<1x8x8x64xf32>)
+// KERNEL-NEXT:      }
+// KERNEL-NEXT:      %alloc_9 = memref.alloc() {alignment = 64 : i64} : memref<1x64x8x8xf32>
+// KERNEL-NEXT:      %dependency_read_out_10, %dependency_write_out_11 = taskflow.task @Task_4 dependency_read_in(%dependency_write_out_8 : memref<1x8x8x64xf32>) dependency_write_in(%alloc_9 : memref<1x64x8x8xf32>) [original_read_memrefs(%alloc_5 : memref<1x8x8x64xf32>), original_write_memrefs(%alloc_9 : memref<1x64x8x8xf32>)] : (memref<1x8x8x64xf32>, memref<1x64x8x8xf32>) -> (memref<1x8x8x64xf32>, memref<1x64x8x8xf32>) {
+// KERNEL-NEXT:      ^bb0(%arg1: memref<1x8x8x64xf32>, %arg2: memref<1x64x8x8xf32>):
+// KERNEL-NEXT:        %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// KERNEL-NEXT:        %1 = taskflow.counter parent(%0 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// KERNEL-NEXT:        %2 = taskflow.counter parent(%1 : index) attributes {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:        %3 = taskflow.counter parent(%2 : index) attributes {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:        neura.kernel inputs(%arg1, %arg2 : memref<1x8x8x64xf32>, memref<1x64x8x8xf32>) {
+// KERNEL-NEXT:        ^bb0(%arg3: memref<1x8x8x64xf32>, %arg4: memref<1x64x8x8xf32>):
+// KERNEL-NEXT:          %4 = neura.counter {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// KERNEL-NEXT:          %5 = neura.counter {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// KERNEL-NEXT:          %6 = neura.counter {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:          %7 = neura.counter {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:          %8 = memref.load %arg3[%4, %6, %7, %5] : memref<1x8x8x64xf32>
+// KERNEL-NEXT:          memref.store %8, %arg4[%4, %5, %6, %7] : memref<1x64x8x8xf32>
+// KERNEL-NEXT:          neura.yield
+// KERNEL-NEXT:        }
+// KERNEL-NEXT:        taskflow.yield reads(%arg1 : memref<1x8x8x64xf32>) writes(%arg2 : memref<1x64x8x8xf32>)
+// KERNEL-NEXT:      }
+// KERNEL-NEXT:      %alloc_12 = memref.alloc() {alignment = 64 : i64} : memref<1x64x8x8xf32>
+// KERNEL-NEXT:      %dependency_read_out_13, %dependency_write_out_14 = taskflow.task @Task_5 dependency_read_in(%dependency_write_out_11 : memref<1x64x8x8xf32>) dependency_write_in(%alloc_12 : memref<1x64x8x8xf32>) value_inputs(%cst_1, %cst_2 : f32, f32) [original_read_memrefs(%alloc_9 : memref<1x64x8x8xf32>), original_write_memrefs(%alloc_12 : memref<1x64x8x8xf32>)] : (memref<1x64x8x8xf32>, memref<1x64x8x8xf32>, f32, f32) -> (memref<1x64x8x8xf32>, memref<1x64x8x8xf32>) {
+// KERNEL-NEXT:      ^bb0(%arg1: memref<1x64x8x8xf32>, %arg2: memref<1x64x8x8xf32>, %arg3: f32, %arg4: f32):
+// KERNEL-NEXT:        %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// KERNEL-NEXT:        %1 = taskflow.counter parent(%0 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// KERNEL-NEXT:        %2 = taskflow.counter parent(%1 : index) attributes {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:        %3 = taskflow.counter parent(%2 : index) attributes {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:        neura.kernel inputs(%arg1, %arg3, %arg4, %arg2 : memref<1x64x8x8xf32>, f32, f32, memref<1x64x8x8xf32>) {
+// KERNEL-NEXT:        ^bb0(%arg5: memref<1x64x8x8xf32>, %arg6: f32, %arg7: f32, %arg8: memref<1x64x8x8xf32>):
+// KERNEL-NEXT:          %4 = neura.counter {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// KERNEL-NEXT:          %5 = neura.counter {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// KERNEL-NEXT:          %6 = neura.counter {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:          %7 = neura.counter {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:          %8 = memref.load %arg5[%4, %5, %6, %7] : memref<1x64x8x8xf32>
+// KERNEL-NEXT:          %9 = arith.minimumf %8, %arg6 : f32
+// KERNEL-NEXT:          %10 = arith.maximumf %9, %arg7 : f32
+// KERNEL-NEXT:          memref.store %10, %arg8[%4, %5, %6, %7] : memref<1x64x8x8xf32>
+// KERNEL-NEXT:          neura.yield
+// KERNEL-NEXT:        }
+// KERNEL-NEXT:        taskflow.yield reads(%arg1 : memref<1x64x8x8xf32>) writes(%arg2 : memref<1x64x8x8xf32>)
+// KERNEL-NEXT:      }
+// KERNEL-NEXT:      %alloc_15 = memref.alloc() {alignment = 64 : i64} : memref<1x8x8x64xf32>
+// KERNEL-NEXT:      %dependency_read_out_16, %dependency_write_out_17 = taskflow.task @Task_6 dependency_read_in(%dependency_write_out_14 : memref<1x64x8x8xf32>) dependency_write_in(%alloc_15 : memref<1x8x8x64xf32>) [original_read_memrefs(%alloc_12 : memref<1x64x8x8xf32>), original_write_memrefs(%alloc_15 : memref<1x8x8x64xf32>)] : (memref<1x64x8x8xf32>, memref<1x8x8x64xf32>) -> (memref<1x64x8x8xf32>, memref<1x8x8x64xf32>) {
+// KERNEL-NEXT:      ^bb0(%arg1: memref<1x64x8x8xf32>, %arg2: memref<1x8x8x64xf32>):
+// KERNEL-NEXT:        %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// KERNEL-NEXT:        %1 = taskflow.counter parent(%0 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:        %2 = taskflow.counter parent(%1 : index) attributes {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:        %3 = taskflow.counter parent(%2 : index) attributes {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// KERNEL-NEXT:        neura.kernel inputs(%arg1, %arg2 : memref<1x64x8x8xf32>, memref<1x8x8x64xf32>) {
+// KERNEL-NEXT:        ^bb0(%arg3: memref<1x64x8x8xf32>, %arg4: memref<1x8x8x64xf32>):
+// KERNEL-NEXT:          %4 = neura.counter {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// KERNEL-NEXT:          %5 = neura.counter {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:          %6 = neura.counter {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:          %7 = neura.counter {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// KERNEL-NEXT:          %8 = memref.load %arg3[%4, %7, %5, %6] : memref<1x64x8x8xf32>
+// KERNEL-NEXT:          memref.store %8, %arg4[%4, %5, %6, %7] : memref<1x8x8x64xf32>
+// KERNEL-NEXT:          neura.yield
+// KERNEL-NEXT:        }
+// KERNEL-NEXT:        taskflow.yield reads(%arg1 : memref<1x64x8x8xf32>) writes(%arg2 : memref<1x8x8x64xf32>)
+// KERNEL-NEXT:      }
+// KERNEL-NEXT:      %alloc_18 = memref.alloc() {alignment = 64 : i64} : memref<1x10x10x64xf32>
+// KERNEL-NEXT:      %dependency_write_out_19 = taskflow.task @Task_7 dependency_write_in(%alloc_18 : memref<1x10x10x64xf32>) value_inputs(%cst_2 : f32) [original_write_memrefs(%alloc_18 : memref<1x10x10x64xf32>)] : (memref<1x10x10x64xf32>, f32) -> (memref<1x10x10x64xf32>) {
+// KERNEL-NEXT:      ^bb0(%arg1: memref<1x10x10x64xf32>, %arg2: f32):
+// KERNEL-NEXT:        %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// KERNEL-NEXT:        %1 = taskflow.counter parent(%0 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 10 : index} : index
+// KERNEL-NEXT:        %2 = taskflow.counter parent(%1 : index) attributes {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 10 : index} : index
+// KERNEL-NEXT:        %3 = taskflow.counter parent(%2 : index) attributes {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// KERNEL-NEXT:        neura.kernel inputs(%arg2, %arg1 : f32, memref<1x10x10x64xf32>) {
+// KERNEL-NEXT:        ^bb0(%arg3: f32, %arg4: memref<1x10x10x64xf32>):
+// KERNEL-NEXT:          %4 = neura.counter {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// KERNEL-NEXT:          %5 = neura.counter {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 10 : index} : index
+// KERNEL-NEXT:          %6 = neura.counter {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 10 : index} : index
+// KERNEL-NEXT:          %7 = neura.counter {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// KERNEL-NEXT:          memref.store %arg3, %arg4[%4, %5, %6, %7] : memref<1x10x10x64xf32>
+// KERNEL-NEXT:          neura.yield
+// KERNEL-NEXT:        }
+// KERNEL-NEXT:        taskflow.yield writes(%arg1 : memref<1x10x10x64xf32>)
+// KERNEL-NEXT:      }
+// KERNEL-NEXT:      %alloc_20 = memref.alloc() {alignment = 64 : i64} : memref<1x8x8x64xf32>
+// KERNEL-NEXT:      %dependency_write_out_21 = taskflow.task @Task_8 dependency_write_in(%alloc_20 : memref<1x8x8x64xf32>) value_inputs(%cst_2 : f32) [original_write_memrefs(%alloc_20 : memref<1x8x8x64xf32>)] : (memref<1x8x8x64xf32>, f32) -> (memref<1x8x8x64xf32>) {
+// KERNEL-NEXT:      ^bb0(%arg1: memref<1x8x8x64xf32>, %arg2: f32):
+// KERNEL-NEXT:        %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// KERNEL-NEXT:        %1 = taskflow.counter parent(%0 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:        %2 = taskflow.counter parent(%1 : index) attributes {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:        %3 = taskflow.counter parent(%2 : index) attributes {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// KERNEL-NEXT:        neura.kernel inputs(%arg2, %arg1 : f32, memref<1x8x8x64xf32>) {
+// KERNEL-NEXT:        ^bb0(%arg3: f32, %arg4: memref<1x8x8x64xf32>):
+// KERNEL-NEXT:          %4 = neura.counter {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// KERNEL-NEXT:          %5 = neura.counter {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:          %6 = neura.counter {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:          %7 = neura.counter {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// KERNEL-NEXT:          memref.store %arg3, %arg4[%4, %5, %6, %7] : memref<1x8x8x64xf32>
+// KERNEL-NEXT:          neura.yield
+// KERNEL-NEXT:        }
+// KERNEL-NEXT:        taskflow.yield writes(%arg1 : memref<1x8x8x64xf32>)
+// KERNEL-NEXT:      }
+// KERNEL-NEXT:      %dependency_read_out_22:2, %dependency_write_out_23 = taskflow.task @Task_9 dependency_read_in(%dependency_write_out_19, %dependency_write_out_21 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>) dependency_write_in(%dependency_write_out_21 : memref<1x8x8x64xf32>) value_inputs(%cst : f32) [original_read_memrefs(%alloc_18, %alloc_20 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>), original_write_memrefs(%alloc_20 : memref<1x8x8x64xf32>)] : (memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>, f32) -> (memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, memref<1x8x8x64xf32>) {
+// KERNEL-NEXT:      ^bb0(%arg1: memref<1x10x10x64xf32>, %arg2: memref<1x8x8x64xf32>, %arg3: memref<1x8x8x64xf32>, %arg4: f32):
+// KERNEL-NEXT:        %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// KERNEL-NEXT:        %1 = taskflow.counter parent(%0 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:        %2 = taskflow.counter parent(%1 : index) attributes {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:        %3 = taskflow.counter parent(%2 : index) attributes {counter_id = 3 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// KERNEL-NEXT:        %4 = taskflow.counter parent(%3 : index) attributes {counter_id = 4 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 3 : index} : index
+// KERNEL-NEXT:        %5 = taskflow.counter parent(%4 : index) attributes {counter_id = 5 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 3 : index} : index
+// KERNEL-NEXT:        %6 = taskflow.counter parent(%5 : index) attributes {counter_id = 6 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// KERNEL-NEXT:        neura.kernel inputs(%arg1, %arg3, %arg4 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>, f32) {
+// KERNEL-NEXT:        ^bb0(%arg5: memref<1x10x10x64xf32>, %arg6: memref<1x8x8x64xf32>, %arg7: f32):
+// KERNEL-NEXT:          %7 = neura.counter {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// KERNEL-NEXT:          %8 = neura.counter {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:          %9 = neura.counter {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:          %10 = neura.counter {counter_id = 3 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// KERNEL-NEXT:          %11 = neura.counter {counter_id = 4 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 3 : index} : index
+// KERNEL-NEXT:          %12 = neura.counter {counter_id = 5 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 3 : index} : index
+// KERNEL-NEXT:          %13 = neura.counter {counter_id = 6 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// KERNEL-NEXT:          %14 = arith.addi %8, %11 : index
+// KERNEL-NEXT:          %15 = arith.addi %9, %12 : index
+// KERNEL-NEXT:          %16 = memref.load %arg5[%7, %14, %15, %13] : memref<1x10x10x64xf32>
+// KERNEL-NEXT:          %17 = memref.load %arg6[%7, %8, %9, %10] : memref<1x8x8x64xf32>
+// KERNEL-NEXT:          %18 = arith.mulf %16, %arg7 : f32
+// KERNEL-NEXT:          %19 = arith.addf %17, %18 : f32
+// KERNEL-NEXT:          memref.store %19, %arg6[%7, %8, %9, %10] : memref<1x8x8x64xf32>
+// KERNEL-NEXT:          neura.yield
+// KERNEL-NEXT:        }
+// KERNEL-NEXT:        taskflow.yield reads(%arg1, %arg3 : memref<1x10x10x64xf32>, memref<1x8x8x64xf32>) writes(%arg3 : memref<1x8x8x64xf32>)
+// KERNEL-NEXT:      }
+// KERNEL-NEXT:      %alloc_24 = memref.alloc() {alignment = 64 : i64} : memref<1x64x8x8xf32>
+// KERNEL-NEXT:      %dependency_read_out_25, %dependency_write_out_26 = taskflow.task @Task_10 dependency_read_in(%dependency_write_out_23 : memref<1x8x8x64xf32>) dependency_write_in(%alloc_24 : memref<1x64x8x8xf32>) [original_read_memrefs(%alloc_20 : memref<1x8x8x64xf32>), original_write_memrefs(%alloc_24 : memref<1x64x8x8xf32>)] : (memref<1x8x8x64xf32>, memref<1x64x8x8xf32>) -> (memref<1x8x8x64xf32>, memref<1x64x8x8xf32>) {
+// KERNEL-NEXT:      ^bb0(%arg1: memref<1x8x8x64xf32>, %arg2: memref<1x64x8x8xf32>):
+// KERNEL-NEXT:        %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// KERNEL-NEXT:        %1 = taskflow.counter parent(%0 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// KERNEL-NEXT:        %2 = taskflow.counter parent(%1 : index) attributes {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:        %3 = taskflow.counter parent(%2 : index) attributes {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:        neura.kernel inputs(%arg1, %arg2 : memref<1x8x8x64xf32>, memref<1x64x8x8xf32>) {
+// KERNEL-NEXT:        ^bb0(%arg3: memref<1x8x8x64xf32>, %arg4: memref<1x64x8x8xf32>):
+// KERNEL-NEXT:          %4 = neura.counter {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// KERNEL-NEXT:          %5 = neura.counter {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// KERNEL-NEXT:          %6 = neura.counter {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:          %7 = neura.counter {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:          %8 = memref.load %arg3[%4, %6, %7, %5] : memref<1x8x8x64xf32>
+// KERNEL-NEXT:          memref.store %8, %arg4[%4, %5, %6, %7] : memref<1x64x8x8xf32>
+// KERNEL-NEXT:          neura.yield
+// KERNEL-NEXT:        }
+// KERNEL-NEXT:        taskflow.yield reads(%arg1 : memref<1x8x8x64xf32>) writes(%arg2 : memref<1x64x8x8xf32>)
+// KERNEL-NEXT:      }
+// KERNEL-NEXT:      %alloc_27 = memref.alloc() {alignment = 64 : i64} : memref<1x64x8x8xf32>
+// KERNEL-NEXT:      %dependency_read_out_28:2, %dependency_write_out_29 = taskflow.task @Task_11 dependency_read_in(%dependency_write_out_26, %dependency_read_out : memref<1x64x8x8xf32>, memref<1x64x8x8xf32>) dependency_write_in(%alloc_27 : memref<1x64x8x8xf32>) [original_read_memrefs(%alloc_24, %arg0 : memref<1x64x8x8xf32>, memref<1x64x8x8xf32>), original_write_memrefs(%alloc_27 : memref<1x64x8x8xf32>)] : (memref<1x64x8x8xf32>, memref<1x64x8x8xf32>, memref<1x64x8x8xf32>) -> (memref<1x64x8x8xf32>, memref<1x64x8x8xf32>, memref<1x64x8x8xf32>) {
+// KERNEL-NEXT:      ^bb0(%arg1: memref<1x64x8x8xf32>, %arg2: memref<1x64x8x8xf32>, %arg3: memref<1x64x8x8xf32>):
+// KERNEL-NEXT:        %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// KERNEL-NEXT:        %1 = taskflow.counter parent(%0 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// KERNEL-NEXT:        %2 = taskflow.counter parent(%1 : index) attributes {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:        %3 = taskflow.counter parent(%2 : index) attributes {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:        neura.kernel inputs(%arg1, %arg2, %arg3 : memref<1x64x8x8xf32>, memref<1x64x8x8xf32>, memref<1x64x8x8xf32>) {
+// KERNEL-NEXT:        ^bb0(%arg4: memref<1x64x8x8xf32>, %arg5: memref<1x64x8x8xf32>, %arg6: memref<1x64x8x8xf32>):
+// KERNEL-NEXT:          %4 = neura.counter {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// KERNEL-NEXT:          %5 = neura.counter {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// KERNEL-NEXT:          %6 = neura.counter {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:          %7 = neura.counter {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:          %8 = memref.load %arg4[%4, %5, %6, %7] : memref<1x64x8x8xf32>
+// KERNEL-NEXT:          %9 = memref.load %arg5[%4, %5, %6, %7] : memref<1x64x8x8xf32>
+// KERNEL-NEXT:          %10 = arith.addf %8, %9 : f32
+// KERNEL-NEXT:          memref.store %10, %arg6[%4, %5, %6, %7] : memref<1x64x8x8xf32>
+// KERNEL-NEXT:          neura.yield
+// KERNEL-NEXT:        }
+// KERNEL-NEXT:        taskflow.yield reads(%arg1, %arg2 : memref<1x64x8x8xf32>, memref<1x64x8x8xf32>) writes(%arg3 : memref<1x64x8x8xf32>)
+// KERNEL-NEXT:      }
+// KERNEL-NEXT:      %alloc_30 = memref.alloc() {alignment = 64 : i64} : memref<1x64x8x8xf32>
+// KERNEL-NEXT:      %dependency_read_out_31, %dependency_write_out_32 = taskflow.task @Task_12 dependency_read_in(%dependency_write_out_29 : memref<1x64x8x8xf32>) dependency_write_in(%alloc_30 : memref<1x64x8x8xf32>) value_inputs(%cst_1, %cst_2 : f32, f32) [original_read_memrefs(%alloc_27 : memref<1x64x8x8xf32>), original_write_memrefs(%alloc_30 : memref<1x64x8x8xf32>)] : (memref<1x64x8x8xf32>, memref<1x64x8x8xf32>, f32, f32) -> (memref<1x64x8x8xf32>, memref<1x64x8x8xf32>) {
+// KERNEL-NEXT:      ^bb0(%arg1: memref<1x64x8x8xf32>, %arg2: memref<1x64x8x8xf32>, %arg3: f32, %arg4: f32):
+// KERNEL-NEXT:        %0 = taskflow.counter attributes {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// KERNEL-NEXT:        %1 = taskflow.counter parent(%0 : index) attributes {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// KERNEL-NEXT:        %2 = taskflow.counter parent(%1 : index) attributes {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:        %3 = taskflow.counter parent(%2 : index) attributes {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:        neura.kernel inputs(%arg1, %arg3, %arg4, %arg2 : memref<1x64x8x8xf32>, f32, f32, memref<1x64x8x8xf32>) {
+// KERNEL-NEXT:        ^bb0(%arg5: memref<1x64x8x8xf32>, %arg6: f32, %arg7: f32, %arg8: memref<1x64x8x8xf32>):
+// KERNEL-NEXT:          %4 = neura.counter {counter_id = 0 : i32, counter_type = "root", lower_bound = 0 : index, step = 1 : index, upper_bound = 1 : index} : index
+// KERNEL-NEXT:          %5 = neura.counter {counter_id = 1 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 64 : index} : index
+// KERNEL-NEXT:          %6 = neura.counter {counter_id = 2 : i32, counter_type = "relay", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:          %7 = neura.counter {counter_id = 3 : i32, counter_type = "leaf", lower_bound = 0 : index, step = 1 : index, upper_bound = 8 : index} : index
+// KERNEL-NEXT:          %8 = memref.load %arg5[%4, %5, %6, %7] : memref<1x64x8x8xf32>
+// KERNEL-NEXT:          %9 = arith.minimumf %8, %arg6 : f32
+// KERNEL-NEXT:          %10 = arith.maximumf %9, %arg7 : f32
+// KERNEL-NEXT:          memref.store %10, %arg8[%4, %5, %6, %7] : memref<1x64x8x8xf32>
+// KERNEL-NEXT:          neura.yield
+// KERNEL-NEXT:        }
+// KERNEL-NEXT:        taskflow.yield reads(%arg1 : memref<1x64x8x8xf32>) writes(%arg2 : memref<1x64x8x8xf32>)
+// KERNEL-NEXT:      }
+// KERNEL-NEXT:      return %dependency_write_out_32 : memref<1x64x8x8xf32>
+// KERNEL-NEXT:    }
+// KERNEL-NEXT:  }
 
 
 // STREAM: module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
@@ -812,6 +710,31 @@ module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
 // STREAM-NEXT:     return %dependency_write_out_23 : memref<1x64x8x8xf32>
 // STREAM-NEXT:   }
 // STREAM-NEXT: }
+
+// MAP-SPATIAL-TEMPORAL: module attributes {torch.debug_module_name = "SimpleResNetBlock"} {
+// MAP-SPATIAL-TEMPORAL-NEXT:    func.func @forward(%arg0: tensor<1x64x8x8xf32>) -> tensor<1x64x8x8xf32> {
+// MAP-SPATIAL-TEMPORAL-NEXT:      %0 = "tosa.const"() <{value = dense<0.0197670367> : tensor<64x64x3x3xf32>}> : () -> tensor<64x64x3x3xf32>
+// MAP-SPATIAL-TEMPORAL-NEXT:      %1 = "tosa.const"() <{value = dense<-0.0151730878> : tensor<64x64x3x3xf32>}> : () -> tensor<64x64x3x3xf32>
+// MAP-SPATIAL-TEMPORAL-NEXT:      %2 = "tosa.const"() <{value = dense<0.000000e+00> : tensor<64xf32>}> : () -> tensor<64xf32>
+// MAP-SPATIAL-TEMPORAL-NEXT:      %3 = "tosa.const"() <{value = dense<[0, 2, 3, 1]> : tensor<4xi32>}> : () -> tensor<4xi32>
+// MAP-SPATIAL-TEMPORAL-NEXT:      %4 = "tosa.const"() <{value = dense<[0, 3, 1, 2]> : tensor<4xi32>}> : () -> tensor<4xi32>
+// MAP-SPATIAL-TEMPORAL-NEXT:      %5 = tosa.transpose %arg0, %3 : (tensor<1x64x8x8xf32>, tensor<4xi32>) -> tensor<1x8x8x64xf32>
+// MAP-SPATIAL-TEMPORAL-NEXT:      %6 = tosa.transpose %1, %3 : (tensor<64x64x3x3xf32>, tensor<4xi32>) -> tensor<64x3x3x64xf32>
+// MAP-SPATIAL-TEMPORAL-NEXT:      %7 = tosa.conv2d %5, %6, %2 {acc_type = f32, dilation = array<i64: 1, 1>, pad = array<i64: 1, 1, 1, 1>, stride = array<i64: 1, 1>} : (tensor<1x8x8x64xf32>, tensor<64x3x3x64xf32>, tensor<64xf32>) -> tensor<1x8x8x64xf32>
+// MAP-SPATIAL-TEMPORAL-NEXT:      %8 = tosa.transpose %7, %4 : (tensor<1x8x8x64xf32>, tensor<4xi32>) -> tensor<1x64x8x8xf32>
+// MAP-SPATIAL-TEMPORAL-NEXT:      %9 = tosa.clamp %8 {max_fp = 3.40282347E+38 : f32, max_int = 2147483647 : i64, min_fp = 0.000000e+00 : f32, min_int = 0 : i64} : (tensor<1x64x8x8xf32>) -> tensor<1x64x8x8xf32>
+// MAP-SPATIAL-TEMPORAL-NEXT:      %10 = tosa.transpose %9, %3 : (tensor<1x64x8x8xf32>, tensor<4xi32>) -> tensor<1x8x8x64xf32>
+// MAP-SPATIAL-TEMPORAL-NEXT:      %11 = tosa.transpose %0, %3 : (tensor<64x64x3x3xf32>, tensor<4xi32>) -> tensor<64x3x3x64xf32>
+// MAP-SPATIAL-TEMPORAL-NEXT:      %12 = tosa.conv2d %10, %11, %2 {acc_type = f32, dilation = array<i64: 1, 1>, pad = array<i64: 1, 1, 1, 1>, stride = array<i64: 1, 1>} : (tensor<1x8x8x64xf32>, tensor<64x3x3x64xf32>, tensor<64xf32>) -> tensor<1x8x8x64xf32>
+// MAP-SPATIAL-TEMPORAL-NEXT:      %13 = tosa.transpose %12, %4 : (tensor<1x8x8x64xf32>, tensor<4xi32>) -> tensor<1x64x8x8xf32>
+// MAP-SPATIAL-TEMPORAL-NEXT:      %14 = tosa.add %13, %arg0 : (tensor<1x64x8x8xf32>, tensor<1x64x8x8xf32>) -> tensor<1x64x8x8xf32>
+// MAP-SPATIAL-TEMPORAL-NEXT:      %15 = tosa.clamp %14 {max_fp = 3.40282347E+38 : f32, max_int = 2147483647 : i64, min_fp = 0.000000e+00 : f32, min_int = 0 : i64} : (tensor<1x64x8x8xf32>) -> tensor<1x64x8x8xf32>
+// MAP-SPATIAL-TEMPORAL-NEXT:      return %15 : tensor<1x64x8x8xf32>
+// MAP-SPATIAL-TEMPORAL-NEXT:    }
+// MAP-SPATIAL-TEMPORAL-NEXT:  }
+
+
+
 
 
 // RESOPT:      module attributes {torch.debug_module_name = "SimpleResNetBlock"} {

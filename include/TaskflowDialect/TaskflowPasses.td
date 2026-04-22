@@ -77,11 +77,30 @@ def AllocateCgraToTask : Pass<"allocate-cgra-to-task", "func::FuncOp"> {
 }
 
 def MapTaskOnCgra : Pass<"map-task-on-cgra", "func::FuncOp"> {
-  let summary = "Maps Taskflow tasks onto a CGRA using heuristic mapping";
+  let summary = "Maps Taskflow tasks onto a 2D CGRA grid (spatial or "
+                "spatial-temporal)";
   let description = [{
-    This pass maps Taskflow hyperblock operations onto CGRA tiles using the
-    heuristic mapping algorithm (ALAP scheduling + backtracking placement).
+    Maps Taskflow tasks onto a 2D CGRA grid using either a purely spatial or a
+    spatial-temporal allocation strategy, controlled by --allocation-mode.
+
+    spatial:
+      Each CGRA is assigned to at most one task.  Fails with an assertion when
+      the number of tasks exceeds the grid size (default 3x3 = 9 slots).
+
+    spatial-temporal (default):
+      Adds a time_step dimension to every CGRA assignment.  Tasks with no data
+      dependencies share the same time step (spatial parallelism); dependent
+      tasks that would over-subscribe the grid are scheduled at a later time
+      step on the same physical CGRAs (temporal reuse). 
+
+    Uses a default 3x3 CGRA grid.
   }];
+  let options = [Option<
+      "allocationMode", "allocation-mode", "std::string",
+      /*default=*/"\"spatial-temporal\"",
+      "Task allocation mode: 'spatial' (one task per CGRA, asserts if tasks > "
+      "grid size) or 'spatial-temporal' (default, time-multiplexes CGRAs so "
+      "task count is not bounded by grid size).">];
   let constructor = "taskflow::createMapTaskOnCgraPass()";
 }
 
