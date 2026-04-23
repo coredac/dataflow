@@ -407,7 +407,7 @@ private:
   bool isOccupied(int row, int col, int t, int d) const {
     if (mode_ == AllocationMode::Spatial) {
       return !intervals_[row][col].empty();
-    
+    }
     for (auto [s, e] : intervals_[row][col]) {
       if (t < e && t + d > s) {
         return true;
